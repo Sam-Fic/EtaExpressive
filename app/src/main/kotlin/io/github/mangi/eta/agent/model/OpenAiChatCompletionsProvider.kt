@@ -6,6 +6,7 @@ import io.github.mangi.eta.data.model.OpenAiEndpointMode
 import io.github.mangi.eta.data.model.ProviderAuthModes
 import io.github.mangi.eta.data.model.ProviderSourceTypes
 import io.github.mangi.eta.data.provider.ProviderSourceRegistry
+import java.util.UUID
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -56,6 +57,8 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
             .build()
 
         val requestJson = request.restrictReconnectPayload(buildRequestJson(config, request.messages, request.tools), capabilities.endpoint)
+        val existingToolCallIds = ChatToolCallHistory.referencedIds(request.messages) +
+            requestJson.optJSONArray("messages")?.let(ChatToolCallHistory::referencedIds).orEmpty()
         val serializedBody = requestJson.toString()
         val requestBody = serializedBody
             .toRequestBody(JSON_MEDIA_TYPE)
@@ -71,7 +74,7 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
             onEvent(ProviderEvent.RequestStarted)
             AgentWireRequestEstimate.publish(requestJson, capabilities.endpoint, request, onEvent, requestBody.contentLength(), serializedBody)
             val assistantMessage = readStreamingAssistantMessage(
-                httpRequest, runController, onEvent, request.requiresCompleteStream,
+                httpRequest, runController, existingToolCallIds, onEvent, request.requiresCompleteStream,
                 AuthorizedProviderHttp.callFactory(AgentHttpClient.modelClient, config.providerId, config.authMode, runController),
             )
             onEvent(ProviderEvent.Completed(assistantMessage.optString("finish_reason").ifBlank { null }))
@@ -134,6 +137,7 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
     private fun readStreamingAssistantMessage(
         request: Request,
         runController: AgentRunController,
+        existingToolCallIds: Set<String>,
         onEvent: (ProviderEvent) -> Unit,
         requireTerminal: Boolean,
         transportFactory: Call.Factory = AgentHttpClient.modelClient,
@@ -270,7 +274,9 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
                             )
                         }
                     }
-                    if (item.has("id") && !item.isNull("id")) call.id = item.optString("id")
+                    if (item.has("id") && !item.isNull("id")) {
+                        item.optString("id").takeIf(String::isNotBlank)?.let { call.id = it }
+                    }
                     if (item.has("type") && !item.isNull("type")) call.type = item.optString("type").ifBlank { "function" }
                     val function = item.optJSONObject("function")
                     val nameDelta = function?.takeIf { it.has("name") && !it.isNull("name") }?.optString("name").orEmpty()
@@ -342,6 +348,7 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
         finishReason = recoveredReason
 
         finishActiveVisibleBlock()
+        resolveToolCallIds(toolCalls.values, existingToolCallIds)
         toolCalls.values.sortedBy { it.contentIndex }.forEach { call ->
             onEvent(
                 ProviderEvent.BlockEnd(
@@ -367,8 +374,8 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
                     message.put(
                         "tool_calls",
                         JSONArray().also { array ->
-                            toolCalls.values.sortedBy { it.index }.forEachIndexed { position, call ->
-                                array.put(call.toJson(position))
+                            toolCalls.values.sortedBy { it.index }.forEach { call ->
+                                array.put(call.toJson())
                             }
                         }
                     )
@@ -394,6 +401,27 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
         return null
     }
 
+    private fun resolveToolCallIds(calls: Collection<StreamingToolCall>, existingIds: Set<String>) {
+        if (calls.isEmpty()) return
+        val reservedIds = existingIds.toMutableSet().apply {
+            calls.mapNotNullTo(this) { it.id }
+        }
+        val assignedIds = existingIds.toMutableSet()
+        val prefix = "call_eta_${UUID.randomUUID().toString().replace("-", "")}_"
+        var nextId = 0
+        // 先保留所有服务端 ID，再统一补齐；结束事件和历史必须使用同一个已定稿 ID。
+        calls.sortedBy { it.index }.forEach { call ->
+            if (call.id?.let(assignedIds::add) != true) {
+                var generated: String
+                do {
+                    generated = "$prefix${nextId++}"
+                } while (!reservedIds.add(generated))
+                call.id = generated
+                assignedIds += generated
+            }
+        }
+    }
+
     private data class StreamingToolCall(
         val index: Int,
         val contentIndex: Int,
@@ -402,10 +430,10 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
         val name: StringBuilder = StringBuilder(),
         val arguments: StringBuilder = StringBuilder()
     ) {
-        fun toJson(position: Int): JSONObject {
+        fun toJson(): JSONObject {
             val functionName = name.toString().trim()
             return JSONObject()
-                .put("id", id ?: "tool_call_$position")
+                .put("id", requireNotNull(id))
                 .put("type", type.ifBlank { "function" })
                 .put(
                     "function",

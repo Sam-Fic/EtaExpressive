@@ -67,6 +67,8 @@ OpenAI-compatible Provider 可在配置页选择 `Chat Completions` 或 `Respons
 
 Chat Completions 在协议边界把当前上下文中的全部 `system` 内容按原顺序合并为首条唯一系统消息，兼容要求系统消息只能位于开头的模型 Chat Template。Responses 则把完整的 `system`/`developer` 上下文投影到 `instructions`，并将持久历史重建为带 `type: "message"` 的 input Items。
 
+Chat Completions 流式工具调用按 `index` 聚合，后续空 ID 不覆盖已经收到的有效 ID。响应结束时为缺失或冲突的 ID 分配响应级唯一值，并避让原历史、实际出站消息和本响应的既有 ID；工具结束事件与最终调用使用同一 ID。旧历史中的重复 ID 仅在出站副本中修复：调用批次和紧邻的工具结果必须完整且能一一配对，调用与结果同步改名，同一输入重复发送时保持一致。配对有歧义或跨消息边界时保留原记录；出站修复不改写持久历史，也不删除结果或重新执行工具。
+
 Responses 请求固定使用 `stream:true`、`store:false`，不发送 `previous_response_id`。Runtime 在同一次 run 的工具回合之间精确回放 Provider 返回的完整 output Items；因此 encrypted reasoning、服务端工具状态等 opaque 数据只存在于内存，不进入 IPC transcript、Room、日志或运行归档。持久会话只保留规范化回答、可见推理内容和 Eta 工具记录，后续 run 由这些稳定数据重新构建上下文。
 
 兼容接口若在 `response.completed` 中省略 `output` 或返回空数组，Runtime 只使用同一 SSE 流中已经收到的标准文本、推理摘要和函数调用增量完成当前轮次；非空终态始终是权威结果，且本地恢复结果不会冒充 Provider 的 opaque output Items。
