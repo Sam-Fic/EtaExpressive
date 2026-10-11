@@ -18,6 +18,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebViewClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,10 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+
+internal class BrowserRendererGoneException : kotlinx.coroutines.CancellationException(
+    "BROWSER_RENDERER_GONE: page renderer exited; the action outcome is unknown. Do not automatically replay it. Open a new tab to continue.",
+)
 
 /**
  * Manages a single Android WebView for browser automation.
@@ -198,6 +203,12 @@ class BrowserUseManager(
 
     private var currentProfile: UserAgentProfile = profile
 
+    @Volatile private var destroyed = false
+    private var rendererGone = false
+    private val activeActions = mutableSetOf<kotlinx.coroutines.Job>()
+    private val pendingEvaluations = mutableSetOf<CompletableDeferred<String>>()
+    var onRendererGone: (() -> Unit)? = null
+
     /** Callback for window.open / target="_blank" — TabPool hooks this. */
     var onNewWindow: ((Message) -> Unit)? = null
 
@@ -314,6 +325,7 @@ class BrowserUseManager(
     }
 
     private fun ingestBlobDataUrl(dataUrl: String, filename: String) {
+        if (destroyed) return
         if (researchMode) {
             // data: is another real download entry point. Refuse before decoding,
             // and await the same native saver instead of launching a byte queue.
@@ -360,6 +372,7 @@ class BrowserUseManager(
         // <a download>, unrenderable MIME types). Without a listener, WebView
         // silently drops these — the user taps "download" and nothing happens.
         webView.setDownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
+            if (destroyed) return@setDownloadListener
             if (readOnlyChild) return@setDownloadListener
             // Log size/type only: a download URL can carry query-string tokens.
             Log.i(TAG, "download_started: bytes=$contentLength")
@@ -383,6 +396,7 @@ class BrowserUseManager(
         // visible width, and oversize CSS viewports (e.g. 1280×800 on a
         // ~1080px-wide phone) would render off-screen to the right.
         webView.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
+            if (destroyed) return@addOnLayoutChangeListener
             val w = r - l
             if (w > 0 && w != lastKnownContainerWidthPx) {
                 lastKnownContainerWidthPx = w
@@ -425,7 +439,7 @@ class BrowserUseManager(
                     .catch(function(e) { __minis__.blobDownloadError(String(e)); });
             })();
         """.trimIndent()
-        webView.post { webView.evaluateJavascript(js, null) }
+        webView.post { if (!destroyed) webView.evaluateJavascript(js, null) }
     }
 
     /**
@@ -503,7 +517,7 @@ class BrowserUseManager(
                     }
                 } finally {
                     childAbortKeys.remove(abortKey)
-                    runCatching { webView.evaluateJavascript(
+                    if (!destroyed) runCatching { webView.evaluateJavascript(
                         "(function(){var h=window[$quotedAbortKey];if(h)h.abort();delete window[$quotedAbortKey];})()", null) }
                     childReplyBridge.end(token)
                 }
@@ -560,6 +574,15 @@ class BrowserUseManager(
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebViewClient() {
         webView.webViewClient = object : WebViewClient() {
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                if (rendererGone) return true
+                rendererGone = true
+                Log.e(TAG, "renderer_gone: crashed=${detail.didCrash()}")
+                dispose(rendererExited = true)
+                onRendererGone?.invoke()
+                return true
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,
@@ -576,6 +599,7 @@ class BrowserUseManager(
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (destroyed) return
                 if (researchMode && url != "about:blank" &&
                     !io.github.mangi.eta.agent.browser.ChildBrowserPolicy.isWebUrl(url.orEmpty())) {
                     view.stopLoading()
@@ -591,6 +615,7 @@ class BrowserUseManager(
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
+                if (destroyed) return
                 _isLoading.value = false
                 _currentURL.value = url ?: ""
                 _pageTitle.value = view.title ?: ""
@@ -612,6 +637,7 @@ class BrowserUseManager(
                 // this, fixed-positioned UI on some sites drifts off the
                 // visible region after the synthetic measure+layout pass.
                 view.postDelayed({
+                    if (destroyed) return@postDelayed
                     view.evaluateJavascript(
                         "window.dispatchEvent(new Event('resize'));", null,
                     )
@@ -754,18 +780,21 @@ class BrowserUseManager(
     private fun setupWebChromeClient() {
         webView.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView, title: String?) {
+                if (destroyed) return
                 _pageTitle.value = title ?: ""
             }
 
             override fun onCreateWindow(
                 view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message
             ): Boolean {
+                if (destroyed) return false
                 if (researchMode) return false
                 onNewWindow?.invoke(resultMsg)
                 return onNewWindow != null
             }
 
             override fun onCloseWindow(window: WebView) {
+                if (destroyed) return
                 onCloseWindow?.invoke()
             }
 
@@ -867,6 +896,29 @@ class BrowserUseManager(
     // -- Execute Action --
 
     suspend fun execute(input: BrowserActionInput): BrowserActionResult {
+        return try {
+            kotlinx.coroutines.coroutineScope {
+                val actionJob = coroutineContext[kotlinx.coroutines.Job]!!
+                withContext(Dispatchers.Main.immediate) {
+                    if (rendererGone) throw BrowserRendererGoneException()
+                    check(!destroyed) { "Browser tab is closed" }
+                    activeActions.add(actionJob)
+                }
+                try {
+                    executeLive(input)
+                } finally {
+                    withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main.immediate) {
+                        activeActions.remove(actionJob)
+                    }
+                }
+            }
+        } catch (error: BrowserRendererGoneException) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            BrowserActionResult.error(error.message.orEmpty())
+        }
+    }
+
+    private suspend fun executeLive(input: BrowserActionInput): BrowserActionResult {
         // [T-child-browser-interactive] Low-level read-only gate: a research
         // child without interaction must not mutate the page or its origin even
         // if a stale or malicious tool call bypasses the policy whitelist.
@@ -1207,6 +1259,7 @@ class BrowserUseManager(
     suspend fun captureLiveSnapshot(): Bitmap? = captureWebViewBitmap()
 
     private suspend fun captureWebViewBitmap(): Bitmap? = withContext(Dispatchers.Main) {
+        if (destroyed) return@withContext null
         try {
             // WebView may be detached (pool-owned, never added to a window), so
             // width/height can be 0. Ensure it has a layout box matching the
@@ -1492,6 +1545,7 @@ class BrowserUseManager(
 
     /** Set user agent from UI settings (public, non-result). */
     fun setUserAgent(profile: UserAgentProfile, customUA: String? = null) {
+        if (destroyed) return
         currentProfile = profile
         val ua = if (profile == UserAgentProfile.CUSTOM && !customUA.isNullOrEmpty()) customUA
             else profile.userAgentString
@@ -1537,6 +1591,7 @@ class BrowserUseManager(
      * — mirrors iOS `BrowserUseManager.setViewport(width:height:...)`.
      */
     fun applyViewport(cssWidth: Int, cssHeight: Int) {
+        if (destroyed) return
         val density = webView.resources.displayMetrics.density
         val w = ((cssWidth * density).toInt()).coerceAtLeast(1)
         val h = ((cssHeight * density).toInt()).coerceAtLeast(1)
@@ -1585,6 +1640,7 @@ class BrowserUseManager(
     fun goForward() { moveHistory(1) }
 
     private fun moveHistory(delta: Int): Boolean {
+        if (destroyed) return false
         if (!webView.canGoBackOrForward(delta)) return false
         navigationError = null
         _isLoading.value = true
@@ -1629,8 +1685,9 @@ class BrowserUseManager(
             "can_go_back=${webView.canGoBackOrForward(-1)}, " +
             "can_go_forward=${webView.canGoBackOrForward(1)}"
     }
-    fun reload() { webView.reload() }
+    fun reload() { if (!destroyed) webView.reload() }
     fun stopLoading() {
+        if (destroyed) return
         webView.stopLoading()
         _isLoading.value = false
         navigationDeferred?.cancel()
@@ -1659,6 +1716,8 @@ class BrowserUseManager(
      * viewport-change callers still get a deterministic page refresh.
      */
     suspend fun reloadAndWait() {
+        if (rendererGone) throw BrowserRendererGoneException()
+        check(!destroyed) { "Browser tab is closed" }
         val deferred = CompletableDeferred<Unit>()
         navigationDeferred = deferred
         _isLoading.value = true
@@ -1699,6 +1758,8 @@ class BrowserUseManager(
      * `document.body` populated. Must be called on the main thread.
      */
     suspend fun loadBlankPage() {
+        if (rendererGone) throw BrowserRendererGoneException()
+        check(!destroyed) { "Browser tab is closed" }
         val deferred = CompletableDeferred<Unit>()
         navigationDeferred = deferred
         _isLoading.value = true
@@ -1721,20 +1782,33 @@ class BrowserUseManager(
             io.github.mangi.eta.agent.terminal.LinuxGuestPathResolver.resolveForApp(webView.context.applicationContext, path)
         }
 
-    fun destroy() {
-        stopLoading()
-        navigationDeferred?.cancel()
+    fun destroy() = dispose(rendererExited = false)
+
+    private fun dispose(rendererExited: Boolean) {
+        if (destroyed) return
+        destroyed = true
+        val failure = if (rendererExited) BrowserRendererGoneException()
+            else kotlinx.coroutines.CancellationException("Browser tab closed")
+        _isLoading.value = false
+        _canGoBack.value = false
+        _canGoForward.value = false
+        navigationError = failure.message
+        activeActions.toList().forEach { it.cancel(failure) }
+        navigationDeferred?.cancel(failure)
         navigationDeferred = null
+        pendingEvaluations.toList().forEach { it.cancel(failure) }
+        pendingEvaluations.clear()
         clearAsyncJsRequest()
         childReplyBridge.endAll()
+        childAbortKeys.clear()
         asyncScope.cancel()
+        // A dead renderer cannot service stopLoading, JS, reload or bridge removal.
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
-        webView.removeJavascriptInterface("__minis__")
-        webView.removeJavascriptInterface("__eta_child__")
         webView.destroy()
     }
 
     fun loadURL(urlString: String) {
+        if (destroyed) return
         val normalized = normalizeURL(urlString)
         require(!researchMode || io.github.mangi.eta.agent.browser.ChildBrowserPolicy.isWebUrl(normalized)) {
             "Child browser only permits HTTP/HTTPS pages"
@@ -1746,7 +1820,10 @@ class BrowserUseManager(
     // -- JS Evaluation Helpers --
 
     private suspend fun evaluateJavascript(js: String): String = withContext(Dispatchers.Main) {
+        if (rendererGone) throw BrowserRendererGoneException()
+        check(!destroyed) { "Browser tab is closed" }
         val deferred = CompletableDeferred<String>()
+        pendingEvaluations.add(deferred)
         try {
             webView.evaluateJavascript(js) { result ->
                 if (!deferred.isActive) return@evaluateJavascript
@@ -1764,6 +1841,7 @@ class BrowserUseManager(
             withTimeoutOrNull(JS_EVALUATION_TIMEOUT_MS) { deferred.await() }
                 ?: throw IllegalStateException("JavaScript evaluation timed out (8s)")
         } finally {
+            pendingEvaluations.remove(deferred)
             deferred.cancel()
         }
     }

@@ -677,7 +677,14 @@ class BrowserTabPool(
     suspend fun execute(
         input: BrowserActionInput,
         singleTab: Boolean = false,
-    ): BrowserActionResult {
+    ): BrowserActionResult = try {
+        executeLive(input, singleTab)
+    } catch (error: BrowserRendererGoneException) {
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        BrowserActionResult.error(error.message.orEmpty())
+    }
+
+    private suspend fun executeLive(input: BrowserActionInput, singleTab: Boolean): BrowserActionResult {
         // [T-child-browser-interactive] Pool-level read-only gate so a stale or
         // malicious tool call cannot mutate the page, write files or touch the
         // cookie tools without a full-access grant, regardless of the schema.
@@ -832,7 +839,7 @@ class BrowserTabPool(
             stampTabId(withDialogs.copy(pageURL = tab.manager.currentURL.value), tab.id)
         } finally {
             tab.lastActivityDate = Date()
-            if (implicitTab) {
+            if (implicitTab && _tabs.value.any { it.manager === tab.manager }) {
                 // [T-browser-implicit-tab-inuse-until-load-android] Keep the tab
                 // marked inUse through a grace window instead of releasing it the
                 // instant the action returns. The action itself already ran to
@@ -982,6 +989,7 @@ class BrowserTabPool(
         // Setup window.open / close handlers
         manager.onNewWindow = { resultMsg -> handleNewWindow(resultMsg) }
         manager.onCloseWindow = { handleCloseWindow(manager) }
+        manager.onRendererGone = { handleRendererGone(manager) }
         wireDownloadHandlers(manager)
 
         val tab = Tab(id = id, manager = manager)
@@ -1088,6 +1096,7 @@ class BrowserTabPool(
         manager.applyViewport(vpW, vpH)
         manager.onNewWindow = { msg -> handleNewWindow(msg) }
         manager.onCloseWindow = { handleCloseWindow(manager) }
+        manager.onRendererGone = { handleRendererGone(manager) }
         wireDownloadHandlers(manager)
 
         val tab = Tab(id = id, manager = manager)
@@ -1101,6 +1110,18 @@ class BrowserTabPool(
         resultMsg.sendToTarget()
 
         Log.i(TAG, "window.open → created tab $id")
+    }
+
+    private fun handleRendererGone(manager: BrowserUseManager) {
+        val affected = _tabs.value.firstOrNull { it.manager === manager } ?: return
+        affected.inUseGraceJob?.cancel()
+        savedURLs.remove(affected.id)
+        val remaining = _tabs.value.filterNot { it.manager === manager }
+        _tabs.value = remaining
+        if (_selectedTabId.value == affected.id) _selectedTabId.value = remaining.firstOrNull()?.id ?: 0
+        saveState()
+        // Do not reload the failed page or repeat an action with an unknown outcome.
+        Log.w(TAG, "renderer_gone: removed tab ${affected.id}")
     }
 
     private fun handleCloseWindow(manager: BrowserUseManager) {
