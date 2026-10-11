@@ -3,8 +3,8 @@ package io.github.mangi.eta.ui.app
 import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentIncrementalList
-import io.github.mangi.eta.ui.model.incrementalSnapshot
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.ErrorReconnectMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import io.github.mangi.eta.ui.model.normalizeTerminalRunMessages
 
@@ -16,8 +16,9 @@ import io.github.mangi.eta.ui.model.normalizeTerminalRunMessages
  *
  * Outside replay, the common streaming case is one same-sized assistant payload
  * growing in place. That case cannot affect terminal ordering, so retain the
- * previous normalized order and patch only the changed slot. Structural changes,
- * terminal notices, and state transitions always use the full order function.
+ * previous normalized order and patch only the changed slot. Existing reconnect
+ * marker updates also leave ordering unchanged, including with terminal notices.
+ * Structural changes and assistant state transitions use the full order function.
  */
 internal class AgentRunReplayBatch private constructor(
     private val order: (String, List<AgentChatMessageUi>) -> List<AgentChatMessageUi>,
@@ -59,28 +60,28 @@ internal class AgentRunReplayBatch private constructor(
         if (previous.size != messages.size) return false
         val certified = (messages as? AgentIncrementalList<AgentChatMessageUi>)?.singleReplacementFrom(previous)
         if (certified != null) {
-            val old = previous[certified] as? AgentMessageUi ?: return false
-            val current = messages[certified] as? AgentMessageUi ?: return false
-            return !cachedHasNotice && old.id == current.id && old.isStreaming && current.isStreaming &&
-                current.content.startsWith(old.content)
+            return isOrderIndependentReplacement(previous[certified], messages[certified])
         }
         var changedIndex = -1
         for (index in messages.indices) {
             val old = previous[index]
             val current = messages[index]
             if (old === current) continue
-            if (changedIndex >= 0) return false
-            val oldAssistant = old as? AgentMessageUi ?: return false
-            val newAssistant = current as? AgentMessageUi ?: return false
-            if (oldAssistant.id != newAssistant.id ||
-                !oldAssistant.isStreaming || !newAssistant.isStreaming ||
-                !newAssistant.content.startsWith(oldAssistant.content)
-            ) return false
+            if (changedIndex >= 0 || !isOrderIndependentReplacement(old, current)) return false
             changedIndex = index
         }
-        if (changedIndex < 0) return false
-        return messages.none { it is SystemNoticeMessageUi }
+        return changedIndex >= 0
     }
+
+    private fun isOrderIndependentReplacement(old: AgentChatMessageUi, current: AgentChatMessageUi): Boolean =
+        when {
+            old is ErrorReconnectMessageUi && current is ErrorReconnectMessageUi ->
+                old.id == current.id && old.runId == current.runId && old.reconnectId == current.reconnectId
+            old is AgentMessageUi && current is AgentMessageUi ->
+                !cachedHasNotice && old.id == current.id && old.isStreaming && current.isStreaming &&
+                    current.content.startsWith(old.content)
+            else -> false
+        }
 
     fun replay(
         runId: String,
