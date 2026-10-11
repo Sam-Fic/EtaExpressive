@@ -215,7 +215,7 @@ internal class AgentRuntimeRunExecutor(
             val ownerKey = SubAgentConfigKey.Conversation(request.effectiveModelSessionId)
             val childConfig = ConversationSubAgentPreferences().snapshot(ownerKey)
             val childCandidates = runBlocking { ChildWorkerConfigResolver.resolve(childSessionId, childConfig, parentConfig = request.config) }
-            val childDispatchPlan = AgentChildTaskGroups.ordinaryDispatchPlan(childSessionId, childCandidates)
+            val childDispatchPlan = ChildTaskOrdinaryDispatchSelection.plan(childCandidates)
             val workspaceEnvironment = LinuxEnvironmentSettingsRepository.current(appContext).wireName
             val childWorkspace = if (allowTerminal && currentPermissions().terminalTools) SubAgentWorkspace(
                 appContext, executor, ownerId = childSessionId, initialEnvironment = workspaceEnvironment,
@@ -318,8 +318,8 @@ internal class AgentRuntimeRunExecutor(
                     }
                 }
             }
-            // Frozen configuration does not imply historical execution ownership: ordinary work
-            // gets a fresh coordinator. Only explicit replacement may use current user settings.
+            // New tasks use this run's current settings and coordinator. Existing task IDs still
+            // route to their original groups; replacement keeps its separate authorization checks.
             groupGeneration = createChildGroup(childDispatchPlan.ordinary)
             replacementGeneration = if (childDispatchPlan.ordinary === childDispatchPlan.replacement) groupGeneration
                 else createChildGroup(childDispatchPlan.replacement)

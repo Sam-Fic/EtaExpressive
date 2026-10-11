@@ -92,6 +92,19 @@ class AgentRevisionRuntimeSuffixTest {
         assertFalse(AgentRevisionRuntimeSuffix.matches(dispatchAvailability("整合", candidate), "整合"))
     }
 
+    @Test fun currentDescriptionPreservesSameOwnerRevisionAndRejectsModifiedDescription() {
+        val current = dispatchPlan().put("ordinary_configuration_source", "CURRENT")
+            .put("ordinary_configuration_code", "CURRENT_CONFIGURATION_AVAILABLE")
+            .put("explicit_replacement", JSONArray(candidate))
+        val text = dispatchAvailability("整合", current.toString()).replace(
+            AgentRevisionRuntimeSuffix.DISPATCH_AVAILABILITY_DESCRIPTION,
+            AgentRevisionRuntimeSuffix.CURRENT_DISPATCH_AVAILABILITY_DESCRIPTION)
+        assertTrue(AgentRevisionRuntimeSuffix.matches(text, "整合"))
+        assertNotNull(AgentConversationRevisionReducer.boundary(state(text), "user-run"))
+        assertNull(AgentConversationRevisionReducer.boundary(state(text, "other"), "user-run"))
+        assertFalse(AgentRevisionRuntimeSuffix.matches(text.replace("当前会话配置", "任意配置"), "整合"))
+    }
+
     @Test fun archivedTargetRestoresOnlyUntilItCanBeLocatedThenKeepsEarlierSummary() {
         val a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
         val b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

@@ -1,48 +1,39 @@
 package io.github.mangi.eta.agent.runtime
 
 import org.junit.Test
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
+import org.junit.Assert.*
 
 class ChildTaskOrdinaryDispatchSelectionTest {
-    private fun candidate(id: String, value: String) = ChildTaskConfigPolicy.Candidate(
-        worker = ChildTaskConfigPolicy.WorkerKey("owner", id, "research"),
+    private fun candidate(role: String, value: String) = ChildTaskConfigPolicy.Candidate(
+        worker = ChildTaskConfigPolicy.WorkerKey("owner", "worker-1", role),
         availability = ChildTaskConfigPolicy.Availability.AVAILABLE,
         configurationRevision = value,
         configuration = value,
     )
 
-    @Test
-    fun retainedTaskUsesFrozenCandidateForOrdinaryAndCurrentForReplacement() {
-        val frozen = listOf(candidate("worker-1", "old"))
-        val current = listOf(candidate("worker-1", "new"))
-
-        val plan = ChildTaskOrdinaryDispatchSelection.plan(current, frozen, retainedTasks = true)
-
-        assertSame(frozen, plan.ordinary)
-        assertSame(current, plan.replacement)
-        assertEquals(true, plan.retained)
-    }
-
-    @Test
-    fun missingFrozenStateDoesNotFallBackToCurrent() {
-        val current = listOf(candidate("worker-1", "current"))
-
-        val plan = ChildTaskOrdinaryDispatchSelection.plan(current, null, retainedTasks = true)
-
-        assertEquals(emptyList<ChildTaskConfigPolicy.Candidate<String>>(), plan.ordinary)
-        assertSame(current, plan.replacement)
-        assertEquals(true, plan.retained)
-    }
-
-    @Test
-    fun withoutRetainedTaskOrdinaryUsesCurrentCandidate() {
-        val current = listOf(candidate("worker-1", "current"))
-
-        val plan = ChildTaskOrdinaryDispatchSelection.plan(current, null, retainedTasks = false)
-
+    @Test fun changedRoleAndModelApplyToNewPlanWithoutChangingPreviousPlan() {
+        val previous = ChildTaskOrdinaryDispatchSelection.plan(listOf(candidate("implementation", "old")))
+        val current = listOf(candidate("review", "new"))
+        val plan = ChildTaskOrdinaryDispatchSelection.plan(current)
         assertSame(current, plan.ordinary)
         assertSame(current, plan.replacement)
-        assertEquals(false, plan.retained)
+        assertEquals("review", plan.ordinary.single().worker.role)
+        assertEquals("implementation", previous.ordinary.single().worker.role)
+        assertEquals("old", previous.ordinary.single().configuration)
+    }
+
+    @Test fun unavailableCurrentSelectionDoesNotUsePreviousConfiguration() {
+        val current = listOf(ChildTaskConfigPolicy.Candidate<String>(
+            ChildTaskConfigPolicy.WorkerKey("owner", "worker-1", "review"),
+            ChildTaskConfigPolicy.Availability.MODEL_UNAVAILABLE))
+        val plan = ChildTaskOrdinaryDispatchSelection.plan(current)
+        assertSame(current, plan.ordinary)
+        assertNull(plan.ordinary.single().configuration)
+    }
+
+    @Test fun removedWorkersDoNotReappearInNewPlan() {
+        val plan = ChildTaskOrdinaryDispatchSelection.plan(emptyList<ChildTaskConfigPolicy.Candidate<String>>())
+        assertTrue(plan.ordinary.isEmpty())
+        assertSame(plan.ordinary, plan.replacement)
     }
 }

@@ -381,38 +381,6 @@ internal object AgentChildTaskGroups {
         return (json.opt("workspace_id") as? String)?.takeIf(workspaceIdPattern::matches)
     }
 
-    /** The newest retained generation is the source of ordinary configuration snapshots. */
-    fun retainedOrdinaryCandidates(ownerId: String): List<ChildTaskConfigPolicy.Candidate<ChildWorkerConfigResolver.Configuration>>? =
-        synchronized(this) {
-            groups.values.filter { it.ownerId == ownerId && !it.closed }
-                .filter { group -> group.snapshots.isNotEmpty() || group.coordinator?.taskIds()?.isNotEmpty() == true }
-                .lastOrNull()?.workers?.mapNotNull { it.configuration }
-        }
-
-    fun hasRetainedTasks(ownerId: String): Boolean = synchronized(this) {
-        groups.values.any { group ->
-            group.ownerId == ownerId && !group.closed &&
-                (group.snapshots.isNotEmpty() || group.coordinator?.taskIds()?.isNotEmpty() == true)
-        }
-    }
-
-    /**
-     * Capture configuration, not execution ownership, before constructing this run's groups.
-     * A live retained coordinator can be running or explicitly paused by prior controls.
-     * Its immutable candidates still govern ordinary dispatch, but new work must NOT execute
-     * through that historical coordinator. Archived result-only groups do not constrain new work.
-     * Missing frozen candidates fail closed; the current setting is only for explicit replacement.
-     */
-    fun ordinaryDispatchPlan(ownerId: String,
-        current: List<ChildTaskConfigPolicy.Candidate<ChildWorkerConfigResolver.Configuration>>,
-    ): ChildTaskOrdinaryDispatchSelection.Plan<ChildWorkerConfigResolver.Configuration> = synchronized(this) {
-        val retained = groups.values.lastOrNull { group ->
-            group.ownerId == ownerId && !group.closed && group.coordinator?.taskIds()?.isNotEmpty() == true
-        }
-        ChildTaskOrdinaryDispatchSelection.plan(current, retained?.workers?.mapNotNull { it.configuration },
-            retainedTasks = retained != null)
-    }
-
     fun execute(ownerId: String, currentGeneration: String?, call: AgentModelClient.ToolCall,
         currentRunId: String? = null, replacementGeneration: String? = currentGeneration): AgentModelClient.ToolResult {
         val args = runCatching { JSONObject(call.argumentsJson) }.getOrNull() ?: return error("INVALID_TASK_ARGUMENTS")

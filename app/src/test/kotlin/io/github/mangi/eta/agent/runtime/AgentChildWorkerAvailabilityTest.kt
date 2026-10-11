@@ -51,25 +51,26 @@ class AgentChildWorkerAvailabilityTest {
     private fun dispatchDescription(prompt: String): JSONObject = JSONObject(
         prompt.substringAfter("\n{", "").let { "{" + it.substringBefore("\n[/本轮子代理派发配置可用性]") })
 
-    @Test fun splitPromptMatchesFrozenOrdinarySlotsAndMarksCurrentAsExplicitReplacementOnly() {
+    @Test fun promptUsesCurrentCandidatesAndMatchingOrdinarySlots() {
         val changedUnavailable = ChildTaskConfigPolicy.Candidate<ChildWorkerConfigResolver.Configuration>(
             available.worker, ChildTaskConfigPolicy.Availability.MODEL_UNAVAILABLE)
         val alternate = ChildTaskConfigPolicy.Candidate(
             ChildTaskConfigPolicy.WorkerKey("owner", "alternate-worker", profile.role),
             ChildTaskConfigPolicy.Availability.AVAILABLE, "alternate-private-revision",
             ChildWorkerConfigResolver.Configuration(profile.copy(id = "alternate-worker"), model))
-        val plan = ChildTaskOrdinaryDispatchSelection.plan(listOf(changedUnavailable, alternate),
-            listOf(available), retainedTasks = true)
+        val plan = ChildTaskOrdinaryDispatchSelection.plan(listOf(changedUnavailable, alternate))
         val prompt = AgentChildWorkerAvailability.appendToPrompt("question", plan)
         assertTrue(AgentRevisionRuntimeSuffix.matches(prompt, "question"))
         val dto = dispatchDescription(prompt)
-        assertEquals("FROZEN", dto.getString("ordinary_configuration_source"))
-        assertEquals("ORIGINAL_CONFIGURATION_FROZEN", dto.getString("ordinary_configuration_code"))
+        assertEquals("CURRENT", dto.getString("ordinary_configuration_source"))
+        assertEquals("CURRENT_CONFIGURATION_AVAILABLE", dto.getString("ordinary_configuration_code"))
         val ordinary = dto.getJSONArray("ordinary")
-        assertEquals(1, ordinary.length())
+        assertEquals(2, ordinary.length())
         assertEquals("stable-worker", ordinary.getJSONObject(0).getString("agent_id"))
-        assertEquals(1, ordinary.getJSONObject(0).getInt("worker"))
-        assertEquals(true, ordinary.getJSONObject(0).getBoolean("configuration_available"))
+        assertFalse(ordinary.getJSONObject(0).has("worker"))
+        assertEquals(false, ordinary.getJSONObject(0).getBoolean("configuration_available"))
+        assertEquals("alternate-worker", ordinary.getJSONObject(1).getString("agent_id"))
+        assertEquals(1, ordinary.getJSONObject(1).getInt("worker"))
         val replacement = dto.getJSONArray("explicit_replacement")
         assertEquals("MODEL_UNAVAILABLE", replacement.getJSONObject(0).getString("configuration_code"))
         assertEquals("alternate-worker", replacement.getJSONObject(1).getString("agent_id"))
@@ -79,14 +80,11 @@ class AgentChildWorkerAvailabilityTest {
             .forEach { assertFalse(prompt.contains(it)) }
     }
 
-    @Test fun splitPromptReportsMissingFrozenAndUnavailableCurrentWithoutInventingOrdinarySlots() {
-        val missing = ChildTaskOrdinaryDispatchSelection.plan(listOf(available), null, retainedTasks = true)
-        val dto = dispatchDescription(AgentChildWorkerAvailability.appendToPrompt("question", missing))
-        assertEquals("FROZEN_CONFIGURATION_MISSING", dto.getString("ordinary_configuration_code"))
-        assertEquals(0, dto.getJSONArray("ordinary").length())
-        assertEquals(1, dto.getJSONArray("explicit_replacement").length())
-        val current = ChildTaskOrdinaryDispatchSelection.plan(listOf(unavailable), null, retainedTasks = false)
-        val disabled = dispatchDescription(AgentChildWorkerAvailability.appendToPrompt("question", current))
+    @Test fun promptReportsUnavailableCurrentWithoutInventingOrdinarySlots() {
+        val current = ChildTaskOrdinaryDispatchSelection.plan(listOf(unavailable))
+        val prompt = AgentChildWorkerAvailability.appendToPrompt("question", current)
+        assertTrue(AgentRevisionRuntimeSuffix.matches(prompt, "question"))
+        val disabled = dispatchDescription(prompt)
         assertEquals("CURRENT", disabled.getString("ordinary_configuration_source"))
         assertEquals("NEW_CONFIGURATION_UNAVAILABLE", disabled.getString("ordinary_configuration_code"))
         assertFalse(disabled.getJSONArray("ordinary").getJSONObject(0).has("worker"))

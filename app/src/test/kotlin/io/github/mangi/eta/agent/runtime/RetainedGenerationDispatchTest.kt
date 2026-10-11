@@ -31,10 +31,10 @@ class RetainedGenerationDispatchTest {
         }
         assertTrue("condition did not become true", satisfied)
     }
-    private fun candidate(owner: String, model: AgentModelClient.ModelConfig, worker: String = "worker-1") =
-        ChildTaskConfigPolicy.Candidate(ChildTaskConfigPolicy.WorkerKey(owner, worker, "review"),
+    private fun candidate(owner: String, model: AgentModelClient.ModelConfig, worker: String = "worker-1", role: String = "review") =
+        ChildTaskConfigPolicy.Candidate(ChildTaskConfigPolicy.WorkerKey(owner, worker, role),
             ChildTaskConfigPolicy.Availability.AVAILABLE, model.model,
-            ChildWorkerConfigResolver.Configuration(SubAgentProfile(worker, worker, "review",
+            ChildWorkerConfigResolver.Configuration(SubAgentProfile(worker, worker, role,
                 providerId = model.providerId, modelId = model.model), model))
 
     @Suppress("UNCHECKED_CAST")
@@ -108,13 +108,12 @@ class RetainedGenerationDispatchTest {
                 assertTrue(AgentChildRunControl.pendingSelections.value.none { it.runId == oldRun })
                 val before = old.get(id)
                 val oldTarget = old.target()
-                val plan = registry.ordinaryDispatchPlan(owner, listOf(candidate(owner, edited)))
-                assertTrue(plan.retained)
-                assertSame(frozen, plan.ordinary.single())
+                val plan = ChildTaskOrdinaryDispatchSelection.plan(listOf(candidate(owner, edited)))
+                assertSame(edited, plan.ordinary.single().configuration!!.model)
                 assertSame(edited, plan.replacement.single().configuration!!.model)
                 val newCalls = AtomicInteger()
                 GroupFixture(owner, UUID.randomUUID().toString(), plan.ordinary) { config, _, _ ->
-                    assertSame(original, config); newCalls.incrementAndGet(); "new result"
+                    assertSame(edited, config); newCalls.incrementAndGet(); "new result"
                 }.use { current ->
                     val response = current.delegate(JSONObject().put("task", "fresh").put("task_id", id))
                     assertTrue(response.toString(), response.optBoolean("ok"))
@@ -159,7 +158,7 @@ class RetainedGenerationDispatchTest {
                 val oldId = old.delegate().getString("task_id")
                 registry.pause(old.target()); registry.detach(old.generation)
                 await { old.get(oldId).optString("status") == "awaiting_decision" }
-                val plan = registry.ordinaryDispatchPlan(owner, listOf(candidate(owner, edited)))
+                val plan = ChildTaskOrdinaryDispatchSelection.plan(listOf(candidate(owner, edited)))
                 GroupFixture(owner, UUID.randomUUID().toString(), plan.ordinary) { _, _, _ -> "new" }.use { current ->
                     val target = current.target()
                     registry.pause(target)
@@ -192,7 +191,7 @@ class RetainedGenerationDispatchTest {
         } finally { release.countDown() }
     }
 
-    @Test fun frozenOrdinaryIgnoresEditedUnavailableSelectionButDoesNotSubstituteAnotherWorker() {
+    @Test fun unavailableCurrentDoesNotFallBackToPausedWorkerAndAnotherWorkerRequiresExplicitSelection() {
         val owner = UUID.randomUUID().toString()
         val release = CountDownLatch(1)
         try {
@@ -206,32 +205,69 @@ class RetainedGenerationDispatchTest {
                 val unavailable = ChildTaskConfigPolicy.Candidate<ChildWorkerConfigResolver.Configuration>(
                     frozen.worker, ChildTaskConfigPolicy.Availability.MODEL_UNAVAILABLE)
                 val currentCandidates = listOf(unavailable, candidate(owner, edited, "worker-2"))
-                val plan = registry.ordinaryDispatchPlan(owner, currentCandidates)
-                assertSame(frozen, plan.ordinary.single())
-                assertSame(currentCandidates, plan.replacement)
+                val plan = ChildTaskOrdinaryDispatchSelection.plan(currentCandidates)
+                assertSame(currentCandidates, plan.ordinary)
                 GroupFixture(owner, "new-$owner", plan.ordinary) { config, _, _ ->
-                    assertSame(original, config); "frozen"
+                    assertSame(edited, config); "current"
                 }.use { current ->
-                    assertEquals("AGENT_NOT_CONFIGURED", current.delegate(JSONObject().put("task", "no substitute")
-                        .put("agent_id", "worker-2")).getString("code"))
+                    assertEquals("AGENT_NOT_CONFIGURED", current.delegate(JSONObject().put("task", "no fallback")
+                        .put("agent_id", "worker-1")).getString("code"))
                     assertTrue(current.coordinator.taskIds().isEmpty())
                     assertEquals("WORKER_ROLE_MISMATCH", current.delegate(JSONObject().put("task", "wrong role")
-                        .put("agent_id", "worker-1").put("role", "implementation")).getString("code"))
+                        .put("agent_id", "worker-2").put("role", "implementation")).getString("code"))
                     assertTrue(current.coordinator.taskIds().isEmpty())
-                    assertTrue(current.delegate(JSONObject().put("task", "original")
-                        .put("agent_id", "worker-1")).optBoolean("ok"))
+                    val fresh = current.delegate(JSONObject().put("task", "explicit current worker")
+                        .put("agent_id", "worker-2").put("role", "review"))
+                    assertTrue(fresh.toString(), fresh.optBoolean("ok"))
+                    assertEquals("edited", fresh.getString("model"))
                     assertEquals("awaiting_decision", current.get(id).getString("status"))
+                    assertEquals("original", current.get(id).getString("model"))
                 }
-                // Incomplete historical state must not fall back to the edited setting.
+                // Incomplete historical metadata does not govern unrelated new tasks.
                 set(old.group, "workers", emptyList<AgentChildTaskGroups.Worker>())
-                val missing = registry.ordinaryDispatchPlan(owner, currentCandidates)
-                assertTrue(missing.retained)
-                assertTrue(missing.ordinary.isEmpty())
-                assertSame(currentCandidates, missing.replacement)
-                val rejected = JSONObject(registry.execute(owner, null, call("delegate_task",
-                    JSONObject().put("task", "must not fall back")), currentRunId = "next-$owner").content)
-                assertEquals("RUN_CLOSED", rejected.getString("code"))
+                val freshPlan = ChildTaskOrdinaryDispatchSelection.plan(currentCandidates)
+                assertSame(currentCandidates, freshPlan.ordinary)
                 assertEquals(listOf(id), old.coordinator.taskIds())
+            }
+        } finally { release.countDown() }
+    }
+
+    @Test fun changingImplementationWorkerToReviewAppliesToNewTaskWhilePausedTaskKeepsOriginalConfiguration() {
+        val owner = UUID.randomUUID().toString()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        try {
+            GroupFixture(owner, "old-$owner", listOf(candidate(owner, original, role = "implementation"))) { config, _, controller ->
+                assertSame(original, config); entered.countDown(); release.await(); controller.throwIfCancelled(); "old"
+            }.use { old ->
+                // Research is valid for an implementation worker without creating a workspace.
+                val oldId = old.delegate(JSONObject().put("task", "old work").put("role", "research")).getString("task_id")
+                assertTrue(entered.await(5, TimeUnit.SECONDS))
+                registry.pause(old.target()); registry.detach(old.generation)
+                await { old.get(oldId).optString("status") == "awaiting_decision" }
+                val before = old.get(oldId)
+                val plan = ChildTaskOrdinaryDispatchSelection.plan(listOf(candidate(owner, edited, role = "review")))
+                GroupFixture(owner, "new-$owner", plan.ordinary) { config, _, _ ->
+                    assertSame(edited, config); "review result"
+                }.use { current ->
+                    val fresh = current.delegate(JSONObject().put("task", "new review")
+                        .put("agent_id", "worker-1").put("role", "review"))
+                    assertTrue(fresh.toString(), fresh.optBoolean("ok"))
+                    val newId = fresh.getString("task_id")
+                    assertNotEquals(oldId, newId)
+                    assertEquals("review", fresh.getString("role"))
+                    assertEquals("edited", fresh.getString("model"))
+                    await { current.get(newId).optString("status") == "completed" }
+                    val after = current.get(oldId)
+                    listOf("task_id", "role", "model", "provider_id", "status", "workspace_id", "continuation_count")
+                        .forEach { assertEquals(it, before.get(it), after.get(it)) }
+                    val continued = current.execute("continue_task", JSONObject().put("task_id", oldId))
+                    assertTrue(continued.toString(), continued.optBoolean("ok"))
+                    assertEquals(oldId, continued.getString("task_id"))
+                    assertEquals("research", continued.getString("role"))
+                    assertEquals("original", continued.getString("model"))
+                    assertEquals(1, continued.getInt("continuation_count"))
+                }
             }
         } finally { release.countDown() }
     }
@@ -246,8 +282,7 @@ class RetainedGenerationDispatchTest {
             assertNull(field(old.group, "coordinator"))
             assertEquals("original", old.get(id).getString("model"))
             val latest = listOf(candidate(owner, edited))
-            val plan = registry.ordinaryDispatchPlan(owner, latest)
-            assertFalse(plan.retained)
+            val plan = ChildTaskOrdinaryDispatchSelection.plan(latest)
             assertSame(latest, plan.ordinary)
             GroupFixture(owner, "new-$owner", plan.ordinary) { config, _, _ ->
                 assertSame(edited, config); "new selection"
@@ -261,8 +296,7 @@ class RetainedGenerationDispatchTest {
             }
             val unavailable = listOf(ChildTaskConfigPolicy.Candidate<ChildWorkerConfigResolver.Configuration>(
                 frozenWorker(owner), ChildTaskConfigPolicy.Availability.MODEL_UNAVAILABLE))
-            val disabled = registry.ordinaryDispatchPlan(owner, unavailable)
-            assertFalse(disabled.retained)
+            val disabled = ChildTaskOrdinaryDispatchSelection.plan(unavailable)
             assertSame(unavailable, disabled.ordinary)
             assertTrue(AgentChildWorkerAvailability.configuredChildren(disabled.ordinary).isEmpty())
             val rejected = JSONObject(registry.execute(owner, null, call("delegate_task",
@@ -289,7 +323,7 @@ class RetainedGenerationDispatchTest {
                 registry.pause(staleTarget); registry.detach(old.generation)
                 await { old.get(first).optString("status") == "awaiting_decision" &&
                     old.get(second).optString("status") == "awaiting_decision" }
-                val plan = registry.ordinaryDispatchPlan(owner, listOf(candidate(owner, edited)))
+                val plan = ChildTaskOrdinaryDispatchSelection.plan(listOf(candidate(owner, edited)))
                 val nextRun = "new-$owner"
                 GroupFixture(owner, nextRun, plan.ordinary) { _, _, _ -> "new" }.use { current ->
                     assertTrue(current.delegate().optBoolean("ok"))
@@ -315,7 +349,7 @@ class RetainedGenerationDispatchTest {
         } finally { release.countDown() }
     }
 
-    @Test fun explicitReplacementUsesCurrentGroupOnlyAfterStoppedReadEvidenceNotOrdinaryFrozenGroup() {
+    @Test fun explicitReplacementStillRequiresStoppedReadEvidenceWithCurrentOrdinaryConfiguration() {
         val owner = UUID.randomUUID().toString()
         val frozen = candidate(owner, original)
         GroupFixture(owner, "old-$owner", listOf(frozen)) { _, _, _ -> error("child failed") }.use { old ->
@@ -324,14 +358,14 @@ class RetainedGenerationDispatchTest {
             await { JSONObject(old.coordinator.execute(call("get_task_result", JSONObject().put("task_id", id))).content)
                 .optBoolean("execution_exited") }
             val latest = listOf(candidate(owner, edited))
-            val plan = registry.ordinaryDispatchPlan(owner, latest)
+            val plan = ChildTaskOrdinaryDispatchSelection.plan(latest)
             val newRun = "new-$owner"
             GroupFixture(owner, newRun, plan.ordinary) { config, _, _ ->
-                assertSame(original, config); "ordinary frozen"
+                assertSame(edited, config); "ordinary current"
             }.use { ordinary ->
-                GroupFixture(owner, newRun, plan.replacement) { config, _, _ ->
-                    assertSame(edited, config); "explicit successor"
-                }.use { replacement ->
+                // Match RunExecutor: ordinary and replacement share the current group.
+                val replacement = ordinary
+                run {
                     val fresh = ordinary.delegate()
                     assertTrue(fresh.optBoolean("ok"))
                     val args = JSONObject().put("task", "explicit successor").put("replace_task_id", id)
@@ -343,7 +377,7 @@ class RetainedGenerationDispatchTest {
                     val unavailable = ChildTaskConfigPolicy.Candidate<ChildWorkerConfigResolver.Configuration>(
                         frozen.worker, ChildTaskConfigPolicy.Availability.MODEL_UNAVAILABLE)
                     val alternative = listOf(unavailable, candidate(owner, edited, "worker-2"))
-                    val unavailablePlan = registry.ordinaryDispatchPlan(owner, alternative)
+                    val unavailablePlan = ChildTaskOrdinaryDispatchSelection.plan(alternative)
                     GroupFixture(owner, newRun, unavailablePlan.replacement) { _, _, _ ->
                         error("unavailable original worker must not become another slot")
                     }.use { other ->
@@ -355,7 +389,7 @@ class RetainedGenerationDispatchTest {
                     assertTrue(successor.toString(), successor.optBoolean("ok"))
                     val successorId = successor.getString("task_id")
                     assertTrue(replacement.coordinator.ownsTask(successorId))
-                    assertFalse(ordinary.coordinator.ownsTask(successorId))
+                    assertTrue(ordinary.coordinator.ownsTask(successorId))
                     assertEquals(id, successor.getString("replaces_task_id"))
                     assertEquals("SUCCESSOR_ALREADY_CLAIMED", ordinary.execute("delegate_task", args,
                         replacement.generation).getString("code"))

@@ -109,8 +109,8 @@ internal object ChildTaskConfigPolicy {
     )
 
     /**
-     * Use for ordinary follow-up dispatch. Latest is deliberately lazy: retaining healthy children
-     * must not re-resolve credentials, reasoning defaults or model selections under an old task.
+     * Select configuration for retained work, not new-task dispatch. Latest is deliberately lazy:
+     * do not re-resolve credentials, reasoning defaults or model selections under an old task.
      * retainedTasks=true with no snapshot fails closed (e.g. incomplete restored state).
      */
     fun <C : Any> ordinary(
