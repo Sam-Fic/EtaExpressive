@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
@@ -13,8 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
@@ -24,6 +23,11 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.*
 import org.junit.Rule
@@ -32,9 +36,12 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.annotation.LooperMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36], qualifiers = "w480dp-h800dp-mdpi")
+@LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MarkdownViewportDrawCullTest {
     @get:Rule val compose = createComposeRule()
@@ -65,8 +72,7 @@ class MarkdownViewportDrawCullTest {
                 Box(Modifier.size(100.dp, height.value).onGloballyPositioned(viewport::updateCoordinates)) {
                     CompositionLocalProvider(LocalMarkdownDrawViewport provides viewport) {
                         Column(Modifier.offset(y = y.value)) {
-                            Box(Modifier.size(60.dp).graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                                .markdownViewportDrawCull(true)
+                            Box(Modifier.size(60.dp).markdownBlockDrawLayer(cull = true)
                                 .drawWithContent { draws++; drawContent() }
                                 .background(Color.Red).semantics { contentDescription = "kept-leaf" })
                         }
@@ -93,6 +99,41 @@ class MarkdownViewportDrawCullTest {
         assertEquals(Color.White, color(200))
         compose.runOnIdle { height.value = 300.dp }
         assertEquals("viewport resize restores the cached leaf", Color.Red, color(200))
+    }
+
+    @Test fun culledStreamingDocumentKeepsAllTextAndHeadingSemantics() {
+        val viewport = MarkdownDrawViewport()
+        val paragraphs = (0..12).map { "Paragraph $it remains readable outside the drawing viewport." }
+        val source = "# Complete heading\n\n" + paragraphs.joinToString("\n\n")
+        val document = DocumentGfmParserSession().parse(source, false).document
+        // Keep the coordinator live with no clock so the tail is still unrevealed. Semantics
+        // must contain target text, not just the drawn prefix or the visible blocks.
+        val reveal = SmoothTextRevealCoordinator().apply {
+            restoreHistoryThrough(source.indexOf(paragraphs.last()))
+            resumeAnimationsWithoutCatchingUp()
+        }
+        compose.setContent {
+            MiuixTheme {
+                SideEffect { viewport.updateEnabled(true) }
+                CompositionLocalProvider(LocalMarkdownDrawViewport provides viewport) {
+                    Box(Modifier.size(300.dp, 60.dp).onGloballyPositioned(viewport::updateCoordinates)
+                        .testTag("semantic-frame")) {
+                        MarkdownContent(document, rememberMarkdownStyle(MarkdownTone.Answer),
+                            Modifier.wrapContentHeight(Alignment.Top, unbounded = true), reveal)
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("semantic-frame").captureToImage()
+        paragraphs.forEach {
+            compose.onNodeWithText(it, useUnmergedTree = true).assertExists()
+        }
+        compose.onNodeWithText("Complete heading", useUnmergedTree = true)
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        compose.runOnIdle {
+            assertTrue("all reveal leaves are measured despite draw culling", reveal.hasLayoutsFor(document.revealKeys))
+            assertFalse("drawing/semantics did not catch up or pause reveal", reveal.drained.value)
+        }
     }
 
     @Test fun absentProviderDoesNotSuppressDrawing() {

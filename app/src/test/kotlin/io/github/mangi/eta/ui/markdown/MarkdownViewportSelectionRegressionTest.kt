@@ -35,10 +35,12 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.annotation.LooperMode
 
 @OptIn(ExperimentalFoundationApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [34], shadows = [SelectionTestMagnifier::class])
+@Config(application = Application::class, sdk = [36], shadows = [SelectionTestMagnifier::class])
+@LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MarkdownViewportSelectionRegressionTest {
     @get:Rule val compose = createComposeRule()

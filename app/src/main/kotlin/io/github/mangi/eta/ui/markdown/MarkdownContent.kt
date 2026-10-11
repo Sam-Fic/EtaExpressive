@@ -94,6 +94,7 @@ private fun markdownAlertTitleStyle(): TextStyle =
  *
  * 每个块以源码偏移作为组合 key；未变化的块是同一个实例，组合期直接跳过。传入
  * [reveal] 时文本块接入逐字显现：排版仍然一次完成，帧间推进只让绘制失效。
+ * 文档与块有独立 display-list 边界，尾部显现不再把已完成兄弟块一起重新录制。
  */
 @Composable
 internal fun MarkdownContent(
@@ -103,7 +104,8 @@ internal fun MarkdownContent(
     reveal: SmoothTextRevealCoordinator? = null,
 ) {
     val scope = remember(style, reveal) { MarkdownRenderScope(style, reveal) }
-    MarkdownBlockColumn(blocks = document.blocks, scope = scope, compact = false, modifier = modifier)
+    MarkdownBlockColumn(blocks = document.blocks, scope = scope, compact = false,
+        modifier = modifier.markdownDocumentDrawLayer())
 }
 
 @Immutable
@@ -135,7 +137,13 @@ private fun MarkdownBlockColumn(
                     markdownBlockGap(previous, block, scope.style.tone)
                 }
                 if (gap.value > 0f) Spacer(Modifier.height(with(density) { gap.toDp() }))
-                MarkdownBlockView(block, scope)
+                // Preserve a separate recording for decorations/compound blocks too. Nested
+                // columns and list items have their own boundaries, so a long list/quote is
+                // not flattened back into a single recording when its tail changes.
+                Box(Modifier.markdownBlockDrawLayer(scope.style.tone == MarkdownTone.Answer),
+                    propagateMinConstraints = true) {
+                    MarkdownBlockView(block, scope)
+                }
             }
         }
     }
@@ -197,7 +205,9 @@ private fun MarkdownText(
         }
         return
     }
-    val drawModifier = modifier.markdownViewportDrawCull(scope.style.tone == MarkdownTone.Answer)
+    // Text leaves need boundaries even inside code/table containers. The reveal clip is
+    // inside this layer; fractional progress invalidates only this leaf's recording.
+    val drawModifier = modifier.markdownBlockDrawLayer(scope.style.tone == MarkdownTone.Answer)
     // 空单元格没有可显现的文字，也不占用显现协调器的 key。
     if (reveal == null || block.text.isEmpty()) {
         DocumentText(text = block.text, style = style, softWrap = softWrap, modifier = drawModifier)
@@ -210,6 +220,9 @@ private fun MarkdownText(
         text = block.text,
         style = animatedStyle,
         softWrap = softWrap,
+        // Keep the reveal clip and its text in one recording. A separate child layer
+        // can escape the canvas clip on Android; the retained boundary belongs OUTSIDE
+        // smoothTextReveal, so it cannot expose the still-hidden target text.
         modifier = drawModifier.smoothTextReveal(revealState),
         onTextLayout = { layout -> revealState.onTextLayout(block.text.text, layout) },
     )
@@ -432,7 +445,7 @@ private fun MarkdownListItemRow(
     markerWidth: Dp,
     scope: MarkdownRenderScope,
 ) {
-    Row(Modifier.fillMaxWidth()) {
+    Row(Modifier.fillMaxWidth().markdownBlockDrawLayer(scope.style.tone == MarkdownTone.Answer)) {
         ListMarker(item = item, ordered = ordered, depth = depth, width = markerWidth, scope = scope)
         CompositionLocalProvider(LocalListDepth provides depth + 1) {
             MarkdownBlockColumn(
