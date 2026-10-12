@@ -1,8 +1,9 @@
 package io.github.mangi.eta.agent.model
 
 /**
- * Per-request, bounded detector for degenerate reasoning (not answers or tool arguments).
- * Chunk boundaries and reasoning block IDs are deliberately irrelevant. Nothing retained here
+ * Per-request, bounded detector for degenerate repeated text.
+ * Callers feed reasoning and visible answers; tool arguments stay out.
+ * Chunk boundaries and block IDs are deliberately irrelevant. Nothing retained here
  * is logged. The caller must abort the transport and must not replay a rejected request.
  */
 internal class ReasoningRepetitionGuard {

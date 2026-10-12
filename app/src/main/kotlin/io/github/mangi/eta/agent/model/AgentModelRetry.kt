@@ -125,6 +125,7 @@ internal class AgentModelRetry(
                 val textFilter = AgentContinuationTextEvents(prefix.toString())
                 val deliveryGate = ProviderEventDeliveryGate()
                 val repetitionGuard = ReasoningRepetitionGuard()
+                val textRepetitionGuard = ReasoningRepetitionGuard()
                 val scope = controller.newTransportScope()
                 reconnect?.attach(scope)
                 requestReconnect?.attach(scope)
@@ -132,6 +133,8 @@ internal class AgentModelRetry(
                     ?: request.toolDiagnosticAttempt
                 val diagnosticRequest = if (toolAttempt == null) attemptRequest
                     else attemptRequest.copy(toolDiagnosticAttempt = toolAttempt)
+                fun repetitive(surface: String) = AgentModelFailure("MODEL_REPETITIVE_REASONING", false,
+                    "检测到模型${surface}持续高度重复，已中止本次请求；按所选重连策略处理，此前工具结果已保留。")
                 fun deliver(event: ProviderEvent) {
                     if (event is ProviderEvent.BlockDelta && event.kind == AssistantBlockKind.TEXT) {
                         textBlocks.getOrPut(event.index) { StringBuilder() }.append(event.delta)
@@ -168,15 +171,25 @@ internal class AgentModelRetry(
                                     when {
                                         event is ProviderEvent.BlockDelta && event.kind == AssistantBlockKind.THINKING -> {
                                             if (repetitionGuard.append(event.delta)) {
-                                                val failure = AgentModelFailure("MODEL_REPETITIVE_REASONING", false,
-                                                    "检测到模型思考持续高度重复，已中止本次请求；按所选重连策略处理，此前工具结果已保留。")
+                                                val failure = repetitive("思考")
+                                                attemptModelFailure = failure
+                                                throw failure
+                                            }
+                                        }
+                                        event is ProviderEvent.BlockDelta && event.kind == AssistantBlockKind.TEXT -> {
+                                            if (event.delta.isNotBlank()) repetitionGuard.reset()
+                                            if (textRepetitionGuard.append(event.delta)) {
+                                                val failure = repetitive("正文")
                                                 attemptModelFailure = failure
                                                 throw failure
                                             }
                                         }
                                         event is ProviderEvent.HostedToolStarted || event is ProviderEvent.HostedToolFinished ||
                                             (event is ProviderEvent.BlockStart && event.kind == AssistantBlockKind.TOOL_CALL) ||
-                                            (event is ProviderEvent.BlockDelta && event.kind != AssistantBlockKind.THINKING && event.delta.isNotBlank()) -> repetitionGuard.reset()
+                                            (event is ProviderEvent.BlockDelta && event.kind == AssistantBlockKind.TOOL_CALL && event.delta.isNotBlank()) -> {
+                                            repetitionGuard.reset()
+                                            textRepetitionGuard.reset()
+                                        }
                                     }
                                     // Connection recovery is not completion of the whole response.
                                     // Headers/usage/empty blocks are insufficient; executable local

@@ -259,12 +259,65 @@ class AgentModelRetryTest {
         assertEquals(1, waits)
     }
 
-    @Test fun answerTextAndToolArgumentsAreNotReasoningRepetitions() {
-        complete(AgentModelRetry { _, _ -> fail("must not retry") }, provider { _, emit ->
-            emit(ProviderEvent.BlockDelta(AssistantBlockKind.TEXT, 0, "OK.\n".repeat(2000)))
-            emit(ProviderEvent.BlockDelta(AssistantBlockKind.TOOL_CALL, 1, "0,".repeat(5000)))
+    @Test fun repetitiveAnswerTextStopsWithoutRetryWhenPolicyIsNone() {
+        var calls = 0
+        var delivered = 0
+        val failure = assertThrows(AgentModelFailure::class.java) {
+            complete(AgentModelRetry { _, _ -> fail("must not replay degenerate answer") }, provider { _, emit ->
+                calls++
+                repeat(400) {
+                    emit(ProviderEvent.BlockDelta(AssistantBlockKind.TEXT, 0, "我先看当前步骤。\n我先确认测试进度。\n我先看构建状态。\n"))
+                }
+                response()
+            }, onProviderEvent = { _, event -> if (event is ProviderEvent.BlockDelta) delivered++ },
+                policy = ErrorReconnectPolicy.NONE)
+        }
+        assertEquals("MODEL_REPETITIVE_REASONING", failure.code)
+        assertFalse(failure.retryable)
+        assertEquals(1, calls)
+        assertTrue(delivered in 1..250)
+    }
+
+    @Test fun repetitiveAnswerTextRecoversUnderContinuousPolicy() {
+        var calls = 0
+        val result = complete(AgentModelRetry { _, _ -> }, provider { request, emit ->
+            if (calls++ == 0) {
+                try {
+                    emit(ProviderEvent.BlockDelta(AssistantBlockKind.TEXT, 0, "我先看当前步骤。\n".repeat(2000)))
+                } catch (_: AgentModelFailure) { }
+            } else {
+                assertFalse(request.reconnectTextOnly)
+                assertTrue(request.reconnectLocalToolsOnly)
+            }
             response()
         })
+        assertEquals(2, calls)
+        assertEquals(2, result.round)
+    }
+
+    @Test fun variedAnswerTextIsNotRepetition() {
+        complete(AgentModelRetry { _, _ -> fail("must not retry") }, provider { _, emit ->
+            repeat(200) { index ->
+                emit(ProviderEvent.BlockDelta(AssistantBlockKind.TEXT, 0, "步骤 $index 使用新证据 ${index * 17}。\n"))
+            }
+            response()
+        }, policy = ErrorReconnectPolicy.NONE)
+    }
+
+    @Test fun toolProgressClearsAnswerRepetitionWindow() {
+        complete(AgentModelRetry { _, _ -> fail("must not retry") }, provider { _, emit ->
+            emit(ProviderEvent.BlockDelta(AssistantBlockKind.TEXT, 0, "OK.\n".repeat(800)))
+            emit(ProviderEvent.BlockStart(AssistantBlockKind.TOOL_CALL, 1))
+            emit(ProviderEvent.BlockDelta(AssistantBlockKind.TEXT, 0, "OK.\n".repeat(800)))
+            response()
+        }, policy = ErrorReconnectPolicy.NONE)
+    }
+
+    @Test fun toolArgumentsAreNotAnswerRepetitions() {
+        complete(AgentModelRetry { _, _ -> fail("must not retry") }, provider { _, emit ->
+            emit(ProviderEvent.BlockDelta(AssistantBlockKind.TOOL_CALL, 1, "0,".repeat(5000)))
+            response()
+        }, policy = ErrorReconnectPolicy.NONE)
     }
 
     private fun complete(
