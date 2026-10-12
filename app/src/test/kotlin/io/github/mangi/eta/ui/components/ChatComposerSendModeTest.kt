@@ -150,6 +150,20 @@ class ChatComposerSendModeTest {
     }
 
     @Test
+    fun compressingWhilePausedWithoutDraftShowsContinue() {
+        assertEquals(
+            "continue",
+            resolveChatComposerSendMode(
+                isStreaming = true,
+                isPaused = true,
+                hasSteerContent = false,
+                canStartNewSend = false,
+                isCompressingContext = true,
+            ),
+        )
+    }
+
+    @Test
     fun compressingIdleWithDraftShowsBlockedSend() {
         assertEquals(
             "blocked",
