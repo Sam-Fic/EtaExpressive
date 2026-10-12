@@ -14,6 +14,27 @@ internal class AgentCompactionArchive(filesDir: File, sessionId: String) {
         .joinToString("") { "%02x".format(it.toInt() and 255) }
     private val root = File(filesDir, "context-history/$scope")
 
+    /** Include one verified ancestor so the next summary remains editable after another compaction. */
+    fun savePreservingRevisionChain(history: List<AgentModelClient.ConversationMessage>): String =
+        save(historyWithVerifiedRevisionAncestor(history))
+
+    private fun historyWithVerifiedRevisionAncestor(
+        history: List<AgentModelClient.ConversationMessage>,
+    ): List<AgentModelClient.ConversationMessage> {
+        val index = history.indexOfFirst(AgentConversationRevisionArchive::isRevisionSummary)
+        if (index < 0 || history.drop(index + 1).any(AgentConversationRevisionArchive::isRevisionSummary)) return history
+        val checkpoint = AgentConversationRevisionArchive.checkpoint(history[index]) ?: return history
+        val ancestor = try {
+            restoreHistory(checkpoint, 2, MAX_BYTES.toLong())
+        } catch (_: CompactionArchiveRestoreException) {
+            return history
+        }
+        if (ancestor.isEmpty() || ancestor.size > 50_000) return history
+        val combined = ancestor + history.drop(index + 1)
+        if (combined.size > 50_000) return history
+        return combined
+    }
+
     fun save(history: List<AgentModelClient.ConversationMessage>): String {
         check(!File(root.parentFile, "$scope.deleted").exists()) { "会话已删除，不能再保存压缩原文" }
         val raw = JSONArray().also { array -> history.forEach { array.put(AgentConversationCodec.toJsonObject(it)) } }.toString()

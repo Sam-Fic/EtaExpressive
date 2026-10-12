@@ -3590,7 +3590,7 @@ internal class AgentAppState(
                 if (cut <= 0 || cut >= working.size) return@runInterruptible working
                 val boundArchive = archive ?: error("缺少会话身份，无法保存压缩原文")
                 val prefix = working.take(cut)
-                val id = boundArchive.save(prefix)
+                val id = boundArchive.savePreservingRevisionChain(prefix)
                 boundArchive.record(id, "started")
                 boundArchive.canAttach(id, prefix.size.coerceAtLeast(working.size - cut + 1), working.size - cut)
                 try {

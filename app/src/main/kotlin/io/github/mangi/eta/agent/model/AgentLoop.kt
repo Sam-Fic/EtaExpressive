@@ -1184,7 +1184,7 @@ internal class AgentLoop(
             val prefix = history.take(cut)
             val tail = history.drop(cut)
             val durablePrefix = AgentConversationCodec.redactSensitiveMessages(prefix, sensitiveToolCallIds)
-            savedCheckpoint = compactionArchive?.save(durablePrefix)
+            savedCheckpoint = compactionArchive?.savePreservingRevisionChain(durablePrefix)
             savedCheckpoint?.let { compactionArchive?.record(it, "started") }
             savedCheckpoint?.let { compactionArchive?.canAttach(it, prefix.size.coerceAtLeast(tail.size + 1), tail.size) }
             compactionStage = "summary"
