@@ -1,6 +1,7 @@
 package io.github.mangi.eta.agent.model
 
 import android.util.AtomicFile
+import io.github.mangi.eta.ui.app.AgentConversationRevisionArchive
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
