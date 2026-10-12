@@ -324,6 +324,13 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     if (runId.isNotBlank()) cancelRun(runId)
                 }
 
+                AgentRuntimeWire.MSG_CANCEL_CONVERSATION -> {
+                    val conversationId = msg.data?.getString("conversation_id").orEmpty()
+                    if (conversationId.isNotBlank() && conversationId.length <= 1024) {
+                        cancelConversation(conversationId)
+                    }
+                }
+
                 AgentRuntimeWire.MSG_STOP_MAIN_RUN -> {
                     val data = msg.data ?: return
                     val runId = AgentRuntimeWire.runIdFromBundle(data)
@@ -1058,6 +1065,22 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 }
             }
         }
+    }
+
+    private fun cancelConversation(conversationId: String) {
+        val pendingIds = pendingStartRequests.filterValues { pending ->
+            pending.incoming.request.handoff
+                ?.takeIf { it.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE }
+                ?.payload
+                ?.let { AgentUiHandoffPayload.from(it).conversationId } == conversationId
+        }.keys.toList()
+        pendingIds.forEach { runId ->
+            pendingStartRequests.remove(runId)?.let { pending -> failPendingStart(pending, "已停止") }
+        }
+        val runIds = synchronized(supplementsLock) {
+            supplementsByRunId.filterValues { it.conversationId == conversationId }.keys.toList()
+        }
+        runIds.forEach(::cancelRun)
     }
 
     private fun cancelRun(runId: String) {

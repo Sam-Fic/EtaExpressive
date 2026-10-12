@@ -105,6 +105,8 @@ internal object AgentRuntimeWire {
     const val MSG_QUERY_HISTORY = 22
     const val MSG_QUERY_HISTORY_RESPONSE = 23
     const val MSG_RELEASE_HISTORY = 24
+    /** Cancel every run whose UI handoff still belongs to one conversation. */
+    const val MSG_CANCEL_CONVERSATION = 25
 
     data class QuestionAnswerSubmission(
         val conversationId: String,

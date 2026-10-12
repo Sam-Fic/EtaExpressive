@@ -126,6 +126,16 @@ internal class AgentRuntimeClient(private val context: Context, private val logg
         }
     }
 
+    /** Stops runs the UI no longer tracks, including a continuation whose binding was already dropped. */
+    fun cancelConversation(conversationId: String) {
+        if (conversationId.isBlank() || conversationId.length > 1024) return
+        withRuntimeMessenger(Unit) { serviceMessenger ->
+            val msg = Message.obtain(null, AgentRuntimeWire.MSG_CANCEL_CONVERSATION)
+            msg.data = android.os.Bundle().apply { putString("conversation_id", conversationId) }
+            serviceMessenger.send(msg)
+        }
+    }
+
     /** Stop the parent, freeze its children and retain a one-shot pause/stop choice if needed. */
     fun stopMainRun(runId: String): Boolean = stopMainRun(runId, AgentChildControlPolicy.Reason.USER_STOP)
 

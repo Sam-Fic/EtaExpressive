@@ -60,6 +60,8 @@ internal class AgentRunMessageProjector(
     private var lastDeltaProjection: WeakReference<List<AgentChatMessageUi>>? = null
     private var lastDeltaKey: RoundEventKey? = null
     private val textSegments = mutableMapOf<RoundEventKey, String>()
+    /** Continue opens a new run but must update the stopped divider instead of adding one. */
+    private val claimedReconnectIds = mutableMapOf<String, String>()
 
     fun requestQuestion(conversationId: String, runId: String, event: AgentEvent.QuestionRequested,
         messages: List<AgentChatMessageUi>, replaying: Boolean = false): List<AgentChatMessageUi> =
@@ -79,6 +81,11 @@ internal class AgentRunMessageProjector(
         visibleBlocks.keys.removeAll { it.runId == runId }
         lastDeltaProjection = null
         lastDeltaKey = null
+    }
+
+    /** Bind a new continue run to the existing stopped divider before its first event arrives. */
+    fun claimStoppedReconnect(runId: String, messageId: String) {
+        if (runId.isNotBlank() && messageId.isNotBlank()) claimedReconnectIds[runId] = messageId
     }
 
     /** 回放从该 run 的空轨迹重建；仅重排有回放事件的补充输入，旧 handoff 独有的输入必须保留。 */
@@ -145,20 +152,34 @@ internal class AgentRunMessageProjector(
     ): List<AgentChatMessageUi> {
         val status = ErrorReconnectStatus.fromWireValue(event.status) ?: return messages
         val id = errorReconnectMessageId(runId, event.reconnectId)
-        val existing = messages.filterIsInstance<ErrorReconnectMessageUi>().firstOrNull { it.id == id }
-        // Ignore delayed progress after a terminal update, even when the run later resumes.
-        if (existing != null && existing.status != ErrorReconnectStatus.Running && status == ErrorReconnectStatus.Running) {
+        val claimedId = claimedReconnectIds[runId]
+        val existing = messages.filterIsInstance<ErrorReconnectMessageUi>().firstOrNull {
+            it.id == id || (claimedId != null && it.id == claimedId)
+        }
+        // Continue claims the stopped divider before its first event. Later progress keeps that row.
+        val target = existing
+        // A stopped attempt resumes in place. Failed or succeeded markers stay terminal.
+        if (target != null && target.status != ErrorReconnectStatus.Running &&
+            target.status != ErrorReconnectStatus.Stopped && status == ErrorReconnectStatus.Running) {
             return messages
         }
-        if (isSealed(runId) && existing == null && status == ErrorReconnectStatus.Running) return messages
+        if (isSealed(runId) && target == null && status == ErrorReconnectStatus.Running) return messages
         val marker = ErrorReconnectMessageUi(
-            id = id, runId = runId, reconnectId = event.reconnectId, round = event.round,
-            status = existing?.status?.takeIf { it != ErrorReconnectStatus.Running } ?: status,
-            elapsedMs = maxOf(existing?.elapsedMs ?: 0L, event.elapsedMs.coerceAtLeast(0L)),
-            reasonCode = event.reasonCode.ifBlank { existing?.reasonCode.orEmpty() },
-            reasonDetail = event.reasonDetail.ifBlank { existing?.reasonDetail.orEmpty() },
+            id = target?.id ?: id,
+            runId = if (target != null && target.id != id) target.runId else runId,
+            reconnectId = if (target != null && target.id != id) target.reconnectId else event.reconnectId,
+            round = if (target != null && target.id != id) target.round else event.round,
+            status = target?.status?.takeIf {
+                it != ErrorReconnectStatus.Running && it != ErrorReconnectStatus.Stopped
+            } ?: status,
+            elapsedMs = maxOf(target?.elapsedMs ?: 0L, event.elapsedMs.coerceAtLeast(0L)),
+            reasonCode = event.reasonCode.ifBlank { target?.reasonCode.orEmpty() },
+            reasonDetail = event.reasonDetail.ifBlank { target?.reasonDetail.orEmpty() },
         )
-        if (existing != null) return messages.map { if (it.id == id) marker else it }
+        if (marker.status != ErrorReconnectStatus.Running && marker.status != ErrorReconnectStatus.Stopped) {
+            claimedReconnectIds.remove(runId)
+        }
+        if (target != null) return messages.map { if (it.id == target.id) marker else it }
         discardPendingThinking(runId, event.round)
         roundEventStates.remove(RoundEventKey(runId, event.round))
         // Continued provider blocks may reuse their index. Keep the partial bubble before
@@ -178,11 +199,22 @@ internal class AgentRunMessageProjector(
         val finalized = finalizeRun(runId, messages).filterNot {
             it is AgentMessageUi && isAssistantMessageForRun(it.id, runId) && it.content.isBlank()
         }
-        val latest = finalized.filterIsInstance<ErrorReconnectMessageUi>().lastOrNull { it.runId == runId }
+        val claimedId = claimedReconnectIds[runId]
+        val own = finalized.filterIsInstance<ErrorReconnectMessageUi>().lastOrNull { it.runId == runId }
+        val claimed = finalized.filterIsInstance<ErrorReconnectMessageUi>().firstOrNull {
+            claimedId != null && it.id == claimedId
+        }
+        val latest = own ?: claimed
         if (latest != null && latest.status != ErrorReconnectStatus.Succeeded) {
+            val continuationFailure = own == null && claimed != null
+            if (continuationFailure || latest.status != ErrorReconnectStatus.Stopped) claimedReconnectIds.remove(runId)
             return finalized.map { message ->
                 if (message.id == latest.id) latest.copy(
-                    status = if (latest.status == ErrorReconnectStatus.Stopped) latest.status else ErrorReconnectStatus.Failed,
+                    status = if (latest.status == ErrorReconnectStatus.Stopped && !continuationFailure) {
+                        latest.status
+                    } else {
+                        ErrorReconnectStatus.Failed
+                    },
                     reasonCode = latest.reasonCode.ifBlank { reasonCode },
                     reasonDetail = latest.reasonDetail.ifBlank { reason },
                 ) else message
@@ -201,12 +233,14 @@ internal class AgentRunMessageProjector(
     }
 
     /** Manual cancellation is stopped, never succeeded. Pause alone must not call this. */
-    fun runStopped(runId: String, messages: List<AgentChatMessageUi>): List<AgentChatMessageUi> =
-        finalizeRun(runId, messages).map { message ->
-            if (message is ErrorReconnectMessageUi && message.runId == runId &&
-                message.status == ErrorReconnectStatus.Running
+    fun runStopped(runId: String, messages: List<AgentChatMessageUi>): List<AgentChatMessageUi> {
+        val claimedId = claimedReconnectIds[runId]
+        return finalizeRun(runId, messages).map { message ->
+            if (message is ErrorReconnectMessageUi && message.status == ErrorReconnectStatus.Running &&
+                (message.runId == runId || message.id == claimedId)
             ) message.copy(status = ErrorReconnectStatus.Stopped) else message
         }
+    }
 
     private fun freezeAtDisconnection(runId: String, messages: List<AgentChatMessageUi>): List<AgentChatMessageUi> =
         finalizeThinking(runId, messages).map { message ->
