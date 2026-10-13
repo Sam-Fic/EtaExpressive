@@ -163,6 +163,55 @@ class RootShellTerminalControllerTest {
     }
 
     @Test
+    fun startupFailureDiagnosticsReachSynchronousAsyncAndSessionCallers() {
+        val logger = RecordingLogger()
+        val controller = RootShellTerminalController(
+            logger,
+            processSupervisor = ShellProcessSupervisor(
+                allowTreeFallback = false,
+                setsidCommand = "eta-test-missing-setsid",
+            ),
+        )
+        val marker = "private-command-secret"
+        try {
+            val synchronous = JSONObject(controller.terminalOpenAndExec(
+                command = "printf $marker",
+                cwd = temporaryFolder.root.absolutePath,
+                timeoutMs = 5_000,
+                identity = "user",
+                mergeStderr = false,
+            ))
+            assertEquals(-1, synchronous.getInt("exit_code"))
+            assertTrue(synchronous.toString(), synchronous.getString("stderr").contains("stage="))
+            assertFalse(synchronous.toString(), synchronous.toString().contains(marker))
+            for ((action, async) in listOf("open" to false, "open_and_exec" to true)) {
+                val result = JSONObject(controller.terminalAction(
+                    action = action,
+                    command = "printf $marker",
+                    cwd = temporaryFolder.root.absolutePath,
+                    timeoutMs = 5_000,
+                    identity = "user",
+                    mergeStderr = false,
+                    sessionId = null,
+                    jobId = null,
+                    async = async,
+                    offsetChars = 0,
+                    maxChars = 8_000,
+                    closeIfDone = false,
+                ))
+                assertFalse(result.toString(), result.getBoolean("ok"))
+                assertEquals("PROCESS_START_FAILED", result.getString("code"))
+                assertTrue(result.toString(), result.getString("message").contains("stage="))
+                assertFalse(result.toString(), result.toString().contains(marker))
+                assertFalse(result.has("job_id"))
+            }
+            assertFalse(logger.messages.joinToString("\n").contains(marker))
+        } finally {
+            controller.closeAll()
+        }
+    }
+
+    @Test
     fun linuxEnvironmentRequiresInstallationAndRootIdentity() {
         val missingController = RootShellTerminalController(
             logger = NoopLogger,

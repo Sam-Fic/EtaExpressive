@@ -77,6 +77,7 @@ internal class ConsoleSessionController(
             ) {
                 return OpenResult.Failed("LINUX_ENVIRONMENT_NOT_READY", "Linux 工具环境尚未安装")
             }
+            var startFailure = "stage=unknown"
             val process = processSupervisor.startShellProcess(
                 identity = identity,
                 command = null,
@@ -91,7 +92,8 @@ internal class ConsoleSessionController(
                 pty = true,
                 ptyCols = cols,
                 ptyRows = rows,
-            ) ?: return OpenResult.Failed("PROCESS_START_FAILED", "无法启动控制台进程，请检查所选环境和终端组件")
+                onStartFailure = { startFailure = it },
+            ) ?: return OpenResult.Failed("PROCESS_START_FAILED", "无法启动控制台进程，请检查所选环境和终端组件 ($startFailure)")
 
             val sessionId = "c${++nextSessionNumber}"
             val newSession = PtySession(environment, process, identity)

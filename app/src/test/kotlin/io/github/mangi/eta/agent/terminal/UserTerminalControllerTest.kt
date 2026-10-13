@@ -20,6 +20,26 @@ class UserTerminalControllerTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
+    @Test
+    fun startupFailureKeepsDiagnosticStageAndCreatesNoSession() {
+        val controller = UserTerminalController(
+            NoopLogger,
+            processSupervisor = ShellProcessSupervisor(
+                allowTreeFallback = false,
+                setsidCommand = "eta-test-missing-setsid",
+            ),
+        )
+        try {
+            val result = controller.openSession(TerminalEnvironment.ANDROID, identity = "user")
+            assertTrue("$result", result is UserTerminalController.OpenResult.Failed)
+            val failure = result as UserTerminalController.OpenResult.Failed
+            assertEquals("PROCESS_START_FAILED", failure.code)
+            assertTrue(failure.message.contains("stage="))
+        } finally {
+            controller.close()
+        }
+    }
+
     @Test fun longSessionCommandRetainsEnvironment() {
         val controller = UserTerminalController(NoopLogger)
         try {

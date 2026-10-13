@@ -157,10 +157,11 @@ internal class RootShellTerminalController(
         environmentPreflight(normalizedIdentity, normalizedEnvironment, sessionRootfs)?.let { return it }
         val safeCwd = normalizeCwd(cwd, normalizedEnvironment, normalizedIdentity)
         val id = "term_" + UUID.randomUUID().toString().take(8)
-        val process = startSessionProcess(normalizedIdentity, normalizedEnvironment, sessionRootfs)
+        var startFailure = "stage=unknown"
+        val process = startSessionProcess(normalizedIdentity, normalizedEnvironment, sessionRootfs) { startFailure = it }
             ?: return errorJson(
                 "PROCESS_START_FAILED",
-                "无法启动 ${normalizedEnvironment.wireName}/$normalizedIdentity terminal session",
+                "无法启动 ${normalizedEnvironment.wireName}/$normalizedIdentity terminal session ($startFailure)",
             )
         val stdout = ByteArrayOutputCollector()
         val stderr = ByteArrayOutputCollector()
@@ -286,6 +287,7 @@ internal class RootShellTerminalController(
         val safeCwd = normalizeCwd(cwd, environment, normalizedIdentity)
         val setup = if (safeCwd == TerminalRuntime.workspace(normalizedIdentity)) "mkdir -p ${shellQuote(safeCwd)} && " else ""
         val fullCommand = "${setup}cd ${shellQuote(safeCwd)} && export TERM=dumb NO_COLOR=1 && $trimmed"
+        var startFailure = "stage=unknown"
         val process = processSupervisor.startShellProcess(
             identity = normalizedIdentity,
             command = fullCommand,
@@ -293,9 +295,10 @@ internal class RootShellTerminalController(
             environment = environment,
             linuxRootfsPath = rootfsPathFor(environment),
             linuxSharedMounts = sharedMountsFor(environment),
+            onStartFailure = { startFailure = it },
         ) ?: return errorJson(
             if (processSupervisor.isClosing) "TERMINAL_CLOSED" else "PROCESS_START_FAILED",
-            if (processSupervisor.isClosing) "terminal controller 已关闭" else "无法启动 terminal process",
+            if (processSupervisor.isClosing) "terminal controller 已关闭" else "无法启动 terminal process ($startFailure)",
         )
         val id = "job_" + UUID.randomUUID().toString().take(8)
         val stdout = ByteArrayOutputCollector()
@@ -1013,6 +1016,7 @@ internal class RootShellTerminalController(
         identity: String,
         environment: TerminalEnvironment,
         rootfsPath: String?,
+        onStartFailure: (String) -> Unit,
     ): Process? =
         processSupervisor.startShellProcess(
             identity = identity,
@@ -1021,6 +1025,7 @@ internal class RootShellTerminalController(
             environment = environment,
             linuxRootfsPath = rootfsPath,
             linuxSharedMounts = sharedMountsFor(environment),
+            onStartFailure = onStartFailure,
         )
 
     /** 共享挂载只在 Linux 会话建立时解析；Android 环境不涉及。 */

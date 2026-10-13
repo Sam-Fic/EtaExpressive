@@ -105,6 +105,7 @@ internal class UserTerminalController(
                 return OpenResult.Failed("LINUX_ENVIRONMENT_NOT_READY", "Linux 工具环境尚未安装")
             }
             val safeCwd = cwd?.takeIf { it.isNotBlank() } ?: if (environment.isLinux) LINUX_DEFAULT_CWD else TerminalRuntime.workspace(selectedIdentity)
+            var startFailure = "stage=unknown"
             val process = processSupervisor.startShellProcess(
                 identity = selectedIdentity,
                 command = null,
@@ -116,7 +117,8 @@ internal class UserTerminalController(
                 } else {
                     emptyList()
                 },
-            ) ?: return OpenResult.Failed("PROCESS_START_FAILED", "无法启动终端进程")
+                onStartFailure = { startFailure = it },
+            ) ?: return OpenResult.Failed("PROCESS_START_FAILED", "无法启动终端进程 ($startFailure)")
             val newSession = Session(
                 identity = selectedIdentity,
                 environment = environment,

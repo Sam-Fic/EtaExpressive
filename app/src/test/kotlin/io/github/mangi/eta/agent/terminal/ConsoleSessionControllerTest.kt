@@ -32,6 +32,7 @@ class ConsoleSessionControllerTest {
                 "PROCESS_START_FAILED",
                 (result as ConsoleSessionController.OpenResult.Failed).code,
             )
+            assertTrue(result.message.contains("stage="))
             assertTrue(controller.listSessions().isEmpty())
         } finally {
             controller.close()

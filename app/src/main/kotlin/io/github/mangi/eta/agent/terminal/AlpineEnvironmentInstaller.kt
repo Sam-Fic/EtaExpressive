@@ -424,13 +424,15 @@ internal object InstallerShellRunner {
         identity: String? = null,
     ): InstallerCommandResult = runInterruptible(Dispatchers.IO) {
         val supervisor = ShellProcessSupervisor()
+        var startFailure = "stage=unknown"
         val process = supervisor.startShellProcess(
             identity = identity ?: TerminalRuntime.defaultIdentity(environment, linuxRootfsPath),
             command = command,
             mergeStderr = true,
             environment = environment,
             linuxRootfsPath = linuxRootfsPath,
-        ) ?: return@runInterruptible InstallerCommandResult(exitCode = -1, output = "")
+            onStartFailure = { startFailure = it },
+        ) ?: return@runInterruptible InstallerCommandResult(exitCode = -1, output = "无法启动进程 ($startFailure)")
         val output = ByteArrayOutputStream()
         val reader = thread(name = "eta-alpine-installer-output", isDaemon = true) {
             runCatching {
