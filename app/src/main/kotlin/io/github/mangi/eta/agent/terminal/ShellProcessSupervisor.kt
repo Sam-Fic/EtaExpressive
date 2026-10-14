@@ -5,6 +5,7 @@ import io.github.mangi.eta.agent.device.RootSu
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /** 负责 Shell 进程的启动接纳、所有权识别、进程树终止与回收。 */
@@ -577,6 +578,8 @@ internal fun ptySupported(processSupervisor: ShellProcessSupervisor): Boolean {
     return result.exitCode == 0
 }
 
+internal const val SHELL_STDIN_FAILED_EXIT_CODE = -4
+
 /**
  * 一次性 Shell 命令原语：带超时回收与有界输出收集。调用方负责命令构造与输出解释；
  * 超时或 supervisor 关闭时整棵进程树由 [ShellProcessSupervisor] 回收。
@@ -617,9 +620,15 @@ internal fun runOneShotShell(
                 stderr.readFrom(input, minOf(maxOutputBytes, 64 * 1024))
             }
         }
+        val stdinFailed = AtomicBoolean(false)
         val stdinThread = thread(name = "agent-terminal-stdin") {
-            process.outputStream.use { out ->
-                if (stdin != null) out.write(stdin)
+            try {
+                process.outputStream.use { out ->
+                    if (stdin != null) out.write(stdin)
+                }
+            } catch (_: IOException) {
+                // 校验失败或取消可能先关闭读端；由调用线程结合退出码处理，不能让写线程异常终止 Runtime。
+                stdinFailed.set(true)
             }
         }
 
@@ -636,7 +645,14 @@ internal fun runOneShotShell(
         outputThread.join(500)
         stderrThread.join(500)
         stdinThread.join(500)
-        return OneShotShellResult(process.exitValue(), output.bytes(), stderr.bytes())
+        val exitCode = process.exitValue()
+        // 子进程的失败保留原始语义；声称成功但输入传输失败时不能把不完整写入当作成功。
+        if (exitCode == 0 && stdin?.isNotEmpty() == true && stdinFailed.get()) {
+            return OneShotShellResult(
+                SHELL_STDIN_FAILED_EXIT_CODE, output.bytes(), "命令输入传输失败".toByteArray(),
+            )
+        }
+        return OneShotShellResult(exitCode, output.bytes(), stderr.bytes())
     } finally {
         if (processSupervisor.isClosing) {
             processSupervisor.terminateAndReap(process)
