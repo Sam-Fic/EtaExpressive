@@ -102,7 +102,9 @@ internal object AgentPromptBuilder {
     }
 
     private fun JSONArray.appendHistoryMessage(item: AgentModelClient.ConversationMessage) {
-        runCatching { AgentConversationCodec.toJsonObject(item) }.getOrNull()?.let { put(it) }
+        // 只在新建用户 run 时经过这里；上一个 run 的恢复限制降级为历史提示，不延续到新 run。
+        runCatching { AgentConversationCodec.toJsonObject(item) }.getOrNull()
+            ?.let(AgentRecoveryContext::forNewRun)?.let { put(it) }
     }
 
     private fun String.toolCallsOrNull(): JSONArray? =
