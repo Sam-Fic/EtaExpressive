@@ -166,6 +166,27 @@ internal class AgentSelfSettingsTools {
                 continue
             }
             val before = read(setting)
+            // 安全边界：工具开关是用户的安全决策。模型可以关掉它、让能力变窄，
+            // 但不能把用户关掉的开关重新打开——否则一个仍在运行、持有本工具的模型
+            // 可以先关掉终端的开关再自己开回来，然后立刻使用终端，全程没有确认。
+            // （执行侧每次都重读 Prefs，所以这确实是一条可被利用的提权路径。）
+            if (setting.key in TOOL_KEYS && normalized == "on" && before == "off") {
+                failed++
+                results.put(
+                    JSONObject()
+                        .put("ok", false)
+                        .put("key", key)
+                        .put("code", "USER_CONSENT_REQUIRED")
+                        .put("from", before)
+                        .put("to", normalized)
+                        .put(
+                            "message",
+                            "工具开关不能由模型重新打开：这属于用户的安全决策。" +
+                                "请让用户自己在设置里打开后继续；不要重复调用本工具尝试绕过。",
+                        ),
+                )
+                continue
+            }
             val written = write(setting, normalized)
             if (!written) {
                 failed++
