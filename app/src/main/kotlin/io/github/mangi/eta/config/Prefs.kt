@@ -70,6 +70,13 @@ internal object Prefs {
         const val AGENT_SELF_SETTINGS_TOOLS = "agent_self_settings_tools"
         /** 媒体语义搜索工具（semantic_search_media）：只做本机离线索引检索，默认关闭。 */
         const val AGENT_MEDIA_SEARCH_TOOLS = "agent_media_search_tools"
+
+        /**
+         * 子代理委派开关。此前只要配了子代理就下发 delegate_task，
+         * 用户无法单独关掉「把任务派给别的模型」这件事（它会产生额外计费调用）。
+         * 默认开启；关闭后不再下发委派族工具，已有子任务仍可用 get_task_result 查看。
+         */
+        const val AGENT_SUBAGENT_TOOLS = "agent_subagent_tools"
         const val AGENT_THINKING_ENABLED = "agent_thinking_enabled"
         const val AGENT_RUNTIME_CONFIG_JSON = "agent_runtime_config_json"
         const val AGENT_AUTO_COMPRESS_ENABLED = "agent_auto_compress_enabled"
@@ -130,6 +137,7 @@ internal object Prefs {
             AGENT_DEVICE_SENSITIVE_ACTION_TOOLS to true,
             AGENT_SELF_SETTINGS_TOOLS to true,
             AGENT_MEDIA_SEARCH_TOOLS to false,
+            AGENT_SUBAGENT_TOOLS to true,
             AGENT_THINKING_ENABLED to true,
             AGENT_AUTO_COMPRESS_ENABLED to false,
             AGENT_COMPRESS_CUSTOM_MODEL_ENABLED to false,
@@ -159,6 +167,7 @@ internal object Prefs {
             AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
             AGENT_SELF_SETTINGS_TOOLS,
             AGENT_MEDIA_SEARCH_TOOLS,
+            AGENT_SUBAGENT_TOOLS,
             AGENT_THINKING_ENABLED,
             AGENT_AUTO_COMPRESS_ENABLED,
             AGENT_COMPRESS_CUSTOM_MODEL_ENABLED,

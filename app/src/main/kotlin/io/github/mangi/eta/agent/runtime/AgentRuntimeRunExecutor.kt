@@ -314,12 +314,15 @@ internal class AgentRuntimeRunExecutor(
                 else createChildGroup(childDispatchPlan.replacement)
             val toolChildren = AgentChildWorkerAvailability.configuredChildren(
                 if (groupGeneration != null) childDispatchPlan.ordinary else childDispatchPlan.replacement)
-            if (groupGeneration != null || replacementGeneration != null) {
+            // 独立的子代理开关：关闭后不再下发委派族工具（它会产生额外计费的模型调用），
+            // 但已有子任务仍可通过发现类工具查看，不会被静默丢弃。
+            val subAgentToolsAllowed = Prefs.isEnabled(Prefs.Keys.AGENT_SUBAGENT_TOOLS)
+            if (subAgentToolsAllowed && (groupGeneration != null || replacementGeneration != null)) {
                 SubAgentTools.appendTo(mcpTools, toolChildren.mapIndexed { i, (slot, model) ->
                     SubAgentPreferences.workerDescription(slot, i + 1, model,
                         childConfig.parallelLimit(SubAgentParallelModel(model.providerId, model.model)))
                 }, workspaceEnabled = childWorkspace != null)
-            } else {
+            } else if (subAgentToolsAllowed) {
                 ExistingChildTaskTools.appendTo(mcpTools)
             }
             val questionCoordinator = AgentQuestionCoordinator(runController) { event ->
@@ -366,9 +369,28 @@ internal class AgentRuntimeRunExecutor(
                     }
                     AgentModelClient.ToolResult(payload.toString(), sensitive = true)
                 } else if (call.name in SubAgentTools.names) {
-                    // Even with no new coordinator, explicit continue adopts into THIS run.
-                    AgentChildTaskGroups.execute(childSessionId, groupGeneration, call, currentRunId = request.runId,
-                        replacementGeneration = replacementGeneration)
+                    if (!Prefs.isEnabled(Prefs.Keys.AGENT_SUBAGENT_TOOLS)) {
+                        // 关掉开关后旧调用不能因为「当时下发过」继续创建新子任务；
+                        // 但查看/收尾已有任务仍然允许，避免把在跑的子任务变成孤儿。
+                        val readOnly = call.name in setOf("get_task_result", "cancel_task")
+                        if (!readOnly) {
+                            AgentModelClient.ToolResult(
+                                org.json.JSONObject()
+                                    .put("ok", false)
+                                    .put("code", "SUBAGENT_TOOLS_DISABLED")
+                                    .put("message", "子代理委派已在设置中关闭；已有子任务可用 get_task_result 查看或 cancel_task 停止。")
+                                    .toString(),
+                                sensitive = true,
+                            )
+                        } else {
+                            AgentChildTaskGroups.execute(childSessionId, groupGeneration, call,
+                                currentRunId = request.runId, replacementGeneration = replacementGeneration)
+                        }
+                    } else {
+                        // Even with no new coordinator, explicit continue adopts into THIS run.
+                        AgentChildTaskGroups.execute(childSessionId, groupGeneration, call,
+                            currentRunId = request.runId, replacementGeneration = replacementGeneration)
+                    }
                 } else routingExecutor.execute(call)
             }
             val compactPolicy = runBlocking { AgentCompressionPolicy.resolve(request.config) }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GppMaybe
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Handyman
 import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Inventory2
@@ -580,6 +581,17 @@ internal fun SettingsScreen(
                         summary = stringResource(R.string.settings_self_settings_tools_summary),
                         key = Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS,
                         icon = Icons.Rounded.Tune,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_subagent_tools),
+                        summary = stringResource(R.string.settings_subagent_tools_summary),
+                        key = Prefs.Keys.AGENT_SUBAGENT_TOOLS,
+                        icon = Icons.Rounded.Groups,
                     )
                 }
 
