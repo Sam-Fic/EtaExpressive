@@ -10,6 +10,9 @@ Eta 的 Agent Runtime 负责把一次用户输入组织为模型回合、工具�
 - `AgentConversationCodec`：Provider JSON 与稳定会话 DTO 的转换。
 - `AgentToolCatalog` 及分组目录：模型可见的工具 schema，不执行工具。
 - `AgentToolGroups`：工具域的分层加载。常驻工具永远下发；低频的「域」只在系统提示里留一行索引，模型调用 `tools_use_group` 后从下一轮起才出现在目录里（与 Skill 的 `next_turn` 语义一致）。打开域不放宽任何权限：域内工具仍需各自通过开关与能力判定。
+- `AgentFileSystemTier`：文件与命令的三档权限。`AGENT_TERMINAL_TOOLS` 是总闸，`AGENT_SHELL_TOOLS` 在其上单独控制命令执行：总闸关则文件工具全无；总闸开、命令关则仍可读写文件但不能跑 shell。
+- `AgentDangerousOperationPolicy`：危险操作逐次确认。重启、装卸应用、清数据、删用户等不可逆写操作在用户开启确认后返回 `USER_CONFIRMATION_REQUIRED`，未做任何改动；取得同意后重发同一个调用即可通过。同名工具上的 `list`/`get`/`reset` 类动作不打扰。
+- `AssistantToolSwitches`：按助手的工具组开关（`AssistantProfile.toolGroupSwitches`），与记忆/技能同级，缺失的组回落全局开关；**只能收紧**，全局关掉的能力不会被助手配置重新打开。
 - `AgentPureReadTools`：同一批次里可并行的幂等只读工具白名单。并行只对「整批都是只读且至少两个」生效，事件按模型给出的 index 顺序回放，共享状态仍在主线程按同样顺序合并。
 - `AgentTraceFormatter`：只生成可展示、可记录的脱敏摘要。
 - `AgentProviderClient`：OpenAI-compatible、Anthropic 等协议边界。
@@ -49,6 +52,7 @@ pending steering
 - 最终 steering 检查会原子关闭接收入口；Loop 返回后不会再把无人消费的补充指令误报为已接收。补充指令也不会解除 pause。
 - 新 run 替换旧 run、用户取消和正常完成都通过 `AgentRuntimeSession` 的 `RUNNING → COMMITTING → TERMINAL` 状态机竞争唯一终态；提交胜者独占 outbox、归档和最终发布，客户端等待最终结果或 Binder 断连，不按等待时长取消任务。
 - 入口请求只能缩小工具能力，不能自行授权。Runtime 在开始 run 时裁剪配置，在每次浏览器、终端和设备工具执行前重新读取用户开关，并在 thinking 关闭时移除自定义请求体中的 reasoning/thinking 覆盖字段。
+- 工具开关的放宽方向只属于用户。`eta_set_settings` 可以关掉工具开关（收紧），但把用户关掉的开关重新打开会被拒绝（`USER_CONSENT_REQUIRED`）；同理，助手级的工具开关与执行侧的档位复查都只能收紧。理由：执行侧每次调用都重读 Prefs，否则一个仍在运行、持有常驻自设置工具的模型可以先关后开，再立刻使用该能力，全程没有确认。
 - 设备工具分为直达工具、敏感读取工具和敏感操作工具，当前均默认开启。Runtime 在每次执行前重新读取用户开关；开关允许且参数符合工具 Schema 后即可执行，不再匹配用户原话，也不维护关键包、系统应用或 Settings key 黑名单。
 - 微信发送不提供专用工具、参数协议或额外策略层，完全使用通用 GUI 工具观察和操作微信界面。
 - 通知、短信验证码、Wi‑Fi 凭据和日志属于瞬时敏感工具数据。当前模型回合可以使用原始值，但持久 transcript 会同时替换对应工具参数和结果，避免进入会话数据库或后续 IPC。
