@@ -21,13 +21,13 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "inspect_app",
-                    "读取当前 Android 用户中指定应用的版本、UID、安装来源与路径、启用状态和请求权限，不要求应用具有桌面入口。" +
-                        "只支持 Eta 所属用户，不跨工作资料查询。权限列表按 permission_offset/permission_limit 分页。",
+                    "Read the version, UID, install source, install path, enabled state and requested permissions of a package in the current Android user. The app does not need a launcher entry." +
+                        "Only Eta's own Android user is supported; work profiles are not queried. The permission list is paginated with permission_offset/permission_limit.",
                     properties(
-                        "package_name" to string("精确 Android 包名", 255),
-                        "user_id" to integer("Eta 所属 Android 用户 id，通常无需传入", 0, 2_147_483_647),
-                        "permission_offset" to integer("请求权限列表的起始索引，默认 0", 0, 2_147_483_647),
-                        "permission_limit" to integer("最多返回权限数量，默认 100", 1, 200),
+                        "package_name" to string("Exact Android package name", 255),
+                        "user_id" to integer("Android user id that owns Eta; usually you do not need to pass it", 0, 2_147_483_647),
+                        "permission_offset" to integer("Start index of the requested permission list; default 0", 0, 2_147_483_647),
+                        "permission_limit" to integer("Maximum number of permissions to return; default 100", 1, 200),
                     ),
                     "package_name",
                 ),
@@ -35,16 +35,16 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_alarm",
-                    "直接创建系统闹钟，不要用 GUI。涉及相对日期时先用 get_current_context 换算；hour/minute 使用设备本地时间。系统不接受直达操作时可能只打开时钟页面。",
+                    "Create a system alarm directly; do not use the GUI. Convert relative dates with get_current_context first; hour/minute use device local time. If the system refuses direct insertion, the clock screen may only be opened.",
                     properties(
-                        "hour" to integer("0 到 23", 0, 23),
-                        "minute" to integer("0 到 59", 0, 59),
-                        "label" to string("闹钟标签，最多 100 字", 100),
+                        "hour" to integer("0 to 23", 0, 23),
+                        "minute" to integer("0 to 59", 0, 59),
+                        "label" to string("Alarm label, at most 100 characters", 100),
                         "repeat_days" to stringArray(
-                            "重复星期；不提供表示仅下一次",
+                            "Weekdays to repeat; omit for a one-shot alarm",
                             "mon", "tue", "wed", "thu", "fri", "sat", "sun",
                         ),
-                        "vibrate" to boolean("是否振动，默认 true"),
+                        "vibrate" to boolean("Whether to vibrate; default true"),
                     ),
                     "hour", "minute",
                 ),
@@ -52,25 +52,25 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_timer",
-                    "直接创建系统计时器，不要用 GUI。duration_seconds 必须是 1 到 86400 秒。",
+                    "Create a system timer directly; do not use the GUI. duration_seconds must be between 1 and 86400 seconds.",
                     properties(
-                        "duration_seconds" to integer("计时秒数", 1, 86_400),
-                        "label" to string("计时器标签，最多 100 字", 100),
+                        "duration_seconds" to integer("Timer length in seconds", 1, 86_400),
+                        "label" to string("Timer label, at most 100 characters", 100),
                     ),
                     "duration_seconds",
                 ),
             )
-            .put(emptyFunction("device_status", "读取电池、内存、存储、系统版本与开机时长。"))
-            .put(emptyFunction("network_info", "读取当前联网方式、联网验证状态和当前 Wi‑Fi 基本信息，不返回保存的密码。"))
-            .put(limitFunction("top_memory_apps", "按当前 RSS 列出内存占用最高的进程。"))
-            .put(limitFunction("top_storage_apps", "按应用、数据与缓存合计列出存储占用最高的应用。"))
+            .put(emptyFunction("device_status", "Read battery, memory, storage, OS version and uptime."))
+            .put(emptyFunction("network_info", "Read the current network type, connectivity validation state and basic current Wi-Fi information. Saved passwords are not returned."))
+            .put(limitFunction("top_memory_apps", "List processes with the highest memory use by current RSS."))
+            .put(limitFunction("top_storage_apps", "List apps with the highest storage use, counting app, data and cache together."))
             .put(
                 function(
                     "media_control",
-                    "直接控制当前媒体会话，不要操作播放器 GUI。",
+                    "Control the current media session directly; do not drive a player GUI.",
                     properties(
                         "action" to enumString(
-                            "媒体动作",
+                            "Media action",
                             "play", "pause", "play_pause", "next", "previous", "stop",
                         ),
                     ),
@@ -80,10 +80,10 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_volume",
-                    "直接设置系统音量，不要操作音量 GUI。",
+                    "Set system volume directly; do not drive the volume GUI.",
                     properties(
-                        "stream" to enumString("音量通道", "media", "alarm", "ring", "notification"),
-                        "percent" to integer("0 到 100 的音量百分比", 0, 100),
+                        "stream" to enumString("Audio stream", "media", "alarm", "ring", "notification"),
+                        "percent" to integer("Volume percentage from 0 to 100", 0, 100),
                     ),
                     "stream", "percent",
                 ),
@@ -91,11 +91,11 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_ringer_mode",
-                    "直接切换铃声模式（响铃/振动/静音），不要操作音量 GUI。无需 Root。" +
-                        "静音只让电话和通知不响铃，媒体音量不受影响；需要连媒体一起静音请改用 set_volume。" +
-                        "需要拦截所有通知请用 set_do_not_disturb，二者不是一回事。",
+                    "Switch the ringer mode (normal/vibrate/silent) directly; do not drive the volume GUI. Root is not required." +
+                        "Silent stops calls and notifications from ringing but leaves media volume unchanged; to mute media as well use set_volume." +
+                        "To suppress all notifications use set_do_not_disturb; the two are not the same.",
                     properties(
-                        "mode" to enumString("铃声模式", "normal", "vibrate", "silent"),
+                        "mode" to enumString("Ringer mode", "normal", "vibrate", "silent"),
                     ),
                     "mode",
                 ),
@@ -103,9 +103,9 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_sound_mode",
-                    "切换铃声模式（normal/vibrate/silent），与 set_ringer_mode 同效，免 Root。" +
-                        "只影响电话和通知，不改变媒体音量。",
-                    properties("mode" to enumString("铃声模式", "normal", "vibrate", "silent")),
+                    "Switch ringer mode (normal/vibrate/silent). Same effect as set_ringer_mode, no Root required." +
+                        "Affects calls and notifications only; media volume is unchanged.",
+                    properties("mode" to enumString("Ringer mode", "normal", "vibrate", "silent")),
                     "mode",
                 ),
             )
@@ -116,10 +116,10 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "get_setting",
-                    "读取一个 Android Settings 值。结果可能包含设备标识等敏感信息，原始结果不会持久化。",
+                    "Read one Android Settings value. The result may contain sensitive data such as device identifiers; the raw result is not persisted.",
                     properties(
-                        "namespace" to enumString("设置命名空间", "system", "secure", "global"),
-                        "key" to string("精确设置键", 200),
+                        "namespace" to enumString("Settings namespace", "system", "secure", "global"),
+                        "key" to string("Exact settings key", 200),
                     ),
                     "namespace", "key",
                 ),
@@ -127,168 +127,168 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "wifi_credentials",
-                    "读取手机保存的 Wi‑Fi 名称与密码。原始结果不会持久化。",
+                    "Read Wi-Fi names and passwords saved on the phone. The raw result is not persisted.",
                     properties(
-                        "ssid" to string("可选的精确 Wi‑Fi 名称", 128),
-                        "limit" to integer("最多返回数量，默认 20", 1, 50),
+                        "ssid" to string("Optional exact Wi-Fi name", 128),
+                        "limit" to integer("Maximum number of results; default 20", 1, 50),
                     ),
                 ),
             )
             .put(
                 function(
                     "recent_notifications",
-                    "读取当前通知栏中的通知标题与正文。结果不写入持久会话。",
+                    "Read titles and bodies of notifications currently in the shade. The result is not written to the durable conversation.",
                     properties(
-                        "package_name" to string("可选的精确应用包名过滤", 255),
-                        "limit" to integer("最多返回数量，默认 10", 1, 20),
+                        "package_name" to string("Optional exact package name filter", 255),
+                        "limit" to integer("Maximum number of results; default 10", 1, 20),
                     ),
                 ),
             )
             .put(
                 function(
                     "search_notification_history",
-                    "检索 Eta 在用户授予通知使用权后记录的最近 7 天通知。原始结果不写入持久会话。",
+                    "Search notifications Eta recorded over the last 7 days after the user granted notification access. Raw results are not written to the durable conversation.",
                     properties(
-                        "query" to string("可选标题或正文关键词", 200),
-                        "package_name" to string("可选精确包名", 255),
-                        "max_age_hours" to integer("回溯小时数，默认 24", 1, 168),
-                        "limit" to integer("最多返回数量，默认 20", 1, 50),
+                        "query" to string("Optional title or body keyword", 200),
+                        "package_name" to string("Optional exact package name", 255),
+                        "max_age_hours" to integer("Hours to look back; default 24", 1, 168),
+                        "limit" to integer("Maximum number of results; default 20", 1, 50),
                     ),
                 ),
             )
             .put(
                 function(
                     "recent_app_activity",
-                    "读取最近打开应用的时间顺序，需要系统使用情况访问权。",
+                    "Read the order in which apps were recently opened. Requires usage access.",
                     properties(
-                        "package_name" to string("可选精确包名", 255),
-                        "max_age_hours" to integer("回溯小时数，默认 24", 1, 168),
-                        "limit" to integer("最多返回数量，默认 20", 1, 50),
+                        "package_name" to string("Optional exact package name", 255),
+                        "max_age_hours" to integer("Hours to look back; default 24", 1, 168),
+                        "limit" to integer("Maximum number of results; default 20", 1, 50),
                     ),
                 ),
             )
             .put(
                 function(
                     "app_usage_summary",
-                    "按前台时长汇总最近应用使用情况，需要系统使用情况访问权。",
+                    "Summarize recent app usage by foreground time. Requires usage access.",
                     properties(
-                        "max_age_hours" to integer("统计小时数，默认 24", 1, 168),
-                        "limit" to integer("最多返回数量，默认 20", 1, 50),
+                        "max_age_hours" to integer("Hours to summarize; default 24", 1, 168),
+                        "limit" to integer("Maximum number of results; default 20", 1, 50),
                     ),
                 ),
             )
-            .put(emptyFunction("get_current_location", "读取系统已有的最近位置，不持续监听或主动唤醒 GPS。"))
-            .put(emptyFunction("get_device_environment", "读取锁屏、勿扰、铃声、音频输出和外接显示器状态。"))
+            .put(emptyFunction("get_current_location", "Read the last known system location. Does not keep listening or wake the GPS."))
+            .put(emptyFunction("get_device_environment", "Read lock screen, do-not-disturb, ringer, audio output and external display state."))
             .put(
                 function(
                     "list_alarms",
-                    "读取系统时钟应用中的闹钟计划，自动适配本机默认时钟应用。",
+                    "Read scheduled alarms from the system clock app, adapting to the device's default clock app.",
                     properties(
-                        "enabled_only" to boolean("是否只返回已启用闹钟，默认 true"),
-                        "limit" to integer("最多返回数量，默认 20", 1, 50),
+                        "enabled_only" to boolean("Return only enabled alarms; default true"),
+                        "limit" to integer("Maximum number of results; default 20", 1, 50),
                     ),
                 ),
             )
             .put(
                 function(
                     "list_active_timers",
-                    "读取系统时钟应用中正在运行或暂停的计时器，自动适配本机默认时钟应用。",
-                    properties("limit" to integer("最多返回数量，默认 20", 1, 50)),
+                    "Read running or paused timers from the system clock app, adapting to the device's default clock app.",
+                    properties("limit" to integer("Maximum number of results; default 20", 1, 50)),
                 ),
             )
-            .put(searchFunction("search_clipboard_history", "检索当前系统输入法保存的剪贴板历史。"))
+            .put(searchFunction("search_clipboard_history", "Search clipboard history saved by the current system input method."))
             .put(
                 function(
                     "get_health_summary",
-                    "汇总系统健康数据中的步数、睡眠、运动、心率、体重和血氧；不返回原始测量序列。",
-                    properties("days" to integer("汇总最近天数，默认 7", 1, 30)),
+                    "Summarize steps, sleep, exercise, heart rate, weight and blood oxygen from system health data; raw measurement series are not returned.",
+                    properties("days" to integer("Number of recent days to summarize; default 7", 1, 30)),
                 ),
             )
             .put(
                 function(
                     "read_sms_code",
-                    "从最近短信中只提取 4 到 8 位验证码、发送方和时间，不返回完整短信正文。",
+                    "Extract only 4-8 digit verification codes, senders and times from recent SMS; full message bodies are not returned.",
                     properties(
-                        "max_age_minutes" to integer("只检查多少分钟内的短信，默认 10", 1, 1_440),
+                        "max_age_minutes" to integer("Only inspect SMS from the last N minutes; default 10", 1, 1_440),
                     ),
                 ),
             )
             .put(
                 function(
                     "get_logcat",
-                    "读取最近系统日志。query 只在已读取日志中做文本过滤，不会进入 Shell。",
+                    "Read recent system logs. query only filters the logs already read; it never reaches a shell.",
                     properties(
-                        "query" to string("可选过滤文本", 200),
-                        "max_lines" to integer("最多日志行数，默认 200", 20, 500),
+                        "query" to string("Optional filter text", 200),
+                        "max_lines" to integer("Maximum log lines; default 200", 20, 500),
                     ),
                 ),
             )
-            .put(searchFunction("search_media", "检索本机相册中的图片，可按文件名或相册路径筛选。返回元数据与可打开的 content URI，不读取图片内容。"))
-            .put(searchFunction("search_audio", "检索本机音乐和音频文件，可按标题或文件名筛选。"))
-            .put(searchFunction("search_recordings", "检索本机录音文件。结果来自系统媒体库，不读取录音转写或音频内容。"))
-            .put(searchFunction("search_files", "检索共享存储中的文档和下载文件，可按文件名筛选。不会遍历其他应用私有目录。"))
-            .put(searchFunction("search_calendar_events", "检索系统日历事件，可按标题、地点或说明筛选。"))
-            .put(searchFunction("search_contacts", "检索系统通讯录联系人，返回姓名和 lookup URI。"))
-            .put(searchFunction("search_call_history", "检索通话记录，可按号码或联系人缓存名筛选。"))
-            .put(searchFunction("search_messages", "检索短信，可按发送方或正文关键词筛选。结果属于敏感个人内容。"))
-            .put(searchFunction("search_downloads", "检索系统下载记录，可按文件名或说明筛选。"))
-            .put(searchFunction("search_coloros_notes", "检索 ColorOS 便签和待办，可按标题或正文筛选。仅在安装并可访问 ColorOS 便签时可用。"))
+            .put(searchFunction("search_media", "Search images in the local gallery, filtered by file name or album path. Returns metadata and openable content URIs; image contents are not read."))
+            .put(searchFunction("search_audio", "Search local music and audio files, filtered by title or file name."))
+            .put(searchFunction("search_recordings", "Search local recordings. Results come from the system media library; transcripts and audio contents are not read."))
+            .put(searchFunction("search_files", "Search documents and downloads in shared storage, filtered by file name. Private directories of other apps are not traversed."))
+            .put(searchFunction("search_calendar_events", "Search system calendar events, filtered by title, location or description."))
+            .put(searchFunction("search_contacts", "Search system contacts; returns names and lookup URIs."))
+            .put(searchFunction("search_call_history", "Search call logs, filtered by number or cached contact name."))
+            .put(searchFunction("search_messages", "Search SMS, filtered by sender or body keyword. Results are sensitive personal content."))
+            .put(searchFunction("search_downloads", "Search system download records, filtered by file name or description."))
+            .put(searchFunction("search_coloros_notes", "Search ColorOS notes and to-dos, filtered by title or body. Only available when ColorOS Notes is installed and accessible."))
             .put(
                 function(
                     "search_notes",
-                    "search_coloros_notes 的别称，检索 ColorOS 便签和待办。" +
-                        "原始便签不可读时回退到历史索引；current_only=true 时只查原始便签，不回退。",
+                    "Alias of search_coloros_notes; searches ColorOS notes and to-dos." +
+                        "Falls back to the historical index when raw notes are unreadable; with current_only=true only raw notes are queried, without fallback.",
                     properties(
-                        "query" to string("可选关键词，最多 200 字"),
-                        "limit" to integer("最多返回数量，默认 10", 1, 30),
-                        "current_only" to boolean("仅使用当前原始便签来源，不回退历史索引"),
+                        "query" to string("Optional keyword, at most 200 characters"),
+                        "limit" to integer("Maximum number of results; default 10", 1, 30),
+                        "current_only" to boolean("Use only the current raw note source; do not fall back to the historical index"),
                     ),
                 ),
             )
             .put(
                 function(
                     "read_note",
-                    "按 note_id 读取一条 ColorOS 便签的标题、正文和更新时间。需 Root 直达便签 Provider。",
-                    properties("note_id" to string("便签返回的原始 UUID", 36)),
+                    "Read the title, body and update time of one ColorOS note by note_id. Requires Root to reach the notes provider directly.",
+                    properties("note_id" to string("Raw UUID returned for the note", 36)),
                     "note_id",
                 ),
             )
             .put(
                 function(
                     "list_calendars",
-                    "列出当前用户可写入的系统日历（calendar_id、名称、账户、是否只读）。" +
-                        "创建日程前不确定写哪个日历时先调用；返回空表示需要先在日历应用中建日历。",
+                    "List system calendars writable by the current user (calendar_id, name, account, read-only flag)." +
+                        "Call this first when unsure which calendar to write to before creating an event; an empty result means a calendar must be created in the calendar app first.",
                     properties(),
                 ),
             )
             .put(
                 function(
                     "read_calendar_event",
-                    "按原始 event_id 读取单条系统日历事件的完整字段、提醒与重复规则。" +
-                        "event_id 必须来自 search_calendar_events，不要传系统记忆里的文档 ID。",
-                    properties("event_id" to integer("日程 id", 1, 2_147_483_647)),
+                    "Read the full fields, reminders and recurrence rule of one system calendar event by raw event_id." +
+                        "event_id must come from search_calendar_events; do not pass document ids from system memory.",
+                    properties("event_id" to integer("Event id", 1, 2_147_483_647)),
                     "event_id",
                 ),
             )
-            .put(emptyFunction("get_flashlight", "读取手电筒开关状态。状态来自 CameraManager 托管灯光连接，读取不开灯。"))
-            .put(emptyFunction("get_sound_state", "读取铃声模式、勿扰状态和各音频通道当前/最大音量，不修改任何设置。"))
-            .put(emptyFunction("get_hotspot", "读取个人热点是否开启；普通应用只读，不改变热点。"))
+            .put(emptyFunction("get_flashlight", "Read flashlight on/off state. The state comes from a CameraManager torch connection; reading does not turn the light on."))
+            .put(emptyFunction("get_sound_state", "Read ringer mode, do-not-disturb state and current/maximum volume of each audio stream without changing any setting."))
+            .put(emptyFunction("get_hotspot", "Read whether the personal hotspot is on; ordinary apps can only read it and cannot change it."))
             .put(
                 function(
                     "get_display_state",
-                    "读取屏幕亮度百分比、自动亮度、自动旋转与息屏时长。需 Root 才能读取系统当前亮度。",
+                    "Read screen brightness percentage, auto-brightness, auto-rotate and screen-off timeout. Root is required to read the current system brightness.",
                     properties(),
                 ),
             )
             .put(
                 function(
                     "get_device_state",
-                    "读取一个系统开关的当前状态，只读、不修改。target 支持 wifi/bluetooth/mobile_data/" +
-                        "airplane_mode/location/nfc/battery_saver/auto_rotate/auto_brightness/dark_mode/night_light。" +
-                        "返回 enabled=null 表示当前设备无法确认该状态。",
+                    "Read the current state of one system toggle, read-only, without changing it. target supports wifi/bluetooth/mobile_data/" +
+                        "airplane_mode/location/nfc/battery_saver/auto_rotate/auto_brightness/dark_mode/night_light." +
+                        "enabled=null means the device cannot confirm that state.",
                     properties(
                         "target" to enumString(
-                            "设备能力",
+                            "Device capability",
                             "wifi", "bluetooth", "mobile_data", "airplane_mode", "location", "nfc",
                             "battery_saver", "auto_rotate", "auto_brightness", "dark_mode", "night_light",
                         ),
@@ -296,62 +296,62 @@ internal object AgentDeviceToolCatalog {
                     "target",
                 ),
             )
-            .put(searchFunction("search_coloros_recordings", "检索 ColorOS 录音应用中的普通录音和通话录音，返回名称、时长、类型和文件路径。"))
-            .put(searchFunction("search_recording_summaries", "检索 ColorOS 录音关联的转写摘要和便签内容。仅在录音应用生成过摘要时可用。"))
-            .put(searchFunction("search_coloros_memories", "检索 ColorOS 系统记忆，可读取已收集的信息、账单、日程、取件码、快递、地点和附件等关联内容。"))
-            .put(searchFunction("search_saved_places", "检索系统记忆中保存或识别的地点。"))
-            .put(searchFunction("search_personal_orders", "检索系统记忆中识别的外卖、购物、快递、票券和出行订单。"))
-            .put(personalSearchFunction("search_bills", "按商户、内容和时间查找账单记录。"))
-            .put(personalSearchFunction("search_todos", "查询系统从个人信息中提取的待办线索，未识别时间的记录不能按时间命中。"))
-            .put(personalSearchFunction("search_calendar_todos", "查询日历中的待办及其计划时间。"))
-            .put(personalSearchFunction("search_memory_collections", "查找已保存的记忆合集，不支持业务时间筛选。"))
-            .put(personalSearchFunction("search_daily_events", "查找系统记录或推断的生活事件，不把推断当成确认事实。"))
-            .put(personalSearchFunction("search_flights", "按航班、机场和计划起飞时间检索行程。"))
-            .put(personalSearchFunction("search_hotels", "按酒店、地址、订单和入住时间检索预订。"))
-            .put(personalSearchFunction("search_trains", "按车次、车站和出发时间检索行程。"))
+            .put(searchFunction("search_coloros_recordings", "Search normal and call recordings in the ColorOS recorder app; returns name, duration, type and file path."))
+            .put(searchFunction("search_recording_summaries", "Search transcription summaries and notes linked to ColorOS recordings. Only available when the recorder app has produced a summary."))
+            .put(searchFunction("search_coloros_memories", "Search ColorOS system memory for collected information, bills, schedules, pickup codes, deliveries, places and attachments."))
+            .put(searchFunction("search_saved_places", "Search places saved or recognized in system memory."))
+            .put(searchFunction("search_personal_orders", "Search food delivery, shopping, courier, ticket and travel orders recognized in system memory."))
+            .put(personalSearchFunction("search_bills", "Find bill records by merchant, content and time."))
+            .put(personalSearchFunction("search_todos", "Query to-do signals extracted by the system from personal information; records without a recognized time cannot be matched by time."))
+            .put(personalSearchFunction("search_calendar_todos", "Query to-dos in the calendar and their scheduled times."))
+            .put(personalSearchFunction("search_memory_collections", "Find saved memory collections; business-time filtering is not supported."))
+            .put(personalSearchFunction("search_daily_events", "Find life events the system recorded or inferred; inferred events are not confirmed facts."))
+            .put(personalSearchFunction("search_flights", "Search trips by flight, airport and scheduled departure time."))
+            .put(personalSearchFunction("search_hotels", "Search bookings by hotel, address, order and check-in time."))
+            .put(personalSearchFunction("search_trains", "Search trips by train number, station and departure time."))
             .put(
                 function(
                     "read_personal_item",
-                    "使用个人数据查询返回的 ref 读取索引详情；不能用该引用直接修改原始记录。",
-                    properties("ref" to string("查询结果返回的完整 ref", 160)),
+                    "Read index details with a ref returned by a personal-data query; the ref cannot modify the original record directly.",
+                    properties("ref" to string("Full ref returned by the query result", 160)),
                     "ref",
                 ),
             )
             .put(
                 function(
                     "summarize_bills",
-                    "精确汇总匹配的账单索引，区分收入、支出、转账和未知类型；最多完整汇总 1000 条，" +
-                        "范围过大时失败而不返回部分总额。",
+                    "Exactly summarize the matching bill index, distinguishing income, expense, transfer and unknown types; at most 1000 entries are summarized in full," +
+                        "and an oversized range fails instead of returning a partial total.",
                     properties(
-                        "query" to string("可选关键词，最多 200 字"),
-                        "start_time" to string("包含的起始时间，带时区偏移的 ISO 8601", 64),
-                        "end_time" to string("不包含的结束时间，带时区偏移的 ISO 8601", 64),
+                        "query" to string("Optional keyword, at most 200 characters"),
+                        "start_time" to string("Inclusive start time, ISO 8601 with timezone offset", 64),
+                        "end_time" to string("Exclusive end time, ISO 8601 with timezone offset", 64),
                     ),
                 ),
             )
-            .put(searchFunction("search_qq_chat_images", "检索 QQ 聊天图片缓存，返回最近文件的时间、大小、类型和私有路径。仅在安装 QQ 且缓存仍存在时可用。"))
-            .put(searchFunction("search_wechat_chat_images", "检索微信聊天图片缓存，返回最近文件的时间、大小和私有路径。仅在安装微信且缓存仍存在时可用。"))
+            .put(searchFunction("search_qq_chat_images", "Search the QQ chat image cache; returns time, size, type and private path of the most recent files. Only available when QQ is installed and its cache still exists."))
+            .put(searchFunction("search_wechat_chat_images", "Search the WeChat chat image cache; returns time, size and private path of the most recent files. Only available when WeChat is installed and its cache still exists."))
             .put(
                 function(
                     "list_installed_apps",
-                    "列出已安装应用（含系统应用与已禁用应用），返回包名、应用名、版本、是否系统应用与启用状态。免 Root。" +
-                        "结果属于设备隐私，不会写入持久会话。找到目标后启动请用 launch_app 传 package_name。",
+                    "List installed apps (including system and disabled apps); returns package name, app name, version, system-app flag and enabled state. No Root required." +
+                        "Results are device-private and are not written to the durable conversation. Once the target is found, start it with launch_app and package_name.",
                     properties(
-                        "filter" to enumString("过滤范围，默认 all", "all", "user", "system", "disabled"),
-                        "limit" to integer("最多返回数量，默认 50", 1, 200),
+                        "filter" to enumString("Filter scope; default all", "all", "user", "system", "disabled"),
+                        "limit" to integer("Maximum number of results; default 50", 1, 200),
                     ),
                 ),
             )
             .put(
                 function(
                     "search_settings",
-                    "列出某个 Android Settings 命名空间下的全部键值，支持关键字过滤。需要 Root。" +
-                        "用来查找可修改的设置项真实键名（不要凭空猜键名）。找到后用 set_setting 修改。" +
-                        "常用场景：确认某项系统开关对应的键、排查 set_setting 失败原因。",
+                    "List all keys under an Android Settings namespace with keyword filtering. Requires Root." +
+                        "Use this to find the real key name of a settable item (do not guess key names). Change it with set_setting afterwards." +
+                        "Common uses: confirming the key behind a system toggle, and diagnosing why set_setting failed.",
                     properties(
-                        "namespace" to enumString("设置命名空间", "system", "secure", "global"),
-                        "keyword" to string("按键名或值包含的关键字过滤，可留空", 100),
-                        "limit" to integer("最多返回数量，默认 100", 1, 500),
+                        "namespace" to enumString("Settings namespace", "system", "secure", "global"),
+                        "keyword" to string("Filter by a keyword contained in the key name or value; may be empty", 100),
+                        "limit" to integer("Maximum number of results; default 100", 1, 500),
                     ),
                     "namespace",
                 ),
@@ -359,14 +359,14 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "dumpsys_diag",
-                    "抓取 Android 系统服务（dumpsys）的运行状态，用于诊断。需要 Root。" +
-                        "可指定服务名（如 battery、wifi、activity、alarm、job、notification、gfxinfo、cpuinfo、SurfaceFlinger）" +
-                        "与 focus 行过滤关键字。输出默认截断到 4000 字符，可用 max_chars 调大。" +
-                        "仅用于诊断读取，不要用它修改系统状态。",
+                    "Capture runtime state of an Android system service (dumpsys) for diagnosis. Requires Root." +
+                        "Optionally specify a service name (for example battery, wifi, activity, alarm, job, notification, gfxinfo, cpuinfo, SurfaceFlinger)" +
+                        "plus a focus keyword to filter lines. Output is truncated to 4000 characters by default; raise it with max_chars." +
+                        "Diagnostic reading only; do not use it to change system state.",
                     properties(
-                        "service" to string("系统服务名，如 battery/wifi/activity", 40),
-                        "focus" to string("只保留包含该关键字的行，可留空", 100),
-                        "max_chars" to integer("输出最大字符数，默认 4000", 200, 20_000),
+                        "service" to string("System service name, such as battery/wifi/activity", 40),
+                        "focus" to string("Keep only lines containing this keyword; may be empty", 100),
+                        "max_chars" to integer("Maximum output characters; default 4000", 200, 20_000),
                     ),
                     "service",
                 ),
@@ -378,17 +378,17 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_setting",
-                    "修改一个 Android Settings 值。免 Root 需要用户已授予 Eta「修改系统设置」权限" +
-                        "（未授权时返回 WRITE_SETTINGS_REQUIRED 并指引用户去 设置 → 应用 → Eta → 修改系统设置，" +
-                        "此时不要重复调用）；有 Root 时直达。写入后回读校验。" +
-                        "常用键：system/screen_off_timeout（灭屏秒数）、system/screen_brightness（0-255）、" +
-                        "system/screen_brightness_mode（0 手动 1 自动）、system/accelerometer_rotation（0/1 自动旋转）、" +
-                        "system/font_scale（字体倍率）、system/show_touches、secure/ui_night_mode（深色模式）、" +
-                        "global/stay_on_while_charging（充电不息屏）。相对日期先用 get_current_context 换算。",
+                    "Modify one Android Settings value. Without Root, the user must have granted Eta the \"Modify system settings\" permission" +
+                        "(when not granted it returns WRITE_SETTINGS_REQUIRED and points the user to Settings → Apps → Eta → Modify system settings;" +
+                        "do not repeat the call in that case). With Root it writes directly. The value is read back to verify." +
+                        "Common keys: system/screen_off_timeout (seconds until screen off), system/screen_brightness (0-255)," +
+                        "system/screen_brightness_mode (0 manual, 1 auto), system/accelerometer_rotation (0/1 auto-rotate)," +
+                        "system/font_scale (font scale), system/show_touches, secure/ui_night_mode (dark mode)," +
+                        "global/stay_on_while_charging (keep screen on while charging). Convert relative dates with get_current_context first.",
                     properties(
-                        "namespace" to enumString("设置命名空间", "system", "secure", "global"),
-                        "key" to string("精确设置键", 200),
-                        "value" to string("新值", 2_000),
+                        "namespace" to enumString("Settings namespace", "system", "secure", "global"),
+                        "key" to string("Exact settings key", 200),
+                        "value" to string("New value", 2_000),
                     ),
                     "namespace", "key", "value",
                 ),
@@ -396,16 +396,16 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_device_state",
-                    "直接启用或关闭 Wi-Fi/蓝牙/飞行模式/移动数据/NFC/热点，不要操作设置 GUI。" +
-                        "有 Root 且该开关存在直达命令时直达并回读校验；无 Root、热点开关或 Root 命令失败时，" +
-                        "打开对应系统设置面板并返回 ok=false 与 RADIO_PANEL_FALLBACK，" +
-                        "此时告诉用户去面板里手动操作，不要重复调用本工具。",
+                    "Enable or disable Wi-Fi/Bluetooth/airplane mode/mobile data/NFC/hotspot directly; do not drive the settings GUI." +
+                        "With Root and a direct command for that toggle it writes directly and verifies; without Root, for the hotspot toggle, or when the Root command fails," +
+                        "it opens the matching system settings panel and returns ok=false with RADIO_PANEL_FALLBACK." +
+                        "Tell the user to operate the panel manually and do not repeat this tool.",
                     properties(
                         "target" to enumString(
-                            "设备能力",
+                            "Device capability",
                             "wifi", "bluetooth", "airplane_mode", "mobile_data", "nfc", "hotspot",
                         ),
-                        "enabled" to boolean("true 启用，false 关闭"),
+                        "enabled" to boolean("true to enable, false to disable"),
                     ),
                     "target", "enabled",
                 ),
@@ -413,10 +413,10 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "app_state_control",
-                    "停止、冻结或解冻一个精确包名，包括系统应用。",
+                    "Stop, freeze or unfreeze an exact package, including system apps.",
                     properties(
-                        "package_name" to string("精确 Android 包名", 255),
-                        "action" to enumString("动作", "force_stop", "freeze", "unfreeze"),
+                        "package_name" to string("Exact Android package name", 255),
+                        "action" to enumString("Action", "force_stop", "freeze", "unfreeze"),
                     ),
                     "package_name", "action",
                 ),
@@ -424,13 +424,13 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_do_not_disturb",
-                    "开启或关闭勿扰模式。免 Root 需要用户已授予 Eta 勿扰管理权限" +
-                        "（未授权时返回 NOTIFICATION_POLICY_REQUIRED 并指引用户去 设置 → 通知 → 勿扰 授权，" +
-                        "此时不要重复调用）；有 Root 时直达。priority_only=true 表示仅优先内容可打扰（免 Root 支持，" +
-                        "Root 保底只切换全开/全关并会在结果中说明）。",
+                    "Turn do-not-disturb on or off. Without Root, the user must have granted Eta DND access" +
+                        "(when not granted it returns NOTIFICATION_POLICY_REQUIRED and points the user to Settings → Notifications → Do Not Disturb;" +
+                        "do not repeat the call in that case). With Root it writes directly. priority_only=true allows only priority content through (supported without Root;" +
+                        "the Root fallback only toggles fully on/off and says so in the result).",
                     properties(
-                        "enabled" to boolean("true 开启勿扰，false 关闭"),
-                        "priority_only" to boolean("是否仅允许优先内容打扰，默认 false"),
+                        "enabled" to boolean("true to turn DND on, false to turn it off"),
+                        "priority_only" to boolean("Allow only priority interruptions; default false"),
                     ),
                     "enabled",
                 ),
@@ -438,24 +438,24 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_brightness",
-                    "设置屏幕亮度或切换自动亮度。免 Root 需要用户已授予 Eta「修改系统设置」权限" +
-                        "（未授权时返回 WRITE_SETTINGS_REQUIRED 并指引授权，此时不要重复调用）；有 Root 时直达。" +
-                        "auto=true 时忽略 percent。设置后回读校验，亮度允许厂商裁剪的 ±2 误差。",
+                    "Set screen brightness or switch auto-brightness. Without Root, the user must have granted Eta the \"Modify system settings\" permission" +
+                        "(when not granted it returns WRITE_SETTINGS_REQUIRED and points to the permission; do not repeat the call). With Root it writes directly." +
+                        "percent is ignored when auto=true. The value is read back to verify; brightness tolerates a vendor-clamped error of ±2.",
                     properties(
-                        "percent" to integer("亮度百分比，0 到 100；auto=true 时可省略", 0, 100),
-                        "auto" to boolean("是否切换为自动亮度，默认 false"),
+                        "percent" to integer("Brightness percentage from 0 to 100; optional when auto=true", 0, 100),
+                        "auto" to boolean("Switch to auto-brightness; default false"),
                     ),
                 ),
             )
             .put(
                 function(
                     "screen_action",
-                    "屏幕电源动作。lock 与 screen_off 同效（息屏即锁屏）。" +
-                        "power_menu 免 Root 走无障碍电源对话框；lock/screen_off 与 reboot 需要 Root。" +
-                        "reboot 会立即重启设备并中断当前对话，执行前必须先用 ask_user 向用户确认，" +
-                        "未获得确认不要调用。",
+                    "Screen power action. lock and screen_off are equivalent (screen off also locks)." +
+                        "power_menu works without Root via the accessibility power dialog; lock/screen_off and reboot require Root." +
+                        "reboot restarts the device immediately and interrupts this conversation; you must confirm with ask_user first," +
+                        "and must not call it without confirmation.",
                     properties(
-                        "action" to enumString("电源动作", "lock", "screen_off", "power_menu", "reboot"),
+                        "action" to enumString("Power action", "lock", "screen_off", "power_menu", "reboot"),
                     ),
                     "action",
                 ),
@@ -463,19 +463,19 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "manage_app",
-                    "应用管理：安装 APK、卸载、清除数据、授予或撤销运行时权限。" +
-                        "install 的 apk_path 需为设备上的绝对路径（可先用 search_files 搜索 .apk）。" +
-                        "免 Root 时 install/uninstall 打开系统安装/卸载界面由用户确认（返回 ok=false，" +
-                        "告诉用户去确认，不要重复调用）；clear_data/grant_permission/revoke_permission 需要 Root。" +
-                        "权限名需为完整形式，如 android.permission.CAMERA。",
+                    "App management: install an APK, uninstall, clear data, grant or revoke runtime permissions." +
+                        "apk_path for install must be an absolute path on the device (search for .apk files with search_files first)." +
+                        "Without Root, install/uninstall open the system install/uninstall UI for the user to confirm (returns ok=false;" +
+                        "tell the user to confirm and do not repeat the call); clear_data/grant_permission/revoke_permission require Root." +
+                        "Permission names must be fully qualified, for example android.permission.CAMERA.",
                     properties(
                         "action" to enumString(
-                            "管理动作",
+                            "Management action",
                             "install", "uninstall", "clear_data", "grant_permission", "revoke_permission",
                         ),
-                        "package_name" to string("目标应用包名；install 时不需要", 255),
-                        "apk_path" to string("install 时的 APK 绝对路径", 4_096),
-                        "permission" to string("grant/revoke 时的完整权限名，如 android.permission.CAMERA", 200),
+                        "package_name" to string("Target package name; not needed for install", 255),
+                        "apk_path" to string("Absolute APK path for install", 4_096),
+                        "permission" to string("Fully qualified permission name for grant/revoke, such as android.permission.CAMERA", 200),
                     ),
                     "action",
                 ),
@@ -483,24 +483,24 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "create_calendar_event",
-                    "直接在系统日历创建日程（写入日历 Provider，不打开日历界面）。涉及“明天/周四”等相对日期时，" +
-                        "先用 get_current_context 取当前时间再换算，不要猜测年份。" +
-                        "start 必填，格式 YYYY-MM-DDTHH:MM（设备本地时间，可带秒，也可写作 YYYY-MM-DD HH:MM；" +
-                        "只给日期时创建全天日程）。end 省略时默认 start 后 1 小时（全天日程为 1 天）。" +
-                        "reminder_minutes 是提前通知分钟数，默认 10，传 0 表示不提醒。" +
-                        "repeat 可选 none/daily/weekly/monthly/yearly；repeat=weekly 时可用 repeat_days 指定星期。" +
-                        "未获得 Root 时会退化为打开日历预填界面并返回 ok=false，此时告诉用户去日历里确认保存，不要重复调用。",
+                    "Create a calendar event directly (writing to the calendar provider without opening the calendar UI). For relative dates such as \"tomorrow/Friday\"," +
+                        "get the current time with get_current_context before converting; do not guess the year." +
+                        "start is required in the form YYYY-MM-DDTHH:MM (device local time; seconds are optional, and YYYY-MM-DD HH:MM is also accepted;" +
+                        "a date alone creates an all-day event). When end is omitted it defaults to start plus 1 hour (1 day for all-day events)." +
+                        "reminder_minutes is how many minutes early to notify, default 10; pass 0 for no reminder." +
+                        "repeat accepts none/daily/weekly/monthly/yearly; with repeat=weekly, repeat_days selects the weekdays." +
+                        "Without Root it degrades to opening a pre-filled calendar UI and returns ok=false; tell the user to confirm and save in the calendar, and do not repeat the call.",
                     properties(
-                        "title" to string("日程标题", 200),
-                        "start" to string("开始时间，YYYY-MM-DDTHH:MM 或 YYYY-MM-DD", 32),
-                        "end" to string("结束时间，格式同 start；省略按默认时长", 32),
-                        "all_day" to boolean("是否全天日程；start 只给日期时自动为 true"),
-                        "description" to string("日程说明", 2_000),
-                        "location" to string("地点", 500),
-                        "reminder_minutes" to integer("提前通知分钟数，默认 10，0 表示不提醒", 0, 20_160),
-                        "repeat" to enumString("重复规则", "none", "daily", "weekly", "monthly", "yearly"),
+                        "title" to string("Event title", 200),
+                        "start" to string("Start time, YYYY-MM-DDTHH:MM or YYYY-MM-DD", 32),
+                        "end" to string("End time in the same format as start; omit for the default duration", 32),
+                        "all_day" to boolean("All-day event; automatically true when start is a date alone"),
+                        "description" to string("Event description", 2_000),
+                        "location" to string("Location", 500),
+                        "reminder_minutes" to integer("Minutes of advance notice, default 10; 0 means no reminder", 0, 20_160),
+                        "repeat" to enumString("Recurrence rule", "none", "daily", "weekly", "monthly", "yearly"),
                         "repeat_days" to stringArray(
-                            "重复星期，仅 repeat=weekly 时有效",
+                            "Weekdays to repeat; only effective with repeat=weekly",
                             "mon", "tue", "wed", "thu", "fri", "sat", "sun",
                         ),
                     ),
@@ -510,26 +510,26 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "update_calendar_event",
-                    "修改系统日历中已存在的日程，只改提供的字段，未提供的字段保持不变。" +
-                        "定位方式二选一：优先用 event_id（search_calendar_events 或创建时返回的 id）；" +
-                        "否则用 match_title 按标题查找，可加 match_date(YYYY-MM-DD) 限定那一天。" +
-                        "匹配到多个日程时返回候选列表与 EVENT_AMBIGUOUS，此时取候选里的 event_id 重试一次即可，不要重复同样的调用。" +
-                        "reminder_minutes 会替换该日程的全部提前通知；repeat 传 none 清除重复规则。" +
-                        "时间格式与 create_calendar_event 相同。",
+                    "Modify an existing system calendar event, changing only the fields you provide; omitted fields stay unchanged." +
+                        "Locate the event one of two ways: prefer event_id (returned by search_calendar_events or on creation);" +
+                        "otherwise find it by title with match_title, optionally narrowing to that day with match_date(YYYY-MM-DD)." +
+                        "When several events match it returns a candidate list with EVENT_AMBIGUOUS; retry once with an event_id from the candidates instead of repeating the same call." +
+                        "reminder_minutes replaces all advance reminders of that event; passing repeat=none clears the recurrence rule." +
+                        "Time formats are the same as create_calendar_event.",
                     properties(
-                        "event_id" to integer("日程 id，优先使用", 1, 2_147_483_647),
-                        "match_title" to string("按标题定位时的关键词", 200),
-                        "match_date" to string("限定日期，YYYY-MM-DD", 10),
-                        "title" to string("新标题", 200),
-                        "start" to string("新开始时间，格式同 create_calendar_event", 32),
-                        "end" to string("新结束时间，格式同 start", 32),
-                        "all_day" to boolean("是否改为全天日程"),
-                        "description" to string("新说明，传空字符串清除", 2_000),
-                        "location" to string("新地点，传空字符串清除", 500),
-                        "reminder_minutes" to integer("新的提前通知分钟数，0 表示不提醒", 0, 20_160),
-                        "repeat" to enumString("新的重复规则，none 表示清除", "none", "daily", "weekly", "monthly", "yearly"),
+                        "event_id" to integer("Event id; preferred", 1, 2_147_483_647),
+                        "match_title" to string("Keyword used when locating by title", 200),
+                        "match_date" to string("Restrict to this day, YYYY-MM-DD", 10),
+                        "title" to string("New title", 200),
+                        "start" to string("New start time in the same format as create_calendar_event", 32),
+                        "end" to string("New end time in the same format as start", 32),
+                        "all_day" to boolean("Change to an all-day event"),
+                        "description" to string("New description; an empty string clears it", 2_000),
+                        "location" to string("New location; an empty string clears it", 500),
+                        "reminder_minutes" to integer("New minutes of advance notice; 0 means no reminder", 0, 20_160),
+                        "repeat" to enumString("New recurrence rule; none clears it", "none", "daily", "weekly", "monthly", "yearly"),
                         "repeat_days" to stringArray(
-                            "新的重复星期，仅 repeat=weekly 时有效",
+                            "New weekdays to repeat; only effective with repeat=weekly",
                             "mon", "tue", "wed", "thu", "fri", "sat", "sun",
                         ),
                     ),
@@ -538,65 +538,65 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "delete_calendar_event",
-                    "删除系统日历中的日程。定位方式同 update_calendar_event：优先 event_id，" +
-                        "否则用 match_title（可加 match_date）。匹配到多个时返回候选列表，取候选里的 event_id 重试一次。" +
-                        "重复日程按事件 id 删除会删除整个系列。",
+                    "Delete a system calendar event. Located the same way as update_calendar_event: prefer event_id," +
+                        "otherwise use match_title (optionally with match_date). When several match it returns a candidate list; retry once with an event_id from the candidates." +
+                        "Deleting a recurring event by event id deletes the whole series.",
                     properties(
-                        "event_id" to integer("日程 id，优先使用", 1, 2_147_483_647),
-                        "match_title" to string("按标题定位时的关键词", 200),
-                        "match_date" to string("限定日期，YYYY-MM-DD", 10),
+                        "event_id" to integer("Event id; preferred", 1, 2_147_483_647),
+                        "match_title" to string("Keyword used when locating by title", 200),
+                        "match_date" to string("Restrict to this day, YYYY-MM-DD", 10),
                     ),
                 ),
             )
             .put(
                 function(
                     "delete_alarm",
-                    "删除系统时钟里的闹钟（Root 直达写入时钟数据库，不打开时钟界面）。" +
-                        "定位方式：优先 alarm_id（list_alarms 返回的 _id）；否则用 match_time(HH:MM) 和 match_label 组合定位。" +
-                        "匹配到多个闹钟时返回候选列表与 ALARM_AMBIGUOUS，取候选里的 alarm_id 重试一次；" +
-                        "找不到时返回 ALARM_NOT_FOUND，可先用 list_alarms 查看。" +
-                        "删除后若时钟界面仍显示旧闹钟，重新打开时钟应用即可刷新，不要重复调用本工具。",
+                    "Delete an alarm in the system clock (Root writes straight to the clock database without opening the clock UI)." +
+                        "Locate it by alarm_id (the _id returned by list_alarms) first; otherwise combine match_time(HH:MM) and match_label." +
+                        "When several alarms match it returns a candidate list with ALARM_AMBIGUOUS; retry once with an alarm_id from the candidates;" +
+                        "when nothing matches it returns ALARM_NOT_FOUND; you can inspect with list_alarms first." +
+                        "If the clock UI still shows the old alarm after deletion, reopening the clock app refreshes it; do not repeat this tool.",
                     properties(
-                        "alarm_id" to integer("闹钟 id，优先使用", 1, 2_147_483_647),
-                        "match_time" to string("按时间定位，HH:MM", 5),
-                        "match_label" to string("按标签关键词定位", 100),
+                        "alarm_id" to integer("Alarm id; preferred", 1, 2_147_483_647),
+                        "match_time" to string("Locate by time, HH:MM", 5),
+                        "match_label" to string("Locate by label keyword", 100),
                     ),
                 ),
             )
             .put(
                 function(
                     "update_alarm",
-                    "修改系统时钟里已存在的闹钟，只改提供的字段（enabled/label/vibrate/hour/minute）。" +
-                        "定位方式同 delete_alarm：优先 alarm_id，否则 match_time(HH:MM) 与 match_label。" +
-                        "修改时间后，一次性闹钟的下次触发时间会自动重算；重复闹钟由时钟应用在下次打开时重算。" +
-                        "重复规则（星期）变更请先 delete_alarm 再用 set_alarm 重建，不要反复修改。" +
-                        "匹配多个时返回候选列表，取 alarm_id 重试一次。",
+                    "Modify an existing alarm in the system clock, changing only the fields you provide (enabled/label/vibrate/hour/minute)." +
+                        "Located the same way as delete_alarm: alarm_id first, otherwise match_time(HH:MM) and match_label." +
+                        "After a time change, a one-shot alarm recomputes its next trigger; a repeating alarm is recomputed by the clock app on its next open." +
+                        "To change the recurrence (weekdays), delete_alarm first and rebuild with set_alarm instead of editing repeatedly." +
+                        "When several match it returns a candidate list; retry once with an alarm_id.",
                     properties(
-                        "alarm_id" to integer("闹钟 id，优先使用", 1, 2_147_483_647),
-                        "match_time" to string("按时间定位，HH:MM", 5),
-                        "match_label" to string("按标签关键词定位", 100),
-                        "enabled" to boolean("是否启用该闹钟"),
-                        "hour" to integer("新小时，0 到 23", 0, 23),
-                        "minute" to integer("新分钟，0 到 59", 0, 59),
-                        "label" to string("新标签，传空字符串清除", 100),
-                        "vibrate" to boolean("是否振动"),
+                        "alarm_id" to integer("Alarm id; preferred", 1, 2_147_483_647),
+                        "match_time" to string("Locate by time, HH:MM", 5),
+                        "match_label" to string("Locate by label keyword", 100),
+                        "enabled" to boolean("Whether the alarm is enabled"),
+                        "hour" to integer("New hour, 0 to 23", 0, 23),
+                        "minute" to integer("New minute, 0 to 59", 0, 59),
+                        "label" to string("New label; an empty string clears it", 100),
+                        "vibrate" to boolean("Whether to vibrate"),
                     ),
                 ),
             )
             .put(
                 function(
                     "create_calendar_events",
-                    "在同一个日历里批量创建多条日程（最多 30 条），逐条写入并各自读回校验。" +
-                        "每一项的字段与 create_calendar_event 相同；calendar_id 可整体指定，先用 list_calendars 确认。" +
-                        "中途失败会停止后续写入并返回 CALENDAR_BATCH_PARTIAL 与已创建列表；" +
-                        "此时先 search_calendar_events 确认，只补建失败项，不要重复整批。",
+                    "Create multiple events in one calendar in a batch (at most 30), writing each one and reading it back to verify." +
+                        "Each item uses the same fields as create_calendar_event; calendar_id may be given once for the batch; confirm it with list_calendars first." +
+                        "A mid-batch failure stops further writes and returns CALENDAR_BATCH_PARTIAL with the list of created events;" +
+                        "in that case confirm with search_calendar_events and create only the missing items instead of repeating the whole batch.",
                     properties(
-                        "calendar_id" to integer("可选的日历 id", 1, 2_147_483_647),
+                        "calendar_id" to integer("Optional calendar id", 1, 2_147_483_647),
                         "events" to JSONObject()
                             .put("type", "array")
                             .put("minItems", 1)
                             .put("maxItems", 30)
-                            .put("description", "日程数组，每项必须含 title 与 start")
+                            .put("description", "Array of events; each item must contain title and start")
                             .put(
                                 "items",
                                 JSONObject()
@@ -604,12 +604,12 @@ internal object AgentDeviceToolCatalog {
                                     .put(
                                         "properties",
                                         properties(
-                                            "title" to string("日程标题，最多 200 字", 200),
-                                            "start" to string("开始时间：YYYY-MM-DDTHH:MM 或全天 YYYY-MM-DD", 40),
-                                            "end" to string("可选结束时间，格式同 start", 40),
-                                            "description" to string("可选备注", 1_000),
-                                            "location" to string("可选地点", 200),
-                                            "reminder_minutes" to integer("可选提前提醒分钟数", 0, 20_160),
+                                            "title" to string("Event title, at most 200 characters", 200),
+                                            "start" to string("Start time: YYYY-MM-DDTHH:MM, or YYYY-MM-DD for all-day", 40),
+                                            "end" to string("Optional end time in the same format as start", 40),
+                                            "description" to string("Optional note", 1_000),
+                                            "location" to string("Optional location", 200),
+                                            "reminder_minutes" to integer("Optional minutes of advance notice", 0, 20_160),
                                         ),
                                     )
                                     .put("required", JSONArray().put("title").put("start")),
@@ -621,12 +621,12 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "create_note",
-                    "直接创建 ColorOS 便签并读回校验，不打开便签界面。需 Root。" +
-                        "标题可为空；正文最多 20000 字。返回 ok=false 且 code=NOTE_CREATE_UNVERIFIED 时，" +
-                        "先用 search_coloros_notes 确认，不要重复创建。",
+                    "Create a ColorOS note directly and read it back to verify, without opening the notes UI. Requires Root." +
+                        "The title may be empty; the body allows at most 20000 characters. When it returns ok=false with code=NOTE_CREATE_UNVERIFIED," +
+                        "confirm with search_coloros_notes first instead of creating again.",
                     properties(
-                        "content" to string("便签正文，最多 20000 字", 20_000),
-                        "title" to string("可选标题，最多 200 字", 200),
+                        "content" to string("Note body, at most 20000 characters", 20_000),
+                        "title" to string("Optional title, at most 200 characters", 200),
                     ),
                     "content",
                 ),
@@ -634,21 +634,21 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "delete_note",
-                    "把一条 ColorOS 便签移入回收站并读回确认。需 Root；note_id 必须是 create_note/read_note 返回的原始 UUID。",
-                    properties("note_id" to string("便签的原始 UUID", 36)),
+                    "Move one ColorOS note to the trash and read it back to confirm. Requires Root; note_id must be the raw UUID returned by create_note/read_note.",
+                    properties("note_id" to string("Raw UUID of the note", 36)),
                     "note_id",
                 ),
             )
             .put(
                 function(
                     "set_alarm_enabled",
-                    "启用或停用一个系统闹钟，不改时间。需 Root；优先 alarm_id，否则用 match_time/match_label。" +
-                        "匹配多个时返回候选，取 alarm_id 重试一次；找不到可先用 list_alarms 查看。",
+                    "Enable or disable a system alarm without changing its time. Requires Root; prefer alarm_id, otherwise match_time/match_label." +
+                        "When several match it returns candidates; retry once with an alarm_id; if nothing matches, inspect with list_alarms first.",
                     properties(
-                        "alarm_id" to integer("闹钟 id，优先使用", 1, 2_147_483_647),
-                        "match_time" to string("按时间定位，HH:MM", 5),
-                        "match_label" to string("按标签关键词定位", 100),
-                        "enabled" to boolean("true 启用，false 停用"),
+                        "alarm_id" to integer("Alarm id; preferred", 1, 2_147_483_647),
+                        "match_time" to string("Locate by time, HH:MM", 5),
+                        "match_label" to string("Locate by label keyword", 100),
+                        "enabled" to boolean("true to enable, false to disable"),
                     ),
                     "enabled",
                 ),
@@ -656,14 +656,14 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "update_alarm_time",
-                    "只修改系统闹钟的触发时间（hour/minute），其余字段不变。定位方式同 set_alarm_enabled。" +
-                        "一次性闹钟触发时间会自动重算；重复规则变更请先 delete_alarm 再用 set_alarm 重建。",
+                    "Change only the trigger time of a system alarm (hour/minute); other fields stay unchanged. Located the same way as set_alarm_enabled." +
+                        "A one-shot alarm recomputes its trigger time; to change the recurrence, delete_alarm first and rebuild with set_alarm.",
                     properties(
-                        "alarm_id" to integer("闹钟 id，优先使用", 1, 2_147_483_647),
-                        "match_time" to string("按原时间定位，HH:MM", 5),
-                        "match_label" to string("按标签关键词定位", 100),
-                        "hour" to integer("新小时，0 到 23", 0, 23),
-                        "minute" to integer("新分钟，0 到 59", 0, 59),
+                        "alarm_id" to integer("Alarm id; preferred", 1, 2_147_483_647),
+                        "match_time" to string("Locate by its current time, HH:MM", 5),
+                        "match_label" to string("Locate by label keyword", 100),
+                        "hour" to integer("New hour, 0 to 23", 0, 23),
+                        "minute" to integer("New minute, 0 to 59", 0, 59),
                     ),
                     "hour", "minute",
                 ),
@@ -671,42 +671,42 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_flashlight",
-                    "开启或关闭手电筒并回读状态，不操作相机界面。普通应用即可使用；" +
-                        "返回 FLASHLIGHT_BUSY 表示闪光灯被相机占用，不要重复调用。",
-                    properties("enabled" to boolean("true 开灯，false 关灯")),
+                    "Turn the flashlight on or off and read the state back, without driving the camera UI. Available to ordinary apps;" +
+                        "FLASHLIGHT_BUSY means the camera holds the flash unit; do not repeat the call.",
+                    properties("enabled" to boolean("true turns it on, false turns it off")),
                     "enabled",
                 ),
             )
             .put(
                 function(
                     "set_screen_timeout",
-                    "设置自动息屏时长并回读校验，需 Root。seconds 允许 15 到 1800。",
-                    properties("seconds" to integer("息屏秒数", 15, 1_800)),
+                    "Set the screen-off timeout and read it back to verify. Requires Root. seconds accepts 15 to 1800.",
+                    properties("seconds" to integer("Seconds until screen off", 15, 1_800)),
                     "seconds",
                 ),
             )
             .put(
                 function(
                     "set_hotspot",
-                    "开启或关闭个人热点。普通应用通常没有修改特权，" +
-                        "此时会打开无线设置并返回 HOTSPOT_PANEL_FALLBACK/ok=false；" +
-                        "告诉用户去面板操作，不要重复调用本工具。",
-                    properties("enabled" to boolean("true 开热点，false 关热点")),
+                    "Turn the personal hotspot on or off. Ordinary apps usually lack the privilege to change it," +
+                        "in which case it opens wireless settings and returns HOTSPOT_PANEL_FALLBACK/ok=false;" +
+                        "tell the user to operate the panel and do not repeat this tool.",
+                    properties("enabled" to boolean("true turns the hotspot on, false turns it off")),
                     "enabled",
                 ),
             )
             .put(
                 function(
                     "manage_file",
-                    "复制、移动、删除、重命名设备上的文件或目录，免 Root（应用已持所有文件访问权限）。" +
-                        "跨存储或私有路径失败时自动用 Root 保底。写入后回读校验（目标存在、源已消失）。" +
-                        "路径必须是设备绝对路径，可用 search_files / list_directory 先定位。" +
-                        "操作系统关键目录（/system、/data 顶层等）会被拒绝。",
+                    "Copy, move, delete or rename files and directories on the device without Root (the app already holds all-files access)." +
+                        "Cross-storage or private-path failures fall back to Root. Writes are verified by reading back (target exists, source is gone)." +
+                        "Paths must be absolute device paths; locate them first with search_files / list_directory." +
+                        "Critical OS directories (/system, the top level of /data, and similar) are rejected.",
                     properties(
-                        "action" to enumString("动作", "copy", "move", "delete", "rename", "mkdir"),
-                        "path" to string("源路径（绝对路径）", 1_024),
-                        "dest_path" to string("目标路径；目标是已存在目录时自动落入该目录并保留原名", 1_024),
-                        "new_name" to string("rename 的新名称（不含 /）", 255),
+                        "action" to enumString("Action", "copy", "move", "delete", "rename", "mkdir"),
+                        "path" to string("Source path (absolute)", 1_024),
+                        "dest_path" to string("Target path; if the target is an existing directory the file lands inside it and keeps its original name", 1_024),
+                        "new_name" to string("New name for rename (without /)", 255),
                     ),
                     "action", "path",
                 ),
@@ -714,15 +714,15 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "system_property",
-                    "读取或修改 Android 系统属性（getprop/setprop）。需要 Root。" +
-                        "get 支持精确 key 或 prefix 前缀批量匹配（如 persist.sys.）；" +
-                        "set 写入后回读校验。只读属性（ro.*）与系统专用属性（ctl.*、init.*）会被拒绝，" +
-                        "收到 PROPERTY_READONLY 时不要重复调用，改用对应设置项。",
+                    "Read or modify Android system properties (getprop/setprop). Requires Root." +
+                        "get supports an exact key or a prefix batch match (such as persist.sys.);" +
+                        "set writes and reads back to verify. Read-only properties (ro.*) and system-reserved properties (ctl.*, init.*) are rejected;" +
+                        "on PROPERTY_READONLY do not call again; use the corresponding setting instead.",
                     properties(
-                        "action" to enumString("动作", "get", "set"),
-                        "key" to string("属性名，如 persist.sys.locale", 128),
-                        "prefix" to string("get 时的前缀批量匹配，如 persist.sys.", 128),
-                        "value" to string("set 的新值", 512),
+                        "action" to enumString("Action", "get", "set"),
+                        "key" to string("Property name, such as persist.sys.locale", 128),
+                        "prefix" to string("Prefix batch match for get, such as persist.sys.", 128),
+                        "value" to string("New value for set", 512),
                     ),
                     "action",
                 ),
@@ -730,19 +730,19 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "display_control",
-                    "修改屏幕分辨率、屏幕密度（DPI）或过扫描边距，均可恢复默认。需要 Root（wm 命令）。" +
-                        "写入后回读校验。界面显示异常时用 reset_resolution / reset_density / reset_overscan 恢复。" +
-                        "调整 DPI 常用于让界面元素变大或变小；分辨率调整会重启界面。",
+                    "Change screen resolution, screen density (DPI) or overscan margins; each can be reset to default. Requires Root (wm command)." +
+                        "Writes are read back to verify. If the UI looks wrong, recover with reset_resolution / reset_density / reset_overscan." +
+                        "Changing DPI is often used to make UI elements larger or smaller; changing resolution restarts the UI.",
                     properties(
                         "action" to enumString(
-                            "动作",
+                            "Action",
                             "set_resolution", "reset_resolution",
                             "set_density", "reset_density",
                             "set_overscan", "reset_overscan",
                         ),
-                        "resolution" to string("set_resolution：WxH，如 1080x2400", 16),
-                        "density" to integer("set_density：DPI 值 100 到 800", 100, 800),
-                        "overscan" to string("set_overscan：左,上,右,下，如 0,0,0,-100", 32),
+                        "resolution" to string("set_resolution: WxH, such as 1080x2400", 16),
+                        "density" to integer("set_density: DPI value from 100 to 800", 100, 800),
+                        "overscan" to string("set_overscan: left,top,right,bottom, such as 0,0,0,-100", 32),
                     ),
                     "action",
                 ),
@@ -750,34 +750,34 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "deep_launch",
-                    "直达任意应用的指定界面或服务（am start/startservice），无需在桌面翻找。需要 Root。" +
-                        "传 component（包名/类名，类名可省包名以 . 开头）或 action（意图动作）二选一，可附 data_uri。" +
-                        "组件不存在时返回 DEEP_LAUNCH_FAILED，此时不要重复同样调用；" +
-                        "常规启动请优先用 launch_app 传包名。",
+                    "Jump straight to a specific activity or service of any app (am start/startservice) without hunting through launchers. Requires Root." +
+                        "Pass either component (package/class, where the class may omit the package and start with .) or action (intent action), optionally with data_uri." +
+                        "If the component does not exist it returns DEEP_LAUNCH_FAILED; do not repeat the same call;" +
+                        "for ordinary launches prefer launch_app with a package name.",
                     properties(
-                        "mode" to enumString("启动类型，默认 activity", "activity", "service"),
-                        "component" to string("组件名，如 com.android.settings/.Settings", 255),
-                        "action" to string("意图动作，如 android.settings.WIFI_SETTINGS", 255),
-                        "data_uri" to string("意图数据 URI，可留空", 2_000),
+                        "mode" to enumString("Launch type; default activity", "activity", "service"),
+                        "component" to string("Component name, such as com.android.settings/.Settings", 255),
+                        "action" to string("Intent action, such as android.settings.WIFI_SETTINGS", 255),
+                        "data_uri" to string("Intent data URI; may be empty", 2_000),
                     ),
                 ),
             )
             .put(
                 function(
                     "package_control",
-                    "包管理（pm 命令）：列出包、启用/停用（含系统应用）、取 APK 路径、" +
-                        "卸载系统应用更新恢复出厂版本、为当前用户重装。需要 Root。" +
-                        "停用系统核心应用可能被系统拒绝（PACKAGE_STATE_NOT_APPLIED），此时不要重复调用。" +
-                        "普通应用的安装/卸载/清数据/权限授予请用 manage_app。",
+                    "Package management (pm command): list packages, enable/disable them (including system apps), get the APK path," +
+                        "uninstall a system app update back to the factory version, and reinstall for the current user. Requires Root." +
+                        "Disabling a core system app may be refused (PACKAGE_STATE_NOT_APPLIED); do not repeat the call in that case." +
+                        "For ordinary apps use manage_app to install/uninstall/clear data/grant permissions.",
                     properties(
                         "action" to enumString(
-                            "动作",
+                            "Action",
                             "list", "enable", "disable", "app_path", "uninstall_updates", "reinstall",
                         ),
-                        "package_name" to string("目标包名", 255),
-                        "filter" to enumString("list 过滤：默认 all", "all", "system", "disabled", "enabled", "third_party"),
-                        "keyword" to string("list 按包名包含的关键字过滤，可留空", 100),
-                        "limit" to integer("list 最多返回数量，默认 50", 1, 200),
+                        "package_name" to string("Target package name", 255),
+                        "filter" to enumString("list filter: default all", "all", "system", "disabled", "enabled", "third_party"),
+                        "keyword" to string("list filtered by a keyword contained in the package name; may be empty", 100),
+                        "limit" to integer("list maximum number of results; default 50", 1, 200),
                     ),
                     "action",
                 ),
@@ -785,14 +785,14 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "user_control",
-                    "多用户管理：列出用户、查看当前用户、切换用户、创建用户、删除用户。需要 Root。" +
-                        "切换是异步的，未确认时用 action=current 复查，不要重复调用。" +
-                        "删除用户会清空其全部数据（主用户 id=0 不允许删除）。" +
-                        "删除类操作执行前必须先用 ask_user 获得用户明确确认。",
+                    "Multi-user management: list users, show the current user, switch, create and remove users. Requires Root." +
+                        "Switching is asynchronous; if unconfirmed, check again with action=current instead of repeating the call." +
+                        "Removing a user wipes all of its data (the primary user, id=0, cannot be removed)." +
+                        "You must obtain explicit user confirmation with ask_user before destructive operations.",
                     properties(
-                        "action" to enumString("动作", "list", "current", "switch", "create", "remove"),
-                        "user_id" to integer("switch/remove 的目标用户 id", 0, 99),
-                        "name" to string("create 的用户名", 64),
+                        "action" to enumString("Action", "list", "current", "switch", "create", "remove"),
+                        "user_id" to integer("Target user id for switch/remove", 0, 99),
+                        "name" to string("User name for create", 64),
                     ),
                     "action",
                 ),
@@ -800,16 +800,16 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "appops_control",
-                    "按操作粒度（AppOps）管控应用行为：读取某个应用的全部 AppOps 记录，" +
-                        "或将指定操作设为 allow/ignore/deny/default。需要 Root。" +
-                        "常用 op：COARSE_LOCATION、FINE_LOCATION、CAMERA、RECORD_AUDIO、READ_CONTACTS、" +
-                        "READ_SMS、READ_CLIPBOARD、SYSTEM_ALERT_WINDOW、WAKE_LOCK。" +
-                        "set 后回读校验；这是比运行时权限更底层的管控手段。",
+                    "Control app behaviour at operation granularity (AppOps): read all AppOps records of an app," +
+                        "or set a given operation to allow/ignore/deny/default. Requires Root." +
+                        "Common ops: COARSE_LOCATION, FINE_LOCATION, CAMERA, RECORD_AUDIO, READ_CONTACTS," +
+                        "READ_SMS, READ_CLIPBOARD, SYSTEM_ALERT_WINDOW, WAKE_LOCK." +
+                        "set reads back to verify; this is a lower-level control than runtime permissions.",
                     properties(
-                        "action" to enumString("动作", "get", "set"),
-                        "package_name" to string("目标包名", 255),
-                        "op" to string("操作名，如 CAMERA", 40),
-                        "mode" to enumString("设置模式", "allow", "ignore", "deny", "default"),
+                        "action" to enumString("Action", "get", "set"),
+                        "package_name" to string("Target package name", 255),
+                        "op" to string("Operation name, such as CAMERA", 40),
+                        "mode" to enumString("Set mode", "allow", "ignore", "deny", "default"),
                     ),
                     "action", "package_name",
                 ),
@@ -817,14 +817,14 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "power_control",
-                    "电源策略：省电模式开关、充电时保持屏幕唤醒、把应用加入/移出电池优化白名单（Doze）、" +
-                        "重启设备。需要 Root。重启会让本次对话随之中断，执行前必须先用 ask_user 获得用户明确确认，" +
-                        "且一天内不要重复下发重启。",
+                    "Power policy: toggle power saving, keep the screen awake while charging, add/remove apps from the battery optimisation allowlist (Doze)," +
+                        "and restart the device. Requires Root. A restart interrupts this conversation, so you must obtain explicit user confirmation with ask_user first," +
+                        "and must not issue another restart within the same day.",
                     properties(
-                        "action" to enumString("动作", "battery_saver", "stay_awake", "doze_whitelist", "reboot"),
-                        "enabled" to boolean("battery_saver/stay_awake 的开关"),
-                        "allow" to boolean("doze_whitelist：true 加入白名单 / false 移出"),
-                        "package_name" to string("doze_whitelist 的目标包名", 255),
+                        "action" to enumString("Action", "battery_saver", "stay_awake", "doze_whitelist", "reboot"),
+                        "enabled" to boolean("Toggle for battery_saver/stay_awake"),
+                        "allow" to boolean("doze_whitelist: true adds to the allowlist / false removes it"),
+                        "package_name" to string("Target package name for doze_whitelist", 255),
                     ),
                     "action",
                 ),
@@ -832,13 +832,13 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "ime_control",
-                    "输入法管理：列出已启用输入法、查看当前默认输入法、切换默认输入法。" +
-                        "list/current 免 Root（公开 API）；set 需要 Root。" +
-                        "无 Root 时 set 会弹出系统输入法选择器并返回 ok=false，此时告诉用户手动选择，" +
-                        "不要重复调用。切换后用 set 结果里的 verified 字段确认。",
+                    "Input method management: list enabled IMEs, show the current default IME, switch the default IME." +
+                        "list/current need no Root (public API); set requires Root." +
+                        "Without Root, set opens the system IME picker and returns ok=false; tell the user to choose manually," +
+                        "and do not repeat the call. After switching, confirm with the verified field in the set result.",
                     properties(
-                        "action" to enumString("动作", "list", "current", "set"),
-                        "id" to string("set 的输入法组件 id，如 com.baidu.input/.ImeService", 255),
+                        "action" to enumString("Action", "list", "current", "set"),
+                        "id" to string("IME component id for set, such as com.baidu.input/.ImeService", 255),
                     ),
                     "action",
                 ),
@@ -846,16 +846,16 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "connect_wifi",
-                    "Wi-Fi 精细操作：扫描附近热点、连接指定网络（含密码）、断开、忘记已保存网络。" +
-                        "需要 Root（cmd wifi）。连接是异步的，工具会等待确认，最长约 8 秒；" +
-                        "未确认时返回 WIFI_CONNECT_UNVERIFIED，不要用同样参数重复调用，可先 action=scan 确认热点。" +
-                        "无 Root 时打开 Wi-Fi 设置界面并返回 ok=false，请用户手动连接。",
+                    "Fine-grained Wi-Fi operations: scan nearby hotspots, connect to a network (with password), disconnect, forget a saved network." +
+                        "Requires Root (cmd wifi). Connecting is asynchronous and the tool waits for confirmation, up to about 8 seconds;" +
+                        "when unconfirmed it returns WIFI_CONNECT_UNVERIFIED; do not repeat with the same arguments, and confirm the hotspot with action=scan first." +
+                        "Without Root it opens Wi-Fi settings and returns ok=false so the user can connect manually.",
                     properties(
-                        "action" to enumString("动作", "scan", "connect", "disconnect", "forget"),
-                        "ssid" to string("热点名称", 64),
-                        "password" to string("密码（加密网络必填，至少 8 位）", 128),
-                        "security" to enumString("加密方式，默认 wpa2", "open", "wep", "wpa", "wpa2", "wpa3"),
-                        "keyword" to string("scan 的结果过滤关键字，可留空", 100),
+                        "action" to enumString("Action", "scan", "connect", "disconnect", "forget"),
+                        "ssid" to string("Hotspot name", 64),
+                        "password" to string("Password (required for secured networks, at least 8 characters)", 128),
+                        "security" to enumString("Encryption type; default wpa2", "open", "wep", "wpa", "wpa2", "wpa3"),
+                        "keyword" to string("Keyword filtering scan results; may be empty", 100),
                     ),
                     "action",
                 ),
@@ -863,13 +863,13 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "set_timezone",
-                    "设置系统时区（IANA 名称，如 Asia/Shanghai）或自动时间/自动时区开关。" +
-                        "时区需要 Root（cmd alarm set-timezone）；自动时间开关免 Root 可写（需修改系统设置权限）。" +
-                        "写入后回读校验；系统可能在网络授时后覆盖手动值，不要因此重复调用。",
+                    "Set the system timezone (IANA name, such as Asia/Shanghai) or toggle automatic time/automatic timezone." +
+                        "Timezone requires Root (cmd alarm set-timezone); the automatic-time toggle is writable without Root (it needs the modify-system-settings permission)." +
+                        "Writes are read back to verify; the system may overwrite the manual value after network time sync, so do not call again because of that.",
                     properties(
-                        "timezone_id" to string("IANA 时区 ID，如 Asia/Shanghai", 64),
-                        "auto_time" to boolean("自动使用网络时间"),
-                        "auto_timezone" to boolean("自动使用网络提供的时区"),
+                        "timezone_id" to string("IANA timezone id, such as Asia/Shanghai", 64),
+                        "auto_time" to boolean("Use network time automatically"),
+                        "auto_timezone" to boolean("Use the network-provided timezone automatically"),
                     ),
                 ),
             )
@@ -882,7 +882,7 @@ internal object AgentDeviceToolCatalog {
         function(
             name,
             description,
-            properties("limit" to integer("最多返回数量，默认 10", 1, 30)),
+            properties("limit" to integer("Maximum number of results; default 10", 1, 30)),
         )
 
     private fun searchFunction(name: String, description: String): JSONObject =
@@ -890,8 +890,8 @@ internal object AgentDeviceToolCatalog {
             name,
             description,
             properties(
-                "query" to string("可选关键词，最多 200 字"),
-                "limit" to integer("最多返回数量，默认 10", 1, 30),
+                "query" to string("Optional keyword, at most 200 characters"),
+                "limit" to integer("Maximum number of results; default 10", 1, 30),
             ),
         )
 
@@ -899,14 +899,14 @@ internal object AgentDeviceToolCatalog {
     private fun personalSearchFunction(name: String, description: String): JSONObject =
         function(
             name,
-            "$description 结果来自历史索引，可能延迟；返回 ref 可读取详情。",
+            "$description Results come from the historical index and may lag; the returned ref reads details.",
             properties(
-                "query" to string("可选关键词，最多 200 字"),
-                "start_time" to string("包含的起始时间，带时区偏移的 ISO 8601", 64),
-                "end_time" to string("不包含的结束时间，带时区偏移的 ISO 8601", 64),
-                "limit" to integer("最多返回数量，默认 10", 1, 30),
-                "offset" to integer("分页起始偏移，默认 0", 0, 10_000),
-                "sort" to enumString("排序方向，默认 newest", "newest", "oldest"),
+                "query" to string("Optional keyword, at most 200 characters"),
+                "start_time" to string("Inclusive start time, ISO 8601 with timezone offset", 64),
+                "end_time" to string("Exclusive end time, ISO 8601 with timezone offset", 64),
+                "limit" to integer("Maximum number of results; default 10", 1, 30),
+                "offset" to integer("Paging start offset; default 0", 0, 10_000),
+                "sort" to enumString("Sort direction; default newest", "newest", "oldest"),
             ),
         )
 

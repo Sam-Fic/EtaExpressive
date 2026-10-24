@@ -172,36 +172,36 @@ internal object AgentToolRequirements {
         if (name in FILE_TOOL_NAMES) {
             properties?.optJSONObject("identity")
                 ?.put("enum", JSONArray().put("user"))
-                ?.put("description", "宿主执行身份；无 Root 时仅支持 user。")
+                ?.put("description", "Host execution identity; without Root only user is supported.")
         }
         when (name) {
             "terminal" -> {
-                function.put("description", "在当前设备管理普通 Android Shell 或用户选择的 Linux 环境。" +
-                    "以 App UID 执行，支持会话、异步任务和后台服务；Linux 内的模拟身份不提供 Android 系统特权。" +
-                    "使用 open_and_exec 执行单次命令，open/exec 复用会话，daemon_start/list/logs/stop 管理后台服务。")
+                function.put("description", "Manage a plain Android shell or the user-selected Linux environment on this device." +
+                    "Runs with the app UID and supports sessions, async jobs and background services; a simulated identity inside Linux grants no Android system privileges." +
+                    "Use open_and_exec for one-shot commands, open/exec to reuse a session, and daemon_start/list/logs/stop to manage background services.")
                 properties?.getJSONObject("identity")
                     ?.put("enum", JSONArray().put("user"))
-                    ?.put("description", "宿主执行身份；当前仅支持 user，默认 user。")
+                    ?.put("description", "Host execution identity; only user is supported here, and it defaults to user.")
                 properties?.getJSONObject("environment")?.put("description",
-                    "android 使用普通 Android Shell；linux 使用用户选择的发行版和免 Root 后端。默认 android。")
+                    "android uses a plain Android shell; linux uses the distribution and rootless backend selected by the user. Default android.")
                 properties?.getJSONObject("cwd")?.put("description",
-                    "工作目录。Android 默认使用 Eta 私有工作区，Linux 默认 /workspace。")
+                    "Working directory. Android defaults to Eta's private workspace; Linux defaults to /workspace.")
             }
             "run_command" -> {
                 function.put("description",
-                    "通过普通 Android Shell 执行单次非交互命令，以 App UID 运行；只能访问当前应用有权访问的资源。" +
-                        "不会进入 Linux 环境，Linux 命令使用 terminal(environment=linux)。")
-                properties?.getJSONObject("cwd")?.put("description", "工作目录，默认使用 Eta 私有工作区。")
+                    "Run one non-interactive command through a plain Android shell as the app UID; it can only reach resources this app may access." +
+                        "It never enters the Linux environment; use terminal(environment=linux) for Linux commands.")
+                properties?.getJSONObject("cwd")?.put("description", "Working directory; defaults to Eta's private workspace.")
             }
             "list_directory" -> {
-                function.put("description", "列出当前应用有权访问的目录，默认使用 Eta 私有工作区。")
+                function.put("description", "List directories this app may access; defaults to Eta's private workspace.")
                 properties?.optJSONObject("path")?.apply {
-                    put("description", "目录路径；未提供时使用 Eta 私有工作区。")
+                    put("description", "Directory path; defaults to Eta's private workspace when omitted.")
                     remove("default")
                 }
             }
             "read_image" -> properties?.getJSONObject("path")?.put("description",
-                "绝对图片或视频路径、file URI、已授权的 content URI；聊天附件优先用用户消息里给出的绝对路径，别名 /home/workdir/attachments/image.jpg 只解析当前会话的附件。视频会抽取封面帧。")
+                "An absolute image or video path, a file URI, or an authorised content URI. For chat attachments prefer the absolute path given in the user message; the alias /home/workdir/attachments/image.jpg resolves only the current conversation's attachments. Video gets a cover frame.")
             "press_key" -> properties?.getJSONObject("button")?.let { button ->
                 val values = button.getJSONArray("enum")
                 button.put("enum", JSONArray().also { allowed ->
@@ -210,10 +210,10 @@ internal object AgentToolRequirements {
                         if (!value.equals("PASTE", ignoreCase = true)) allowed.put(value)
                     }
                 })
-                button.put("description", "无障碍支持的系统按键；粘贴文本请使用 paste_text。")
+                button.put("description", "A system key the accessibility service supports; use paste_text to paste text.")
             }
             "search_personal_orders" -> function.put("description",
-                "从用户已授权保存的通知历史检索外卖、购物、快递、票券和出行订单。")
+                "Search food delivery, shopping, courier, ticket and travel orders from notification history the user authorised Eta to keep.")
         }
     }
 

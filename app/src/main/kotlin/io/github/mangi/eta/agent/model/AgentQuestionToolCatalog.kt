@@ -20,11 +20,11 @@ internal object AgentQuestionToolCatalog {
                 "properties",
                 JSONObject()
                     .put("id", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 64)
-                        .put("description", "稳定选项 ID，回答按它回填；不要用展示文本代替。"))
+                        .put("description", "Stable option id that the answer is matched against; never substitute display text for it."))
                     .put("label", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 200)
-                        .put("description", "给用户看的短标签。"))
+                        .put("description", "Short label shown to the user."))
                     .put("description", JSONObject().put("type", "string").put("maxLength", 1000)
-                        .put("description", "可选的补充说明，解释该选项的含义或后果。")),
+                        .put("description", "Optional additional note explaining what the option means or implies.")),
             )
             .put("required", JSONArray().put("id").put("label"))
 
@@ -32,13 +32,13 @@ internal object AgentQuestionToolCatalog {
             AgentToolSchema.function(
                 name = NAME,
                 description =
-                    "向用户提一个会影响执行结果的关键问题，并等待回答。只在关键参数确实缺失、" +
-                        "且无法从当前上下文合理推断时使用；能从上下文确定或可靠默认的细节直接处理，不要为确认细节而提问。" +
-                        "必须单独成批调用：同一批工具调用里不要混入其它工具，只发一个 ask_user。" +
-                        "提供 2-8 个互不重叠且可执行的选项；recommended_option_id 只是参考提示，" +
-                        "不要替用户预先决定，也不要暗示用户只能选它。" +
-                        "用户以 option 明确选择、以 other 自定义、以 delegate 暂时交给后续处理；" +
-                        "allow_other/allow_delegation/allow_note 未给出的能力不要索取。",
+                    "Ask the user one key question that changes the outcome and wait for the answer. Use it only when a critical parameter is genuinely missing" +
+                        "and cannot be reasonably inferred from the current context; details that can be determined from context or defaulted reliably should just be handled, not asked about." +
+                        "Must be called alone in its batch: do not mix other tools into the same batch, and send exactly one ask_user." +
+                        "Provide 2-8 mutually exclusive, actionable options; recommended_option_id is only a hint," +
+                        "so do not decide for the user and do not imply it is the only choice." +
+                        "The user answers with an option to choose explicitly, with other to write a custom answer, or with delegate to defer the decision;" +
+                        "do not request capabilities that allow_other/allow_delegation/allow_note do not grant.",
                 parameters = JSONObject()
                     .put("type", "object")
                     .put("additionalProperties", false)
@@ -46,9 +46,9 @@ internal object AgentQuestionToolCatalog {
                         "properties",
                         JSONObject()
                             .put("title", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 200)
-                                .put("description", "问题标题，简洁说明要决定什么。"))
+                                .put("description", "Question title, briefly stating what must be decided."))
                             .put("question", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 4000)
-                                .put("description", "完整问题，包含做出选择所需的背景与约束。"))
+                                .put("description", "The full question, including the background and constraints needed to choose."))
                             .put(
                                 "options",
                                 JSONObject()
@@ -56,16 +56,16 @@ internal object AgentQuestionToolCatalog {
                                     .put("minItems", 2)
                                     .put("maxItems", 8)
                                     .put("items", option)
-                                    .put("description", "2-8 个候选选项；id 必须唯一且稳定。"),
+                                    .put("description", "2-8 candidate options; each id must be unique and stable."),
                             )
                             .put("recommended_option_id", JSONObject().put("type", "string").put("maxLength", 64)
-                                .put("description", "可选；给定时必须是某个选项的 id，仅作参考提示，不自动选择。"))
+                                .put("description", "Optional; when given it must be the id of one option, serves only as a hint, and never selects automatically."))
                             .put("allow_other", JSONObject().put("type", "boolean")
-                                .put("description", "是否允许用户自定义回答；默认 true。"))
+                                .put("description", "Whether the user may write a custom answer; default true."))
                             .put("allow_delegation", JSONObject().put("type", "boolean")
-                                .put("description", "是否允许用户把问题暂时交给后续处理；默认 true。"))
+                                .put("description", "Whether the user may defer the question for later handling; default true."))
                             .put("allow_note", JSONObject().put("type", "boolean")
-                                .put("description", "是否允许用户补充备注；默认 true。")),
+                                .put("description", "Whether the user may add a note; default true.")),
                     )
                     .put("required", JSONArray().put("title").put("question").put("options")),
             ),

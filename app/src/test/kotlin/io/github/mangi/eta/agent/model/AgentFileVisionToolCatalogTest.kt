@@ -10,11 +10,11 @@ class AgentFileVisionToolCatalogTest {
     fun readImageFollowsFileToolsInsteadOfPersonalDataReads() {
         assertFalse("read_image" in names(terminalTools = false, sensitiveReads = true))
         assertTrue("read_image" in names(terminalTools = true, sensitiveReads = false))
-        assertTrue(readImageDescription().contains("同一轮最多调用一次"))
-        assertTrue(readImageDescription().contains("下一轮读取下一张"))
-        assertTrue(readImageDescription().contains("视频"))
+        assertTrue(readImageDescription().contains("at most once per round"))
+        assertTrue(readImageDescription().contains("reading the next one in a later round"))
+        assertTrue(readImageDescription().contains("video"))
         assertTrue(readImageDescription().contains("/workspace"))
-        assertTrue(readImageDescription().contains("Markdown 图片语法"))
+        assertTrue(readImageDescription().contains("Markdown image syntax"))
     }
 
     private fun readImageDescription(): String {

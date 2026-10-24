@@ -39,7 +39,7 @@ internal object AgentTerminalToolCatalog {
                                     JSONObject()
                                         .put("type", "string")
                                         .put("enum", JSONArray().put("user").put("root"))
-                                        .put("description", "宿主执行身份。Android 默认使用当前可用身份；Linux 根据已选择的后端使用 user 或 root。PRoot 内模拟 root 不授予 Android 特权。")
+                                        .put("description", "Host execution identity. Android uses whatever identity is currently available; Linux uses user or root depending on the selected backend. A simulated root inside PRoot does not grant Android privileges.")
                                 )
                                 .put(
                                     "environment",
@@ -121,7 +121,7 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "run_command",
-                    description = "只在 Android 系统的非交互 Root Shell 执行命令，不会进入 Debian 或 Alpine。适合 Android 系统信息、包管理和本机文件检查。Linux 工具及工作区 Git 操作必须使用 terminal(environment=linux,cwd=/workspace/项目名)，本工具不接受 environment。每次调用都是新 shell；不要运行交互式或长期驻留命令。遇到命令不存在时不要在相同环境原样重试，更不要自动跨环境重放有副作用的命令。",
+                    description = "Run a command only in the non-interactive Android Root shell; it never enters Debian or Alpine. Suited to Android system information, package management and local file inspection. Linux tooling and workspace Git operations must use terminal(environment=linux,cwd=/workspace/project); this tool does not accept environment. Every call is a new shell; do not run interactive or long-lived commands. If a command does not exist, do not retry it unchanged in the same environment, and never replay commands with side effects in another environment automatically.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -131,19 +131,19 @@ internal object AgentTerminalToolCatalog {
                                     "command",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "要执行的 shell 命令，可使用管道和重定向。")
+                                        .put("description", "Shell command to run; pipes and redirection are allowed.")
                                 )
                                 .put(
                                     "cwd",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "工作目录，默认 /data/local/tmp/eta。相对路径也按该目录解析；用户存储可用 ~/ 表示 /storage/emulated/0。")
+                                        .put("description", "Working directory; default /data/local/tmp/eta. Relative paths resolve against it too; ~/ denotes /storage/emulated/0 in user storage.")
                                 )
                                 .put(
                                     "timeout_seconds",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "超时秒数，1 到 180，默认 30。")
+                                        .put("description", "Timeout in seconds from 1 to 180; default 30.")
                                 )
                         )
                         .put("required", JSONArray().put("command"))
@@ -152,7 +152,7 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "read_file",
-                    description = "读取 Android 文件内容；支持当前所选 Linux 的 /workspace、/var/minis 和 minis:// 路径，自动映射到宿主文件。适合配置、日志、小文本文件；大文件用 offset_bytes/max_bytes 分段读取。",
+                    description = "Read Android file contents; Linux /workspace, /var/minis and minis:// paths of the selected environment map automatically to host files. Suited to configs, logs and small text files; read large files in chunks with offset_bytes/max_bytes.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -163,13 +163,13 @@ internal object AgentTerminalToolCatalog {
                                     "offset_bytes",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "从第几个字节开始，默认 0。")
+                                        .put("description", "Byte offset to start at; default 0.")
                                 )
                                 .put(
                                     "max_bytes",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "最多读取字节数，1 到 262144，默认 65536。")
+                                        .put("description", "Maximum bytes to read from 1 to 262144; default 65536.")
                                 )
                         )
                         .put("required", JSONArray().put("path"))
@@ -178,7 +178,7 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "write_file",
-                    description = "写入 Android 文件。可覆盖或追加；会自动创建父目录。用于明确需要修改文件的任务。",
+                    description = "Write an Android file, overwriting or appending; parent directories are created automatically. Use it for tasks that explicitly need file changes.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -190,7 +190,7 @@ internal object AgentTerminalToolCatalog {
                                     "append",
                                     JSONObject()
                                         .put("type", "boolean")
-                                        .put("description", "true 追加，false 覆盖，默认 false。")
+                                        .put("description", "true appends, false overwrites; default false.")
                                 )
                         )
                         .put("required", JSONArray().put("path").put("content"))
@@ -199,7 +199,7 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "list_directory",
-                    description = "列出目录内容；支持当前所选 Linux 的 /workspace、/var/minis 和 minis:// 路径，自动映射到宿主目录。默认 /data/local/tmp/eta，输出类似 ls -l。",
+                    description = "List directory contents; Linux /workspace, /var/minis and minis:// paths of the selected environment map automatically to host directories. Defaults to /data/local/tmp/eta and outputs something like ls -l.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -211,7 +211,7 @@ internal object AgentTerminalToolCatalog {
                                     "limit",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "最多返回 1 到 200 行，默认 80。")
+                                        .put("description", "Return between 1 and 200 lines; default 80.")
                                 )
                         )
                 )
@@ -219,8 +219,8 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "stat_file",
-                    description = "查询已知文件或目录的规范路径、类型、大小及版本，不读取正文。" +
-                        "返回的 revision 用于 edit_file 与分页续读。",
+                    description = "Query the canonical path, type, size and revision of a known file or directory without reading its contents." +
+                        "The returned revision is used by edit_file and for resuming paged reads.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -234,8 +234,8 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "edit_file",
-                    description = "精确替换不超过 512 KiB 的 UTF-8 文件中的 old_text。默认必须唯一匹配；" +
-                        "未找到或多处匹配时不写入，应重新读取或补充上下文。写入前再次检查旧内容。",
+                    description = "Exactly replace old_text in a UTF-8 file no larger than 512 KiB. It must match uniquely by default;" +
+                        "if it is missing or matches in several places nothing is written, and you should re-read or add context. The old content is checked again before writing.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -244,10 +244,10 @@ internal object AgentTerminalToolCatalog {
                                 .put("path", filePathSchema())
                                 .put(
                                     "old_text",
-                                    fileTextSchema("必须与文件中旧内容完全匹配，不可为空。", 524288)
+                                    fileTextSchema("Must match the old content in the file exactly and must not be empty.", 524288)
                                         .put("minLength", 1)
                                 )
-                                .put("new_text", fileTextSchema("替换内容，空字符串表示删除匹配片段。", 524288))
+                                .put("new_text", fileTextSchema("Replacement text; an empty string deletes the matched span.", 524288))
                                 .put(
                                     "replace_all",
                                     JSONObject()
@@ -262,8 +262,8 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "glob_files",
-                    description = "按路径模式递归查找工作目录内的文件。支持 *、?、**，默认跳过隐藏目录且不追踪目录链接。" +
-                        "结果有界；继续查询使用原样 cursor，partial=true 时不能断言已搜索全部文件。",
+                    description = "Recursively find files in the working directory by path pattern. Supports *, ? and **; hidden directories are skipped and directory symlinks are not followed." +
+                        "Results are bounded; continue with the cursor unchanged, and do not claim every file was searched when partial=true.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -272,18 +272,18 @@ internal object AgentTerminalToolCatalog {
                                 .put("path", filePathSchema())
                                 .put(
                                     "pattern",
-                                    fileTextSchema("相对于搜索目录的模式，例如 **/*.json。", 500)
+                                    fileTextSchema("Pattern relative to the search directory, for example **/*.json.", 500)
                                         .put("minLength", 1)
                                 )
                                 .put(
                                     "limit",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "最多返回条目数，默认 80。")
+                                        .put("description", "Maximum number of entries; default 80.")
                                         .put("minimum", 1)
                                         .put("maximum", 200)
                                 )
-                                .put("cursor", fileTextSchema("上次查询返回的不透明续查游标，保持所有查询条件不变。", 512))
+                                .put("cursor", fileTextSchema("Opaque continuation cursor returned by the previous query; keep every other query condition unchanged.", 512))
                                 .put(
                                     "include_hidden",
                                     JSONObject()
@@ -297,8 +297,8 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "grep_files",
-                    description = "在工作目录的 UTF-8 文本中搜索字面文本，返回路径、行号与匹配行。默认区分大小写；" +
-                        "按条目和字节预算分段扫描，可通过游标续查；二进制和不可访问项会被跳过并报告不完整范围。",
+                    description = "Search UTF-8 text in the working directory for literal text; returns paths, line numbers and matching lines. Case-sensitive by default;" +
+                        "it scans in segments bounded by entry and byte budgets and resumes with the cursor; binary and inaccessible items are skipped and an incomplete range is reported.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -307,19 +307,19 @@ internal object AgentTerminalToolCatalog {
                                 .put("path", filePathSchema())
                                 .put(
                                     "query",
-                                    fileTextSchema("要查找的字面文本，不是正则表达式。", 500)
+                                    fileTextSchema("Literal text to find; not a regular expression.", 500)
                                         .put("minLength", 1)
                                 )
-                                .put("glob", fileTextSchema("相对于目录的文件模式，默认 **/*。", 500))
+                                .put("glob", fileTextSchema("File pattern relative to the directory; default **/*.", 500))
                                 .put(
                                     "limit",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "最多返回匹配条数，默认 50。")
+                                        .put("description", "Maximum number of matches; default 50.")
                                         .put("minimum", 1)
                                         .put("maximum", 200)
                                 )
-                                .put("cursor", fileTextSchema("上次查询返回的续查游标，保持所有查询条件不变。", 512))
+                                .put("cursor", fileTextSchema("Continuation cursor returned by the previous query; keep every other query condition unchanged.", 512))
                                 .put(
                                     "case_sensitive",
                                     JSONObject()
@@ -345,25 +345,25 @@ internal object AgentTerminalToolCatalog {
             JSONObject()
                 .put("type", "string")
                 .put("enum", JSONArray(listOf("android", "linux")))
-                .put("description", "文件路径所属环境，默认 android；linux 使用设置中选定的发行版和后端。")
+                .put("description", "Environment the file path belongs to; default android. linux uses the distribution and backend selected in settings.")
         )
         .put(
             "identity",
             JSONObject()
                 .put("type", "string")
                 .put("enum", JSONArray(listOf("user", "root")))
-                .put("description", "可选的宿主执行身份，与终端一致；缺省按环境与 Root 授权自动选择。")
+                .put("description", "Optional host execution identity, the same as terminal; by default it is chosen from the environment and Root availability.")
         )
         .put(
             "cwd",
-            fileTextSchema("可选的工作目录；省略时与终端共用当前环境的默认工作区。", 4096)
+            fileTextSchema("Optional working directory; when omitted it shares the current environment's default workspace with terminal.", 4096)
         )
 
     private fun filePathSchema(): JSONObject =
-        fileTextSchema("绝对路径或相对于 cwd 的路径；仅接受文件系统路径，不接受 content URI。", 4096)
+        fileTextSchema("Absolute path, or a path relative to cwd; filesystem paths only, content URIs are rejected.", 4096)
 
     private fun fileRevisionSchema(): JSONObject =
-        fileTextSchema("上一次文件或目录结果中的 revision；不同环境和身份的版本不能混用。", 256)
+        fileTextSchema("revision from a previous file or directory result; revisions from different environments or identities must not be mixed.", 256)
 
     private fun fileTextSchema(description: String, maxLength: Int): JSONObject =
         JSONObject()

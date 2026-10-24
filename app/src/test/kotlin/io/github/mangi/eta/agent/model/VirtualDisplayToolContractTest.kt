@@ -28,7 +28,7 @@ class VirtualDisplayToolContractTest {
         assertTrue(description.contains("mutations_enabled"))
         assertTrue(description.contains("session_authenticated"))
         assertTrue(description.contains("false"))
-        assertTrue(description.contains("不等于授权") || description.contains("不是授权"))
+        assertTrue(description.contains("does not grant authorisation"))
         assertFalse(description.contains("vd start"))
 
         val rootless = AgentToolRequirements.project(rooted, rootAvailable = false)
@@ -48,11 +48,11 @@ class VirtualDisplayToolContractTest {
         assertEquals(RootRequirement.NONE, AgentToolRequirements.rootRequirement("keep_virtual_result"))
         val description = catalog(rootAvailable = false).function("keep_virtual_result").getString("description")
         assertTrue(description.contains("finish_virtual_session"))
-        assertTrue(description.contains("这里只标记"))
-        assertFalse(description.contains("关掉"))
-        assertFalse(description.contains("关闭副屏"))
+        assertTrue(description.contains("only marks"))
+        assertFalse(description.contains("shut down"))
+        assertFalse(description.contains("close the virtual display"))
         assertFalse(description.contains("中间应用不要"))
-        assertFalse(description.contains("都会被关掉"))
+        assertFalse(description.contains("all be closed"))
         assertTrue("keep_virtual_result" in catalog(rootAvailable = false).names())
     }
 
@@ -62,7 +62,7 @@ class VirtualDisplayToolContractTest {
         val finish = catalog(rootAvailable = true).function("finish_virtual_session").getString("description")
         assertTrue(finish.contains("handedOff=false"))
         assertTrue(finish.contains("released=true"))
-        assertTrue(finish.contains("不交付"))
+        assertTrue(finish.contains("without delivering"))
         val launch = catalog(rootAvailable = false).function("launch_app").getString("description")
         assertTrue(launch.contains("reused=true"))
     }

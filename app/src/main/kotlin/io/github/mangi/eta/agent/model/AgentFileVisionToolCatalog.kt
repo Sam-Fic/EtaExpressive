@@ -9,7 +9,7 @@ internal object AgentFileVisionToolCatalog {
         tools.put(
             AgentToolSchema.function(
                 name = "read_image",
-                description = "读取用户指定路径或系统相册 URI 中的一张图片或视频，并作为视觉输入提供给模型。视频会抽取一帧封面，不必先用终端转码。Linux 环境的 /workspace、/var/minis 与 minis:// 路径会自动映射到宿主文件，不必先拷到 Android 路径。同一轮最多调用一次；需要查看多张时，等待当前结果返回并观察后，再在下一轮读取下一张。该工具只让模型自己看到画面，不会把图片显示到对话里；用户要“展示/看看/预览”图片时，需在回复正文用 Markdown 图片语法 ![说明](绝对路径) 引用。",
+                description = "Read one image or video from a user-supplied path or a gallery content URI and provide it to the model as visual input. For video, one cover frame is extracted, so no terminal transcoding is needed first. Linux /workspace, /var/minis and minis:// paths map automatically to host files, so do not copy them to Android paths first. Call at most once per round; to view several, wait for the current result and observe it before reading the next one in a later round. This tool only lets the model see the frame; it never renders the image into the conversation. When the user asks to show, look at or preview an image, reference it in your reply body with Markdown image syntax ![description](absolute path).",
                 parameters = JSONObject()
                     .put("type", "object")
                     .put(
@@ -19,7 +19,7 @@ internal object AgentFileVisionToolCatalog {
                             JSONObject()
                                 .put("type", "string")
                                 .put("maxLength", 1_024)
-                                .put("description", "任意绝对图片或视频路径、file URI 或系统相册 content URI；支持 Linux /workspace 与 /var/minis 路径；本机路径由 Root 读取，视频自动抽封面"),
+                                .put("description", "Any absolute image or video path, file URI or gallery content URI; Linux /workspace and /var/minis paths are supported; local paths are read via Root, and video gets an automatic cover frame"),
                         ),
                     )
                     .put("required", JSONArray(listOf("path"))),

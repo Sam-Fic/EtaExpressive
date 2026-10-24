@@ -8,7 +8,7 @@ internal object AgentBrowserToolCatalog {
         tools.put(
             AgentToolSchema.function(
                 name = "browser_use",
-                description = "操作Eta的离屏多标签浏览器（每个会话最多 3 个标签，编号只用 0、1、2，不会占用其他会话的页面），不会切换到外部浏览器。一次调用只执行一个 action。支持 new_tab、close_tab、list_tabs；tab_id 指定标签，不提供则操作当前标签。navigate 接受完整 URL、域名、搜索词、/workspace、/var/minis 或 minis://。可用 desktop_chrome / mobile_chrome。get_cookies 只返回摘要和 /var/minis/offloads/env_cookies_xxx.sh，明文不进对话。通常先 navigate，再用 get_readable 提取 Markdown 正文，或用 find_elements / get_backbone 了解结构。选择器以当前 DOM 为准，搜索框可能是 textarea 或 contenteditable，不一定是 input；scroll_and_collect 返回 0 条时先检查结构和关键词过滤，不直接认定页面无内容。go_back/go_forward 逐条移动历史索引。需要把 URI 显式交给外部应用时使用 open_uri。",
+                description = "Operate Eta's offscreen multi-tab browser (at most 3 tabs per session, numbered only 0, 1 and 2, never borrowing pages from other sessions); it does not switch to an external browser. One call performs exactly one action. Supports new_tab, close_tab and list_tabs; tab_id selects a tab and defaults to the current tab. navigate accepts a full URL, a domain, a search phrase, /workspace, /var/minis or minis://. desktop_chrome and mobile_chrome are available. get_cookies returns only a summary plus /var/minis/offloads/env_cookies_xxx.sh; plaintext never enters the conversation. Usually navigate first, then extract Markdown with get_readable, or inspect structure with find_elements / get_backbone. Selectors follow the current DOM; a search box may be a textarea or contenteditable rather than an input. If scroll_and_collect returns 0 items, check the structure and the keyword filter before concluding the page is empty. go_back/go_forward step through the history index one entry at a time. Use open_uri when a URI must be handed explicitly to an external app.",
                 parameters = JSONObject()
                     .put("type", "object")
                     .put(
@@ -18,7 +18,7 @@ internal object AgentBrowserToolCatalog {
                                 "action",
                                 JSONObject()
                                     .put("type", "string")
-                                    .put("description", "本次唯一执行的浏览器动作。")
+                                    .put("description", "The single browser action performed by this call.")
                                     .put(
                                         "enum",
                                         JSONArray()
@@ -50,32 +50,32 @@ internal object AgentBrowserToolCatalog {
                                             .put("wait_for_dom_stable"),
                                     ),
                             )
-                            .put("tab_id", JSONObject().put("type", "integer").put("description", "目标标签 ID，来自 list_tabs 或前次结果；无此标签时不会自动换到其他标签。"))
-                            .put("url", JSONObject().put("type", "string").put("description", "navigate 或 fetch 的目标；navigate 也接受域名或搜索词。"))
-                            .put("selector", JSONObject().put("type", "string").put("description", "click、type、hover、get_text、find_elements、scroll 或 wait_for_selector 使用的 CSS selector。"))
-                            .put("text", JSONObject().put("type", "string").put("description", "type 要输入的文本。只会发送给工具，不会显示在运行摘要中。"))
-                            .put("submit", JSONObject().put("type", "boolean").put("description", "type 输入后是否提交所在表单，默认 false。"))
-                            .put("coordinate_x", JSONObject().put("type", "integer").put("description", "click、type 或 hover 的视口 X 坐标，和 coordinate_y 一起使用。"))
-                            .put("coordinate_y", JSONObject().put("type", "integer").put("description", "click、type 或 hover 的视口 Y 坐标，和 coordinate_x 一起使用。"))
-                            .put("amount", JSONObject().put("type", "integer").put("description", "scroll 的滚动像素量。"))
-                            .put("direction", JSONObject().put("type", "string").put("enum", JSONArray().put("up").put("down")).put("description", "scroll 的滚动方向。"))
-                            .put("offset", JSONObject().put("type", "integer").put("description", "get_readable 或 get_text 的文本起始偏移，默认 0。"))
-                            .put("max_chars", JSONObject().put("type", "integer").put("description", "get_readable 或 get_text 最多返回的文本字符数。"))
-                            .put("read_image", JSONObject().put("type", "boolean").put("description", "screenshot 时是否把截图附给模型直接查看，默认 true。"))
-                            .put("full_page", JSONObject().put("type", "boolean").put("description", "screenshot 时是否尽量截取整页，默认 false。高度有上限。"))
-                            .put("timeout_ms", JSONObject().put("type", "integer").put("description", "navigate、wait_for_selector 或 wait_for_dom_stable 的超时毫秒数。"))
-                            .put("timeout", JSONObject().put("type", "integer").put("description", "wait_for_dom_stable 的超时毫秒数，兼容 timeout_ms。"))
-                            .put("script", JSONObject().put("type", "string").put("description", "execute_js 要运行的脚本。在 async 函数中执行，支持 await 和 return。"))
-                            .put("user_agent", JSONObject().put("type", "string").put("enum", JSONArray().put("desktop_chrome").put("mobile_chrome")).put("description", "set_user_agent 的浏览器身份。"))
-                            .put("max_depth", JSONObject().put("type", "integer").put("description", "get_backbone 的最大 DOM 深度，默认 5。"))
-                            .put("viewport_width", JSONObject().put("type", "integer").put("description", "set_viewport 的视口宽度，不小于 320。"))
-                            .put("viewport_height", JSONObject().put("type", "integer").put("description", "set_viewport 的视口高度，不小于 320。"))
-                            .put("reset", JSONObject().put("type", "boolean").put("description", "set_viewport 时为 true 则恢复当前 UA 的默认视口。"))
-                            .put("item_selector", JSONObject().put("type", "string").put("description", "scroll_and_collect 收集条目使用的 CSS selector。"))
-                            .put("scroll_count", JSONObject().put("type", "integer").put("description", "scroll_and_collect 的滚动次数，默认 5。"))
-                            .put("keywords", JSONObject().put("type", "array").put("items", JSONObject().put("type", "string")).put("description", "get_cookies 或 scroll_and_collect 的关键词过滤。"))
-                            .put("fuzzy", JSONObject().put("type", "boolean").put("description", "get_cookies 关键词匹配：true 时名称需包含全部关键词，false 时精确匹配任一关键词，默认 true。"))
-                            .put("cookies", JSONObject().put("type", "string").put("description", "set_cookies 的 JSON 数组字符串，每项至少包含 name 与 value。")),
+                            .put("tab_id", JSONObject().put("type", "integer").put("description", "Target tab id, from list_tabs or a previous result; if the tab does not exist it will not silently switch to another tab."))
+                            .put("url", JSONObject().put("type", "string").put("description", "Target for navigate or fetch; navigate also accepts a domain or a search phrase."))
+                            .put("selector", JSONObject().put("type", "string").put("description", "CSS selector used by click, type, hover, get_text, find_elements, scroll or wait_for_selector."))
+                            .put("text", JSONObject().put("type", "string").put("description", "Text for type to enter. It is sent only to the tool and never shown in the run summary."))
+                            .put("submit", JSONObject().put("type", "boolean").put("description", "Whether type submits its form after entering text; default false."))
+                            .put("coordinate_x", JSONObject().put("type", "integer").put("description", "Viewport X coordinate for click, type or hover; used together with coordinate_y."))
+                            .put("coordinate_y", JSONObject().put("type", "integer").put("description", "Viewport Y coordinate for click, type or hover; used together with coordinate_x."))
+                            .put("amount", JSONObject().put("type", "integer").put("description", "Number of pixels scroll moves."))
+                            .put("direction", JSONObject().put("type", "string").put("enum", JSONArray().put("up").put("down")).put("description", "Scroll direction for scroll."))
+                            .put("offset", JSONObject().put("type", "integer").put("description", "Starting offset of the text returned by get_readable or get_text; default 0."))
+                            .put("max_chars", JSONObject().put("type", "integer").put("description", "Maximum characters returned by get_readable or get_text."))
+                            .put("read_image", JSONObject().put("type", "boolean").put("description", "Whether screenshot attaches the image for the model to view directly; default true."))
+                            .put("full_page", JSONObject().put("type", "boolean").put("description", "Whether screenshot captures the full page where possible; default false. Height is capped."))
+                            .put("timeout_ms", JSONObject().put("type", "integer").put("description", "Timeout in milliseconds for navigate, wait_for_selector or wait_for_dom_stable."))
+                            .put("timeout", JSONObject().put("type", "integer").put("description", "Timeout in milliseconds for wait_for_dom_stable; timeout_ms is also accepted."))
+                            .put("script", JSONObject().put("type", "string").put("description", "Script for execute_js to run. It executes inside an async function, so await and return are supported."))
+                            .put("user_agent", JSONObject().put("type", "string").put("enum", JSONArray().put("desktop_chrome").put("mobile_chrome")).put("description", "Browser identity for set_user_agent."))
+                            .put("max_depth", JSONObject().put("type", "integer").put("description", "Maximum DOM depth for get_backbone; default 5."))
+                            .put("viewport_width", JSONObject().put("type", "integer").put("description", "Viewport width for set_viewport, at least 320."))
+                            .put("viewport_height", JSONObject().put("type", "integer").put("description", "Viewport height for set_viewport, at least 320."))
+                            .put("reset", JSONObject().put("type", "boolean").put("description", "With set_viewport, true restores the default viewport for the current UA."))
+                            .put("item_selector", JSONObject().put("type", "string").put("description", "CSS selector scroll_and_collect uses to collect items."))
+                            .put("scroll_count", JSONObject().put("type", "integer").put("description", "Number of scroll steps for scroll_and_collect; default 5."))
+                            .put("keywords", JSONObject().put("type", "array").put("items", JSONObject().put("type", "string")).put("description", "Keyword filter for get_cookies or scroll_and_collect."))
+                            .put("fuzzy", JSONObject().put("type", "boolean").put("description", "get_cookies keyword matching: true requires the name to contain all keywords, false matches any keyword exactly; default true."))
+                            .put("cookies", JSONObject().put("type", "string").put("description", "JSON array string for set_cookies; each item must contain at least name and value.")),
                     )
                     .put("required", JSONArray().put("action")),
             ),

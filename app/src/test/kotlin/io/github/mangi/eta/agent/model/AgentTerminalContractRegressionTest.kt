@@ -19,11 +19,11 @@ class AgentTerminalContractRegressionTest {
         val terminalDescription = terminal.getString("description")
 
         assertTrue(runDescription.contains("Android"))
-        assertTrue(runDescription.contains("Shell"))
+        assertTrue(runDescription.contains("shell"))
         assertTrue(runDescription.contains("Debian"))
         assertTrue(runDescription.contains("Alpine"))
         assertTrue(runDescription.contains("terminal(environment=linux,cwd=/workspace/"))
-        assertFalse(runDescription.contains("Linux 命令流水线"))
+        assertFalse(runDescription.contains("Linux command pipeline"))
         assertTrue(terminalDescription.contains("environment=linux"))
         assertTrue(terminalDescription.contains("Default android"))
         assertEquals(
