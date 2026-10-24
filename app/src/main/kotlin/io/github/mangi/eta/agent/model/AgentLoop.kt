@@ -195,6 +195,52 @@ internal class AgentLoop(
 
     fun sensitiveToolCallIdsSnapshot(): Set<String> = sensitiveToolCallIds.toSet()
 
+    /**
+     * 一轮请求在发出前就已经确定的只读量。
+     *
+     * 这些值必须在回调可能改动历史之前取定：重试复用同一个请求，只有输出或部分用量
+     * 的回执不能移动这个锚点。集中成一处，避免在 480 行的 run() 里靠位置记忆它们的关系。
+     */
+    private data class RoundContext(
+        /** 静默预算使用的本地边界词元数。 */
+        val requestLocal: Int,
+        /** 快照时刻的原始历史条数（仅用于有界的请求上下文诊断）。 */
+        val requestMessageCount: Int,
+        /** 与整表 transcript + countMessage 等价的历史词元数。 */
+        val requestHistoryTokens: Int,
+        /** UI 校准使用的固定开销（system 消息 + 工具目录）。 */
+        val requestFixedTokens: Int,
+        /** 恰好一份已水合/已裁剪的历史快照，供投影与传输共用。 */
+        val filteredMessages: org.json.JSONArray,
+        /** 本轮是否到了可以发布本地估算的显示边界。 */
+        val publishLocalEstimate: Boolean,
+    )
+
+    private fun snapshotRound(roundTools: JSONArray): RoundContext {
+        // Snapshot BEFORE callbacks can append this response to messages.
+        val requestLocal = localRequestTokens()
+        val requestMessageCount = messages.length()
+        val requestHistoryTokens = historyChars.historyTokens()
+        // UI history calibration retains its original raw DTO basis, including old receipts.
+        val requestFixedTokens = AgentRequestTokenEstimate.fixed(
+            messages, systemCount, roundTools, toolTokens = currentRoundToolsTokens)
+        // Finish the raw metadata pass before retaining the hydrated copy (lower peak memory).
+        if (localOnlyRecovery) AgentRecoveryContext.append(messages)
+        val filteredMessages = AgentRequestMediaPolicy.filter(messages, config.supportsVision, config.supportsVideo)
+        val publishLocalEstimate = requestBudget.consumeLocalBoundary()
+        // 两个预算锚点都在同一个边界上前进，避免显示与静默口径互相污染。
+        silentBudget.requestStarted(requestLocal)
+        requestBudget.requestStarted()
+        return RoundContext(
+            requestLocal = requestLocal,
+            requestMessageCount = requestMessageCount,
+            requestHistoryTokens = requestHistoryTokens,
+            requestFixedTokens = requestFixedTokens,
+            filteredMessages = filteredMessages,
+            publishLocalEstimate = publishLocalEstimate,
+        )
+    }
+
     fun run(): Result {
         // Only annotate messages created by this run. The current user entry is initially last.
         messages.optJSONObject(messages.length() - 1)?.put(AgentTurnIdentity.JSON_KEY, turnId)
@@ -269,32 +315,16 @@ internal class AgentLoop(
             continuationBlocks.beginRequest(continuingInterruptedRequest && !supplementStartsNewBlock)
             supplementStartsNewBlock = false
             continuingInterruptedRequest = false
-            // Snapshot BEFORE callbacks can append this response to messages. Retries
-            // reuse the same request; partial/output-only usage cannot move this anchor.
-            val requestLocal = localRequestTokens()
-            // Raw history size at snapshot time, for the bounded request-context diagnostic only.
-            val requestMessageCount = messages.length()
-            // 与整表 transcript+countMessage 等价，但只对新增消息付费（见 HistoryCharMeter）。
-            val requestHistoryTokens = historyChars.historyTokens()
-            // UI history calibration retains its original raw DTO basis, including old receipts.
-            val requestFixedTokens = AgentRequestTokenEstimate.fixed(
-                messages, systemCount, roundTools, toolTokens = currentRoundToolsTokens)
-            // Finish the raw metadata pass before retaining the hydrated copy (lower peak memory).
-            // Reuse exactly one hydrated/filtered snapshot for projection and transport.
-            if (localOnlyRecovery) AgentRecoveryContext.append(messages)
-            val filteredMessages = AgentRequestMediaPolicy.filter(messages, config.supportsVision, config.supportsVideo)
-            val publishLocalEstimate = requestBudget.consumeLocalBoundary()
+            val snapshot = snapshotRound(roundTools)
             // Display estimates arrive from the SAME final body serialized by the provider.
             // Keep the silent/local boundary and cloud calibration on their original basis.
             var preparedRequestTokens: Int? = null
-            silentBudget.requestStarted(requestLocal)
-            requestBudget.requestStarted()
             lastUsage = null // A new request must not inherit missing fields from the preceding bill.
             val completedRound = try {
                 modelRetry.complete(
                     initialRound = round,
                     request = ProviderRequest(requestConfigForRound(),
-                        filteredMessages, roundTools, sessionId, toolDiagnostics = toolDiagnostics,
+                        snapshot.filteredMessages, roundTools, sessionId, toolDiagnostics = toolDiagnostics,
                         reconnectLocalToolsOnly = localOnlyRecovery),
                     provider = provider,
                     controller = runController,
@@ -305,7 +335,7 @@ internal class AgentLoop(
                             // committed TEXT and its continue prompt to the fixed request prefix.
                             val full = AgentConversationCodec.transcript(messages, systemCount, sensitiveToolCallIds)
                             val suffixMessages = JSONArray()
-                            for (index in filteredMessages.length() until requestMessages.length()) {
+                            for (index in snapshot.filteredMessages.length() until requestMessages.length()) {
                                 val message = JSONObject(requestMessages.getJSONObject(index).toString())
                                 if (message.optString(AgentTurnIdentity.JSON_KEY).isBlank()) {
                                     message.put(AgentTurnIdentity.JSON_KEY, turnId)
@@ -322,11 +352,11 @@ internal class AgentLoop(
                             preparedRequestTokens = providerEvent.tokens
                             // Existing UI reducer keeps cloud receipts authoritative, including
                             // receipts from previous runs. Never feed this into silentBudget.
-                            if (publishLocalEstimate && !hasDisplayCloudReceipt && providerEvent.tokens > 0) {
+                            if (snapshot.publishLocalEstimate && !hasDisplayCloudReceipt && providerEvent.tokens > 0) {
                                 onEvent(AgentEvent.UsageReceived(attemptRound,
                                     AgentTokenUsage(inputTokens = providerEvent.tokens), projected = true,
-                                    requestHistoryTokens = requestHistoryTokens,
-                                    requestOverheadTokens = requestFixedTokens))
+                                    requestHistoryTokens = snapshot.requestHistoryTokens,
+                                    requestOverheadTokens = snapshot.requestFixedTokens))
                             }
                         }
                         if (providerEvent is ProviderEvent.Usage) {
@@ -360,7 +390,7 @@ internal class AgentLoop(
                                 rememberIncompleteText(textEvent)
                                 continuationBlocks.map(attemptRound, textEvent).toAgentEvent(attemptRound)?.let { event ->
                                     onEvent(if (event is AgentEvent.UsageReceived && !event.projected) {
-                                        event.copy(requestHistoryTokens = requestHistoryTokens, requestOverheadTokens = requestFixedTokens)
+                                        event.copy(requestHistoryTokens = snapshot.requestHistoryTokens, requestOverheadTokens = snapshot.requestFixedTokens)
                                     } else event)
                                 }
                             }
@@ -407,12 +437,12 @@ internal class AgentLoop(
             // estimates and sit next to the same round's cloud receipt so the gap is attributable.
             emitRequestContext(
                 attempt = toolDiagnosticAttempt,
-                requestMessageCount = requestMessageCount,
-                requestLocal = requestLocal,
-                requestHistoryTokens = requestHistoryTokens,
-                requestFixedTokens = requestFixedTokens,
+                requestMessageCount = snapshot.requestMessageCount,
+                requestLocal = snapshot.requestLocal,
+                requestHistoryTokens = snapshot.requestHistoryTokens,
+                requestFixedTokens = snapshot.requestFixedTokens,
                 preparedRequestTokens = preparedRequestTokens,
-                filteredMessages = filteredMessages,
+                filteredMessages = snapshot.filteredMessages,
                 roundTools = roundTools,
                 usage = lastUsage,
             )
