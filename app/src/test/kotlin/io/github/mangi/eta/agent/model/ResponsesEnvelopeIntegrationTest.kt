@@ -35,7 +35,7 @@ class ResponsesEnvelopeIntegrationTest {
         timing: ReconnectTiming = SystemReconnectTiming,
         wait: (AgentRunController, Long) -> Unit = { _, _ -> },
         callback: (Int, ProviderEvent) -> Unit = { _, _ -> },
-    ) = AgentModelRetry(timing = timing, waitBeforeRetry = wait).complete(
+    ) = AgentModelRetry(timing = timing, jitterFraction = 0.0, waitBeforeRetry = wait).complete(
         1, request(url, errorReconnectPolicy), OpenAiResponsesProvider, AgentRunController(), {}, callback, {},
     )
     @Test fun httpAndFlattenedSseRejectionsRegenerateOnce() {

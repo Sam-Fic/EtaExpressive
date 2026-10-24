@@ -68,7 +68,7 @@ class AgentReconnectLocalToolLoopIntegrationTest {
                 AgentModelClient.ToolResult("{\"ok\":true}")
             },
             runController = AgentRunController(), traceFormatter = AgentTraceFormatter(), onEvent = events::add,
-            modelRetry = AgentModelRetry { _, delay -> delays += delay },
+            modelRetry = AgentModelRetry(jitterFraction = 0.0) { _, delay -> delays += delay },
         ).run()
         assertEquals("done", result.content)
         assertEquals(4, requests)

@@ -50,15 +50,21 @@ internal sealed interface AgentEvent {
         val delayMs: Int,
         val reasonCode: String,
         val reasonDetail: String = "",
+        /** 永久性失败（鉴权/额度/参数）：只允许有限重发，界面不应把它描述成网络抖动。 */
+        val permanent: Boolean = false,
     ) : AgentEvent {
         val displayMessage: String
             get() = if (reasonCode == "DELEGATION_ARGUMENT_REPAIR") {
                 "正在补全委派任务参数（$attempt/$maxAttempts）；尚未创建子任务，已完成的工具不会重放。"
+            } else if (permanent) {
+                "模型接口返回了不会自行恢复的错误，${delayMs / 1000} 秒后再试最后一次（$attempt/$maxAttempts）；" +
+                    "此前工具结果已保留。这通常不是网络问题，请按原因检查密钥、额度或模型配置。" +
+                    reasonDetail.takeIf { it.isNotBlank() }?.let { "\n原因：$it" }.orEmpty()
             } else "模型请求暂时中断，${delayMs / 1000} 秒后重试（$attempt/$maxAttempts）；此前工具结果已保留。" +
                 reasonDetail.takeIf { it.isNotBlank() }?.let { "\n原因：$it" }.orEmpty()
 
         override fun toLogLine(): String =
-            "model_retry_scheduled round=$round, attempt=$attempt, delay_ms=$delayMs, code=${reasonCode.toSafeLogToken()}"
+            "model_retry_scheduled round=$round, attempt=$attempt, delay_ms=$delayMs, code=${reasonCode.toSafeLogToken()}, permanent=$permanent"
     }
 
     /** One request-scoped disconnect; independent of bounded tool-envelope correction. */

@@ -5,6 +5,7 @@ import io.github.mangi.eta.agent.runtime.AgentRunCancelledException
 import io.github.mangi.eta.agent.runtime.AgentRunController
 import io.github.mangi.eta.agent.runtime.AgentTokenUsage
 import io.github.mangi.eta.data.model.ErrorReconnectPolicy
+import io.github.mangi.eta.data.model.ProviderAuthModes
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -35,9 +36,10 @@ class AgentErrorReconnectTest {
             now = end
         }
     }
-    private fun config(policy: ErrorReconnectPolicy) = AgentModelClient.ModelConfig(
-        baseUrl = "https://example.invalid", apiKey = "never-in-events", model = "test", systemPrompt = "",
-        errorReconnectPolicy = policy.persistedValue)
+    private fun config(policy: ErrorReconnectPolicy, authMode: String = ProviderAuthModes.API_KEY) =
+        AgentModelClient.ModelConfig(
+            baseUrl = "https://example.invalid", apiKey = "never-in-events", model = "test", systemPrompt = "",
+            errorReconnectPolicy = policy.persistedValue, authMode = authMode)
     private fun ok(text: String = "done") = ProviderResponse(JSONObject().put("role", "assistant")
         .put("content", text).put("finish_reason", "stop"))
     private fun provider(endpoint: EndpointKind = EndpointKind.CHAT_COMPLETIONS,
@@ -55,11 +57,16 @@ class AgentErrorReconnectTest {
         onCancelledResponse: (ProviderResponse) -> Unit = {},
         tools: JSONArray = JSONArray(),
         reconnectTextOnly: Boolean = false,
+        authMode: String = ProviderAuthModes.API_KEY,
+        jitter: Double = 0.0,
+        jitterSource: () -> Double = { 0.5 },
     ) = AgentModelRetry(
-        waitBeforeRetry = { control, ms -> (wait ?: { _: AgentRunController, delay: Long -> clock.advance(delay) })(control, ms) },
         timing = clock,
+        jitterFraction = jitter,
+        jitterSource = jitterSource,
+        waitBeforeRetry = { control, ms -> (wait ?: { _: AgentRunController, delay: Long -> clock.advance(delay) })(control, ms) },
     ).complete(
-        1, ProviderRequest(config(policy).copy(hostedWebSearchEnabled = hosted), JSONArray(), tools,
+        1, ProviderRequest(config(policy, authMode).copy(hostedWebSearchEnabled = hosted), JSONArray(), tools,
             reconnectTextOnly = reconnectTextOnly), provider,
         controller, events::add, { _, event -> providerEvents += event }, {}, onCancelledResponse)
 
@@ -86,7 +93,9 @@ class AgentErrorReconnectTest {
                     calls++
                     if (calls == 1) clock.advance(7_000) // Not part of reconnect budget before first error.
                     else clock.advance(1_700)
-                    throw AgentModelFailure.http(401, "")
+                    // 暂时性错误：本例验证的是窗口机制（从首个错误计时、每秒 tick），
+                    // 永久错误只允许一次重发，走的是另一条策略，见 permanentAuthFailureResendsOnce。
+                    throw IOException()
                 }, events)
             }
             assertEquals("ERROR_RECONNECT_DEADLINE", failure.code)
@@ -656,5 +665,134 @@ class AgentErrorReconnectTest {
         }
         assertEquals("CONTEXT_WINDOW_EXCEEDED", failure.code)
         assertTrue(events.none { it is AgentEvent.ErrorReconnectChanged })
+    }
+
+    @Test fun permanentApiKeyFailureResendsOnceThenSurfacesUnderContinuousPolicy() {
+        val clock = Clock()
+        val events = mutableListOf<AgentEvent>()
+        var calls = 0
+        val failure = assertThrows(AgentModelFailure::class.java) {
+            run(clock, ErrorReconnectPolicy.CONTINUOUS, provider { _, _, _ ->
+                calls++
+                throw AgentModelFailure.http(401, "")
+            }, events)
+        }
+        // 之前它会被 2s→4s→8s 无限重发直到用户点停止；现在只允许一次有界重发。
+        assertEquals(2, calls)
+        assertEquals("HTTP_401", failure.code)
+        val retries = events.filterIsInstance<AgentEvent.ModelRetryScheduled>()
+        assertEquals(1, retries.size)
+        assertTrue("界面要能识别这不是网络抖动", retries.single().permanent)
+        assertEquals(1, retries.single().maxAttempts)
+        assertEquals(2_000, retries.single().delayMs)
+        assertEquals("failed", events.filterIsInstance<AgentEvent.ErrorReconnectChanged>().last().status)
+    }
+
+    @Test fun quotaFailureIsPermanentAndNotDisguisedAsNetworkInstability() {
+        for (status in listOf(403, 404)) {
+            val clock = Clock()
+            var calls = 0
+            val failure = assertThrows(AgentModelFailure::class.java) {
+                run(clock, ErrorReconnectPolicy.CONTINUOUS, provider { _, _, _ ->
+                    calls++; throw AgentModelFailure.http(status, "")
+                })
+            }
+            assertEquals(2, calls)
+            assertEquals("HTTP_$status", failure.code)
+        }
+        val quota = AgentModelFailure.http(429, """{"error":{"code":"insufficient_quota"}}""")
+        assertEquals(AgentModelFailure.RetryMode.PERMANENT, quota.retryMode)
+        assertEquals(AgentModelFailure.PermanentReason.QUOTA, quota.permanentReason)
+    }
+
+    @Test fun oauthAuthFailureKeepsUsingTheWholeReconnectWindow() {
+        // 每次尝试都重新解析 OAuth 凭据：用户在窗口内重新登录就能恢复，不能提前放弃。
+        val clock = Clock()
+        var calls = 0
+        val failure = assertThrows(AgentModelFailure::class.java) {
+            run(clock, ErrorReconnectPolicy.WINDOW_30S, provider { _, _, _ ->
+                calls++; throw AgentModelFailure.http(401, "")
+            }, authMode = ProviderAuthModes.OPENAI_CHATGPT)
+        }
+        assertEquals("ERROR_RECONNECT_DEADLINE", failure.code)
+        assertTrue(calls > 2)
+        assertTrue(AgentModelFailure.permanentForAuthMode(
+            AgentModelFailure.PermanentReason.AUTH, ProviderAuthModes.OPENAI_CHATGPT).not())
+    }
+
+    @Test fun transientRateLimitStillUsesUnboundedReconnectWindow() {
+        val clock = Clock()
+        var calls = 0
+        // 暂时性限流不受永久错误的单次重发约束：连续 10 次 429 后仍继续重连直到成功。
+        val result = run(clock, ErrorReconnectPolicy.CONTINUOUS, provider { _, _, _ ->
+            calls++
+            if (calls <= 10) throw AgentModelFailure.http(429, "")
+            ok()
+        })
+        assertEquals(11, calls)
+        assertEquals("done", result.response.assistantMessage.getString("content"))
+        assertEquals(AgentModelFailure.RetryMode.TRANSIENT,
+            AgentModelFailure.http(429, "").retryMode)
+    }
+
+    @Test fun retryAfterRaisesTheBackoffAndJitterOnlyAdds() {
+        val headers = okhttp3.Headers.Builder().add("Retry-After", "45").build()
+        val hinted = AgentModelFailure.http(429, "", headers)
+        assertEquals(45L, hinted.retryAfterSec)
+        val clock = Clock()
+        val events = mutableListOf<AgentEvent>()
+        var calls = 0
+        run(clock, ErrorReconnectPolicy.CONTINUOUS, provider { _, _, _ ->
+            if (calls++ == 0) throw hinted
+            ok()
+        }, events)
+        val retry = events.filterIsInstance<AgentEvent.ModelRetryScheduled>().single()
+        // 不能比提供方要求的时间更早重发，否则只是继续撞限流。
+        assertEquals(45_000, retry.delayMs)
+
+        // 抖动只放宽本地基线：0.2 比例、源取 0.5 → 2s 基线变成 2.2s。
+        val jittered = Clock()
+        val jitterEvents = mutableListOf<AgentEvent>()
+        var jitterCalls = 0
+        run(jittered, ErrorReconnectPolicy.CONTINUOUS, provider { _, _, _ ->
+            if (jitterCalls++ == 0) throw AgentModelFailure.http(500, "")
+            ok()
+        }, jitterEvents, jitter = 0.2)
+        assertEquals(2_200, jitterEvents.filterIsInstance<AgentEvent.ModelRetryScheduled>().single().delayMs)
+        assertEquals(2_200L, jittered.now)
+    }
+
+    @Test fun retryAfterAcceptsHttpDateAndGoogleRetryInfoOnlyWhenInTheFuture() {
+        // 语义统一为「要等多少秒」：0 表示没有额外约束，退回常规退避；无法解析才是 null。
+        assertEquals(30L, AgentModelFailure.parseRetryAfter("30"))
+        assertEquals(30L, AgentModelFailure.parseRetryAfter("  seconds=30 "))
+        assertEquals(0L, AgentModelFailure.parseRetryAfter("0"))
+        assertNull(AgentModelFailure.parseRetryAfter("not-a-date"))
+        assertNull(AgentModelFailure.parseRetryAfter(null))
+        assertEquals("已过期的 HTTP-date 不再构成等待", 0L,
+            AgentModelFailure.parseRetryAfter("Wed, 21 Oct 2015 07:28:00 GMT"))
+        assertEquals("本机时钟与上游有偏差时也不产生负等待", 0L, AgentModelFailure.parseRetryAfter(
+            java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                java.time.OffsetDateTime.now().minusSeconds(60))))
+        val future = AgentModelFailure.parseRetryAfter(
+            java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                java.time.OffsetDateTime.now().plusSeconds(20)))
+        assertTrue("$future", future!! in 15..25)
+        // 退避下限：0 或 null 都不能把等待压到基线以下。
+        assertEquals(2_000L, ModelRetryBackoff.delayMs(1, 0L, null, 0.0) { 0.0 })
+        assertEquals(2_000L, ModelRetryBackoff.delayMs(1, null, null, 0.0) { 0.0 })
+        assertEquals(45_000L, ModelRetryBackoff.delayMs(1, 45L, null, 0.0) { 0.0 })
+        // 窗口剩余时间是上限，不能让单次等待跨过边界而错过终态。
+        assertEquals(1_500L, ModelRetryBackoff.delayMs(3, null, 1_500L, 0.0) { 0.0 })
+        assertEquals(8_800L, ModelRetryBackoff.delayMs(3, null, 60_000L, 0.2) { 0.5 })
+        // Retry-After 是下限，但重连窗口的剩余时间仍是上限，不能让单次等待跨过终态。
+        assertEquals(30_000L, ModelRetryBackoff.delayMs(1, 45L, 30_000L, 0.0) { 0.0 })
+        // 异常的头值不能卡死整个窗口。
+        assertEquals(120_000L, ModelRetryBackoff.delayMs(1, 86_400L, null, 0.0) { 0.0 })
+        val google = AgentModelFailure.http(429, JSONObject().put("error", JSONObject()
+            .put("code", 429).put("details", JSONArray()
+                .put(JSONObject().put("@type", "type.googleapis.com/google.rpc.RetryInfo")
+                    .put("retryDelay", "12s")))).toString())
+        assertEquals(12L, google.retryAfterSec)
     }
 }

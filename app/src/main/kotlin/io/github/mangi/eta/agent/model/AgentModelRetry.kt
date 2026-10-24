@@ -11,10 +11,43 @@ import java.util.concurrent.CancellationException
 /** Retries only a failed model request, never a run, committed history, or local tools. */
 internal class AgentModelRetry(
     private val timing: ReconnectTiming = SystemReconnectTiming,
+    /**
+     * 退避抖动比例，取值 0..1。多台设备共用一个账号时，确定性的 2s/4s/8s 会让它们
+     * 在同一时刻重发，互相延长限流恢复时间；测试传 0 以获得确定的退避序列。
+     */
+    private val jitterFraction: Double = ModelRetryBackoff.DEFAULT_JITTER_FRACTION,
+    private val jitterSource: () -> Double = { Math.random() },
     private val waitBeforeRetry: (AgentRunController, Long) -> Unit = { controller, delay ->
         controller.awaitRetryDelay(delay)
     },
 ) {
+    /**
+     * 同一失败原因下的永久错误重发上限。永久错误只允许这一次：之后直接把原因交给用户，
+     * 不再无限烧配额，也不把「需要改配置」伪装成「网络在抖」。
+     */
+    private fun permanentResendLimit(policy: ErrorReconnectPolicy): Int =
+        ModelRetryBackoff.permanentResendBudget(policy.windowMillis)
+
+    private fun backoffMs(
+        attempt: Int,
+        failure: AgentModelFailure,
+        state: ModelErrorReconnect?,
+    ): Long = ModelRetryBackoff.delayMs(
+        attempt = attempt,
+        retryAfterSec = failure.retryAfterSec,
+        remainingMs = state?.remainingMs(),
+        jitterFraction = jitterFraction,
+        jitterSource = jitterSource,
+    )
+
+    /**
+     * 永久错误是否真的不可恢复：OAuth 每次尝试都重新取 token，用户在窗口内重新登录可以救活；
+     * API Key 与额度/路径类错误重发同一个请求永远不可能变好。
+     */
+    private fun isUnrecoverable(failure: AgentModelFailure, config: AgentModelClient.ModelConfig): Boolean =
+        failure.retryMode == AgentModelFailure.RetryMode.PERMANENT &&
+            AgentModelFailure.permanentForAuthMode(failure.permanentReason, config.authMode)
+
     data class Result(
         val round: Int,
         val response: ProviderResponse,
@@ -44,6 +77,10 @@ internal class AgentModelRetry(
         val reconnectEnabled = reconnectPolicy != ErrorReconnectPolicy.NONE
         var reconnect: ModelErrorReconnect? = null
         var reconnectBinding: AutoCloseable? = null
+        // 永久错误的重发次数按 reasonKey 归组：换一种错误（例如用户改了 Key 后又 403→404）
+        // 重新给一次机会，但同一原因绝不会进入无限重连。
+        var permanentResends = 0
+        var permanentReasonKey: String? = null
         val prefix = StringBuilder()
         fun beginReconnect(reason: AgentModelFailure): ModelErrorReconnect {
             val current = reconnect
@@ -67,6 +104,11 @@ internal class AgentModelRetry(
             reconnectBinding = null
             reconnect = null
             retriesInCycle = 0
+            // 恢复成功后，同一原因的下次永久错误属于一次新的断连，重新给一次有界重发。
+            if (status == "succeeded") {
+                permanentResends = 0
+                permanentReasonKey = null
+            }
         }
         try {
             while (true) {
@@ -252,15 +294,29 @@ internal class AgentModelRetry(
                             "工具封装 JSON 校验连续失败，停止纠错；未执行被拒绝的工具调用。", classified)
                         envelopeRetries++
                         attemptRequest = ResponsesToolEnvelopeRecovery.corrected(request)
-                        val delay = 2_000L shl (envelopeRetries - 1)
+                        val delay = backoffMs(envelopeRetries, classified, reconnect)
                         onEvent(AgentEvent.ModelRetryScheduled(round, envelopeRetries,
                             ResponsesToolEnvelopeRecovery.MAX_RETRIES, delay.toInt(), classified.code,
                             AgentHttpFailureDiagnostics.safe(classified.message.orEmpty(), listOf(request.config.apiKey), 600)))
-                        waitBeforeRetry(controller, minOf(delay, reconnect?.remainingMs() ?: delay))
+                        waitBeforeRetry(controller, delay)
                     } else {
                         val state = beginReconnect(classified)
                         state.check()
                         if (!reconnectEnabled) throw classified
+                        // 永久性错误（API Key 失效、额度/计费受限、模型或路径不存在）重发同一个请求
+                        // 不会变好。此前它们和网络抖动共用无限重连窗口，结果是直到用户手动停止都在
+                        // 烧配额，并把「需要改配置」伪装成「网络在抖」。这里只保留一次立即重发，
+                        // 用于容忍误判或刚好落地的配置写入；同一原因再次出现就直接结束。
+                        val unrecoverable = isUnrecoverable(classified, request.config)
+                        if (unrecoverable) {
+                            val reasonKey = "${classified.code}:${classified.permanentReason}"
+                            if (permanentReasonKey != reasonKey) {
+                                permanentReasonKey = reasonKey
+                                permanentResends = 0
+                            }
+                            if (permanentResends >= permanentResendLimit(reconnectPolicy)) throw classified
+                            permanentResends++
+                        }
                         if (!localOnlyRecovery) {
                             localOnlyRecovery = true
                             // Persist the restriction before any retry/overflow can escape this call.
@@ -273,15 +329,16 @@ internal class AgentModelRetry(
                             envelopeRetries < ResponsesToolEnvelopeRecovery.MAX_RETRIES) {
                             envelopeRetries++
                         }
-                        // No retryable whitelist: safe HTTP auth/parameter errors and transports use the same policy.
-                        // Reuse the original three-request backoff (2s, 4s, 8s).
-                        // Exhausting a cycle does not exhaust the user's reconnect window.
-                        retriesInCycle = retriesInCycle % MAX_RETRIES + 1
-                        val backoff = BASE_DELAY_MS shl (retriesInCycle - 1)
-                        val delay = minOf(backoff, state.remainingMs() ?: backoff)
+                        // 暂时性错误沿用三次退避周期（2s、4s、8s），周期用尽不消耗用户的重连窗口；
+                        // 永久错误的那一次重发用第一档，并且 maxAttempts 显示为 1，避免界面把它
+                        // 读成「还有两次机会」。两者都尊重提供方的 Retry-After 下限。
+                        retriesInCycle = if (unrecoverable) 1 else retriesInCycle % MAX_RETRIES + 1
+                        val maxAttempts = if (unrecoverable) 1 else MAX_RETRIES
+                        val delay = backoffMs(retriesInCycle, classified, state)
                         onEvent(AgentEvent.ModelRetryScheduled(round, retriesInCycle,
-                            MAX_RETRIES, delay.toInt(), classified.code,
-                            AgentHttpFailureDiagnostics.safe(classified.message.orEmpty(), listOf(request.config.apiKey), 600)))
+                            maxAttempts, delay.toInt(), classified.code,
+                            AgentHttpFailureDiagnostics.safe(classified.message.orEmpty(), listOf(request.config.apiKey), 600),
+                            permanent = unrecoverable))
                         waitBeforeRetry(controller, delay)
                         if (controller.isCancelled) throw AgentRunCancelledException()
                         // Pause is a checkpoint inside this disconnect, not completion of it.

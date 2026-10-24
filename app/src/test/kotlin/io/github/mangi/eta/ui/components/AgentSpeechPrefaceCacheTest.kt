@@ -11,9 +11,9 @@ import org.junit.Test
 class AgentSpeechPrefaceCacheTest {
     private class Fixture {
         var builds = 0
-        val cache = AgentSpeechPrefaceCache { messages, ids ->
+        val cache = AgentSpeechPrefaceCache { messages, ids, hiddenIds ->
             builds++
-            visibleTurnSpeechPrefaces(messages, ids)
+            visibleTurnSpeechPrefaces(messages, ids, hiddenIds)
         }
         fun project(messages: List<AgentChatMessageUi>, ids: Set<String>): Map<String, String> {
             val before = messages.toList()

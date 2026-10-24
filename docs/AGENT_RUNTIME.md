@@ -138,7 +138,7 @@ App 在发起请求前已经把当前用户消息写入会话 history，因此 R
 
 浮层在已完成结果后发起的 continuation 会在 handoff 中只携带本次新增的 prompt supplement，不累计复制旧补充。App 回到前台时 drain outbox，把该用户消息和增量 transcript 一起写回 history。
 
-上下文自动压缩和跨 run、跨 Provider 的 opaque reasoning 状态尚未实现；Responses output Items 只在当前 run 内回放，不能作为持久会话状态。
+上下文自动压缩已实现：本次 run 收到的云端输入回执达到窗口 80% 即排队，在下一次模型请求之前（工具批次已配对、没有开着的输出）执行修剪或摘要；硬发送上限与提供方 `CONTEXT_WINDOW_EXCEEDED` 走同一有界恢复。受保护尾部逐字保留，被压缩的原文进入可回读的检查点存档，详见 `docs/compaction-harness-alignment.md`。跨 run、跨 Provider 的 opaque reasoning 状态仍未实现；Responses output Items 只在当前 run 内回放，不能作为持久会话状态。
 
 ## Skills 安装边界
 

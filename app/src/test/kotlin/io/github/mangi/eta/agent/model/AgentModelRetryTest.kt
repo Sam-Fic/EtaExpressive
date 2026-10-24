@@ -48,7 +48,7 @@ class AgentModelRetryTest {
     @Test
     fun safeRequestRetryUsesPolicyDelayAndDistinctModelRound() {
         val delays = mutableListOf<Long>()
-        val retry = AgentModelRetry { _, delay -> delays += delay }
+        val retry = AgentModelRetry(jitterFraction = 0.0) { _, delay -> delays += delay }
         var calls = 0
         val result = complete(retry, provider { _, _ ->
             if (calls++ == 0) throw IOException("connection reset")

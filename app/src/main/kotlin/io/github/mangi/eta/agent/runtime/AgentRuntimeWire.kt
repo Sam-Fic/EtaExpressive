@@ -790,6 +790,7 @@ internal object AgentRuntimeWire {
                 putInt("delay_ms", event.delayMs)
                 putString("reason_code", event.reasonCode)
                 putString("reason_detail", event.reasonDetail)
+                putBoolean("permanent", event.permanent)
             }
 
             is AgentEvent.ErrorReconnectChanged -> {
@@ -992,6 +993,7 @@ internal object AgentRuntimeWire {
             delayMs = bundle.getInt("delay_ms", 2_000),
             reasonCode = bundle.getString("reason_code").orEmpty(),
             reasonDetail = bundle.getString("reason_detail").orEmpty(),
+            permanent = bundle.getBoolean("permanent", false),
         )
 
         "error_reconnect_changed" -> AgentEvent.ErrorReconnectChanged(
