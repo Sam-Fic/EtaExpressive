@@ -66,7 +66,7 @@ internal object AgentImageCodec {
     fun fromScreenContextBitmap(
         bitmap: Bitmap,
         source: String,
-    ): AgentModelClient.ModelImage = AgentModelImageEncoder.screenContext(bitmap, source)
+    ): AgentModelClient.ModelImage = AgentModelImageEncoder.nativeScreenContext(bitmap, source)
 
     /**
      * 为聊天列表生成独立的小预览。模型仍从 [image.reference] 读取原图，预览不会参与模型输入。
@@ -75,6 +75,12 @@ internal object AgentImageCodec {
         context: Context,
         image: AgentModelClient.ModelImage,
     ): AgentModelClient.ModelImage? = AgentModelImageEncoder.preview(context, image)
+
+    /** 语音入口截图的留档预览：聊天里按大图展示，需要比列表缩略图更清晰。 */
+    fun archivePreviewFromReference(
+        context: Context,
+        image: AgentModelClient.ModelImage,
+    ): AgentModelClient.ModelImage? = AgentModelImageEncoder.archivePreview(context, image)
 
     /** 文件工具图片会在发送模型前压缩，避免多张原图撑大 OpenAI 兼容请求体。 */
     fun fromToolFile(file: File, source: String): AgentModelClient.ModelImage? = runCatching {

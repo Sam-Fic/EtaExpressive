@@ -50,6 +50,7 @@ import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
 import io.github.mangi.eta.agent.media.AgentChatImageCache
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.media.MAX_AGENT_VIDEO_BYTES
+import io.github.mangi.eta.agent.media.SCREEN_CONTEXT_IMAGE_SOURCE
 import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.question.AgentQuestionAnswer
@@ -278,7 +279,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     runCatching {
                         val image = AgentImageCodec.fromScreenContextBitmap(
                             bitmap,
-                            source = "screen_context",
+                            source = SCREEN_CONTEXT_IMAGE_SOURCE,
                         )
                         val preview = AgentImageCodec.previewFromReference(
                             this@EtaAssistantOverlayService,

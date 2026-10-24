@@ -20,6 +20,9 @@ import kotlin.math.sqrt
 internal const val MAX_AGENT_IMAGE_BYTES = 12 * 1024 * 1024
 internal const val MAX_AGENT_VIDEO_BYTES = 32 * 1024 * 1024
 
+/** 语音入口「添加当前屏幕」生成的截图来源标记：留档预览按大图处理。 */
+internal const val SCREEN_CONTEXT_IMAGE_SOURCE = "screen_context"
+
 /** 仅负责为工具截图和聊天预览生成独立的图片副本。 */
 internal object AgentModelImageEncoder {
     // WebP 无损模式的 quality 表示编码努力，不会丢失像素信息。
@@ -54,12 +57,41 @@ internal object AgentModelImageEncoder {
         mimeType = "image/jpeg",
         quality = PREVIEW_JPEG_QUALITY,
     )
+
+    /**
+     * 语音入口截图的留档预览：竖屏截图 512 档只有两百多像素宽，聊天里点开就是一屏糊。
+     * 这类截图仍按视觉档尺寸留一张更清晰的预览，体积只多几百 KB。
+     */
+    private val archiveScreenPreviewProfile = EncodingProfile(
+        maxLongEdge = 1_600,
+        maxPixels = 1_500_000L,
+        format = Bitmap.CompressFormat.JPEG,
+        mimeType = "image/jpeg",
+        quality = 88,
+    )
     private val toolVisionProfile = EncodingProfile(
         maxLongEdge = 1_600,
         maxPixels = 1_500_000L,
         format = Bitmap.CompressFormat.JPEG,
         mimeType = "image/jpeg",
         quality = 82,
+    )
+
+    /**
+     * 助理入口的屏幕上下文按原生分辨率保存：不缩放、不做有损压缩，模型才能读清小字与图标。
+     * 体积只由 [MAX_AGENT_IMAGE_BYTES] 兜底（见 [nativeScreenContext]）。
+     */
+    private val nativeScreenProfile = EncodingProfile(
+        format = Bitmap.CompressFormat.WEBP_LOSSLESS,
+        mimeType = "image/webp",
+        quality = SCREEN_WEBP_EFFORT,
+    )
+
+    /** 无损图超出请求预算时先保住原生分辨率，只退到高质量 JPEG。 */
+    private val nativeScreenJpegProfile = EncodingProfile(
+        format = Bitmap.CompressFormat.JPEG,
+        mimeType = "image/jpeg",
+        quality = 92,
     )
 
     fun screen(
@@ -84,12 +116,25 @@ internal object AgentModelImageEncoder {
     ): AgentModelClient.ModelImage =
         encodeBitmap(bitmap, source, screenProfile, flattenAlpha = false)
 
-    /** 助理入口截图直接进入网络请求，使用视觉模型尺寸避免全屏无损图撑大请求体。 */
+    /** Agent 观察工具截图走视觉模型尺寸，避免多轮截图把请求体撑大。 */
     fun screenContext(
         bitmap: Bitmap,
         source: String,
     ): AgentModelClient.ModelImage =
         encodeBitmap(bitmap, source, toolVisionProfile, flattenAlpha = true)
+
+    /**
+     * 「添加当前屏幕」/ 快捷预设发给模型的截图：保留屏幕原生像素，不缩放。
+     * 先走无损 WebP；只有画面信息量极大（接近照片的满屏噪点）超出请求体积预算时，
+     * 才依次退到同尺寸高质量 JPEG、最后才退到视觉档，保证这一轮请求仍然发得出去。
+     */
+    fun nativeScreenContext(
+        bitmap: Bitmap,
+        source: String,
+    ): AgentModelClient.ModelImage =
+        encodeWithinBudget(bitmap, source, nativeScreenProfile, flattenAlpha = false)
+            ?: encodeWithinBudget(bitmap, source, nativeScreenJpegProfile, flattenAlpha = true)
+            ?: encodeBitmap(bitmap, source, toolVisionProfile, flattenAlpha = true)
 
     /** 文件工具图片仅在发送模型前缩放压缩，保持多图请求的体积可控。 */
     fun toolVision(
@@ -109,10 +154,33 @@ internal object AgentModelImageEncoder {
     fun preview(
         context: Context,
         image: AgentModelClient.ModelImage,
+    ): AgentModelClient.ModelImage? = preview(context, image, previewProfile)
+
+    /**
+     * 语音入口的屏幕上下文会作为聊天里的截图留档：列表缩略图档太糊，
+     * 这一类改用更大尺寸的预览；其他附件仍保持 [previewProfile]。
+     */
+    fun archivePreview(
+        context: Context,
+        image: AgentModelClient.ModelImage,
+    ): AgentModelClient.ModelImage? = preview(
+        context = context,
+        image = image,
+        profile = if (image.source == SCREEN_CONTEXT_IMAGE_SOURCE) {
+            archiveScreenPreviewProfile
+        } else {
+            previewProfile
+        },
+    )
+
+    private fun preview(
+        context: Context,
+        image: AgentModelClient.ModelImage,
+        profile: EncodingProfile,
     ): AgentModelClient.ModelImage? = runCatching {
         val width = image.width ?: return@runCatching null
         val height = image.height ?: return@runCatching null
-        val target = targetSize(width, height, previewProfile)
+        val target = targetSize(width, height, profile)
         val openStream = referenceStreamFactory(context, image.reference) ?: return@runCatching null
         val options = BitmapFactory.Options().apply {
             inPreferredConfig = Bitmap.Config.ARGB_8888
@@ -122,11 +190,23 @@ internal object AgentModelImageEncoder {
             BitmapFactory.decodeStream(input, null, options)
         } ?: return@runCatching null
         try {
-            encodeBitmap(decoded, image.source, previewProfile, flattenAlpha = true)
+            encodeBitmap(decoded, image.source, profile, flattenAlpha = true)
         } finally {
             if (!decoded.isRecycled) decoded.recycle()
         }
     }.getOrNull()
+
+    /** 编码结果超出 [MAX_AGENT_IMAGE_BYTES] 时返回 null，交给调用方换更小的档位。 */
+    private fun encodeWithinBudget(
+        bitmap: Bitmap,
+        source: String,
+        profile: EncodingProfile,
+        flattenAlpha: Boolean,
+    ): AgentModelClient.ModelImage? = try {
+        encodeBitmap(bitmap, source, profile, flattenAlpha)
+    } catch (error: Exception) {
+        null
+    }
 
     private fun transcodeBytes(
         bytes: ByteArray,

@@ -50,7 +50,7 @@ class AgentImageCodecTest {
     }
 
     @Test
-    fun assistantScreenContextUsesBoundedJpeg() {
+    fun assistantScreenContextKeepsNativeResolution() {
         val bitmap = patternedBitmap(width = 1_440, height = 3_200)
         try {
             val image = AgentImageCodec.fromScreenContextBitmap(
@@ -60,11 +60,12 @@ class AgentImageCodecTest {
             val width = image.width ?: error("缺少图片宽度")
             val height = image.height ?: error("缺少图片高度")
 
-            assertEquals("image/jpeg", image.mimeType)
-            assertTrue(image.reference.startsWith("data:image/jpeg;base64,"))
-            assertTrue(maxOf(width, height) <= 1_600)
-            assertTrue(width.toLong() * height <= 1_500_000L)
-            assertTrue(image.bytes < 1_000_000)
+            // 模型拿到的是屏幕原图：不缩放。体积超预算时才转同尺寸高质量 JPEG。
+            assertEquals(1_440, width)
+            assertEquals(3_200, height)
+            assertTrue(image.mimeType == "image/webp" || image.mimeType == "image/jpeg")
+            assertTrue(image.reference.startsWith("data:${image.mimeType};base64,"))
+            assertTrue(image.bytes in 1..MAX_AGENT_IMAGE_BYTES)
         } finally {
             bitmap.recycle()
         }
@@ -183,6 +184,36 @@ class AgentImageCodecTest {
             assertEquals("image/jpeg", preview.mimeType)
             assertTrue(maxOf(preview.width!!, preview.height!!) <= 512)
             assertEquals(originalSize, sourceFile.length())
+        } finally {
+            sourceFile.delete()
+        }
+    }
+
+    @Test
+    fun screenContextArchivePreviewKeepsChatDetail() {
+        val context = RuntimeEnvironment.getApplication()
+        val sourceFile = File(context.cacheDir, "screen-context-preview-${System.nanoTime()}.jpg")
+        val bitmap = patternedBitmap(width = 1_440, height = 3_200)
+        FileOutputStream(sourceFile).use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output)
+        }
+        bitmap.recycle()
+        try {
+            val source = AgentImageCodec.fromTransferReference(
+                context = context,
+                value = sourceFile.absolutePath,
+                source = SCREEN_CONTEXT_IMAGE_SOURCE,
+            ) ?: error("无法读取测试图片")
+            val archive = AgentImageCodec.archivePreviewFromReference(context, source)
+                ?: error("无法生成留档预览")
+            val listPreview = AgentImageCodec.previewFromReference(context, source)
+                ?: error("无法生成列表预览")
+
+            // 留档预览按视觉档尺寸，聊天里点开不再是一屏糊；列表缩略图仍保持小图。
+            assertEquals(1_600, maxOf(archive.width!!, archive.height!!))
+            assertEquals("image/jpeg", archive.mimeType)
+            assertTrue(archive.bytes in 1..MAX_AGENT_IMAGE_BYTES)
+            assertTrue(maxOf(listPreview.width!!, listPreview.height!!) <= 512)
         } finally {
             sourceFile.delete()
         }

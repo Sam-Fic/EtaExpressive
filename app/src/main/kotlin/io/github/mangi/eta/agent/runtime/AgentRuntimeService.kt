@@ -978,7 +978,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 .asSequence()
                 .take(MAX_ARCHIVED_USER_IMAGE_PREVIEWS)
                 .mapNotNull { image ->
-                    AgentImageCodec.previewFromReference(this, image)?.reference
+                    // 屏幕截图会作为聊天里的大图留档，用留档预览；普通附件仍走列表缩略图档。
+                    AgentImageCodec.archivePreviewFromReference(this, image)?.reference
                 }
                 .toList()
         } else {
