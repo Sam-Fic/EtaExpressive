@@ -554,7 +554,7 @@ internal class AgentLoop(
                         }
                     } else when (providerResponse.stopReason) {
                         AssistantStopReason.TOOL_USE ->
-                            toolCalls.forEachIndexed { index, call -> outcomes += executeTool(round, call, index) }
+                            executeToolBatch(round, toolCalls, outcomes)
                         AssistantStopReason.OUTPUT_LIMIT ->
                             toolCalls.forEach { call ->
                                 outcomes += rejectedToolOutcome(
@@ -1266,10 +1266,89 @@ internal class AgentLoop(
         suppressThinkingForNextRequest = suppressOptionalThinking
     }
 
+    /**
+     * 结果直接追加进 [outcomes]，而不是返回一个新列表：中途取消时，
+     * 已经完成的调用仍要留在历史里（调用方在 finally 里配对写入）。
+     */
+    private fun executeToolBatch(
+        round: Int,
+        toolCalls: List<AgentModelClient.ToolCall>,
+        outcomes: MutableList<ToolOutcome>,
+    ) {
+        val parallel = AgentPureReadTools.parallelIndices(toolCalls.map { it.name })
+        if (parallel.isEmpty()) {
+            toolCalls.forEachIndexed { index, call -> outcomes += executeTool(round, call, index) }
+            return
+        }
+        val outcomesArray = arrayOfNulls<ToolOutcome>(toolCalls.size)
+        val buffers = toolCalls.indices.map { mutableListOf<AgentEvent>() }
+        val workers = pureReadWorkers(toolCalls.size, parallel.size)
+        val errors = java.util.Collections.synchronizedList(mutableListOf<Throwable>())
+        try {
+            toolCalls.forEachIndexed { index, call ->
+                if (index !in parallel) return@forEachIndexed
+                workers.execute {
+                    try {
+                        // 只读工具不碰 shellFailureState / sensitiveToolCallIds：
+                        // 这些共享状态的合并留在下方的串行回放里做。
+                        outcomesArray[index] = executeToolBody(round, call, index, buffers[index])
+                    } catch (failure: Throwable) {
+                        errors += failure
+                    }
+                }
+            }
+        } finally {
+            workers.shutdown()
+            // 取消会中断在途请求；worker 自行观察 runController 的取消信号。
+            while (!workers.awaitTermination(50, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                runController.throwIfCancelled()
+            }
+        }
+        // 按模型给出的 index 顺序回填已完成的结果，再决定是否继续。
+        toolCalls.indices.forEach { index ->
+            outcomesArray[index]?.let(outcomes::add)
+        }
+        buffers.forEach { buffer -> buffer.forEach(onEvent) }
+        runController.throwIfCancelled()
+        errors.firstOrNull()?.let { failure ->
+            throw failure as? Exception ?: IllegalStateException(failure)
+        }
+        check(outcomesArray.none { it == null }) { "并行工具批次缺少结果" }
+    }
+
+    private fun pureReadWorkers(toolCount: Int, parallelCount: Int): java.util.concurrent.ExecutorService =
+        java.util.concurrent.Executors.newFixedThreadPool(
+            minOf(MAX_PARALLEL_READ_TOOLS, parallelCount, toolCount),
+        ) { runnable ->
+            Thread(runnable, "agent-pure-read").apply { isDaemon = true }
+        }
+
     private fun executeTool(
         round: Int,
         toolCall: AgentModelClient.ToolCall,
         toolIndex: Int,
+    ): ToolOutcome = executeToolBatchEntry(round, toolCall, toolIndex, events = null)
+
+    /**
+     * 同一批次里的幂等只读工具可以并行执行（网络/IO 等待重叠），其余仍串行。
+     *
+     * 事件顺序必须与模型给出的 index 一致，所以并行分支把每个调用的事件按 [BufferedEvents]
+     * 暂存，待全部完成后按 index 顺序回放；共享可变状态（shellFailureState、
+     * sensitiveToolCallIds、invalidArgumentsInBatch、诊断尝试）只在主线程按同样顺序合并，
+     * 因此模型看到的历史与串行执行时完全一致。
+     */
+    private fun executeToolBatchEntry(
+        round: Int,
+        toolCall: AgentModelClient.ToolCall,
+        toolIndex: Int,
+        events: MutableList<AgentEvent>?,
+    ): ToolOutcome = executeToolBody(round, toolCall, toolIndex, events)
+
+    private fun executeToolBody(
+        round: Int,
+        toolCall: AgentModelClient.ToolCall,
+        toolIndex: Int,
+        events: MutableList<AgentEvent>?,
     ): ToolOutcome {
         runController.throwIfCancelled()
         if (toolCall.name == AgentDelegationArgumentRepair.TOOL && delegationArgumentRepair.disabled) {
@@ -1314,7 +1393,7 @@ internal class AgentLoop(
         if (toolCall.name != AgentDelegationArgumentRepair.TOOL) {
             invalidToolArgumentsGuard.validated(toolCall.name)
         }
-        onEvent(
+        emit(
             AgentEvent.ToolStarted(
                 round = round,
                 toolCallId = toolCall.id,
@@ -1322,7 +1401,8 @@ internal class AgentLoop(
                 argsPreview = traceFormatter.summarizeArguments(toolCall),
                 command = traceFormatter.displayCommand(toolCall),
                 argumentsDetail = traceFormatter.detailArguments(toolCall),
-            )
+            ),
+            events,
         )
 
         toolDiagnosticAttempt?.dispatch(toolCall, toolIndex)
@@ -1354,7 +1434,7 @@ internal class AgentLoop(
         }
 
         // Once returned, this result remains evidence even if stop arrived concurrently.
-        emitToolFinished(round, toolCall, result)
+        emitToolFinished(round, toolCall, result, events)
         return ToolOutcome(toolCall, result)
     }
 
@@ -1387,12 +1467,18 @@ internal class AgentLoop(
         return ToolOutcome(toolCall, result)
     }
 
+    /** 并行分支把事件暂存，稍后按模型给出的 index 顺序回放；串行分支直接投递。 */
+    private fun emit(event: AgentEvent, buffer: MutableList<AgentEvent>?) {
+        if (buffer == null) onEvent(event) else buffer += event
+    }
+
     private fun emitToolFinished(
         round: Int,
         toolCall: AgentModelClient.ToolCall,
         result: AgentModelClient.ToolResult,
+        events: MutableList<AgentEvent>? = null,
     ) {
-        onEvent(
+        emit(
             AgentEvent.ToolFinished(
                 round = round,
                 toolCallId = toolCall.id,
@@ -1403,7 +1489,8 @@ internal class AgentLoop(
                 success = traceFormatter.isSuccessResult(result),
                 resultDetail = traceFormatter.detailResult(toolCall.name, result),
                 mediaPreviewsJson = AgentToolMediaPreviews.encode(result.images),
-            )
+            ),
+            events,
         )
     }
 
@@ -1523,5 +1610,8 @@ internal class AgentLoop(
     private companion object {
         /** 上游在输出上限处截断且正文为空时，同一 round 内最多自动重发的次数。 */
         private const val MAX_EMPTY_OUTPUT_LIMIT_RETRIES = 2
+
+        /** 一个只读批次里同时执行的工具数上限。 */
+        private const val MAX_PARALLEL_READ_TOOLS = 4
     }
 }
