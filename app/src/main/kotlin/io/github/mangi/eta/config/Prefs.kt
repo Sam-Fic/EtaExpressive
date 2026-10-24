@@ -53,6 +53,15 @@ internal object Prefs {
         const val AGENT_BROWSER_TOOLS = "agent_browser_tools"
         const val AGENT_DEVICE_DIRECT_TOOLS = "agent_device_direct_tools"
         const val AGENT_DEVICE_SENSITIVE_READ_TOOLS = "agent_device_sensitive_read_tools"
+
+        /**
+         * 敏感读里的两档细分（都在 [AGENT_DEVICE_SENSITIVE_READ_TOOLS] 总闸之下）：
+         * - [AGENT_PERSONAL_DATA_READ_TOOLS]：通讯录/短信/账单/健康/订单等个人信息；
+         * - [AGENT_DEVICE_STATE_READ_TOOLS]：设置、系统状态、闹钟列表、位置等设备状态。
+         * 都默认开启，保持历史行为；用户可以只关掉个人信息那一档。
+         */
+        const val AGENT_PERSONAL_DATA_READ_TOOLS = "agent_personal_data_read_tools"
+        const val AGENT_DEVICE_STATE_READ_TOOLS = "agent_device_state_read_tools"
         const val AGENT_DEVICE_SENSITIVE_ACTION_TOOLS = "agent_device_sensitive_action_tools"
         /**
          * 是否启用「让模型读写 Eta 自身配置」的三个工具。
@@ -116,6 +125,8 @@ internal object Prefs {
             AGENT_BROWSER_TOOLS to true,
             AGENT_DEVICE_DIRECT_TOOLS to true,
             AGENT_DEVICE_SENSITIVE_READ_TOOLS to true,
+            AGENT_PERSONAL_DATA_READ_TOOLS to true,
+            AGENT_DEVICE_STATE_READ_TOOLS to true,
             AGENT_DEVICE_SENSITIVE_ACTION_TOOLS to true,
             AGENT_SELF_SETTINGS_TOOLS to true,
             AGENT_MEDIA_SEARCH_TOOLS to false,
@@ -143,6 +154,8 @@ internal object Prefs {
             AGENT_BROWSER_TOOLS,
             AGENT_DEVICE_DIRECT_TOOLS,
             AGENT_DEVICE_SENSITIVE_READ_TOOLS,
+            AGENT_PERSONAL_DATA_READ_TOOLS,
+            AGENT_DEVICE_STATE_READ_TOOLS,
             AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
             AGENT_SELF_SETTINGS_TOOLS,
             AGENT_MEDIA_SEARCH_TOOLS,

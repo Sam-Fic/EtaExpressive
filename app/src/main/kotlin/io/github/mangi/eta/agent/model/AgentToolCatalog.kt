@@ -11,6 +11,8 @@ internal object AgentToolCatalog {
         deviceDirectTools: Boolean = true,
         deviceSensitiveReadTools: Boolean = false,
         deviceSensitiveActionTools: Boolean = false,
+        personalDataReads: Boolean = deviceSensitiveReadTools,
+        deviceStateReads: Boolean = deviceSensitiveReadTools,
         skillGitHubDiscovery: Boolean = false,
         skillGitHubInstall: Boolean = false,
         memoryTools: Boolean = false,
@@ -34,6 +36,8 @@ internal object AgentToolCatalog {
                 directTools = deviceDirectTools,
                 sensitiveReadTools = deviceSensitiveReadTools,
                 sensitiveActionTools = deviceSensitiveActionTools,
+                personalDataReads = personalDataReads,
+                deviceStateReads = deviceStateReads,
                 // 冷门只读长尾默认折叠；改设备的写操作默认折叠（省 token，也少误触）。
                 withheldReads = AgentToolGroups.withheldTailReads(openedToolGroups),
                 withheldActions = AgentToolGroups.withheldDeviceActions(openedToolGroups),

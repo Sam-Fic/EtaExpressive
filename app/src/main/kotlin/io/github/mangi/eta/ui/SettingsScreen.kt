@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -515,6 +516,28 @@ internal fun SettingsScreen(
                         title = stringResource(R.string.ui_allow_reading_of_sensitive_device_information_feaec0),
                         key = Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
                         icon = Icons.Rounded.Visibility,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_personal_data_reads),
+                        summary = stringResource(R.string.settings_personal_data_reads_summary),
+                        key = Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS,
+                        icon = Icons.Rounded.VpnKey,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_device_state_reads),
+                        summary = stringResource(R.string.settings_device_state_reads_summary),
+                        key = Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS,
+                        icon = Icons.Rounded.Info,
                     )
                 }
 

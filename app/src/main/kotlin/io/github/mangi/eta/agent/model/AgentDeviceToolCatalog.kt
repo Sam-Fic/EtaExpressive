@@ -22,6 +22,65 @@ internal object AgentDeviceToolCatalog {
         "user_control",
     )
 
+    private val PERSONAL_READ_NAMES: Set<String> = setOf(
+        "get_health_summary",
+        "list_calendars",
+        "read_calendar_event",
+        "read_note",
+        "read_personal_item",
+        "read_sms_code",
+        "recent_notifications",
+        "search_audio",
+        "search_bills",
+        "search_calendar_events",
+        "search_calendar_todos",
+        "search_call_history",
+        "search_clipboard_history",
+        "search_coloros_memories",
+        "search_coloros_notes",
+        "search_coloros_recordings",
+        "search_contacts",
+        "search_daily_events",
+        "search_downloads",
+        "search_files",
+        "search_flights",
+        "search_hotels",
+        "search_media",
+        "search_memory_collections",
+        "search_messages",
+        "search_notes",
+        "search_notification_history",
+        "search_personal_orders",
+        "search_qq_chat_images",
+        "search_recording_summaries",
+        "search_recordings",
+        "search_saved_places",
+        "search_todos",
+        "search_trains",
+        "search_wechat_chat_images",
+        "summarize_bills",
+    )
+
+    private val DEVICE_STATE_READ_NAMES: Set<String> = setOf(
+        "app_usage_summary",
+        "dumpsys_diag",
+        "get_current_location",
+        "get_device_environment",
+        "get_device_state",
+        "get_display_state",
+        "get_flashlight",
+        "get_hotspot",
+        "get_logcat",
+        "get_setting",
+        "get_sound_state",
+        "list_active_timers",
+        "list_alarms",
+        "list_installed_apps",
+        "recent_app_activity",
+        "search_settings",
+        "wifi_credentials",
+    )
+
     private val TAIL_READ_NAMES: Set<String> = setOf(
         "search_flights", "search_trains", "search_hotels", "search_bills", "summarize_bills",
         "search_memory_collections", "search_saved_places", "search_daily_events", "search_todos",
@@ -34,6 +93,12 @@ internal object AgentDeviceToolCatalog {
     fun sensitiveActionToolNames(): Set<String> = ACTION_NAMES
     fun tailReadToolNames(): Set<String> = TAIL_READ_NAMES
 
+    /**
+     * 敏感读拆成两个独立开关，解决「想让助手看电量、设闹钟，但别翻我的短信和账单」：
+     * - [personalDataReads]：通讯录/短信/通话/健康/账单/订单/便签/日历等**个人内容**；
+     * - [deviceStateReads]：设置、系统状态、闹钟/计时器列表、位置、应用使用、Wi-Fi 凭据等**设备状态**。
+     * 默认跟随总开关，保持历史行为；用户可只关掉个人信息那一档。
+     */
     fun appendTo(
         tools: JSONArray,
         directTools: Boolean,
@@ -41,9 +106,18 @@ internal object AgentDeviceToolCatalog {
         sensitiveActionTools: Boolean,
         withheldReads: Set<String> = emptySet(),
         withheldActions: Set<String> = emptySet(),
+        personalDataReads: Boolean = sensitiveReadTools,
+        deviceStateReads: Boolean = sensitiveReadTools,
     ) {
         if (directTools) appendDirectTools(tools)
-        if (sensitiveReadTools) appendGroup(tools, ::appendSensitiveReadTools, withheldReads)
+        if (sensitiveReadTools) {
+            // 被关掉的那一档整体剔除：两档独立，只关个人信息时设备状态读仍然可用。
+            val dropped = buildSet {
+                if (!personalDataReads) addAll(PERSONAL_READ_NAMES)
+                if (!deviceStateReads) addAll(DEVICE_STATE_READ_NAMES)
+            }
+            appendGroup(tools, ::appendSensitiveReadTools, withheldReads, drop = dropped)
+        }
         if (sensitiveActionTools) appendGroup(tools, ::appendSensitiveActionTools, withheldActions)
     }
 
@@ -52,8 +126,10 @@ internal object AgentDeviceToolCatalog {
         tools: JSONArray,
         emit: (JSONArray) -> Unit,
         withheld: Set<String>,
+        /** 额外要剔除的工具（例如被关掉的隐私档位）。 */
+        drop: Set<String> = emptySet(),
     ) {
-        if (withheld.isEmpty()) {
+        if (withheld.isEmpty() && drop.isEmpty()) {
             emit(tools)
             return
         }
@@ -62,7 +138,7 @@ internal object AgentDeviceToolCatalog {
         for (index in 0 until emitted.length()) {
             val tool = emitted.getJSONObject(index)
             val name = tool.optJSONObject("function")?.optString("name").orEmpty()
-            if (name in withheld) continue
+            if (name in withheld || name in drop) continue
             tools.put(tool)
         }
     }

@@ -678,6 +678,10 @@
   <string name="tool_ui_semantic_search_media">Semantic media search</string>
   <string name="tool_ui_semantic_search_media_summary">Search photos, videos and files on this device by meaning, using an offline embedding index.</string>
   <string name="tools_group_switch_title">Enable this group</string>
+  <string name="settings_personal_data_reads">Personal information reads</string>
+  <string name="settings_personal_data_reads_summary">Contacts, messages, calls, health, bills, orders, notes and calendar contents.</string>
+  <string name="settings_device_state_reads">Device state reads</string>
+  <string name="settings_device_state_reads_summary">Settings, system status, alarms, location and app usage. Lower risk than personal information.</string>
   <string name="settings_shell_tools">Allow command execution</string>
   <string name="settings_shell_tools_summary">Let the model run shell commands. Turn this off to keep file reading and writing but block run_command and terminal.</string>
   <string name="settings_self_settings_tools">Eta self-configuration tools</string>

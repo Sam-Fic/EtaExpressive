@@ -164,6 +164,9 @@ internal object AgentModelClient {
                 deviceDirectTools = config.deviceDirectTools,
                 deviceSensitiveReadTools = config.deviceSensitiveReadTools,
                 deviceSensitiveActionTools = config.deviceSensitiveActionTools,
+                // 敏感读的两档细分：只关个人信息时，设备状态读仍然可用。
+                personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
+                deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
                 skillGitHubDiscovery = true,
                 skillGitHubInstall = true,
                 memoryTools = memoryEnabled,
