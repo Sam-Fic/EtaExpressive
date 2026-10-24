@@ -44,7 +44,7 @@ internal object AgentGestureToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "tap_element",
-                    description = "Tap a UI node from a specific observation snapshot. index and observation_id must come from the same most recent observe_screen; if the observation has expired, observe again first. The runtime confirms Eta's accessibility service is connected before executing.",
+                    description = AgentToolSchema.observationAction("Tap"),
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -60,7 +60,7 @@ internal object AgentGestureToolCatalog {
                                     "observation_id",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "observation_id from the same most recent observe_screen as index.")
+                                        .put("description", AgentToolSchema.observationPairedWithIndex)
                                 )
                         )
                         .put("required", JSONArray().put("index").put("observation_id"))
@@ -91,7 +91,7 @@ internal object AgentGestureToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "long_press_element",
-                    description = "Long-press a UI node from a specific observation snapshot. index and observation_id must come from the same most recent observe_screen; if the observation has expired, observe again first. The runtime confirms Eta's accessibility service is connected before executing.",
+                    description = AgentToolSchema.observationAction("Long-press"),
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -107,7 +107,7 @@ internal object AgentGestureToolCatalog {
                                     "observation_id",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "observation_id from the same most recent observe_screen as index.")
+                                        .put("description", AgentToolSchema.observationPairedWithIndex)
                                 )
                                 .put(
                                     "duration_ms",
@@ -172,7 +172,10 @@ internal object AgentGestureToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "scroll_element",
-                    description = "Scroll a scrollable UI node from a specific observation snapshot in a content-browsing direction: down shows content below, up shows content above, left shows content to the left, right shows content to the right. index and observation_id must come from the same most recent observe_screen; if the observation has expired, observe again first. The runtime confirms Eta's accessibility service is connected before executing.",
+                    description = "Scroll a scrollable UI node from a specific observation snapshot in a " +
+                        "content-browsing direction: down shows content below, up shows content above, " +
+                        "left shows content to the left, right shows content to the right. " +
+                        AgentToolSchema.observationPairing + " " + AgentToolSchema.accessibilityRequired,
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -188,7 +191,7 @@ internal object AgentGestureToolCatalog {
                                     "observation_id",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "observation_id from the same most recent observe_screen as index.")
+                                        .put("description", AgentToolSchema.observationPairedWithIndex)
                                 )
                                 .put(
                                     "direction",
