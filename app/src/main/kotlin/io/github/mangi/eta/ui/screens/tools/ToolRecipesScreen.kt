@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -35,7 +36,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
@@ -49,6 +49,7 @@ import io.github.mangi.eta.agent.tool.ToolRecipeShareException
 import io.github.mangi.eta.agent.tool.ToolRecipeShareFormat
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
@@ -63,6 +64,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import androidx.compose.material3.DropdownMenuItem
@@ -149,6 +151,8 @@ internal fun ToolRecipesScreen(
     val view = LocalView.current
     val runtime = remember(context) { ToolRecipeRuntime.get(context) }
     val recipes by runtime.recipes.collectAsState()
+    val listState = rememberLazyListState()
+    val fabExpanded by rememberFabExpandedState(listState)
     // Root 依赖要按完整配方图算，跟着同一份快照刷新即可，不必再 collect 一遍同一个 Flow。
     val rootNeeding = remember(recipes) { runtime.rootDependentNames() }
     var editing by remember { mutableStateOf<ToolRecipe?>(null) }
@@ -204,6 +208,19 @@ internal fun ToolRecipesScreen(
     EtaScaffoldPage(
         title = stringResource(R.string.route_tool_recipes),
         onBack = onBack,
+        listState = listState,
+        // 导入入口从「分享与迁移」卡片换成 MCP 服务器页同款 FAB：滚动收起、回顶展开。
+        floatingActionButton = {
+            EtaExtendedFab(
+                text = stringResource(R.string.recipe_import),
+                icon = Icons.Rounded.Add,
+                expanded = fabExpanded,
+                onClick = {
+                    TouchHaptics.click(view)
+                    importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                },
+            )
+        },
         actions = {
             M3IconButton(
                 onClick = {
@@ -229,27 +246,6 @@ internal fun ToolRecipesScreen(
                     bottom = EtaSegmentedGroupSpacing,
                 ),
             )
-        }
-        item(key = "actions") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-                title = stringResource(R.string.recipe_share_section),
-            ) {
-                item {
-                    RecipeActionRow(
-                        title = stringResource(R.string.recipe_import),
-                        summary = stringResource(R.string.recipe_import_summary),
-                        icon = Icons.Rounded.Add,
-                        onClick = {
-                            importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
-                        },
-                    )
-                }
-            }
         }
         item(key = "recipes") {
             EtaSegmentedColumn(
@@ -655,32 +651,4 @@ private fun recipeStepLabel(step: io.github.mangi.eta.agent.tool.ToolRecipeStep)
 private fun recipeShareFileName(name: String): String {
     val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
     return "$name-$stamp.${ToolRecipeShareFormat.FILE_SUFFIX}"
-}
-
-/**
- * 管理页里的可点击动作行（导入 / 其它批量操作）。
- *
- * 与「技能」页的导入行同款：官方分段行承载图标 + 标题 + 摘要，
- * 前导图标由行槽位负责与标题对齐，不再手写顶对齐补偿。
- */
-@Composable
-private fun RecipeActionRow(
-    title: String,
-    summary: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-) {
-    EtaSegmentedRow(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-        leadingContent = {
-            Icon(imageVector = icon, contentDescription = null)
-        },
-        content = {
-            M3Text(text = title)
-        },
-        supportingContent = {
-            M3Text(text = summary)
-        },
-    )
 }
