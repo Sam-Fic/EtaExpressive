@@ -87,6 +87,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceMessenger = Messenger(IncomingHandler())
 
+    /** 外部入口连点时的请求解码池；过去每个 IPC 请求都直接建线程，线程数没有上限。 */
+    private val requestExecutor = AgentRequestExecutor()
+
     private val sessions = AgentRuntimeSessionRegistry()
     private val questionLedger by lazy { io.github.mangi.eta.agent.question.AgentQuestionLedgerAndroid.forContext(applicationContext) }
     private val stopWorker = AgentRuntimeStopWorker { failure ->
@@ -231,6 +234,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         pendingHistorySnapshots.clear()
         pendingCompactionTransfers.values.forEach { transfers -> synchronized(transfers) { transfers.forEach { it.close() } } }
         pendingCompactionTransfers.clear()
+        // 停止接收新的请求解码任务；已入队的请求继续跑完，不影响正在进行的 run。
+        requestExecutor.shutdown()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
     }
@@ -256,7 +261,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     // incomingRunRequestFromBundle reads and decodes the history transfer file
                     // (bounded at 16 MiB). Keep that off the main looper; state changes and
                     // failure delivery still happen on main.
-                    thread(name = "agent-runtime-request-ingest") {
+                    requestExecutor.execute(
+                        name = "agent-runtime-request-ingest",
+                        onRejected = {
+                            if (requestedRunId.isNotBlank()) decodingStartRuns.remove(requestedRunId)
+                            AndroidAgentLogger.warnThrottled("runtime_request_rejected") {
+                                "Agent runtime rejected start request: executor saturated"
+                            }
+                            finishWithFailure("Agent Runtime 请求过多，本次未执行；请稍后重试", replyTo)
+                        },
+                    ) {
                         val decoded = runCatching {
                             AgentRuntimeWire.incomingRunRequestFromBundle(data)
                         }
@@ -342,7 +356,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     val conversationId = data.getString("conversation_id").orEmpty()
                     val queryId = data.getString("history_query_id").orEmpty()
                     val capturedSession = sessions.get(runId)
-                    thread(name = "eta-history-query") {
+                    requestExecutor.execute(name = "eta-history-query") {
                         val response = AgentRuntimeWire.ackBundle(runId).apply {
                             putString("history_snapshot_id", snapshotId)
                             putString("history_query_id", queryId)
@@ -395,7 +409,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 AgentRuntimeWire.MSG_QUERY_QUESTION -> {
                     val data = msg.data ?: return
                     val reply = msg.replyTo ?: return
-                    thread(name = "eta-question-query") {
+                    requestExecutor.execute(name = "eta-question-query") {
                         val snapshot = runCatching {
                             val conversationId = data.getString("conversation_id").orEmpty()
                             val runId = AgentRuntimeWire.runIdFromBundle(data)
@@ -416,7 +430,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     val reply = msg.replyTo ?: return
                     // Decoding is bounded; answer validation and event callbacks do not run on Main.
                     val questionId = data.getString("question_id").orEmpty().take(1024)
-                    thread(name = "eta-question-answer") {
+                    requestExecutor.execute(name = "eta-question-answer") {
                         val receipt = runCatching {
                             val submission = AgentRuntimeWire.questionAnswerFromBundle(data)
                             sessions.get(submission.runId)?.submitQuestionAnswer(submission)
@@ -480,7 +494,18 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         val pending = PendingStartRequest(incoming, replyTo)
         pendingStartRequests[runId] = pending
-        thread(name = "agent-runtime-image-ingest") {
+        requestExecutor.execute(
+            name = "agent-runtime-image-ingest",
+            onRejected = {
+                pendingStartRequests.remove(runId)?.let { previous ->
+                    failPendingStart(previous, "请求过多，已拒绝")
+                }
+                AndroidAgentLogger.warnThrottled("runtime_request_rejected") {
+                    "Agent runtime rejected image ingest: executor saturated"
+                }
+                finishWithFailure("Agent Runtime 请求过多，本次未执行；请稍后重试", replyTo)
+            },
+        ) {
             val prepared = runCatching {
                 val request = AgentRuntimeImageTransfer.materialize(incoming)
                 if (!AgentRuntimeRequestConfigResolver.requiresRuntimeConfig(request)) {
