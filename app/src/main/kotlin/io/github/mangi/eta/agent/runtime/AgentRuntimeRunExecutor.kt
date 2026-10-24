@@ -25,6 +25,7 @@ import io.github.mangi.eta.agent.skill.SkillContext
 import io.github.mangi.eta.agent.skill.SkillRuntime
 import io.github.mangi.eta.agent.skill.PublicGitHubSkillSource
 import io.github.mangi.eta.agent.tool.AgentLocalTools
+import io.github.mangi.eta.agent.tool.AgentDangerousOperationPolicy
 import io.github.mangi.eta.agent.tool.AssistantToolSwitches
 import io.github.mangi.eta.agent.tool.AgentToolRequirements
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
@@ -176,6 +177,10 @@ internal class AgentRuntimeRunExecutor(
                 deviceSensitiveActionToolsEnabled = { allowSensitiveAction && currentPermissions().deviceSensitiveActionTools },
                 memoryToolsEnabled = { AgentMemoryRepository.isEnabled(assistant.id) },
                 screenshotExcludedPackages = { entrySurfaceGuard?.consumeScreenshotExcludedPackages().orEmpty() },
+                // 危险操作逐次确认：未确认时拒绝本次调用，用户同意后重发即可通过。
+                confirmDangerousOperation = { toolName, argumentsJson ->
+                    AgentDangerousOperationPolicy.decision(toolName, argumentsJson)
+                },
                 beforeToolExecution = { toolName ->
                     val requiresAccessibility = AgentToolRequirements.requiresAccessibility(toolName)
                     if (!requiresAccessibility && !AgentOverlayVisibilityPolicy.requiresEntrySurfaceDismissal(toolName)) {

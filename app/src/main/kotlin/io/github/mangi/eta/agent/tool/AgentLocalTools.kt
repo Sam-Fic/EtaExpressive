@@ -112,6 +112,11 @@ internal class AgentLocalTools(
     private val beforeToolExecution: (String) -> ToolExecutionDecision = {
         ToolExecutionDecision.Allow
     },
+    /**
+     * 危险操作的逐次确认。与 [beforeToolExecution] 分开：前者是权限/准入（不可协商），
+     * 后者是「这件事要不要先问用户」，两者失败时的错误码与恢复方式都不同。
+     */
+    private val confirmDangerousOperation: (String, String) -> ToolExecutionDecision? = { _, _ -> null },
     private val skillIndexService: SkillIndexService? = null,
     private val skillLoader: SkillLoader? = null,
     private val skillResourceReader: SkillResourceReader? = null,
@@ -481,6 +486,13 @@ internal class AgentLocalTools(
             if (toolCall.name in virtualLifecycle) return@runCatching textResult(errorResult("BACKGROUND_MODE_REQUIRED", "当前任务不是后台模式"))
             deviceToolPermissionError(toolCall.name)?.let { return@runCatching it }
             memoryToolPermissionError(toolCall.name)?.let { return@runCatching it }
+            confirmDangerousOperation(toolCall.name, toolCall.argumentsJson).let { decision ->
+                when (decision) {
+                    null, ToolExecutionDecision.Allow -> Unit
+                    is ToolExecutionDecision.Reject ->
+                        return@runCatching textResult(errorResult(code = decision.code, message = decision.message))
+                }
+            }
             when (val decision = beforeToolExecution(toolCall.name)) {
                 ToolExecutionDecision.Allow -> Unit
                 is ToolExecutionDecision.Reject -> {

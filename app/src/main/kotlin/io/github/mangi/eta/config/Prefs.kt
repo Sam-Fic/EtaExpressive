@@ -77,6 +77,12 @@ internal object Prefs {
          * 默认开启；关闭后不再下发委派族工具，已有子任务仍可用 get_task_result 查看。
          */
         const val AGENT_SUBAGENT_TOOLS = "agent_subagent_tools"
+
+        /**
+         * 危险操作逐次确认：重启、卸载应用、清数据、删除用户等不可逆操作先问用户。
+         * 默认关闭，保持历史行为；打开后只作用于写操作，读类工具不受影响。
+         */
+        const val AGENT_CONFIRM_DANGEROUS_TOOLS = "agent_confirm_dangerous_tools"
         const val AGENT_THINKING_ENABLED = "agent_thinking_enabled"
         const val AGENT_RUNTIME_CONFIG_JSON = "agent_runtime_config_json"
         const val AGENT_AUTO_COMPRESS_ENABLED = "agent_auto_compress_enabled"
@@ -138,6 +144,7 @@ internal object Prefs {
             AGENT_SELF_SETTINGS_TOOLS to true,
             AGENT_MEDIA_SEARCH_TOOLS to false,
             AGENT_SUBAGENT_TOOLS to true,
+            AGENT_CONFIRM_DANGEROUS_TOOLS to false,
             AGENT_THINKING_ENABLED to true,
             AGENT_AUTO_COMPRESS_ENABLED to false,
             AGENT_COMPRESS_CUSTOM_MODEL_ENABLED to false,
@@ -168,6 +175,7 @@ internal object Prefs {
             AGENT_SELF_SETTINGS_TOOLS,
             AGENT_MEDIA_SEARCH_TOOLS,
             AGENT_SUBAGENT_TOOLS,
+            AGENT_CONFIRM_DANGEROUS_TOOLS,
             AGENT_THINKING_ENABLED,
             AGENT_AUTO_COMPRESS_ENABLED,
             AGENT_COMPRESS_CUSTOM_MODEL_ENABLED,

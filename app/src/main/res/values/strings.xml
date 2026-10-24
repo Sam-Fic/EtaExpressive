@@ -684,6 +684,8 @@
   <string name="settings_device_state_reads_summary">Settings, system status, alarms, location and app usage. Lower risk than personal information.</string>
   <string name="aes_tool_groups_title">Tool groups for this assistant</string>
   <string name="aes_tool_group_globally_off">Off by the global switch</string>
+  <string name="settings_confirm_dangerous_tools">Confirm before destructive actions</string>
+  <string name="settings_confirm_dangerous_tools_summary">Ask before reboots, uninstalling apps, clearing data or removing users. Read-only tools are never interrupted.</string>
   <string name="settings_subagent_tools">Sub-agent delegation</string>
   <string name="settings_subagent_tools_summary">Let the model hand self-contained tasks to configured workers. Each delegation runs on another model and is billed separately.</string>
   <string name="settings_shell_tools">Allow command execution</string>

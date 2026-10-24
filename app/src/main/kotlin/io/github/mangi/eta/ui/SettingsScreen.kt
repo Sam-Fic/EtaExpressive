@@ -48,6 +48,7 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -581,6 +582,17 @@ internal fun SettingsScreen(
                         summary = stringResource(R.string.settings_self_settings_tools_summary),
                         key = Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS,
                         icon = Icons.Rounded.Tune,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_confirm_dangerous_tools),
+                        summary = stringResource(R.string.settings_confirm_dangerous_tools_summary),
+                        key = Prefs.Keys.AGENT_CONFIRM_DANGEROUS_TOOLS,
+                        icon = Icons.Rounded.Warning,
                     )
                 }
 
