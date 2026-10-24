@@ -76,7 +76,7 @@ class AgentPromptBuilderTest {
         )
 
         assertEquals(
-            listOf("system", "system", "system", "system", "system", "user", "assistant", "user"),
+            listOf("system", "system", "system", "system", "system", "system", "user", "assistant", "user"),
             messages.roles(),
         )
         assertEquals("自定义系统约束", messages.getJSONObject(0).getString("content"))
@@ -120,10 +120,10 @@ class AgentPromptBuilderTest {
         assertFalse(messages.systemContents().any { it.contains("网页浏览、读取") })
         assertTrue(messages.systemContents().any { it.contains("持久记忆已关闭") })
         assertTrue(messages.systemContents().any { it.contains("当前助手未开启 Skills") })
-        assertEquals("旧问题", messages.getJSONObject(5).getString("content"))
-        assertEquals("旧回答", messages.getJSONObject(6).getString("content"))
+        assertEquals("旧问题", messages.getJSONObject(6).getString("content"))
+        assertEquals("旧回答", messages.getJSONObject(7).getString("content"))
 
-        val currentContent = messages.getJSONObject(7).getJSONArray("content")
+        val currentContent = messages.getJSONObject(8).getJSONArray("content")
         assertEquals("当前问题", currentContent.getJSONObject(0).getString("text"))
         assertEquals(
             image.reference,
@@ -170,16 +170,16 @@ class AgentPromptBuilderTest {
         assertFalse(serialized.contains("device_actions"))
         assertFalse(serialized.contains("turn on the flashlight"))
         assertEquals(
-            listOf("system", "system", "system", "user", "assistant", "tool", "assistant", "user"),
+            listOf("system", "system", "system", "system", "user", "assistant", "tool", "assistant", "user"),
             messages.roles(),
         )
-        val remainingCalls = messages.getJSONObject(4).getJSONArray("tool_calls")
+        val remainingCalls = messages.getJSONObject(5).getJSONArray("tool_calls")
         assertEquals(1, remainingCalls.length())
         assertEquals(
             "set_alarm",
             remainingCalls.getJSONObject(0).getJSONObject("function").getString("name"),
         )
-        assertEquals("call_alarm", messages.getJSONObject(5).getString("tool_call_id"))
+        assertEquals("call_alarm", messages.getJSONObject(6).getString("tool_call_id"))
     }
 
     @Test
@@ -211,10 +211,10 @@ class AgentPromptBuilderTest {
 
         assertFalse(messages.toString().contains("device_actions"))
         assertEquals(
-            listOf("system", "system", "system", "user", "assistant", "user"),
+            listOf("system", "system", "system", "system", "user", "assistant", "user"),
             messages.roles(),
         )
-        assertEquals("已打开", messages.getJSONObject(4).getString("content"))
+        assertEquals("已打开", messages.getJSONObject(5).getString("content"))
     }
 
     @Test

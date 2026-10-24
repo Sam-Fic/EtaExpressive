@@ -85,7 +85,8 @@ class AgentInteractiveModePromptTest {
         )
         val off = initial(false)
         val on = initial(true)
-        assertEquals(listOf("system", "system", "system", "user", "assistant", "user"),
+        // 三个基础 system 消息 + 延迟工具域索引（未打开的域会追加一行索引）。
+        assertEquals(listOf("system", "system", "system", "system", "user", "assistant", "user"),
             (0 until on.length()).map { on.getJSONObject(it).getString("role") })
         assertEquals(off.length(), on.length())
         assertTrue(on.getJSONObject(0).getString("content").contains("交互模式已开启"))
@@ -93,9 +94,9 @@ class AgentInteractiveModePromptTest {
         for (index in 1 until off.length()) {
             assertEquals(off.getJSONObject(index).toString(), on.getJSONObject(index).toString())
         }
-        assertEquals("old question", on.getJSONObject(3).getString("content"))
-        assertEquals("old answer", on.getJSONObject(4).getString("content"))
-        assertEquals("current question", on.getJSONObject(5).getString("content"))
+        assertEquals("old question", on.getJSONObject(4).getString("content"))
+        assertEquals("old answer", on.getJSONObject(5).getString("content"))
+        assertEquals("current question", on.getJSONObject(6).getString("content"))
     }
 
     @Test
@@ -134,7 +135,7 @@ class AgentInteractiveModePromptTest {
                 assertFalse(guidance.contains(if (enabled) "交互模式已关闭" else "交互模式已开启"))
                 assertQuestionDiscipline(guidance)
                 assertEquals(round != 1, guidance.contains("相关应用私有文件与数据库"))
-                assertEquals(3, messages.systemContents().size)
+                assertEquals(4, messages.systemContents().size)
             }
             provider.tools.forEach { assertTrue(it.toolNames().contains("ask_user")) }
             catalogs[enabled] = provider.tools.map { it.toString() }

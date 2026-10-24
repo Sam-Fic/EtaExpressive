@@ -19,7 +19,28 @@ internal object AgentSelfSettingsToolCatalog {
     const val AUTHOR_TOOL = "eta_author_tool"
     const val LIST_RECIPES = "eta_list_recipes"
 
-    fun appendTo(tools: JSONArray) {
+    /**
+     * 低频管理工具：可由 [AgentToolGroups] 折叠成按需打开的域。
+     * 读/改配置这两个常驻工具不在此列。
+     */
+    fun manageTools(): Set<String> =
+        setOf(MANAGE_MODELS, MANAGE_SUBAGENTS, MANAGE_HISTORY, CONFIGURE_MCP)
+
+    /**
+     * 下发自设置工具。[withheld] 里的工具不下发（由 [AgentToolGroups] 折叠成按需打开的域）。
+     */
+    fun appendTo(tools: JSONArray, withheld: Set<String> = emptySet()) {
+        val emitted = JSONArray()
+        appendAll(emitted)
+        for (index in 0 until emitted.length()) {
+            val tool = emitted.getJSONObject(index)
+            val name = tool.optJSONObject("function")?.optString("name").orEmpty()
+            if (name in withheld) continue
+            tools.put(tool)
+        }
+    }
+
+    private fun appendAll(tools: JSONArray) {
         tools
             .put(
                 AgentToolSchema.function(

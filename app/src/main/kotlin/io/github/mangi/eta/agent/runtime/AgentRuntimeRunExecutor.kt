@@ -370,6 +370,8 @@ internal class AgentRuntimeRunExecutor(
             val completedResponse = AgentModelClient.complete(
                 config = request.config, sessionId = request.effectiveModelSessionId,
                 capabilitiesProvider = { AgentToolCapabilities.captureForRound(appContext).copy(virtualDisplay = runVirtualDisplay()) },
+                // 延迟工具域：tools_use_group 成功后由执行器累积，下一轮重建目录时生效。
+                openedToolGroupsProvider = { executor.openedToolGroups() },
                 prompt = promptWithChildHandoff, toolExecutor = delegatedExecutor, images = request.images,
                 history = request.history, skipHistoryTrimming = true,
                 compactionArchive = io.github.mangi.eta.agent.model.AgentCompactionArchive(appContext.filesDir, request.effectiveModelSessionId),

@@ -26,6 +26,8 @@ import io.github.mangi.eta.data.repository.WebToolsSettingsRepository
 import kotlinx.coroutines.runBlocking
 import io.github.mangi.eta.agent.model.AgentScreenObservationContract
 import io.github.mangi.eta.agent.model.AgentSelfSettingsToolCatalog
+import io.github.mangi.eta.agent.model.AgentToolGroups
+import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
 import io.github.mangi.eta.agent.overlay.GestureIndicator
@@ -151,6 +153,14 @@ internal class AgentLocalTools(
         (name in virtualLifecycle || (route == AgentSelfAppSurface.Route.BASE &&
             io.github.mangi.eta.agent.device.AgentTaskSurface.isTraditionalScreenGuiTool(name)))
     private val closed = AtomicBoolean(false)
+    /**
+     * 本次 run 里已按需打开的工具域。AgentModelClient 在下一轮重建目录时读取它，
+     * 与技能安装的 next_turn 语义一致：打开后最早下一轮生效。
+     */
+    private val openedToolGroups = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** 供宿主在每轮重建目录时读取。 */
+    fun openedToolGroups(): Set<String> = openedToolGroups.toSet()
     private val deviceController = RootShellDeviceController(logger, {
         val excluded = screenshotExcludedPackages()
         if (selfSurface.active && runCatching(selfForegroundPackage).getOrNull() == context.packageName) {
@@ -269,6 +279,24 @@ internal class AgentLocalTools(
 
     fun terminalSessionIdentity(sessionId: String): String? =
         terminalController.sessionIdentity(sessionId)
+
+    /**
+     * 打开一个延迟工具域。执行侧同样按开关与能力复查：打开域不放宽任何权限，
+     * 域内工具在下一轮仍要各自通过 Prefs 与 AgentToolCapabilities。
+     */
+    private fun useToolGroup(args: JSONObject): String {
+        if (!selfSettingsToolsEnabled()) {
+            return errorResult("SELF_SETTINGS_DISABLED", "助手配置工具已在设置中关闭")
+        }
+        val requested = args.optString("group").trim()
+        val known = AgentToolGroups.groups.filter { it.deferredByDefault }.map { it.id }
+        val group = AgentToolGroups.group(requested)
+        if (group == null || !group.deferredByDefault) {
+            return AgentToolGroupCatalog.unknownGroup(requested, known)
+        }
+        openedToolGroups += group.id
+        return AgentToolGroupCatalog.result(group)
+    }
 
     override fun execute(toolCall: AgentModelClient.ToolCall): AgentModelClient.ToolResult {
         val gui = io.github.mangi.eta.agent.device.AgentTaskSurface.isTraditionalScreenGuiTool(toolCall.name) ||
@@ -531,6 +559,7 @@ internal class AgentLocalTools(
                 "skills_inspect_github" -> textResult(skillsInspectGitHub(args))
                 "skills_install_from_github" -> textResult(skillsInstallFromGitHub(args))
                 "skills_install_local" -> textResult(skillsInstallLocal(args))
+                AgentToolGroupCatalog.USE_GROUP -> textResult(useToolGroup(args))
                 AgentSelfSettingsToolCatalog.GET_SETTINGS -> textResult(selfSettingsTool { selfSettingsTools.list() })
                 AgentSelfSettingsToolCatalog.SET_SETTINGS -> textResult(selfSettingsTool { selfSettingsTools.set(args) })
                 AgentSelfSettingsToolCatalog.MANAGE_MODELS -> textResult(selfSettingsTool { selfModelTools.execute(args) })

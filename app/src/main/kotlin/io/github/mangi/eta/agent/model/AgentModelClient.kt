@@ -99,6 +99,8 @@ internal object AgentModelClient {
         /** 模型自建配方的 function schema；每轮重新读取，因此新建的配方下一轮即可调用。 */
         recipeTools: JSONArray = JSONArray(),
         capabilitiesProvider: () -> AgentToolCapabilities = { AgentToolCapabilities(rootAvailable = false) },
+        /** 本次 run 已按需打开的工具域；由执行器在 tools_use_group 成功后累积。 */
+        openedToolGroupsProvider: () -> Set<String> = { emptySet() },
         sessionId: String = java.util.UUID.randomUUID().toString(),
         onEvent: (AgentEvent) -> Unit = {},
         linuxEnvironmentLabelProvider: () -> String = { "Linux" },
@@ -169,6 +171,7 @@ internal object AgentModelClient {
                 mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
                 capabilities = capabilities,
                 localWebSearch = !config.usesHostedWebSearch,
+                openedToolGroups = openedToolGroupsProvider(),
             )
             for (index in 0 until additionalTools.length()) {
                 tools.put(additionalTools.opt(index))
@@ -245,12 +248,14 @@ internal object AgentModelClient {
                         memoryEnabled = nextMemoryContext.enabled,
                         delegationAvailable = delegationAvailable,
                         interactiveModeEnabled = interactiveModeEnabled,
+                        openedToolGroups = openedToolGroupsProvider(),
                     )
                     if (signature != lastRoundSignature) {
                         val systemMessages = AgentPromptBuilder.buildSystemMessages(
                             config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
                             capabilities.shellTools,
                             interactiveModeEnabled = interactiveModeEnabled,
+                            openedToolGroups = openedToolGroupsProvider(),
                         )
                         for (index in 0 until systemMessages.length()) {
                             messages.put(index, systemMessages.getJSONObject(index))
@@ -408,6 +413,7 @@ internal object AgentModelClient {
         val memoryEnabled: Boolean,
         val delegationAvailable: Boolean,
         val interactiveModeEnabled: Boolean,
+        val openedToolGroups: Set<String> = emptySet(),
     )
 
     @Serializable

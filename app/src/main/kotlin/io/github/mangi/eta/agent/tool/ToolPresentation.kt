@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.tool
 
+import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
 import android.content.res.Resources
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
@@ -66,6 +67,7 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.WebAsset
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.AutoFixHigh
@@ -215,6 +217,7 @@ internal object ToolPresentation {
         "eta_manage_subagents" -> R.string.tool_eta_manage_subagents
         "eta_manage_history" -> R.string.tool_eta_manage_history
         "eta_configure_mcp" -> R.string.tool_eta_configure_mcp
+        AgentToolGroupCatalog.USE_GROUP -> R.string.tool_eta_get_settings
         "eta_author_tool" -> R.string.tool_eta_author_tool
         "eta_list_recipes" -> R.string.tool_eta_list_recipes
         "semantic_search_media" -> R.string.tool_semantic_search_media
@@ -373,6 +376,7 @@ internal object ToolPresentation {
         "eta_manage_subagents" -> SubAgents
         "eta_manage_history" -> Icons.Rounded.History
         "eta_configure_mcp" -> Icons.Rounded.Extension
+        AgentToolGroupCatalog.USE_GROUP -> Icons.Rounded.Widgets
         "eta_author_tool" -> Icons.Rounded.AutoFixHigh
         "eta_list_recipes" -> Icons.Rounded.Inventory2
         "skills_list", "skills_list_curated" -> Icons.AutoMirrored.Rounded.MenuBook

@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.tool
 
+import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -42,6 +43,8 @@ internal object AgentToolRequirements {
             "skills_list", "skills_read", "skills_read_resource", "skills_list_curated",
             "skills_inspect_github", "skills_install_from_github", "skills_install_local",
             "eta_get_settings", "eta_set_settings", "eta_manage_models", "eta_manage_subagents", "eta_manage_history", "eta_configure_mcp",
+            // 延迟工具域的开启动作：本身不触达设备，只是把域内工具放进下一轮目录。
+            AgentToolGroupCatalog.USE_GROUP,
             // 自进化：自写配方本身不需要 Root（配方内含需 Root 的步骤时按配方单独判定）。
             "eta_author_tool", "eta_list_recipes",
             "semantic_search_media",

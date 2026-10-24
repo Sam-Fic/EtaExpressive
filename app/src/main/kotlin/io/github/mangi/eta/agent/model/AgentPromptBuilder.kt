@@ -102,6 +102,7 @@ internal object AgentPromptBuilder {
         delegationAvailable: Boolean = false,
         shellTools: AgentShellToolAvailability.Snapshot? = null,
         interactiveModeEnabled: Boolean = false,
+        openedToolGroups: Set<String> = emptySet(),
     ): JSONArray {
         // Only point at the detection section when this round actually carries one.
         val environmentRule = if (shellTools != null) {
@@ -291,6 +292,10 @@ internal object AgentPromptBuilder {
         }
         buildMemorySystemMessage(memoryContext)?.let(messages::put)
         buildSkillSystemMessage(skillContext)?.let(messages::put)
+        // 延迟工具域索引：只下发一行说明，整组 schema 由 tools_use_group 按需展开。
+        AgentToolGroups.indexMessage(openedToolGroups)?.let { index ->
+            messages.put(systemMessage(index))
+        }
         return messages
     }
 
