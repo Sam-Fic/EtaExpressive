@@ -9,12 +9,14 @@ Eta 的 Agent Runtime 负责把一次用户输入组织为模型回合、工具�
 - `AgentPromptBuilder`：系统约束、Skill 索引、历史和当前用户输入。
 - `AgentConversationCodec`：Provider JSON 与稳定会话 DTO 的转换。
 - `AgentToolCatalog` 及分组目录：模型可见的工具 schema，不执行工具。
+- `AgentToolGroups`：工具域的分层加载。常驻工具永远下发；低频的「域」只在系统提示里留一行索引，模型调用 `tools_use_group` 后从下一轮起才出现在目录里（与 Skill 的 `next_turn` 语义一致）。打开域不放宽任何权限：域内工具仍需各自通过开关与能力判定。
+- `AgentPureReadTools`：同一批次里可并行的幂等只读工具白名单。并行只对「整批都是只读且至少两个」生效，事件按模型给出的 index 顺序回放，共享状态仍在主线程按同样顺序合并。
 - `AgentTraceFormatter`：只生成可展示、可记录的脱敏摘要。
 - `AgentProviderClient`：OpenAI-compatible、Anthropic 等协议边界。
 - `AgentRunController`：取消、暂停和 steering 队列。
 - `AgentRuntimeSession`：每个 run 自持 reply channel，并保证唯一最终结果。
 - `AgentRuntimeRunExecutor`：从 Skill/工具初始化到模型执行、资源清理和终态提交的统一异常边界。
-- `AgentRuntimeService`：Android 生命周期、入口 IPC 和浮层宿主；不再内联 Agent 执行循环。
+- `AgentRuntimeService`：Android 生命周期、入口 IPC 和浮层宿主；不再内联 Agent 执行循环。请求解码走 `AgentRequestExecutor` 的固定线程数 + 有界队列，饱和时回明确错误而不是无限建线程。
 - `ShellProcessSupervisor`：Android/Alpine/Debian Shell 进程的接纳、独立进程组、取消和回收；终端协议不承担进程所有权细节。
 
 ## Loop 语义
@@ -39,8 +41,9 @@ pending steering
 - 只有明确的 `tool_calls` / `tool_use` 终止原因才允许执行工具；`stop`、内容过滤或未知终止原因中夹带的调用一律作为协议矛盾拒绝。
 - 工具参数在执行前按本轮实际下发的 JSON Schema 校验，支持本地 `$ref`、组合 Schema、条件 Schema 与常用对象、数组、字符串、数值约束；这只检查调用合同，不承担权限确认或额外安全策略。
 - transcript 只返回本次 run 新增的 assistant、tool 和运行中 steering 消息，不重复旧 history 或本轮初始用户消息。
-- GUI/终端工具保持串行。Android 前台状态和会话式 Shell 都不具备可安全并行的通用语义。
+- GUI/终端工具保持串行。Android 前台状态和会话式 Shell 都不具备可安全并行的通用语义。整批都是幂等只读且至少两个调用时才并行（上限 4），事件仍按模型给出的 index 顺序回放。
 - 单次 run 不设置固定回合数或总时限，由模型自然结束、用户取消或不可恢复错误终止。
+- 重连按失败性质分流：传输/暂时性错误（超时、连接中断、429 限流等）在用户所选重连窗口内持续重试，退避为 2s/4s/8s 并带比例抖动，且以提供方 `Retry-After` 为下限、窗口剩余时间为上限；永久性错误（API Key 失效 401/403、模型或路径不存在 404、额度/计费受限）只保留一次有界重发，之后直接结束并把原因交给用户，不再把「需要改配置」伪装成「网络在抖」。OAuth 接入是例外：凭据每次尝试都重新解析，用户在窗口内重新登录可以恢复，因此认证类失败仅在 API Key 接入下降级。
 - cancel 是终止信号；pause 是检查点阻塞；steering 是下一回合输入。暂停中的 steering 只排队，不解除 pause，也不打断当前请求。
 - cancel 的主线程路径只做原子终态与资源关闭：共享浏览器按 runId 校验归属；终端立即封闭新的进程接纳，并在后台按独立进程组终止同步命令、会话和 async job，再完成线程与流回收。Android 上 `setsid` 或 PID/PGID ownership 握手不可用时会 fail closed；非 Android 测试环境才允许父子树快照回退。终止前还会核验随机 ownership token，避免陈旧 PGID 复用后误杀无关进程。
 - 最终 steering 检查会原子关闭接收入口；Loop 返回后不会再把无人消费的补充指令误报为已接收。补充指令也不会解除 pause。
