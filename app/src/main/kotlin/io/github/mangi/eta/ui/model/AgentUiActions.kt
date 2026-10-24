@@ -104,6 +104,9 @@ sealed interface AgentToolsAction {
     data object NavigateBack : AgentToolsAction
     data object OpenBrowser : AgentToolsAction
     data object OpenWebToolsSettings : AgentToolsAction
+
+    /** 工具页卡片旁的内联开关：就地收紧或恢复某个能力域。 */
+    data class ToggleGroup(val key: String, val enabled: Boolean) : AgentToolsAction
 }
 
 sealed interface AgentSkillsAction {

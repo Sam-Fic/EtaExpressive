@@ -761,6 +761,11 @@ internal class AgentAppState(
     var toolsState by mutableStateOf(buildToolsState(appContext))
         private set
 
+    /** 工具页内联开关改动后重建卡片状态（分组开关状态取自 Prefs）。 */
+    fun refreshToolsState() {
+        toolsState = buildToolsState(appContext)
+    }
+
     var skillsState by mutableStateOf(AgentSkillsUiState(isLoading = true))
         private set
 
@@ -7802,9 +7807,23 @@ private fun stableArchiveId(value: String): String =
         .take(12)
         .joinToString(separator = "") { byte -> "%02x".format(byte) }
 
-internal fun buildToolsState(context: Context): AgentToolsUiState =
-    AgentToolsUiState(
-        groups = listOf(
+internal fun buildToolsState(context: Context): AgentToolsUiState {
+    val groups = buildToolGroups(context)
+    return AgentToolsUiState(
+        groups = groups.map { group ->
+            if (!io.github.mangi.eta.ui.model.ToolGroupSwitch.showsInGroup(group.id)) group
+            else {
+                val key = io.github.mangi.eta.ui.model.ToolGroupSwitch.keyFor(group.id)
+                group.copy(
+                    switchKey = key,
+                    switchEnabled = key?.let(io.github.mangi.eta.ui.model.ToolGroupSwitch::isEnabled) ?: true,
+                )
+            }
+        },
+    )
+}
+
+private fun buildToolGroups(context: Context): List<ToolGroupUi> = listOf(
             ToolGroupUi(
                 id = "screen",
                 title = context.getString(R.string.state_screens_and_controls_3f095b),
@@ -8021,8 +8040,7 @@ internal fun buildToolsState(context: Context): AgentToolsUiState =
                     ToolItemUi("grep_files", context.getString(R.string.tool_ui_grep_files), context.getString(R.string.tool_ui_grep_files_summary)),
                 ),
             ),
-        )
-    )
+)
 
 private fun buildPermissionHealthState(context: Context): PermissionHealthUiState {
     val backgroundRunningEnabled = isIgnoringBatteryOptimizations(context)

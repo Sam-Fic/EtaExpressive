@@ -78,6 +78,13 @@ private fun ToolGroupSegmentedList(
     onAction: (AgentToolsAction) -> Unit,
 ) {
     if (group.tools.isEmpty()) return
+    if (group.switchKey != null) {
+        // 分组级内联开关：用户在这里就能收紧整个能力域，不必再去找全局设置。
+        ToolGroupSwitchRow(
+            group = group,
+            onAction = onAction,
+        )
+    }
     EtaSegmentedColumn(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
         title = group.title,
@@ -116,6 +123,42 @@ private fun ToolsSegmentTabs(
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
             ) {
                 M3Text(text = title)
+            }
+        }
+    }
+}
+
+/**
+ * 分组标题旁的内联开关。
+ *
+ * 关闭后该组工具不再下发给模型；已打开的工具域也会随之失效。
+ * 这里只做「用户」的开关——模型侧仍然只能收紧不能放宽（见 AgentSelfSettingsTools）。
+ */
+@Composable
+private fun ToolGroupSwitchRow(
+    group: ToolGroupUi,
+    onAction: (AgentToolsAction) -> Unit,
+) {
+    val key = group.switchKey ?: return
+    EtaSegmentedColumn(
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+        title = group.title,
+    ) {
+        item(key = "switch-${group.id}") {
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                M3Text(
+                    text = stringResource(R.string.tools_group_switch_title),
+                    modifier = Modifier.weight(1f),
+                )
+                androidx.compose.material3.Switch(
+                    checked = group.switchEnabled,
+                    onCheckedChange = { enabled -> onAction(AgentToolsAction.ToggleGroup(key, enabled)) },
+                )
             }
         }
     }
