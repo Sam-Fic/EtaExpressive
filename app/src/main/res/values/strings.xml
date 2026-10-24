@@ -682,6 +682,8 @@
   <string name="settings_personal_data_reads_summary">Contacts, messages, calls, health, bills, orders, notes and calendar contents.</string>
   <string name="settings_device_state_reads">Device state reads</string>
   <string name="settings_device_state_reads_summary">Settings, system status, alarms, location and app usage. Lower risk than personal information.</string>
+  <string name="aes_tool_groups_title">Tool groups for this assistant</string>
+  <string name="aes_tool_group_globally_off">Off by the global switch</string>
   <string name="settings_shell_tools">Allow command execution</string>
   <string name="settings_shell_tools_summary">Let the model run shell commands. Turn this off to keep file reading and writing but block run_command and terminal.</string>
   <string name="settings_self_settings_tools">Eta self-configuration tools</string>

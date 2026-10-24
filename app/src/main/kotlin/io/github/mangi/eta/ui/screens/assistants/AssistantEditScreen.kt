@@ -71,6 +71,9 @@ internal fun AssistantEditScreen(
     var persistedMemoryEnabled by remember(assistantId) { mutableStateOf(original.memoryEnabled) }
     var enabledSkillIds by remember(assistantId) { mutableStateOf(original.enabledSkillIds.toSet()) }
     var persistedSkillIds by remember(assistantId) { mutableStateOf(original.enabledSkillIds.toSet()) }
+    // 按助手的工具开关：与记忆/技能同级，缺失的组回落到全局开关。
+    var toolSwitches by remember(assistantId) { mutableStateOf(original.toolGroupSwitches) }
+    var persistedToolSwitches by remember(assistantId) { mutableStateOf(original.toolGroupSwitches) }
     var memoryDraft by remember(assistantId) { mutableStateOf("") }
     var memoryRevision by remember(assistantId) { mutableStateOf("") }
     var memorySaved by remember(assistantId) { mutableStateOf("") }
@@ -85,6 +88,7 @@ internal fun AssistantEditScreen(
         avatarFileName != original.avatarFileName ||
         memoryEnabled != persistedMemoryEnabled ||
         enabledSkillIds != persistedSkillIds ||
+        toolSwitches != persistedToolSwitches ||
         memoryDraft != memorySaved
 
     LaunchedEffect(assistantId) {
@@ -115,15 +119,24 @@ internal fun AssistantEditScreen(
         )
     }
 
-    fun persistAssistantToggles(nextMemory: Boolean = memoryEnabled, nextSkills: Set<String> = enabledSkillIds) {
+    fun persistAssistantToggles(
+        nextMemory: Boolean = memoryEnabled,
+        nextSkills: Set<String> = enabledSkillIds,
+        nextTools: Map<String, Boolean> = toolSwitches,
+    ) {
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching {
                 val current = requireNotNull(AssistantRepository.currentProfile(assistantId)) { context.getString(R.string.aes_assistant_missing) }
-                AssistantRepository.update(current.copy(memoryEnabled = nextMemory, enabledSkillIds = nextSkills.toList()))
+                AssistantRepository.update(current.copy(
+                    memoryEnabled = nextMemory,
+                    enabledSkillIds = nextSkills.toList(),
+                    toolGroupSwitches = nextTools,
+                ))
             } }
             if (result.isSuccess) {
                 persistedMemoryEnabled = nextMemory
                 persistedSkillIds = nextSkills
+                persistedToolSwitches = nextTools
             } else {
                 android.widget.Toast.makeText(context, result.exceptionOrNull()?.message ?: context.getString(R.string.aes_skill_catalog_publish_failed), android.widget.Toast.LENGTH_LONG).show()
             }
@@ -135,7 +148,8 @@ internal fun AssistantEditScreen(
         val targetMemory = memoryDraft
         val baseRevision = memoryRevision
         val targetProfile = original.copy(name = name, prompt = prompt, avatarFileName = avatarFileName,
-            memoryEnabled = memoryEnabled, enabledSkillIds = enabledSkillIds.toList())
+            memoryEnabled = memoryEnabled, enabledSkillIds = enabledSkillIds.toList(),
+            toolGroupSwitches = toolSwitches)
         val memoryChanged = targetMemory != memorySaved
         saving = true
         scope.launch {
@@ -260,6 +274,31 @@ internal fun AssistantEditScreen(
                             },
                             enabled = !saving,
                         )
+                    }
+                }
+                // 按助手的工具开关：只能收紧全局能力，关闭的组对这个助手不下发。
+                EtaSegmentedColumn(
+                    modifier = Modifier.padding(bottom = EtaDimens.SpaceSm),
+                    title = stringResource(R.string.aes_tool_groups_title),
+                ) {
+                    io.github.mangi.eta.agent.tool.AssistantToolSwitches.all.forEach { group ->
+                        item(key = "tool-$group") {
+                            val globalEnabled = io.github.mangi.eta.agent.tool.UiToolGroupLabel
+                                .globallyEnabled(group)
+                            EtaSwitchRow(
+                                title = io.github.mangi.eta.agent.tool.UiToolGroupLabel.label(group),
+                                summary = if (globalEnabled) "" else
+                                    stringResource(R.string.aes_tool_group_globally_off),
+                                checked = io.github.mangi.eta.agent.tool.AssistantToolSwitches
+                                    .allows(original.copy(toolGroupSwitches = toolSwitches), group, globalEnabled),
+                                onCheckedChange = { enabled ->
+                                    val next = toolSwitches + (group to enabled)
+                                    toolSwitches = next
+                                    persistAssistantToggles(nextTools = next)
+                                },
+                                enabled = !saving && globalEnabled,
+                            )
+                        }
                     }
                 }
                 // MEMORY.md 超限时用支持文案（supportingContent）承载错误提示。

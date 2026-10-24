@@ -25,6 +25,7 @@ import io.github.mangi.eta.agent.skill.SkillContext
 import io.github.mangi.eta.agent.skill.SkillRuntime
 import io.github.mangi.eta.agent.skill.PublicGitHubSkillSource
 import io.github.mangi.eta.agent.tool.AgentLocalTools
+import io.github.mangi.eta.agent.tool.AssistantToolSwitches
 import io.github.mangi.eta.agent.tool.AgentToolRequirements
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.agent.tool.PendingSkillConflictCapabilityParser
@@ -76,11 +77,18 @@ internal class AgentRuntimeRunExecutor(
         // “每次询问”选前台后补给服务的 ToolStarted 来源。
         val foregroundReplay = AgentForegroundReplay()
         val childSessionId = request.effectiveModelSessionId
-        val allowBrowser = request.config.browserTools
-        val allowTerminal = request.config.terminalTools
-        val allowDirect = request.config.deviceDirectTools
-        val allowSensitiveRead = request.config.deviceSensitiveReadTools
-        val allowSensitiveAction = request.config.deviceSensitiveActionTools
+        // 按助手的工具开关：只能收紧。全局关掉的能力不会被助手配置重新打开。
+        val assistantTools = AssistantRepository.currentProfile(request.assistantId)
+        val allowBrowser = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.BROWSER, request.config.browserTools)
+        val allowTerminal = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.TERMINAL, request.config.terminalTools)
+        val allowDirect = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.DEVICE_DIRECT, request.config.deviceDirectTools)
+        val allowSensitiveRead = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.PERSONAL_DATA, request.config.deviceSensitiveReadTools)
+        val allowSensitiveAction = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.DEVICE_ACTIONS, request.config.deviceSensitiveActionTools)
         // Parent-only prompt policy, frozen for this run rather than re-read between rounds.
         val interactiveModeEnabled = InteractiveModePreference.read()
         var response: AgentModelClient.ModelResponse.Text? = null

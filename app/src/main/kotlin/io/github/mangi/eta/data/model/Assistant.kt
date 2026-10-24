@@ -19,7 +19,19 @@ data class AssistantProfile(
     val createdAt: Long = 0L,
     val memoryEnabled: Boolean = true,
     val enabledSkillIds: List<String> = AssistantDefaults.ENABLED_SKILL_IDS,
-)
+    /**
+     * 按助手的工具开关（组 id → 是否启用）。
+     *
+     * 记忆与技能早已是按助手的，工具却是全局的：同一台设备上无法表达
+     * 「给这个助手终端，另一个不给」。缺失的组回落到全局开关，
+     * 因此老档案不需要迁移，用户没动过的组行为不变。
+     */
+    val toolGroupSwitches: Map<String, Boolean> = emptyMap(),
+) {
+    /** 该组对这个助手是否启用；未设置时回落到 [fallback]（通常为全局开关）。 */
+    fun toolGroupEnabled(groupId: String, fallback: Boolean): Boolean =
+        toolGroupSwitches[groupId] ?: fallback
+}
 
 internal object AssistantPrompt {
     const val DEFAULT_ID = "default"
