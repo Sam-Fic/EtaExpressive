@@ -195,6 +195,8 @@ internal object AgentModelClient {
             )
         )
         var promptRootAvailable = initialCapabilities.rootAvailable
+        var lastRoundSignature: RoundCapabilitySignature? = null
+        var lastRoundTools: JSONArray? = null
         val loop = AgentLoop(
             sessionId = sessionId,
             config = config,
@@ -233,16 +235,31 @@ internal object AgentModelClient {
                     val capabilities = capabilitiesProvider()
                     val nextSkillContext = skillContextProvider()
                     val nextMemoryContext = memoryContextProvider()
-                    val systemMessages = AgentPromptBuilder.buildSystemMessages(
-                        config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
-                        capabilities.shellTools,
+                    // 每轮都重建系统消息与工具目录要付约 50 KB JSON 构造 + 逐工具过滤。
+                    // 只有「能力快照 + 技能索引 + 记忆修订」都变了才真正重建；否则复用上一轮
+                    // 的目录与系统消息（两者都只由这三项决定）。
+                    val signature = RoundCapabilitySignature(
+                        capabilities = capabilities,
+                        skillIndex = nextSkillContext.installedSkills.map { it.id to it.enabled },
+                        memoryRevision = nextMemoryContext.revision,
+                        memoryEnabled = nextMemoryContext.enabled,
+                        delegationAvailable = delegationAvailable,
                         interactiveModeEnabled = interactiveModeEnabled,
                     )
-                    for (index in 0 until systemMessages.length()) {
-                        messages.put(index, systemMessages.getJSONObject(index))
+                    if (signature != lastRoundSignature) {
+                        val systemMessages = AgentPromptBuilder.buildSystemMessages(
+                            config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
+                            capabilities.shellTools,
+                            interactiveModeEnabled = interactiveModeEnabled,
+                        )
+                        for (index in 0 until systemMessages.length()) {
+                            messages.put(index, systemMessages.getJSONObject(index))
+                        }
+                        promptRootAvailable = capabilities.rootAvailable
+                        lastRoundTools = toolsFor(capabilities, nextMemoryContext.enabled)
+                        lastRoundSignature = signature
                     }
-                    promptRootAvailable = capabilities.rootAvailable
-                    toolsFor(capabilities, nextMemoryContext.enabled)
+                    requireNotNull(lastRoundTools)
                 }
             },
         )
@@ -375,6 +392,23 @@ internal object AgentModelClient {
         val usesHostedWebSearch: Boolean
             get() = hostedWebSearchEnabled && openAiEndpointMode == OpenAiEndpointMode.RESPONSES
     }
+
+    /**
+     * 决定「这一轮的系统消息与工具目录」的全部输入。
+     *
+     * AgentPromptBuilder.buildSystemMessages 只读这些值，toolsFor 只读其中的 capabilities 与
+     * memory 开关，因此签名不变时上一轮的结果可以直接复用，省掉每轮 ~50 KB 的 JSON 重建与
+     * AgentToolRequirements.project 的逐工具过滤。技能索引按 (id, enabled) 参与签名：
+     * 正文变化不影响目录与系统提示里的索引行，只有启用状态与条目集合会。
+     */
+    internal data class RoundCapabilitySignature(
+        val capabilities: io.github.mangi.eta.agent.tool.AgentToolCapabilities,
+        val skillIndex: List<Pair<String, Boolean>>,
+        val memoryRevision: String,
+        val memoryEnabled: Boolean,
+        val delegationAvailable: Boolean,
+        val interactiveModeEnabled: Boolean,
+    )
 
     @Serializable
     data class ConversationMessage(
