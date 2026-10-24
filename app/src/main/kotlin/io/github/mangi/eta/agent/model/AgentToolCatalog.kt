@@ -32,6 +32,9 @@ internal object AgentToolCatalog {
                 directTools = deviceDirectTools,
                 sensitiveReadTools = deviceSensitiveReadTools,
                 sensitiveActionTools = deviceSensitiveActionTools,
+                // 冷门只读长尾默认折叠；改设备的写操作默认折叠（省 token，也少误触）。
+                withheldReads = AgentToolGroups.withheldTailReads(openedToolGroups),
+                withheldActions = AgentToolGroups.withheldDeviceActions(openedToolGroups),
             )
             if (browserTools) {
                 AgentWebToolCatalog.appendTo(tools, includeSearch = localWebSearch)

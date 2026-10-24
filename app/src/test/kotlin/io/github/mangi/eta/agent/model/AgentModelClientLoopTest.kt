@@ -182,6 +182,8 @@ class AgentModelClientLoopTest {
                 captures++
                 AgentToolCapabilities(rootAvailable = root)
             },
+            // 设备写操作默认折叠，这里要先打开该域，才能观察到「Root 消失后工具离开目录」。
+            openedToolGroupsProvider = { setOf(AgentToolGroups.DEVICE_ACTION_GROUP.id) },
             toolExecutor = AgentModelClient.ToolExecutor {
                 executed += it.id
                 root = false

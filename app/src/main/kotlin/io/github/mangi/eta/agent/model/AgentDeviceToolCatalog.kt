@@ -5,15 +5,66 @@ import org.json.JSONObject
 
 /** 常用设备能力的结构化 schema；按风险组决定是否向模型公开。 */
 internal object AgentDeviceToolCatalog {
+    /**
+     * 敏感只读组里「特定场景才用」的冷门长尾：出行、账单、记忆合集、便签/录音、聊天图片缓存。
+     * 日常高频入口（日历、短信、通知、通讯录、应用列表、位置、设备状态、文件检索）不在此列，
+     * 这样折叠它们不会让日常任务多一次往返。
+     */
+    /** 敏感动作组的全部工具名，与 appendSensitiveActionTools 保持一致。 */
+    private val ACTION_NAMES: Set<String> = setOf(
+        "app_state_control", "appops_control", "connect_wifi", "create_calendar_event",
+        "create_calendar_events", "create_note", "deep_launch", "delete_alarm",
+        "delete_calendar_event", "delete_note", "display_control", "ime_control",
+        "manage_app", "manage_file", "package_control", "power_control", "screen_action",
+        "set_alarm_enabled", "set_brightness", "set_device_state", "set_do_not_disturb",
+        "set_flashlight", "set_hotspot", "set_screen_timeout", "set_setting", "set_timezone",
+        "system_property", "update_alarm", "update_alarm_time", "update_calendar_event",
+        "user_control",
+    )
+
+    private val TAIL_READ_NAMES: Set<String> = setOf(
+        "search_flights", "search_trains", "search_hotels", "search_bills", "summarize_bills",
+        "search_memory_collections", "search_saved_places", "search_daily_events", "search_todos",
+        "search_qq_chat_images", "search_wechat_chat_images",
+        "search_recordings", "search_recording_summaries", "search_coloros_recordings",
+        "search_coloros_memories", "search_coloros_notes",
+    )
+
+    /** 敏感动作组的全部工具名；供工具域折叠时使用。 */
+    fun sensitiveActionToolNames(): Set<String> = ACTION_NAMES
+    fun tailReadToolNames(): Set<String> = TAIL_READ_NAMES
+
     fun appendTo(
         tools: JSONArray,
         directTools: Boolean,
         sensitiveReadTools: Boolean,
         sensitiveActionTools: Boolean,
+        withheldReads: Set<String> = emptySet(),
+        withheldActions: Set<String> = emptySet(),
     ) {
         if (directTools) appendDirectTools(tools)
-        if (sensitiveReadTools) appendSensitiveReadTools(tools)
-        if (sensitiveActionTools) appendSensitiveActionTools(tools)
+        if (sensitiveReadTools) appendGroup(tools, ::appendSensitiveReadTools, withheldReads)
+        if (sensitiveActionTools) appendGroup(tools, ::appendSensitiveActionTools, withheldActions)
+    }
+
+    /** 让每个风险组先写进临时数组，再按 [withheld] 过滤掉折叠中的工具。 */
+    private fun appendGroup(
+        tools: JSONArray,
+        emit: (JSONArray) -> Unit,
+        withheld: Set<String>,
+    ) {
+        if (withheld.isEmpty()) {
+            emit(tools)
+            return
+        }
+        val emitted = JSONArray()
+        emit(emitted)
+        for (index in 0 until emitted.length()) {
+            val tool = emitted.getJSONObject(index)
+            val name = tool.optJSONObject("function")?.optString("name").orEmpty()
+            if (name in withheld) continue
+            tools.put(tool)
+        }
     }
 
     private fun appendDirectTools(tools: JSONArray) {

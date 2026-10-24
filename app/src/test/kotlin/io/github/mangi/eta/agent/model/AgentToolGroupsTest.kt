@@ -16,6 +16,9 @@ class AgentToolGroupsTest {
         terminalTools = false,
         browserTools = false,
         selfSettingsTools = true,
+        deviceDirectTools = true,
+        deviceSensitiveReadTools = true,
+        deviceSensitiveActionTools = true,
         openedToolGroups = opened,
     )
 
@@ -39,9 +42,12 @@ class AgentToolGroupsTest {
         assertTrue(AgentSelfSettingsToolCatalog.GET_SETTINGS in collapsed.names())
         assertTrue(AgentSelfSettingsToolCatalog.SET_SETTINGS in collapsed.names())
 
-        // 展开形态：域内工具出现，开启入口消失（没有可打开的域了）。
+        // 展开形态：域内工具出现。
         admin.forEach { assertTrue("$it 应随域打开而下发", it in opened.names()) }
-        assertFalse(AgentToolGroupCatalog.USE_GROUP in opened.names())
+        // 开启入口仍然存在，因为还有别的域没打开；只有全部域都打开时它才该消失。
+        assertTrue(AgentToolGroupCatalog.USE_GROUP in opened.names())
+        val allOpened = catalog(AgentToolGroups.groups.map { it.id }.toSet())
+        assertFalse(AgentToolGroupCatalog.USE_GROUP in allOpened.names())
 
         // 折叠必须真的省下 token，否则这套机制没有意义。
         val collapsedTokens = AgentRequestTokenEstimate.tools(collapsed)
@@ -75,6 +81,25 @@ class AgentToolGroupsTest {
                 .unavailableCode(name)
             assertTrue("$name 不应在无 Root 时下发（$code）", code == null)
         }
+    }
+
+    @Test fun everydayDeviceQueriesStayResidentWhileTailQueriesAreDeferred() {
+        val collapsed = catalog().names()
+        // 日常高频的个人数据/设备查询必须常驻：折叠它们会让日常任务多一次往返。
+        listOf(
+            "search_calendar_events", "search_messages", "recent_notifications", "search_contacts",
+            "list_installed_apps", "get_current_location", "get_device_state", "search_files",
+            "read_sms_code", "get_setting", "get_sound_state", "recent_app_activity",
+        ).forEach { assertTrue("$it 应保持常驻", it in collapsed) }
+        // 冷门长尾（出行/账单/记忆合集/便签录音/聊天图片）折叠。
+        listOf(
+            "search_flights", "search_trains", "search_hotels", "search_bills", "summarize_bills",
+            "search_memory_collections", "search_saved_places", "search_daily_events", "search_todos",
+            "search_wechat_chat_images",
+        ).forEach { assertFalse("$it 应折叠", it in collapsed) }
+        // 改设备的写操作默认折叠（省 token，也少误触）。
+        listOf("set_setting", "manage_app", "system_property", "delete_alarm")
+            .forEach { assertFalse("$it 应折叠", it in collapsed) }
     }
 
     @Test fun groupOpeningIsNotPureReadAndNeverParallel() {

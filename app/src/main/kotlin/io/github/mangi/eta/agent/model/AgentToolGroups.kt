@@ -18,12 +18,6 @@ import org.json.JSONObject
  * - 域内容不在本轮目录里时调用会被 `AgentToolCallValidator` 拒绝，因此打开动作必须先发生。
  */
 internal object AgentToolGroups {
-    /** 常驻自设置工具：读配置、改配置。几乎每次自设置对话都要用到。 */
-    private val alwaysAvailableSelfSettings = setOf(
-        AgentSelfSettingsToolCatalog.GET_SETTINGS,
-        AgentSelfSettingsToolCatalog.SET_SETTINGS,
-    )
-
     /** 一批低频自设置管理工具，合并成一个可按需打开的域。 */
     val SELF_SETTINGS_GROUP: AgentToolGroup = AgentToolGroup(
         id = "self_settings_admin",
@@ -39,7 +33,41 @@ internal object AgentToolGroups {
         deferredByDefault = true,
     )
 
-    val groups: List<AgentToolGroup> = listOf(SELF_SETTINGS_GROUP)
+    /**
+     * 改设备的写操作。默认折叠除了省 token，还有安全收益：模型不会顺手误触
+     * `set_setting` / `manage_app` / `system_property` 这类会真实改变设备状态的工具。
+     * 打开域只让 schema 进入目录，各工具自身的 Root/权限判定照旧。
+     */
+    val DEVICE_ACTION_GROUP: AgentToolGroup = AgentToolGroup(
+        id = "device_write",
+        title = "Device changes",
+        summary = "Write operations: settings, alarms, calendar events, packages, power, " +
+            "Wi-Fi/Bluetooth, notes, users, AppOps, display and screen timeout. Open this only " +
+            "when the user actually asked to change something.",
+        toolNames = AgentDeviceToolCatalog.sensitiveActionToolNames(),
+        deferredByDefault = true,
+    )
+
+    /**
+     * 只读组里的冷门长尾：出行、账单、记忆合集、便签/录音、聊天图片缓存这类「特定场景才用」的查询。
+     * 日常高频入口（日历、短信、通知、通讯录、应用列表、位置、设备状态）保持常驻，
+     * 因此折叠不会让日常任务多一次往返。
+     */
+    val DEVICE_TAIL_READ_GROUP: AgentToolGroup = AgentToolGroup(
+        id = "device_tail_queries",
+        title = "Occasional personal-data lookups",
+        summary = "Trip, bill, memory-collection, note/recording and chat-image queries that only " +
+            "matter in specific situations. Common lookups such as calendar, messages, " +
+            "notifications, contacts, installed apps and device state stay available without opening this.",
+        toolNames = AgentDeviceToolCatalog.tailReadToolNames(),
+        deferredByDefault = true,
+    )
+
+    val groups: List<AgentToolGroup> = listOf(
+        SELF_SETTINGS_GROUP,
+        DEVICE_ACTION_GROUP,
+        DEVICE_TAIL_READ_GROUP,
+    )
 
     fun group(id: String): AgentToolGroup? = groups.firstOrNull { it.id == id }
 
@@ -52,9 +80,19 @@ internal object AgentToolGroups {
     /** 未被打开时应从目录里剔除的自设置工具。 */
     fun withheldSelfSettingsTools(openedGroups: Set<String>, selfSettingsToolsEnabled: Boolean): Set<String> {
         if (!selfSettingsToolsEnabled) return AgentSelfSettingsToolCatalog.manageTools()
-        val opened = openedGroups.flatMap(::toolsOfGroup).toSet()
-        return AgentSelfSettingsToolCatalog.manageTools() - opened
+        return withheld(SELF_SETTINGS_GROUP, openedGroups)
     }
+
+    /** 未被打开时应从目录里剔除的设备写操作。 */
+    fun withheldDeviceActions(openedGroups: Set<String>): Set<String> =
+        withheld(DEVICE_ACTION_GROUP, openedGroups)
+
+    /** 未被打开时应从目录里剔除的冷门只读查询。 */
+    fun withheldTailReads(openedGroups: Set<String>): Set<String> =
+        withheld(DEVICE_TAIL_READ_GROUP, openedGroups)
+
+    private fun withheld(group: AgentToolGroup, openedGroups: Set<String>): Set<String> =
+        if (group.id in openedGroups) emptySet() else group.toolNames
 
     /**
      * `tools_use_group` 的系统消息索引：每个域一行，说明它何时值得打开。

@@ -9,7 +9,17 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "terminal",
-                    description = "Manage terminal sessions on the current device. environment=android runs Android system commands and root operations; environment=linux runs the Alpine or Debian environment selected by the user. Default android: explicitly pass environment=linux and cwd=/workspace/<project> for Linux tools and project Git commands. run_command is Android-only and never enters the Linux environment. Do not repeat a failed call in the unchanged environment. Apktool build is unavailable until an ARM64 AAPT2 runtime is installed. Use open_and_exec for one-shot commands. Use open to create a persistent shell session and exec with session_id for multi-step work. Use async=true without session_id for long-running independent commands, then read_async_result with job_id to stream output chunks. Use daemon_start for services that must keep running after the Agent run (listening ports, web panels, watchers): the process detaches from any command shell, logs to a file, and survives until daemon_stop or device reboot. Manage daemons with daemon_list, daemon_logs and daemon_stop by task_id. Use close to stop jobs or close sessions.",
+                    description = "Manage terminal sessions on this device. environment=android runs Android " +
+                        "system commands and root operations; environment=linux runs the Alpine or Debian " +
+                        "environment chosen in settings (pass environment=linux and cwd=/workspace/<project> " +
+                        "for Linux tools and project Git). Default android; run_command is Android-only and " +
+                        "never enters Linux. Do not repeat a failed call in an unchanged environment. " +
+                        "Apktool build needs an ARM64 AAPT2 runtime. Lifecycles: open_and_exec = one-shot; " +
+                        "open = persistent session, then exec/close with session_id; async=true without " +
+                        "session_id = long-running job, read with read_async_result by job_id; daemon_start = " +
+                        "service that must survive the run (ports, panels, watchers), detached and logged to a " +
+                        "file until daemon_stop or reboot, managed by daemon_list/daemon_logs/daemon_stop with " +
+                        "task_id; close stops jobs and sessions.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -32,81 +42,81 @@ internal object AgentTerminalToolCatalog {
                                                 .put("daemon_logs")
                                                 .put("daemon_stop")
                                         )
-                                        .put("description", "open creates a session. exec runs command in a session or cwd. open_and_exec runs a one-shot command. read_async_result reads async output by job_id. close closes a session_id or job_id. daemon_start launches a detached long-lived service and returns task_id. daemon_list lists daemon tasks with liveness. daemon_logs tails a task log. daemon_stop terminates and removes a task.")
+                                        .put("description", "Session/job lifecycle. open: create session. exec: run in session or cwd. open_and_exec: one-shot. read_async_result: async output by job_id. close: session_id or job_id. daemon_start: detached long-lived service, returns task_id. daemon_list: tasks with liveness. daemon_logs: tail a task log. daemon_stop: terminate and remove.")
                                 )
                                 .put(
                                     "identity",
                                     JSONObject()
                                         .put("type", "string")
                                         .put("enum", JSONArray().put("user").put("root"))
-                                        .put("description", "Host execution identity. Android uses whatever identity is currently available; Linux uses user or root depending on the selected backend. A simulated root inside PRoot does not grant Android privileges.")
+                                        .put("description", "Host identity. Android uses whatever is currently available; Linux uses user or root per backend. Simulated root inside PRoot grants no Android privileges.")
                                 )
                                 .put(
                                     "environment",
                                     JSONObject()
                                         .put("type", "string")
                                         .put("enum", JSONArray().put("android").put("linux"))
-                                        .put("description", "android uses the native Android shell with BusyBox applets when available. linux uses the Alpine or Debian environment selected in Eta settings. Default android.")
+                                        .put("description", "android: native shell with BusyBox applets when available. linux: Alpine or Debian per settings. Default android.")
                                 )
                                 .put(
                                     "command",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "Shell command to execute in the selected environment. Required for exec/open_and_exec.")
+                                        .put("description", "Command to run in the selected environment. Required for exec/open_and_exec.")
                                 )
                                 .put(
                                     "cwd",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "Working directory. Defaults to /data/local/tmp/eta for android and /workspace for linux. Relative paths use the environment default. ~/ means /storage/emulated/0.")
+                                        .put("description", "Working directory. Default /data/local/tmp/eta (android) or /workspace (linux); relative paths use the same base. ~/ means /storage/emulated/0.")
                                 )
                                 .put(
                                     "timeout_ms",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "Command timeout in milliseconds. Default 30000, max 180000.")
+                                        .put("description", "Timeout ms. Default 30000, max 180000.")
                                 )
                                 .put(
                                     "merge_stderr",
                                     JSONObject()
                                         .put("type", "boolean")
-                                        .put("description", "Whether stderr should be appended to stdout in command responses.")
+                                        .put("description", "Append stderr to stdout in responses.")
                                 )
                                 .put(
                                     "session_id",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "Session id returned by action=open. Use with exec or close.")
+                                        .put("description", "Session id from action=open; use with exec or close.")
                                 )
                                 .put(
                                     "job_id",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "Async job id returned when async=true. Use with read_async_result or close.")
+                                        .put("description", "Async job id from async=true; use with read_async_result or close.")
                                 )
                                 .put(
                                     "task_id",
                                     JSONObject()
                                         .put("type", "string")
-                                        .put("description", "Daemon task id returned by daemon_start. Use with daemon_logs or daemon_stop.")
+                                        .put("description", "Daemon task id from daemon_start; use with daemon_logs or daemon_stop.")
                                 )
                                 .put(
                                     "async",
                                     JSONObject()
                                         .put("type", "boolean")
-                                        .put("description", "Start command in a separate background shell and return immediately with job_id. Do not combine with session_id. Use read_async_result to stream output.")
+                                        .put("description", "Run in a separate background shell, return job_id immediately. Never combine with session_id; read output with read_async_result.")
                                 )
                                 .put(
                                     "offset_chars",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "For read_async_result, read stdout from this character offset. Default 0.")
+                                        .put("description", "read_async_result: stdout start offset. Default 0.")
                                 )
                                 .put(
                                     "max_chars",
                                     JSONObject()
                                         .put("type", "integer")
-                                        .put("description", "For read_async_result, maximum stdout characters to return. Default 8000, max 16000.")
+                                        .put("description", "read_async_result: max stdout characters. Default 8000, max 16000.")
                                 )
                                 .put(
                                     "close_if_done",

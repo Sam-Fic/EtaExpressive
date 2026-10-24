@@ -114,6 +114,7 @@ class AgentDeviceToolCatalogTest {
             deviceDirectTools = true,
             deviceSensitiveReadTools = true,
             deviceSensitiveActionTools = true,
+            openedToolGroups = AgentToolGroups.groups.map { it.id }.toSet(),
         ).toString()
 
         assertFalse(payload.contains("device_actions"))
@@ -126,12 +127,14 @@ class AgentDeviceToolCatalogTest {
         reads: Boolean,
         actions: Boolean,
     ): Set<String> {
+        // 这里断言风险组各自暴露哪些工具，与折叠无关：全部域打开，避免默认折叠把它们藏起来。
         val tools = AgentToolCatalog.build(
             terminalTools = false,
             browserTools = false,
             deviceDirectTools = direct,
             deviceSensitiveReadTools = reads,
             deviceSensitiveActionTools = actions,
+            openedToolGroups = AgentToolGroups.groups.map { it.id }.toSet(),
         )
         return tools.toolNames()
     }
