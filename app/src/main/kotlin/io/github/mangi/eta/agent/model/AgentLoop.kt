@@ -274,9 +274,8 @@ internal class AgentLoop(
             val requestLocal = localRequestTokens()
             // Raw history size at snapshot time, for the bounded request-context diagnostic only.
             val requestMessageCount = messages.length()
-            val requestHistoryTokens = AgentConversationCodec.transcript(messages, systemCount, sensitiveToolCallIds)
-                .sumOf { AgentContextBudget.countMessage(it).toLong() }
-                .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            // 与整表 transcript+countMessage 等价，但只对新增消息付费（见 HistoryCharMeter）。
+            val requestHistoryTokens = historyChars.historyTokens()
             // UI history calibration retains its original raw DTO basis, including old receipts.
             val requestFixedTokens = AgentRequestTokenEstimate.fixed(
                 messages, systemCount, roundTools, toolTokens = currentRoundToolsTokens)
@@ -733,10 +732,79 @@ internal class AgentLoop(
         }
     }
 
-    private fun storedHistoryChars(): Long {
-        val safeHistory = AgentConversationCodec.transcript(messages, systemCount, sensitiveToolCallIds)
-        return safeHistory.sumOf { AgentConversationCodec.toJsonObject(it).toString().length.toLong() }
+    /**
+     * 历史在持久化 transcript 尺寸下的字符数。
+     *
+     * 原先每次调用都要「全量构造 DTO → 逐条 toString → 求和」，而 run() 在一次准备边界内
+     * 会为预算判断、自动压缩判定、无效压缩去重等分别调用好几次；长会话里这就是每轮数百 KB
+     * 的重复序列化，全部落在 agent-runtime 线程上，直接表现为首字延迟。
+     *
+     * 这里改为按消息对象身份缓存单条长度：消息一旦写入就不再原地修改（所有变更都是
+     * `put` 替换整条），所以用对象身份做键是安全的；增删替换只更新对应的差分。
+     * 脱敏会改变长度且 `sensitiveToolCallIds` 只增不减，集合一旦增长就整表失效重算。
+     */
+    private inner class HistoryCharMeter {
+        private val lengths = HashMap<JSONObject, Long>()
+        private val tokens = HashMap<JSONObject, Long>()
+        private var sensitiveCount = sensitiveToolCallIds.size
+
+        /** 脱敏集合原地增长会让已缓存的消息长度/词元数失效，整表丢弃重算。 */
+        private fun syncSensitiveState() {
+            if (sensitiveToolCallIds.size == sensitiveCount) return
+            lengths.clear()
+            tokens.clear()
+            sensitiveCount = sensitiveToolCallIds.size
+        }
+
+        private fun ensureCacheSane() {
+            // 已不在历史里的对象留在缓存里没有意义，长会话会累积；超过两倍规模时回收一次。
+            val live = (messages.length() - systemCount).coerceAtLeast(0)
+            if (lengths.size <= live * 2 + 16 && tokens.size <= live * 2 + 16) return
+            val keep = HashSet<JSONObject>(messages.length())
+            for (index in systemCount until messages.length()) {
+                messages.optJSONObject(index)?.let(keep::add)
+            }
+            lengths.keys.retainAll(keep)
+            tokens.keys.retainAll(keep)
+        }
+
+        /** 持久化 transcript 的字符数，与「全量构造 transcript 再逐条 toString 求和」等价。 */
+        fun total(): Long {
+            syncSensitiveState()
+            if (systemCount >= messages.length()) return 0L
+            var total = 0L
+            for (index in systemCount until messages.length()) {
+                val message = messages.optJSONObject(index) ?: continue
+                total += lengths[message]
+                    ?: AgentConversationCodec.durableMessageLength(message, sensitiveToolCallIds)
+                        .also { lengths[message] = it }
+            }
+            ensureCacheSane()
+            return total
+        }
+
+        /**
+         * 本轮请求的历史词元数，与「全量构造 transcript 再逐条 countMessage 求和」等价。
+         * 之前每个请求 boundary 都要为它整表重算一次，只用于 UI 校准与诊断。
+         */
+        fun historyTokens(): Int {
+            syncSensitiveState()
+            var total = 0L
+            for (index in systemCount until messages.length()) {
+                val message = messages.optJSONObject(index) ?: continue
+                total += tokens[message] ?: run {
+                    val count = AgentConversationCodec.durableMessage(message, sensitiveToolCallIds)
+                    AgentContextBudget.countMessage(count).toLong().also { tokens[message] = it }
+                }
+            }
+            ensureCacheSane()
+            return total.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        }
     }
+
+    private val historyChars = HistoryCharMeter()
+
+    private fun storedHistoryChars(): Long = historyChars.total()
 
     private fun persistenceCharLimit(): Long {
         val window = (config.contextWindow?.takeIf { it > 0 } ?: compactPolicy.contextWindow).toLong()

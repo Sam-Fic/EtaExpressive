@@ -349,6 +349,22 @@ internal object AgentConversationCodec {
             }
         }
 
+    /**
+     * 单条消息在持久化/快照 transcript 里的序列化长度（即 `toJsonObject(...).toString().length`）。
+     * 与 [transcript] 走完全相同的脱敏、DTO 转换与 [sanitizeMessage] 链路，因此按消息缓存后
+     * 求和的结果与「全量构造 transcript 再求和」逐字符一致，可替代每轮的 O(n) 重算。
+     * 脱敏命中时会改变长度，所以调用方必须在 `sensitiveToolCallIds` 增长时让缓存失效。
+     */
+    fun durableMessageLength(
+        message: JSONObject,
+        sensitiveToolCallIds: Set<String>,
+    ): Long =
+        toJsonObject(
+            sanitizeMessage(
+                fromJsonObject(redactSensitiveToolData(message, sensitiveToolCallIds)),
+            ),
+        ).toString().length.toLong()
+
     fun redactSensitiveMessages(
         messages: List<AgentModelClient.ConversationMessage>,
         sensitiveToolCallIds: Set<String>,
@@ -394,6 +410,16 @@ internal object AgentConversationCodec {
 
     fun durableMessage(message: JSONObject): AgentModelClient.ConversationMessage =
         sanitizeMessage(fromJsonObject(message))
+
+    /**
+     * 与 [transcript] 完全一致的单条 DTO（含脱敏），供增量词元统计使用。
+     * 脱敏会把敏感工具结果换成省略文本，词元数随之变化，所以不能复用不脱敏的 [durableMessage]。
+     */
+    fun durableMessage(
+        message: JSONObject,
+        sensitiveToolCallIds: Set<String>,
+    ): AgentModelClient.ConversationMessage =
+        sanitizeMessage(fromJsonObject(redactSensitiveToolData(message, sensitiveToolCallIds)))
 
     private fun encodeBounded(
         messages: List<AgentModelClient.ConversationMessage>,
