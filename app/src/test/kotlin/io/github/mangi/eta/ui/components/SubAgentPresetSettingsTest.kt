@@ -133,7 +133,8 @@ class SubAgentPresetSettingsTest {
             MaterialTheme(colorScheme = lightColorScheme()) { SubAgentPresetRouteHost(fixture) }
         }
         // 未应用：本会话区块只说明现状，选组即下方分组列表。
-        compose.onNodeWithText("本会话尚未应用预设组").assertIsDisplayed()
+        // 字符串资源自带句号（"本会话尚未应用预设组。"），默认精确匹配会落空，这里按子串匹配。
+        compose.onNodeWithText("本会话尚未应用预设组", substring = true).assertIsDisplayed()
         compose.onNodeWithText("自动委派").assertDoesNotExist()
         compose.onNodeWithContentDescription("编辑子代理组 ${group.name}").performClick()
         // 应用入口只在详情页：写会话作用域，预设本身不被改写。

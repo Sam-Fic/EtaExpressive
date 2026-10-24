@@ -64,8 +64,11 @@ class UserBubbleFoldTest {
         .size
         .height
 
+    // 气泡本体是 clickable，合并树里它的所有子节点会被并成一个节点，
+    // 量到的是整个气泡而不是这一段文字。这里必须读未合并树，才能拿到「已编辑」提示
+    // 与展开按钮各自的边界——这正是本用例要证明的「同排、提示在左、按钮在右」。
     private fun textBounds(text: String) = compose
-        .onNodeWithText(text)
+        .onNodeWithText(text, useUnmergedTree = true)
         .fetchSemanticsNode()
         .boundsInRoot
 

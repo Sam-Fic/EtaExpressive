@@ -224,9 +224,21 @@ internal fun SubAgentSettingsScreen(
                                     },
                                     supportingContent = {
                                         Text(
-                                            text = stringResource(R.string.sas_profiles_count, preset.config.profiles.size) + " · " +
-                                                if (preset.config.enabled) stringResource(R.string.sas_auto_delegation_on) else stringResource(R.string.sas_auto_delegation_off) +
-                                                if (preset.id == appliedPresetId) " · " + stringResource(R.string.sas_applied_marker) else "",
+                                            // 三段各自拼好再连接。原先用 `+` 直接串 if/else，
+                                            // 优先级会让末尾的标记只在「未自动委派」时出现，
+                                            // 已应用的组在启用状态下反而看不到「本会话已应用」。
+                                            text = buildString {
+                                                append(stringResource(R.string.sas_profiles_count, preset.config.profiles.size))
+                                                append(" · ")
+                                                append(stringResource(
+                                                    if (preset.config.enabled) R.string.sas_auto_delegation_on
+                                                    else R.string.sas_auto_delegation_off,
+                                                ))
+                                                if (preset.id == appliedPresetId) {
+                                                    append(" · ")
+                                                    append(stringResource(R.string.sas_applied_marker))
+                                                }
+                                            },
                                         )
                                     },
                                     trailingContent = {
