@@ -20,6 +20,8 @@ internal object AgentToolCatalog {
         localWebSearch: Boolean = true,
         /** 已按需打开的工具域 id；未打开的低频域不下发，只留一行索引。 */
         openedToolGroups: Set<String> = emptySet(),
+        /** 文件系统与命令执行档位；决定 read/write/shell 工具各自是否下发。 */
+        fileSystemTier: AgentFileSystemTier.Tier = AgentFileSystemTier.of(terminalTools, shellTools = true),
     ): JSONArray =
         capabilities.project(JSONArray().also { tools ->
             AgentQuestionToolCatalog.appendTo(tools)
@@ -63,9 +65,9 @@ internal object AgentToolCatalog {
                 )
             }
             if (mediaSearchTools) AgentMediaSearchToolCatalog.appendTo(tools)
-            if (terminalTools) {
+            if (AgentFileSystemTier.allowsFileTools(fileSystemTier)) {
                 AgentFileVisionToolCatalog.appendTo(tools)
-                AgentTerminalToolCatalog.appendTo(tools)
+                AgentTerminalToolCatalog.appendTo(tools, fileSystemTier)
             }
         })
 }

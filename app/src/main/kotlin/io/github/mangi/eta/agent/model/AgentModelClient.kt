@@ -172,6 +172,11 @@ internal object AgentModelClient {
                 capabilities = capabilities,
                 localWebSearch = !config.usesHostedWebSearch,
                 openedToolGroups = openedToolGroupsProvider(),
+                // 命令执行是独立开关：关掉它仍可读写文件，但不能跑 shell。
+                fileSystemTier = AgentFileSystemTier.of(
+                    terminalTools = config.terminalTools,
+                    shellTools = Prefs.isEnabled(Prefs.Keys.AGENT_SHELL_TOOLS),
+                ),
             )
             for (index in 0 until additionalTools.length()) {
                 tools.put(additionalTools.opt(index))

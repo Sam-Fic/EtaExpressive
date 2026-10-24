@@ -542,6 +542,17 @@ internal fun SettingsScreen(
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
+                        title = stringResource(R.string.settings_shell_tools),
+                        summary = stringResource(R.string.settings_shell_tools_summary),
+                        key = Prefs.Keys.AGENT_SHELL_TOOLS,
+                        icon = Icons.Rounded.Terminal,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
                         title = stringResource(R.string.settings_self_settings_tools),
                         summary = stringResource(R.string.settings_self_settings_tools_summary),
                         key = Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS,

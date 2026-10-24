@@ -4,7 +4,28 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal object AgentTerminalToolCatalog {
-    fun appendTo(tools: JSONArray) {
+    /**
+     * 下发终端与文件工具。[tier] 决定 read / write / shell 三类的可见性：
+     * - [AgentFileSystemTier.Tier.READ_ONLY]：只有读取类；
+     * - [AgentFileSystemTier.Tier.READ_WRITE]：读取 + 写盘，但没有 run_command / terminal；
+     * - [AgentFileSystemTier.Tier.READ_WRITE_SHELL]：全部。
+     * 只做下发过滤；执行侧仍按自己的能力判定复查。
+     */
+    fun appendTo(
+        tools: JSONArray,
+        tier: AgentFileSystemTier.Tier = AgentFileSystemTier.Tier.READ_WRITE_SHELL,
+    ) {
+        val emitted = JSONArray()
+        appendAll(emitted)
+        for (index in 0 until emitted.length()) {
+            val tool = emitted.getJSONObject(index)
+            val name = tool.optJSONObject("function")?.optString("name").orEmpty()
+            if (!AgentFileSystemTier.publishes(tier, name)) continue
+            tools.put(tool)
+        }
+    }
+
+    private fun appendAll(tools: JSONArray) {
         tools
             .put(
                 AgentToolSchema.function(

@@ -542,14 +542,14 @@ internal class AgentLocalTools(
                 in DEVICE_TOOL_NAMES ->
                     structuredDeviceTools.execute(toolCall.name, args)
                         ?: textResult(errorResult("UNKNOWN_TOOL", "未知设备工具"))
-                "read_image" -> fileVisionTool { imageTools.readImage(args) }
-                "terminal" -> textResult(terminalTool { terminal(args) })
-                "run_command" -> textResult(terminalTool { runCommand(args) })
-                "read_file" -> textResult(terminalTool { readFile(args) })
-                "write_file" -> textResult(terminalTool { writeFile(args) })
-                "list_directory" -> textResult(terminalTool { listDirectory(args) })
+                "read_image" -> fileVisionTool(toolCall.name) { imageTools.readImage(args) }
+                "terminal" -> textResult(terminalTool(toolCall.name) { terminal(args) })
+                "run_command" -> textResult(terminalTool(toolCall.name) { runCommand(args) })
+                "read_file" -> textResult(terminalTool(toolCall.name) { readFile(args) })
+                "write_file" -> textResult(terminalTool(toolCall.name) { writeFile(args) })
+                "list_directory" -> textResult(terminalTool(toolCall.name) { listDirectory(args) })
                 "edit_file", "stat_file", "glob_files", "grep_files" ->
-                    textResult(terminalTool { terminalController.fileTool(toolCall.name, args) })
+                    textResult(terminalTool(toolCall.name) { terminalController.fileTool(toolCall.name, args) })
                 "memory_get" -> textResult(memoryGet(args))
                 "memory_write" -> textResult(memoryWrite(args))
                 "skills_list" -> textResult(skillsList(args))
@@ -670,18 +670,47 @@ internal class AgentLocalTools(
         return block()
     }
 
-    private fun terminalTool(block: () -> String): String {
+    /**
+     * 文件/命令工具的档位复查。目录侧已按档位过滤，执行侧再判一次：
+     * 用户可能在两轮之间改了开关，旧调用不能因为「当时下发过」就继续执行。
+     */
+    private fun fileSystemTierError(toolName: String): String? {
+        val tier = io.github.mangi.eta.agent.model.AgentFileSystemTier.current()
+        return when {
+            !io.github.mangi.eta.agent.model.AgentFileSystemTier.allowsFileTools(tier) ->
+                "TERMINAL_TOOLS_DISABLED"
+            !io.github.mangi.eta.agent.model.AgentFileSystemTier.publishes(tier, toolName) &&
+                toolName in io.github.mangi.eta.agent.model.AgentFileSystemTier.shellTools ->
+                "SHELL_TOOLS_DISABLED"
+            !io.github.mangi.eta.agent.model.AgentFileSystemTier.publishes(tier, toolName) ->
+                "WRITE_TOOLS_DISABLED"
+            else -> null
+        }
+    }
+
+    private fun terminalTool(toolName: String = "", block: () -> String): String {
         liveSkillEntries()
         if (skillAuthorizationChanged.get() || skillTreeMutationUncertain.get()) return errorResult("NEXT_TURN_REQUIRED", "本轮技能授权已撤销，终端会话已关闭；请开启下一轮任务")
         if (!terminalToolsEnabled()) {
             return errorResult("TERMINAL_TOOLS_DISABLED", "请先启用终端/文件工具")
         }
+        // 总闸已开，但用户可能单独关掉了命令执行或写盘；旧调用不能因为「当时下发过」继续执行。
+        if (toolName.isNotBlank()) fileSystemTierError(toolName)?.let { code ->
+            return errorResult(
+                code,
+                if (code == "SHELL_TOOLS_DISABLED") "命令执行已单独关闭；仍可使用读写文件的工具"
+                else "写文件工具已关闭；只能读取文件",
+            )
+        }
         return block()
     }
 
-    private fun fileVisionTool(block: () -> AgentModelClient.ToolResult): AgentModelClient.ToolResult {
+    private fun fileVisionTool(toolName: String = "", block: () -> AgentModelClient.ToolResult): AgentModelClient.ToolResult {
         if (!terminalToolsEnabled()) {
             return textResult(errorResult("TERMINAL_TOOLS_DISABLED", "请先启用终端/文件工具"))
+        }
+        if (toolName.isNotBlank()) fileSystemTierError(toolName)?.let { code ->
+            return textResult(errorResult(code, "当前文件权限档位不允许该工具"))
         }
         return block()
     }
