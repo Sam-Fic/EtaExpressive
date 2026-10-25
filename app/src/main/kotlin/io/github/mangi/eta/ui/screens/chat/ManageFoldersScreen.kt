@@ -5,8 +5,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.Icon
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
@@ -37,6 +39,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.FolderNameDialog
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.ConversationFolderUi
@@ -45,7 +48,7 @@ import io.github.mangi.eta.ui.model.ConversationSummaryUi
 /**
  * 文件夹管理页（独立路由）：新建 / 重命名 / 删除。
  *
- * 行样式与「管理聊天」「回收站」同款分段列表；顶栏右侧是新建入口，
+ * 行样式与「管理聊天」「回收站」同款分段列表；新建入口在右下角 FAB，
  * 行尾是重命名与删除两枚图标按钮。删除走二次确认，文件夹里的会话会
  * 移回「聊天」，不会一并删除。
  */
@@ -61,6 +64,9 @@ internal fun ManageFoldersScreen(
     var showCreate by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ConversationFolderUi?>(null) }
     var deleteTarget by remember { mutableStateOf<ConversationFolderUi?>(null) }
+    val view = LocalView.current
+    val listState = rememberLazyListState()
+    val fabExpanded by rememberFabExpandedState(listState)
     // 计数只取正常历史（回收站成员不在其中），与抽屉筛选口径一致。
     val countsByFolder = remember(conversations) {
         conversations.groupingBy { it.folderId }.eachCount()
@@ -69,11 +75,17 @@ internal fun ManageFoldersScreen(
     EtaScaffoldPage(
         title = stringResource(R.string.folders_page_title),
         onBack = onBack,
-        actions = {
-            TopBarIconButton(
-                icon = Icons.Rounded.CreateNewFolder,
-                contentDescription = stringResource(R.string.drawer_create_folder_title),
-                onClick = { showCreate = true },
+        listState = listState,
+        // 新建入口从顶栏图标钮换成 MCP 服务器页同款 FAB：滚动收起、回顶展开。
+        floatingActionButton = {
+            EtaExtendedFab(
+                text = stringResource(R.string.drawer_create_folder_title),
+                icon = Icons.Rounded.Add,
+                expanded = fabExpanded,
+                onClick = {
+                    TouchHaptics.click(view)
+                    showCreate = true
+                },
             )
         },
     ) {
