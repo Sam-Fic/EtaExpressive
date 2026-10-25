@@ -47,6 +47,7 @@ internal fun AssistantsScreen(
     onSelectAssistant: ((String) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
     val profiles by AssistantRepository.profiles.collectAsState()
     val repositoryActiveId by AssistantRepository.activeId.collectAsState()
     val activeId = selectedAssistantId ?: repositoryActiveId
@@ -81,7 +82,7 @@ internal fun AssistantsScreen(
                 icon = Icons.Rounded.Add,
                 expanded = fabExpanded,
                 onClick = {
-                    TouchHaptics.click(LocalView.current)
+                    TouchHaptics.click(view)
                     scope.launch {
                         val created = withContext(Dispatchers.IO) {
                             AssistantRepository.create()
