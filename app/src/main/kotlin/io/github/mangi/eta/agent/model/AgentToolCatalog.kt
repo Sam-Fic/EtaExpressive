@@ -31,6 +31,18 @@ internal object AgentToolCatalog {
             AgentSpeechToolCatalog.appendTo(tools)
             AgentGestureToolCatalog.appendTo(tools)
             AgentTextSystemToolCatalog.appendTo(tools)
+            // 域可用性只算一次，目录过滤、索引行与 tools_use_group 枚举共用同一份，
+            // 避免「开关关了但仍宣传该域」这类三处判断不一致的缺陷。
+            val groupAvailability = AgentToolGroups.availability(openedToolGroups) { group ->
+                when (group.id) {
+                    AgentToolGroups.SELF_SETTINGS_GROUP.id -> selfSettingsTools
+                    AgentToolGroups.DEVICE_ACTION_GROUP.id ->
+                        deviceSensitiveActionTools
+                    AgentToolGroups.DEVICE_TAIL_READ_GROUP.id ->
+                        deviceSensitiveReadTools && (personalDataReads || deviceStateReads)
+                    else -> false
+                }
+            }
             AgentDeviceToolCatalog.appendTo(
                 tools,
                 directTools = deviceDirectTools,
@@ -57,17 +69,13 @@ internal object AgentToolCatalog {
                     tools,
                     withheld = AgentToolGroups.withheldSelfSettingsTools(openedToolGroups, selfSettingsToolsEnabled = true),
                 )
-                // 只要存在「可折叠但尚未打开的域」，就下发一个 tools_use_group 让模型按需展开。
-                // 没有可打开的域时不下发：避免出现一个调用必然失败的枚举工具。
-                val openable = AgentToolGroups.groups
-                    .filter { it.deferredByDefault }
-                    .map { it.id }
-                AgentToolGroupCatalog.appendTo(
-                    tools,
-                    openableIds = openable,
-                    disabled = openable.all { it in openedToolGroups },
-                )
             }
+            // 只要存在「开关允许、但尚未打开」的域，就下发一个 tools_use_group。
+            // 枚举只列这些域：全部打开、或开关全关时都不该出现一个必然失败或有多个空选项的工具。
+            AgentToolGroupCatalog.appendTo(
+                tools,
+                openableIds = AgentToolGroups.openableIds(groupAvailability),
+            )
             if (mediaSearchTools) AgentMediaSearchToolCatalog.appendTo(tools)
             if (AgentFileSystemTier.allowsFileTools(fileSystemTier)) {
                 AgentFileVisionToolCatalog.appendTo(tools)

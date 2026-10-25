@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.model
 import io.github.mangi.eta.agent.memory.AgentMemoryContext
 import io.github.mangi.eta.agent.skill.SkillContext
 import io.github.mangi.eta.agent.tool.AgentShellToolAvailability
+import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.data.model.ProviderTypes
 import org.json.JSONArray
 import org.json.JSONObject
@@ -103,6 +104,10 @@ internal object AgentPromptBuilder {
         shellTools: AgentShellToolAvailability.Snapshot? = null,
         interactiveModeEnabled: Boolean = false,
         openedToolGroups: Set<String> = emptySet(),
+        /** 与 AgentToolCatalog.build 同源的开关：域索引必须只宣传此刻真的能打开的域。 */
+        selfSettingsTools: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS),
+        personalDataReads: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
+        deviceStateReads: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
     ): JSONArray {
         // Only point at the detection section when this round actually carries one.
         val environmentRule = if (shellTools != null) {
@@ -293,7 +298,17 @@ internal object AgentPromptBuilder {
         buildMemorySystemMessage(memoryContext)?.let(messages::put)
         buildSkillSystemMessage(skillContext)?.let(messages::put)
         // 延迟工具域索引：只下发一行说明，整组 schema 由 tools_use_group 按需展开。
-        AgentToolGroups.indexMessage(openedToolGroups)?.let { index ->
+        // 与目录共用同一份可用性判定：开关关掉的域不该出现在提示里。
+        val availability = AgentToolGroups.availability(openedToolGroups) { group ->
+            when (group.id) {
+                AgentToolGroups.SELF_SETTINGS_GROUP.id -> selfSettingsTools
+                AgentToolGroups.DEVICE_ACTION_GROUP.id -> config.deviceSensitiveActionTools
+                AgentToolGroups.DEVICE_TAIL_READ_GROUP.id ->
+                    config.deviceSensitiveReadTools && (personalDataReads || deviceStateReads)
+                else -> false
+            }
+        }
+        AgentToolGroups.indexMessage(availability)?.let { index ->
             messages.put(systemMessage(index))
         }
         return messages

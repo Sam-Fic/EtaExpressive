@@ -95,11 +95,44 @@ internal object AgentToolGroups {
         if (group.id in openedGroups) emptySet() else group.toolNames
 
     /**
+     * 本轮的域可用性快照。**目录、索引与执行侧必须读同一份**：
+     * 之前 `tools_use_group` 的枚举只按「是否已打开」筛选，不看开关，于是用户在设置里
+     * 关掉敏感设备操作后，模型仍被告知可以打开 `device_write`——打开会成功返回，
+     * 但下一轮域内工具永远不会出现，白花一轮且反复误导模型。
+     */
+    data class Availability(
+        /** 已打开、且其依赖的开关仍然允许的域。 */
+        val opened: Set<String>,
+        /** 尚未打开、但本轮的开关允许打开，因而值得在索引里宣传的域。 */
+        val openable: Set<String>,
+    )
+
+    /** 当前能被打开的域 id（按 [groups] 的声明顺序）；给 `tools_use_group` 的枚举用。 */
+    fun openableIds(availability: Availability): List<String> =
+        groups.filter { it.id in availability.openable }.map { it.id }
+
+    /**
+     * 计算本轮的域可用性。
+     *
+     * [gate] 回答「这个域依赖的开关此刻是否允许它存在」——它把每个域映射到真正决定它
+     * 能否下发的那个开关（自设置管理域看 `selfSettingsTools`，设备域看各自的风险组开关）。
+     * 已经打开但随后关掉开关的域会从 [Availability.opened] 里消失，因为它的工具本就不再下发。
+     */
+    fun availability(openedGroups: Set<String>, gate: (AgentToolGroup) -> Boolean): Availability {
+        val allowed = groups.filter { it.deferredByDefault && gate(it) }.map { it.id }.toSet()
+        return Availability(
+            opened = openedGroups.filterTo(mutableSetOf()) { it in allowed },
+            openable = allowed - openedGroups,
+        )
+    }
+
+    /**
      * `tools_use_group` 的系统消息索引：每个域一行，说明它何时值得打开。
      * 索引本身很短，替代的是整组 schema。
+     * 只宣传 [Availability.openable] 里的域——开关关闭的域不该出现在提示里。
      */
-    fun indexMessage(openedGroups: Set<String>): String? {
-        val available = groups.filter { it.deferredByDefault && it.id !in openedGroups }
+    fun indexMessage(availability: Availability): String? {
+        val available = groups.filter { it.id in availability.openable }
         if (available.isEmpty()) return null
         return buildString {
             appendLine("Deferred tool groups (schema not loaded yet; open one only when the task needs it):")

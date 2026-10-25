@@ -257,13 +257,19 @@ internal object AgentModelClient {
                         delegationAvailable = delegationAvailable,
                         interactiveModeEnabled = interactiveModeEnabled,
                         openedToolGroups = openedToolGroupsProvider(),
+                        // 用户可能在两轮之间改开关：签名必须覆盖它，否则目录与系统提示不会刷新。
+                        toolSwitches = ToolSwitchSnapshot.capture(),
                     )
                     if (signature != lastRoundSignature) {
+                        val switches = signature.toolSwitches
                         val systemMessages = AgentPromptBuilder.buildSystemMessages(
                             config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
                             capabilities.shellTools,
                             interactiveModeEnabled = interactiveModeEnabled,
                             openedToolGroups = openedToolGroupsProvider(),
+                            selfSettingsTools = switches.selfSettingsTools,
+                            personalDataReads = switches.personalDataReads,
+                            deviceStateReads = switches.deviceStateReads,
                         )
                         for (index in 0 until systemMessages.length()) {
                             messages.put(index, systemMessages.getJSONObject(index))
@@ -422,7 +428,33 @@ internal object AgentModelClient {
         val delegationAvailable: Boolean,
         val interactiveModeEnabled: Boolean,
         val openedToolGroups: Set<String> = emptySet(),
+        /** 决定域可用性的 Prefs 开关；运行中改开关必须让目录与提示重新生成。 */
+        val toolSwitches: ToolSwitchSnapshot = ToolSwitchSnapshot.DEFAULT,
     )
+
+    /**
+     * 与工具域相关的用户开关快照。只在「开关可能改变域可用性」时参与签名：
+     * 自设置管理域、设备写域、冷门只读域各自依赖其中一项。
+     */
+    internal data class ToolSwitchSnapshot(
+        val selfSettingsTools: Boolean,
+        val personalDataReads: Boolean,
+        val deviceStateReads: Boolean,
+    ) {
+        companion object {
+            val DEFAULT = ToolSwitchSnapshot(
+                selfSettingsTools = true,
+                personalDataReads = true,
+                deviceStateReads = true,
+            )
+
+            fun capture() = ToolSwitchSnapshot(
+                selfSettingsTools = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS),
+                personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
+                deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
+            )
+        }
+    }
 
     @Serializable
     data class ConversationMessage(

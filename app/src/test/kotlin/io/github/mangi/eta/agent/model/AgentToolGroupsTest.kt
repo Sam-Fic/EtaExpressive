@@ -12,15 +12,32 @@ import org.junit.Test
  * 这里钉住三件事：折叠确实省下 schema、打开后域内工具真的出现、索引与目录互相对应。
  */
 class AgentToolGroupsTest {
-    private fun catalog(opened: Set<String> = emptySet()): JSONArray = AgentToolCatalog.build(
+    private fun catalog(
+        opened: Set<String> = emptySet(),
+        selfSettings: Boolean = true,
+        sensitiveReads: Boolean = true,
+        sensitiveActions: Boolean = true,
+        personalDataReads: Boolean = sensitiveReads,
+        deviceStateReads: Boolean = sensitiveReads,
+    ): JSONArray = AgentToolCatalog.build(
         terminalTools = false,
         browserTools = false,
-        selfSettingsTools = true,
+        selfSettingsTools = selfSettings,
         deviceDirectTools = true,
-        deviceSensitiveReadTools = true,
-        deviceSensitiveActionTools = true,
+        deviceSensitiveReadTools = sensitiveReads,
+        deviceSensitiveActionTools = sensitiveActions,
+        personalDataReads = personalDataReads,
+        deviceStateReads = deviceStateReads,
         openedToolGroups = opened,
     )
+
+    private fun JSONArray.useGroupEnum(): Set<String> {
+        val tool = (0 until length()).map { getJSONObject(it).getJSONObject("function") }
+            .firstOrNull { it.getString("name") == AgentToolGroupCatalog.USE_GROUP } ?: return emptySet()
+        val enum = tool.getJSONObject("parameters").getJSONObject("properties")
+            .getJSONObject("group").getJSONArray("enum")
+        return (0 until enum.length()).mapTo(linkedSetOf()) { enum.getString(it) }
+    }
 
     private fun JSONArray.names(): Set<String> = (0 until length()).mapTo(linkedSetOf()) {
         getJSONObject(it).getJSONObject("function").getString("name")
@@ -57,13 +74,14 @@ class AgentToolGroupsTest {
     }
 
     @Test fun indexListsExactlyTheGroupsStillClosed() {
-        val closedIndex = requireNotNull(AgentToolGroups.indexMessage(emptySet()))
+        val allAllowed = AgentToolGroups.availability(emptySet()) { true }
+        val closedIndex = requireNotNull(AgentToolGroups.indexMessage(allAllowed))
         assertTrue(closedIndex.contains(AgentToolGroups.SELF_SETTINGS_GROUP.id))
         assertTrue(closedIndex.contains("tools_use_group"))
 
         // 全部打开后就没有索引消息了：不该再提示模型去打开任何域。
         val allOpened = AgentToolGroups.groups.map { it.id }.toSet()
-        assertEquals(null, AgentToolGroups.indexMessage(allOpened))
+        assertEquals(null, AgentToolGroups.indexMessage(AgentToolGroups.availability(allOpened) { true }))
     }
 
     @Test fun openingNeverWidensPermissions() {
@@ -100,6 +118,45 @@ class AgentToolGroupsTest {
         // 改设备的写操作默认折叠（省 token，也少误触）。
         listOf("set_setting", "manage_app", "system_property", "delete_alarm")
             .forEach { assertFalse("$it 应折叠", it in collapsed) }
+    }
+
+    @Test fun switchedOffGroupIsNeitherAdvertisedNorOpenable() {
+        // 关掉设备写开关：动作域既不该出现在 tools_use_group 的枚举里，也不该出现在系统提示索引里。
+        val off = catalog(sensitiveActions = false)
+        assertFalse(AgentToolGroups.DEVICE_ACTION_GROUP.id in off.useGroupEnum())
+        val availability = AgentToolGroups.availability(emptySet()) { group ->
+            group.id != AgentToolGroups.DEVICE_ACTION_GROUP.id
+        }
+        assertFalse(AgentToolGroups.DEVICE_ACTION_GROUP.id in AgentToolGroups.openableIds(availability))
+        val index = requireNotNull(AgentToolGroups.indexMessage(availability))
+        assertFalse("关掉的域不该出现在索引里", index.contains(AgentToolGroups.DEVICE_ACTION_GROUP.id))
+
+        // 敏感读整体关闭：冷门只读域同样既不可打开也不宣传。
+        val readsOff = catalog(sensitiveReads = false)
+        assertFalse(AgentToolGroups.DEVICE_TAIL_READ_GROUP.id in readsOff.useGroupEnum())
+        // 自设置关闭：自设置域不再宣传，但设备域仍在枚举里（tools_use_group 不再被它连带禁用）。
+        val selfOff = catalog(selfSettings = false)
+        assertFalse(AgentToolGroups.SELF_SETTINGS_GROUP.id in selfOff.useGroupEnum())
+        assertTrue(AgentToolGroups.DEVICE_ACTION_GROUP.id in selfOff.useGroupEnum())
+    }
+
+    @Test fun allGroupsOpenedLeavesNoUseGroupTool() {
+        // 全部打开后没有可打开的域，tools_use_group 不该下发（否则是一个必然失败的枚举）。
+        val all = catalog(AgentToolGroups.groups.map { it.id }.toSet())
+        assertFalse(AgentToolGroupCatalog.USE_GROUP in all.names())
+        assertEquals(emptySet<String>(), all.useGroupEnum())
+    }
+
+    @Test fun availabilityDropsGroupsWhoseSwitchTurnedOffAfterOpening() {
+        val opened = AgentToolGroups.groups.map { it.id }.toSet()
+        // 用户先打开了域，随后又把开关关掉：已打开的记录不能让域复活。
+        val availability = AgentToolGroups.availability(opened) { group ->
+            group.id != AgentToolGroups.DEVICE_ACTION_GROUP.id
+        }
+        assertFalse("开关关掉后已打开集合里不应再有该域",
+            AgentToolGroups.DEVICE_ACTION_GROUP.id in availability.opened)
+        assertTrue(AgentToolGroups.SELF_SETTINGS_GROUP.id in availability.opened)
+        assertEquals(emptySet<String>(), availability.openable)
     }
 
     @Test fun groupOpeningIsNotPureReadAndNeverParallel() {

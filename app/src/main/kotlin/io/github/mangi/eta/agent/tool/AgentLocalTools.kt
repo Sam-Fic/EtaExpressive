@@ -27,6 +27,7 @@ import kotlinx.coroutines.runBlocking
 import io.github.mangi.eta.agent.model.AgentScreenObservationContract
 import io.github.mangi.eta.agent.model.AgentSelfSettingsToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
+import io.github.mangi.eta.agent.model.AgentToolGroup
 import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
@@ -286,18 +287,35 @@ internal class AgentLocalTools(
         terminalController.sessionIdentity(sessionId)
 
     /**
-     * 打开一个延迟工具域。执行侧同样按开关与能力复查：打开域不放宽任何权限，
+     * 域的开关闸门：与 AgentToolCatalog / AgentPromptBuilder 使用同一套映射。
+     * 打开域不放宽任何权限——这里只说「这个域此刻是否允许存在」，
      * 域内工具在下一轮仍要各自通过 Prefs 与 AgentToolCapabilities。
      */
+    private fun toolGroupGate(group: AgentToolGroup): Boolean = when (group.id) {
+        AgentToolGroups.SELF_SETTINGS_GROUP.id -> selfSettingsToolsEnabled()
+        AgentToolGroups.DEVICE_ACTION_GROUP.id -> deviceSensitiveActionToolsEnabled()
+        AgentToolGroups.DEVICE_TAIL_READ_GROUP.id -> deviceSensitiveReadToolsEnabled()
+        else -> false
+    }
+
+    /**
+     * 打开一个延迟工具域。目录与系统提示只会宣传「开关允许且尚未打开」的域，
+     * 这里再按同一份判定复查：模型重放旧的 tools_use_group 调用也不能打开已关闭的域。
+     */
     private fun useToolGroup(args: JSONObject): String {
-        if (!selfSettingsToolsEnabled()) {
-            return errorResult("SELF_SETTINGS_DISABLED", "助手配置工具已在设置中关闭")
-        }
         val requested = args.optString("group").trim()
-        val known = AgentToolGroups.groups.filter { it.deferredByDefault }.map { it.id }
+        val availability = AgentToolGroups.availability(openedToolGroups, ::toolGroupGate)
+        val known = AgentToolGroups.openableIds(availability)
         val group = AgentToolGroups.group(requested)
         if (group == null || !group.deferredByDefault) {
             return AgentToolGroupCatalog.unknownGroup(requested, known)
+        }
+        // 开关关闭的域不允许打开：否则会成功返回 next_turn，而域内工具永远不会出现。
+        if (requested !in availability.openable && requested !in availability.opened) {
+            return errorResult(
+                "TOOL_GROUP_DISABLED",
+                "该工具域已在设置中关闭，无法打开；请让用户先在设置里启用对应能力。",
+            )
         }
         openedToolGroups += group.id
         return AgentToolGroupCatalog.result(group)
