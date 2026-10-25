@@ -18,6 +18,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.app.rememberDeviceCapabilities
 import io.github.mangi.eta.ui.model.AgentToolsAction
 import io.github.mangi.eta.ui.model.AgentToolsUiState
@@ -69,6 +70,9 @@ fun AgentToolsScreen(
 /**
  * 一组工具的分段列表（Material 3）：组标题 + 每个工具一条分段行，
  * 与 KernelSU 设置页的分段列表结构一致。空组不渲染，避免留下孤立组标题。
+ *
+ * 带分组开关的组：标题只在开关卡上渲染一次，开关卡与工具卡仍是两张独立的
+ * 分段卡（组间距 13dp），不合成一张大卡——开关是域级控制，与逐条工具语义不同。
  */
 @Composable
 private fun ToolGroupSegmentedList(
@@ -87,7 +91,8 @@ private fun ToolGroupSegmentedList(
     }
     EtaSegmentedColumn(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
-        title = group.title,
+        // 有分组开关时组标题已由开关卡渲染，这里传 null，避免标题出现两次。
+        title = if (group.switchKey == null) group.title else null,
     ) {
         group.tools.forEach { tool ->
             item(key = tool.id) {
@@ -133,6 +138,10 @@ private fun ToolsSegmentTabs(
  *
  * 关闭后该组工具不再下发给模型；已打开的工具域也会随之失效。
  * 这里只做「用户」的开关——模型侧仍然只能收紧不能放宽（见 AgentSelfSettingsTools）。
+ *
+ * 带开关的组，组标题只在这一处渲染（见 [ToolGroupSegmentedList]）；
+ * 行走 [EtaSwitchRow]：与其他设置页同一套分段开关行——surfaceBright 底板、
+ * 分段圆角，行尾是拇指带对勾/叉状态图标的 Expressive 开关，整行点击即切换。
  */
 @Composable
 private fun ToolGroupSwitchRow(
@@ -145,21 +154,11 @@ private fun ToolGroupSwitchRow(
         title = group.title,
     ) {
         item(key = "switch-${group.id}") {
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            ) {
-                M3Text(
-                    text = stringResource(R.string.tools_group_switch_title),
-                    modifier = Modifier.weight(1f),
-                )
-                androidx.compose.material3.Switch(
-                    checked = group.switchEnabled,
-                    onCheckedChange = { enabled -> onAction(AgentToolsAction.ToggleGroup(key, enabled)) },
-                )
-            }
+            EtaSwitchRow(
+                title = stringResource(R.string.tools_group_switch_title),
+                checked = group.switchEnabled,
+                onCheckedChange = { enabled -> onAction(AgentToolsAction.ToggleGroup(key, enabled)) },
+            )
         }
     }
 }
