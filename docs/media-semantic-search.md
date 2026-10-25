@@ -229,7 +229,7 @@ ProGuard：保留 `com.google.ai.edge.litertlm.**`。
 ### 9.1 导出
 
 - `EtaBackupDocument.SCHEMA_VERSION`：`4 → 5`；新增可选字段 `mediaIndex: EtaBackupMediaIndex?`（仅元数据：`modelId`、`vectorDim`、`count`、`payloadEntry`）。
-- 新增导出选项 `EtaBackupExportOptions.includeEmbeddings: Boolean`（默认 **开启**，与「包含 Linux 环境」并列的独立开关），`DataBackupScreen` 增加一个 `EtaSwitchRow` + 体积预估。
+- 新增导出选项 `EtaBackupExportOptions.includeEmbeddings: Boolean`（默认 **开启**，与「包含 Linux 环境」并列的独立类别），`DataBackupScreen` 的「备份内容」分组里对应一个 `EtaSegmentedCheckboxRow` + 体积预估。
 - 向量不塞进 manifest（避免超出 `BackupArchiveSafety.MANIFEST_LIMIT`），而是写成独立归档条目 `media-index/records.jsonl`（每行一条：`sourceKey/kind/contentHash/元数据/Base64(Float16 向量)`），沿用 `BackupZipWriter` 的既有写法。
 - 缩略图可选择性一并导出到 `media-index/thumbs/`（复用 `writer.directory`）。
 - `validate()` 增加：行数 = `count`、维度 = `vectorDim`、`sourceKey` 唯一等一致性校验；`inspect()` 预览也读元数据。
@@ -418,7 +418,7 @@ ProGuard：保留 `com.google.ai.edge.litertlm.**`。
 - `agent/model/AgentToolCatalog.kt`（appendTo）
 - `config/Prefs.kt`（`AGENT_MEDIA_SEARCH_TOOLS`）
 - `data/repository/EtaBackupRepository.kt`（schema 5 + `includeEmbeddings` + 归档条目 + 导入恢复）
-- `ui/screens/backup/DataBackupScreen.kt`（导出开关）
+- `ui/screens/backup/DataBackupScreen.kt`（导出类别勾选）
 - `ui/navigation/AppRoute.kt`、`ui/navigation/AgentNavigator.kt`、`ui/SettingsScreen.kt`（导航入口）
 - `AndroidManifest.xml`（媒体读权限）
 - 字符串资源、`docs/THIRD_PARTY_NOTICES.md`

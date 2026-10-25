@@ -206,7 +206,11 @@ class EtaBackupRepositoryTest {
         )
 
         val output = ByteArrayOutputStream()
-        val exported = EtaBackupRepository.export(context, output)
+        // 这条用例断言的是「带密钥的完整备份能原样还原」，所以显式要求把 API Key 写进包：
+        // 默认导出会脱敏（见 exportOmitsApiKeysByDefault）。
+        val exported = EtaBackupRepository.export(
+            context, output, EtaBackupExportOptions(includeApiKeys = true),
+        )
         assertEquals(1, exported.conversationCount)
         assertTrue(exported.providerCount > 0)
         assertEquals("# 核心记忆\n喜欢 Kotlin", AgentMemoryRepository.snapshot().content)
@@ -238,6 +242,55 @@ class EtaBackupRepositoryTest {
         assertEquals(provider.models.first().id, restoredConversation.modelId)
         assertEquals("sk-backup-test", ProviderRepository.providerById(provider.id)?.apiKey)
         assertEquals(ModelSource.CATALOG, ProviderRepository.providerById(provider.id)?.models?.first()?.source)
+    }
+
+    /**
+     * 默认导出必须脱敏：归档本身不加密，包一离开设备就等于交出全部厂商的账单权限。
+     *
+     * 除了 `apiKey` 字段，中转站常把密钥写在自定义请求头 / 请求体里，这两处也要清。
+     * 同时反向确认 `max_tokens` 这类常规参数没被误伤——误伤会让导入后请求直接失败。
+     */
+    @Test
+    fun exportOmitsApiKeysByDefault() = runBlocking {
+        val provider = ProviderRepository.addProvider(
+            io.github.mangi.eta.data.model.OpenAiCompatibleProviderSetting(
+                id = "redacted-provider",
+                name = "中转站",
+                baseUrl = "https://api.example.com/v1",
+                customHeaders = listOf(
+                    io.github.mangi.eta.data.model.CustomHeader("api-key", "sk-in-header"),
+                    io.github.mangi.eta.data.model.CustomHeader("x-trace-id", "keep-me"),
+                ),
+                customBody = listOf(
+                    io.github.mangi.eta.data.model.CustomBody("api_key", kotlinx.serialization.json.JsonPrimitive("sk-in-body")),
+                    io.github.mangi.eta.data.model.CustomBody("max_tokens", kotlinx.serialization.json.JsonPrimitive(4096)),
+                ),
+            ),
+        ).withApiKey("sk-plain-key")
+
+        val output = ByteArrayOutputStream()
+        val exported = EtaBackupRepository.export(context, output)
+        assertEquals(1, exported.providerCount)
+
+        val imported = EtaBackupRepository.import(
+            context,
+            ByteArrayInputStream(output.toByteArray()),
+        )
+        // 用户需要知道少了什么，否则会以为导入不完整。
+        assertEquals(1, imported.providersNeedingKey)
+
+        val restored = requireNotNull(ProviderRepository.providerById(provider.id))
+        assertTrue(restored.apiKey.isEmpty())
+        assertEquals("", restored.customHeaders.single { it.name == "api-key" }.value)
+        assertEquals("keep-me", restored.customHeaders.single { it.name == "x-trace-id" }.value)
+        assertEquals(
+            kotlinx.serialization.json.JsonNull,
+            restored.customBody.single { it.key == "api_key" }.value,
+        )
+        assertEquals(
+            kotlinx.serialization.json.JsonPrimitive(4096),
+            restored.customBody.single { it.key == "max_tokens" }.value,
+        )
     }
 
     @Test

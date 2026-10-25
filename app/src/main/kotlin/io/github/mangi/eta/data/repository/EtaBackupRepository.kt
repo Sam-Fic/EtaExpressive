@@ -12,6 +12,7 @@ import io.github.mangi.eta.agent.media.index.Float16VectorCodec
 import io.github.mangi.eta.agent.media.index.MediaExtraction
 import io.github.mangi.eta.agent.media.index.MediaSourceScanner
 import io.github.mangi.eta.agent.skill.SkillRuntime
+import io.github.mangi.eta.agent.tool.AgentToolRecipeStore
 import io.github.mangi.eta.agent.tool.ToolRecipeConstants
 import io.github.mangi.eta.agent.tool.ToolRecipePaths
 import io.github.mangi.eta.agent.terminal.AndroidBusyBox
@@ -19,6 +20,7 @@ import io.github.mangi.eta.agent.terminal.LinuxDistribution
 import io.github.mangi.eta.agent.terminal.LinuxEnvironmentPaths
 import io.github.mangi.eta.agent.terminal.LinuxExecutionBackend
 import io.github.mangi.eta.agent.terminal.TerminalPrivateStorage
+import io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.agent.delegation.ConversationSubAgentPreferences
 import io.github.mangi.eta.core.AndroidAgentLogger
@@ -42,6 +44,8 @@ import io.github.mangi.eta.data.db.ProviderModelEntity
 import io.github.mangi.eta.data.db.ProviderWithModelsSeed
 import io.github.mangi.eta.data.db.SkillRegistryEntity
 import io.github.mangi.eta.data.model.AssistantPrompt
+import io.github.mangi.eta.data.model.CustomBody
+import io.github.mangi.eta.data.model.CustomHeader
 import io.github.mangi.eta.data.model.ProviderAuthModes
 import java.io.File
 import java.io.InputStream
@@ -56,14 +60,21 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 
 /**
  * Eta用户数据备份。schema 1 只有对话、提供商和记忆；schema 2 补上助手、技能、MCP、设置、附件和可选 Linux 环境；
  * schema 5 补上可选媒体语义索引（向量行不进本清单，写在独立条目 `media-index/records.jsonl`）；
  * schema 6 补上可选已下载模型（文件写在 `models/` 下，元数据在 [models]）；
- * schema 7 补上模型自进化成果「配方」（数据本就在 `filesDir/tool_recipes`，这里纳入清单元数据）。
+ * schema 7 补上模型自进化成果「配方」（数据本就在 `filesDir/tool_recipes`，这里纳入清单元数据）；
+ * schema 8 补上 [EtaBackupDocument.appDataIncluded]：允许只打包 Linux 环境 / 媒体索引 / 模型这类大件，
+ * 导入时不再用空清单覆盖本机对话与设置（旧版本读到 schema 8 会直接拒绝，不会误清空数据）；
+ * 同时把配方**文件**真正放进归档（`recipes/<name>.json`）——schema 7 只记了数量，配方从未离开过设备；
+ * 并补上语音配置（随应用数据）与浏览器设置（独立开关）两份 prefs 快照，见 [BackupPrefsFiles]。
+ * 聊天附件只打包用户发出的图片：助手回复里的图片是正文绝对路径直接渲染，不缓存也不进备份。
  */
 @Serializable
 internal data class EtaBackupDocument(
@@ -90,13 +101,42 @@ internal data class EtaBackupDocument(
     val mediaIndex: EtaBackupMediaIndex? = null,
     val models: EtaModelBackupDocument? = null,
     /**
-     * 模型自建的配方（工具）数量。
+     * 归档里打包的配方（模型自建工具）文件数；文件本体写在 `recipes/<name>.json` 条目下。
      *
-     * 配方数据本身在 `filesDir/tool_recipes`，与技能一样随应用数据一起被系统备份带走；\     * 清单元数据只记数量，供导入前预览与导入后核对。
+     * 配方只能通过本归档离开设备：应用已声明 `android:allowBackup="false"`，系统备份不会带走
+     * `filesDir/tool_recipes`，分享包又是单批 32 份的受限通道。schema 7 只记数量不带文件，
+     * schema 8 起连同文件一起打包。
      */
     val recipeCount: Int = 0,
+    /**
+     * 语音配置（豆包的 ASR / 克隆参数、离线语音包选型、音色 catalog 的 key id 与 project）。
+     *
+     * 值是 `<prefs 文件> → key → 编码值`（编码方式见 [BackupPrefsFiles]）。
+     * 空表示备份没带这一项，导入时保留本机配置。
+     */
+    val voicePreferences: Map<String, Map<String, String>> = emptyMap(),
+    /**
+     * 浏览器设置（UA / 视口 / 空闲超时）。由「浏览器数据」勾选项单独控制，不随应用数据走。
+     * 登录态在 WebView 自己的存储里，不在这里。
+     */
+    val browserPreferences: Map<String, Map<String, String>> = emptyMap(),
     val includeLinuxEnvironment: Boolean = false,
     val linuxWorkspaceIncluded: Boolean = false,
+    /**
+     * 归档是否包含应用数据（对话、提供商、助手、技能、MCP、设置、附件、记忆）。
+     *
+     * false 表示这是一份「只带大件」的备份（Linux 环境 / 媒体索引 / 模型）：
+     * 导出时应用数据整块留空，导入时也只恢复这些大件，绝不拿空清单去覆盖本机数据。
+     * 旧备份没有该字段，反序列化时取默认值 true，行为与以前一致。
+     */
+    val appDataIncluded: Boolean = true,
+    /**
+     * 归档是否带上了 API Key 明文（提供商的 `apiKey`、豆包的 ASR / 克隆 Key）。
+     *
+     * false 表示导出时做了脱敏：提供商与语音配置都在，只有密钥留空，导入后需要用户重填。
+     * 默认 true 是为了对齐旧备份——schema 8 及以前一直是明文，读老包时不该误报「需要重填」。
+     */
+    val apiKeysIncluded: Boolean = true,
     val attachmentCount: Int = 0,
     val importedFileCount: Int = 0,
     val agentPreferences: Map<String, String> = emptyMap(),
@@ -105,7 +145,7 @@ internal data class EtaBackupDocument(
 ) {
     companion object {
         const val FORMAT = "eta-backup"
-        const val SCHEMA_VERSION = 7
+        const val SCHEMA_VERSION = 8
         const val MIN_SUPPORTED_SCHEMA = 1
         const val MANIFEST_NAME = "eta-backup.json"
     }
@@ -197,12 +237,41 @@ internal data class EtaBackupSummary(
     val mediaIndexDim: Int = 0,
     val downloadedModelCount: Int = 0,
     val downloadedModelBytes: Long = 0,
+    /**
+     * 需要用户重新填写密钥的提供商数量。
+     *
+     * 备份做过脱敏时（`apiKeysIncluded = false`）等于所有 API Key 模式的提供商数量；
+     * 带密钥的备份与旧备份为 0。OAuth 模式的提供商不算——它们本来就走登录。
+     */
+    val providersNeedingKey: Int = 0,
 )
 
 internal data class EtaBackupExportOptions(
+    /**
+     * 是否包含应用数据（对话、提供商、助手、技能、MCP、设置、附件、记忆）。
+     *
+     * 关掉后就只剩 Linux 环境 / 媒体索引 / 模型这些大件，用于「只搬模型」这类场景，
+     * 导入时也不会动本机对话与设置。默认开启，与旧行为一致。
+     */
+    val includeAppData: Boolean = true,
+    /**
+     * 是否包含浏览器设置（UA / 视口 / 空闲超时）。
+     *
+     * 独立于 [includeAppData]：它既不属于应用数据，也不属于大件，所以单列一个开关，
+     * 默认关闭——浏览器偏好是可选迁移项，不该在用户没勾的时候偷偷进包。
+     */
+    val includeBrowserSettings: Boolean = false,
     val includeLinuxEnvironment: Boolean = false,
     /** 是否包含媒体语义索引（embedding 向量）：默认开启，与「包含 Linux 环境」并列的独立开关。 */
     val includeEmbeddings: Boolean = true,
+    /**
+     * 是否把 API Key 明文写进备份包。
+     *
+     * 默认关闭。备份包的用途就是离开设备（网盘、聊天工具、换机传输），而归档本身不加密：
+     * 带上密钥等于把全部厂商的账单权限连同文件一起交出去，任何拿到包的人都能用。
+     * 关掉时提供商、模型、地址、参数照常备份，只有密钥留空，导入后提示用户重填。
+     */
+    val includeApiKeys: Boolean = false,
     /** 是否连同已下载的语音识别 / Embedding 模型一起打包。 */
     val includeModels: Boolean = false,
 )
@@ -210,7 +279,22 @@ internal data class EtaBackupExportOptions(
 internal class EtaBackupException(message: String, cause: Throwable? = null) :
     IllegalArgumentException(message, cause)
 
+/** 备份归档的类型：决定导入走「恢复数据」还是「只恢复模型」。 */
+internal enum class EtaBackupArchiveKind {
+    /** 数据备份：完整备份（可能也带模型）或单个会话备份。 */
+    DATA,
+
+    /** 纯模型备份（`eta-models.json`）。 */
+    MODELS,
+
+    /** 清单缺失或根本不是 Eta 备份。 */
+    UNKNOWN,
+}
+
 internal object EtaBackupRepository {
+    /** 用户发出的消息类型，与 `AgentConversationStore` 落盘时的 type 取值一致。 */
+    private const val MESSAGE_TYPE_USER = "user"
+
     private val operationMutex = Mutex()
     private val json = Json {
         ignoreUnknownKeys = true
@@ -218,6 +302,23 @@ internal object EtaBackupRepository {
         explicitNulls = true
         prettyPrint = true
     }
+
+    /**
+     * 脱敏时的紧凑 JSON。
+     *
+     * 只做结构往返，不需要可读格式；用紧凑输出避免把库里原本的紧凑串换成多行。
+     */
+    private val compactJson = Json { ignoreUnknownKeys = true }
+
+    /**
+     * 请求体里按名字精确判定的密钥字段（见 [redactBodies]）。
+     *
+     * 用「完全相等」而不是包含，是为了不误伤 `max_tokens` 这类常见参数。
+     */
+    private val BODY_SECRET_KEYS = setOf(
+        "key", "apikey", "apikeys", "token", "accesstoken", "refreshtoken",
+        "secret", "secretkey", "clientsecret", "authorization", "auth", "subscriptionkey",
+    )
 
     /** records.jsonl 每行一条紧凑 JSON：缺省字段直接省略。 */
     private val lineJson = Json {
@@ -265,12 +366,15 @@ internal object EtaBackupRepository {
                 val payloads = File(appContext.cacheDir, "daiyu-backup-conversations")
                 payloads.deleteRecursively()
                 BackupDurability.mkdirs(payloads)
+                // 用户发出的图片随会话一起收集：只备份这些，助手回复里的图片按设计不进包。
+                val userImages = linkedSetOf<String>()
                 val document = try {
                     EtaDatabase.get(appContext).withTransaction {
                         val meta = snapshot(appContext, options, models = modelDocument)
-                        val count = writeConversationPayloads(appContext, payloads)
+                        val count = writeConversationPayloads(appContext, payloads, userImages)
                         require(count == meta.messageCount) { "会话消息在导出时发生变化" }
-                        meta
+                        // 清单里的附件数要与真正进包的用户图片一致，不能沿用整个缓存目录的统计。
+                        if (options.includeAppData) meta.copy(attachmentCount = userImages.size) else meta
                     }
                 } catch (failure: Throwable) {
                     payloads.deleteRecursively()
@@ -286,16 +390,33 @@ internal object EtaBackupRepository {
                     payloads.listFiles()?.sortedBy { it.name }?.forEach { file ->
                         writer.file("conversations/${file.name}", file)
                     }
-                    writer.directory("attachments/chat-images/", File(appContext.cacheDir, AgentChatImageCache.CACHE_DIRECTORY))
-                    writer.directory(
-                        "attachments/imports/",
-                        File(TerminalPrivateStorage.workspace(appContext.filesDir), "imports"),
-                    )
-                    writer.directory(
-                        "linux/workspace/",
-                        TerminalPrivateStorage.workspace(appContext.filesDir),
-                        skipNames = setOf("imports", "mounts"),
-                    )
+                    // 聊天附件属于应用数据：只打包大件时不带。
+                    if (options.includeAppData) {
+                        // 只打包用户消息里引用的图片。模型回复里的图片是正文绝对路径直接渲染，
+                        // 不复制、不缓存、也不进备份——路径失效时干脆不渲染。
+                        val chatImageRoot = File(appContext.cacheDir, AgentChatImageCache.CACHE_DIRECTORY)
+                        userImages.forEach { relative ->
+                            val file = File(chatImageRoot, relative)
+                            if (file.isFile) writer.file("attachments/chat-images/$relative", file)
+                        }
+                        // 配方是模型自建的工具：只有 ZIP 备份会带走它们（系统备份已被 allowBackup=false 关掉）。
+                        ToolRecipePaths.files(appContext).forEach { recipe ->
+                            writer.file(ToolRecipePaths.ENTRY_PREFIX + recipe.name, recipe)
+                        }
+                    }
+                    // 工作区（含导入文件）同样是应用数据的产出物，跟「应用数据」一起取舍；
+                    // 但打包 Linux 环境时必须连带，否则恢复出来的环境没有可用的工作文件。
+                    if (options.includeAppData || options.includeLinuxEnvironment) {
+                        writer.directory(
+                            "attachments/imports/",
+                            File(TerminalPrivateStorage.workspace(appContext.filesDir), "imports"),
+                        )
+                        writer.directory(
+                            "linux/workspace/",
+                            TerminalPrivateStorage.workspace(appContext.filesDir),
+                            skipNames = setOf("imports", "mounts"),
+                        )
+                    }
                     if (options.includeLinuxEnvironment) {
                         exportLinuxEnvironments(appContext, writer)
                     }
@@ -448,6 +569,7 @@ internal object EtaBackupRepository {
                         val planned = linkedMapOf<File, File>()
                         val linuxTars = mutableListOf<Triple<String, String, File>>()
                         val modelEntries = linkedMapOf<String, File>()
+                        val recipeTargets = linkedSetOf<File>()
                         var mediaRecordsFile: File? = null
                         files.forEach { (name, source) ->
                             val target = when {
@@ -475,6 +597,21 @@ internal object EtaBackupRepository {
                                     require(relative.substringBefore('/') !in setOf("imports", "mounts")) { "工作区归档包含受保护挂载" }
                                     BackupArchiveSafety.target(TerminalPrivateStorage.workspace(appContext.filesDir), relative)
                                 }
+                                name.startsWith(ToolRecipePaths.ENTRY_PREFIX) -> {
+                                    // 配方文件只允许出现在「带应用数据」的完整归档里，配合「整包替换」语义。
+                                    require(document?.appDataIncluded == true) { "备份中的配方条目缺少应用数据" }
+                                    val fileName = name.removePrefix(ToolRecipePaths.ENTRY_PREFIX)
+                                    require(fileName.endsWith(".json") &&
+                                        ToolRecipeConstants.TOOL_NAME_PATTERN.matches(fileName.removeSuffix(".json"))
+                                    ) { "备份中的配方名无效：$fileName" }
+                                    BackupArchiveSafety.target(ToolRecipePaths.directory(appContext), fileName)
+                                        .also { target ->
+                                            require(recipeTargets.add(target)) { "备份包含重复配方项：$fileName" }
+                                            require(recipeTargets.size <= ToolRecipeConstants.MAX_STORED_RECIPES) {
+                                                "备份中的配方数量超过上限"
+                                            }
+                                        }
+                                }
                                 BackupArchiveSafety.LINUX_ENVIRONMENT_TAR.matches(name) -> {
                                     val parts = name.removePrefix("linux/environments/").removeSuffix(".tar").split('/')
                                     require(parts.size == 2) { "Linux 环境归档路径无效" }
@@ -496,6 +633,10 @@ internal object EtaBackupRepository {
                             EtaModelBackup.verify(modelEntries, modelDocument)
                         } else {
                             require(modelEntries.isEmpty()) { "备份中的模型条目缺少清单元数据" }
+                        }
+                        // schema 7 只把配方数量写进清单、不带文件；那条校验只对带文件的 schema 8 归档成立。
+                        if (document != null && document.schemaVersion >= 8) {
+                            require(recipeTargets.size == document.recipeCount) { "备份中的配方条目与清单不一致" }
                         }
                         val destinations = planned.keys.map { it.toPath() }.toSet()
                         require(destinations.none { path ->
@@ -535,7 +676,9 @@ internal object EtaBackupRepository {
                         previousPayloads.deleteRecursively()
                         BackupDurability.mkdirs(previousPayloads)
                         val old = EtaDatabase.get(appContext).withTransaction {
-                            val meta = snapshot(appContext, EtaBackupExportOptions())
+                            // 回滚快照是「导入失败时还原到导入前」的唯一依据，必须完整：
+                            // 默认选项会脱敏密钥，拿它做快照等于回滚时把用户的 API Key 抹掉。
+                            val meta = snapshot(appContext, EtaBackupExportOptions(includeApiKeys = true))
                             val count = writeConversationPayloads(appContext, previousPayloads)
                             require(count == meta.messageCount) { "回滚快照中的消息数量不一致，未开始恢复" }
                             writeMediaSnapshot(appContext, File(operation, "previous-media-index.jsonl"))
@@ -551,8 +694,14 @@ internal object EtaBackupRepository {
                                 planned.forEach { (target, source) -> journal.replace(target, source) }
                                 if (document != null) {
                                     restoreMetadata(appContext, document, mediaIndexRows = mediaRows)
-                                    rewriteRestoredPaths(appContext, document)
+                                    // 路径重写只针对会话与附件引用：只含大件的备份没有这些数据。
+                                    if (document.appDataIncluded) {
+                                        rewriteRestoredPaths(appContext, document)
+                                    }
                                 }
+                            }
+                            if (recipeTargets.isNotEmpty()) {
+                                restoreRecipes(appContext, recipeTargets)
                             }
                             if (document?.includeLinuxEnvironment == true) {
                                 linuxTars.forEach { (backend, distribution, archive) ->
@@ -688,19 +837,79 @@ internal object EtaBackupRepository {
         }
     }
 
+    /**
+     * 导入前的轻量探测：只扫归档目录判断这是「数据备份」还是「纯模型备份」，
+     * 好让确认弹窗给出正确的文案与按钮。真正的完整校验仍在 [import] / [importModels] 里重跑一遍。
+     *
+     * 只读条目名、不解压内容；条目数超过 [BackupArchiveSafety.ENTRY_LIMIT] 或压缩包本身损坏都判为未知。
+     */
+    fun archiveKind(input: InputStream): EtaBackupArchiveKind {
+        val pushback = java.io.PushbackInputStream(input, 2)
+        val header = pushback.readNBytes(2)
+        if (header.isEmpty()) return EtaBackupArchiveKind.UNKNOWN
+        pushback.unread(header)
+        // 明文清单只有会话 / 数据备份会这么存；模型备份一定是 ZIP。
+        if (!header.contentEquals(byteArrayOf(0x50, 0x4b))) return EtaBackupArchiveKind.DATA
+        var models = false
+        var data = false
+        var entries = 0
+        val scanned = runCatching {
+            java.util.zip.ZipInputStream(pushback).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (++entries > BackupArchiveSafety.ENTRY_LIMIT) return@runCatching false
+                    val name = entry.name.trim().trimStart('/')
+                    when (name) {
+                        EtaModelBackupDocument.MANIFEST_NAME -> models = true
+                        EtaBackupDocument.MANIFEST_NAME, EtaConversationExport.MANIFEST_NAME -> data = true
+                    }
+                }
+                true
+            }
+        }.getOrDefault(false)
+        if (!scanned) return EtaBackupArchiveKind.UNKNOWN
+        return when {
+            data -> EtaBackupArchiveKind.DATA
+            models -> EtaBackupArchiveKind.MODELS
+            else -> EtaBackupArchiveKind.UNKNOWN
+        }
+    }
+
+    /**
+     * 归档带配方时执行整包替换：备份里没有的本机配方一并删掉，否则「恢复到备份那一刻」不成立
+     * （本机回滚快照尤其依赖这一点）。
+     *
+     * 归档不带配方（老备份或只含大件的备份）时 [restored] 为空，本机配方保持原样——
+     * 绝不因为「备份里没有配方」就把用户的自进化成果清空。这里的删除不进恢复日志：
+     * 走到这一步时 Room 事务与所有文件替换都已成功，且配方是可由模型重造的小 JSON。
+     */
+    private fun restoreRecipes(context: Context, restored: Set<File>) {
+        val directory = ToolRecipePaths.directory(context)
+        val keep = restored.mapTo(hashSetOf()) { it.canonicalFile }
+        val stale = directory.listFiles()?.filter { it.isFile && it.canonicalFile !in keep } ?: emptyList()
+        stale.forEach { it.delete() }
+        if (stale.isNotEmpty()) BackupDurability.syncDirectory(directory)
+        AgentToolRecipeStore.invalidateCache()
+    }
+
     private fun manifestName(raw: String): String =
         if (runCatching { org.json.JSONObject(raw).optString("format") }.getOrNull() == EtaConversationExport.FORMAT)
             EtaConversationExport.MANIFEST_NAME else EtaBackupDocument.MANIFEST_NAME
 
-
-    private suspend fun writeConversationPayloads(context: Context, directory: File): Int {
+    private suspend fun writeConversationPayloads(
+        context: Context,
+        directory: File,
+        userImages: MutableSet<String>? = null,
+    ): Int {
         val dao = EtaDatabase.get(context).conversationDao()
         var count = 0
         dao.conversationEntities().forEachIndexed { index, conversation ->
+            val messages = dao.messagesForConversation(conversation.id)
+            if (userImages != null) userImages += userAttachedImages(context, messages)
             val exported = EtaConversationExport(
                 exportedAt = System.currentTimeMillis(),
                 conversation = conversation,
-                messages = dao.messagesForConversation(conversation.id),
+                messages = messages,
                 contextCheckpoint = dao.contextCheckpoint(conversation.id),
             )
             val text = json.encodeToString(exported)
@@ -713,8 +922,46 @@ internal object EtaBackupRepository {
         return count
     }
 
-    private fun conversationPayloadFileName(id: String, index: Int): String {
-        val safe = id.length <= 180 && id.matches(Regex("[A-Za-z0-9_.-]+")) && id != "." && id != ".."
+    /**
+     * 用户发出的消息所引用的本地图片，返回相对 chat-images 根目录的路径。
+     *
+     * 只认 [MESSAGE_TYPE_USER]：助手消息正文里的图片是绝对路径直接渲染的，按设计不缓存、不备份。
+     * 命中条件同时要求「文件存在」且「位于应用私有附件目录内」，避免把任意路径带进归档。
+     */
+    private fun userAttachedImages(context: Context, messages: List<ConversationMessageEntity>): Set<String> {
+        val root = File(context.cacheDir, AgentChatImageCache.CACHE_DIRECTORY).canonicalFile
+        val found = linkedSetOf<String>()
+        for (message in messages) {
+            if (message.type != MESSAGE_TYPE_USER) continue
+            for (raw in imageReferences(message.imagesJson)) {
+                val path = raw.removePrefix("file://")
+                if (path.isBlank()) continue
+                val file = runCatching { File(path).canonicalFile }.getOrNull() ?: continue
+                if (!file.isFile || !file.toPath().startsWith(root.toPath())) continue
+                val relative = runCatching { file.relativeTo(root).invariantSeparatorsPath }.getOrNull() ?: continue
+                if (runCatching { BackupArchiveSafety.relativePath(relative) }.isSuccess) found += relative
+            }
+        }
+        return found
+    }
+
+    /** images_json 的元素可能是纯字符串路径，也可能是 `{preview, source, kind}` 对象。 */
+    private fun imageReferences(imagesJson: String): List<String> {
+        val array = runCatching { org.json.JSONArray(imagesJson) }.getOrNull() ?: return emptyList()
+        val paths = mutableListOf<String>()
+        for (index in 0 until array.length()) {
+            when (val item = array.opt(index)) {
+                is String -> paths += item
+                is org.json.JSONObject -> {
+                    paths += item.optString("preview")
+                    paths += item.optString("source")
+                }
+            }
+        }
+        return paths.filter { it.isNotBlank() }
+    }
+
+    private fun conversationPayloadFileName(id: String, index: Int): String {        val safe = id.length <= 180 && id.matches(Regex("[A-Za-z0-9_.-]+")) && id != "." && id != ".."
         return if (safe) "$id.json" else "c$index.json"
     }
 
@@ -742,18 +989,48 @@ internal object EtaBackupRepository {
         options: EtaBackupExportOptions,
         models: EtaModelBackupDocument? = null,
     ): EtaBackupDocument {
+        val mediaDao = EtaDatabase.get(context).mediaIndexDao()
+        val (mediaModelId, mediaVectorDim) = mediaIndexSlice(context, mediaDao)
+        val mediaCount = mediaDao.countForModel(mediaModelId, mediaVectorDim)
+        val mediaIndex = if (options.includeEmbeddings && mediaCount > 0) {
+            EtaBackupMediaIndex(modelId = mediaModelId, vectorDim = mediaVectorDim, count = mediaCount)
+        } else {
+            null
+        }
+        // 工作区跟随「应用数据」取舍，但打包 Linux 环境时必须连带（环境缺了工作区没法用）。
+        val workspaceIncluded = options.includeAppData || options.includeLinuxEnvironment
+        // 只打包大件：应用数据整块留空，导入时同样跳过（见 restoreMetadata）。
+        if (!options.includeAppData) {
+            return EtaBackupDocument(
+                exportedAt = System.currentTimeMillis(),
+                messagesExternal = true,
+                mediaIndex = mediaIndex,
+                models = models,
+                // 浏览器开关独立于应用数据，只带大件时也要能带上它。
+                browserPreferences = if (options.includeBrowserSettings) {
+                    BackupPrefsFiles.capture(context, BackupPrefsFiles.BROWSER)
+                } else {
+                    emptyMap()
+                },
+                includeLinuxEnvironment = options.includeLinuxEnvironment,
+                linuxWorkspaceIncluded = workspaceIncluded,
+                appDataIncluded = false,
+                // 这一支不带提供商与语音配置，包里本来就没有密钥。
+                apiKeysIncluded = false,
+            )
+        }
         val database = EtaDatabase.get(context)
         val providers = database.providerDao().providers().map { provider ->
-            EtaBackupProvider(provider = provider.provider.withoutOAuthSecrets(), models = provider.models)
+            EtaBackupProvider(
+                provider = provider.provider.withApiKeyPolicy(options.includeApiKeys),
+                models = provider.models,
+            )
         }
         val conversations = database.conversationDao()
         val settings = SettingsDataStore.backupSnapshot()
         val mcpServers = database.mcpServerDao().servers()
         val chatImages = File(context.cacheDir, AgentChatImageCache.CACHE_DIRECTORY)
         val imports = File(TerminalPrivateStorage.workspace(context.filesDir), "imports")
-        val mediaDao = database.mediaIndexDao()
-        val (mediaModelId, mediaVectorDim) = mediaIndexSlice(context, mediaDao)
-        val mediaCount = mediaDao.countForModel(mediaModelId, mediaVectorDim)
         return EtaBackupDocument(
             exportedAt = System.currentTimeMillis(),
             providers = providers,
@@ -773,15 +1050,25 @@ internal object EtaBackupRepository {
             mcpServers = mcpServers,
             mcpTokens = McpSecretStore(context).exportTokens(mcpServers.map { it.id }),
             settings = settings,
-            mediaIndex = if (options.includeEmbeddings && mediaCount > 0) {
-                EtaBackupMediaIndex(modelId = mediaModelId, vectorDim = mediaVectorDim, count = mediaCount)
-            } else {
-                null
-            },
+            mediaIndex = mediaIndex,
             models = models,
             includeLinuxEnvironment = options.includeLinuxEnvironment,
-            linuxWorkspaceIncluded = true,
+            linuxWorkspaceIncluded = workspaceIncluded,
+            appDataIncluded = true,
+            apiKeysIncluded = options.includeApiKeys,
             recipeCount = ToolRecipePaths.count(context),
+            // 语音配置跟着应用数据走；浏览器配置单列开关，默认不进包。
+            // 语音里的 ASR / 克隆 Key 是明文存储的，跟提供商密钥一起受「包含 API Key」控制。
+            voicePreferences = BackupPrefsFiles.capture(
+                context,
+                BackupPrefsFiles.VOICE,
+                if (options.includeApiKeys) emptySet() else BackupPrefsFiles.VOICE_SECRET_KEYS,
+            ),
+            browserPreferences = if (options.includeBrowserSettings) {
+                BackupPrefsFiles.capture(context, BackupPrefsFiles.BROWSER)
+            } else {
+                emptyMap()
+            },
             attachmentCount = countFiles(chatImages),
             importedFileCount = countFiles(imports),
             agentPreferences = Prefs.exportAgentPreferences(),
@@ -826,29 +1113,32 @@ internal object EtaBackupRepository {
             else -> null
         }
         val database = EtaDatabase.get(context)
+        val data = document.appDataIncluded
         val oauthProviders = document.providers.map { it.provider }
             .filter { ProviderAuthModes.isOAuth(it.authMode) }
         val credentialIds = document.providers.mapTo(linkedSetOf()) { it.provider.id }
         database.withTransaction {
-            credentialIds += database.providerDao().providers().map { it.provider.id }
-            database.providerDao().replaceAll(
-                document.providers.map { provider ->
-                    ProviderWithModelsSeed(
-                        provider = provider.provider.awaitingCredentialCleanup(exactPreferences),
-                        models = provider.models,
-                    )
-                },
-            )
-            database.conversationDao().replaceAll(
-                conversations = document.conversations,
-                messages = document.messages,
-                contextCheckpoints = document.contextCheckpoints,
-                state = document.conversationState,
-            )
-            database.conversationDao().replaceFolders(document.folders)
-            if (document.schemaVersion >= 2) {
-                database.mcpServerDao().replaceAll(document.mcpServers)
-                database.skillDao().replaceRegistry(document.skillRegistry)
+            if (data) {
+                credentialIds += database.providerDao().providers().map { it.provider.id }
+                database.providerDao().replaceAll(
+                    document.providers.map { provider ->
+                        ProviderWithModelsSeed(
+                            provider = provider.provider.awaitingCredentialCleanup(exactPreferences),
+                            models = provider.models,
+                        )
+                    },
+                )
+                database.conversationDao().replaceAll(
+                    conversations = document.conversations,
+                    messages = document.messages,
+                    contextCheckpoints = document.contextCheckpoints,
+                    state = document.conversationState,
+                )
+                database.conversationDao().replaceFolders(document.folders)
+                if (document.schemaVersion >= 2) {
+                    database.mcpServerDao().replaceAll(document.mcpServers)
+                    database.skillDao().replaceRegistry(document.skillRegistry)
+                }
             }
             if (mediaIndexRows != null) {
                 val mediaDao = database.mediaIndexDao()
@@ -858,6 +1148,13 @@ internal object EtaBackupRepository {
                 if (mediaIndexRows.isNotEmpty()) mediaDao.upsertAll(mediaIndexRows)
             }
         }
+        // 只含大件（Linux 环境 / 媒体索引 / 模型）的备份到此为止：
+        // 后面全是「用清单内容覆盖本机」的动作，空清单会把对话、助手与设置清掉。
+        // 浏览器配置例外：它的开关独立于应用数据，必须在下面这道闸之前恢复。
+        if (document.browserPreferences.isNotEmpty()) {
+            BackupPrefsFiles.restore(context, document.browserPreferences, BackupPrefsFiles.BROWSER)
+        }
+        if (!data) return
         if (!exactPreferences) {
             // 恢复的订阅连接不继承设备上旧授权：先清除同 ID 凭据，再按备份中的登录方式重新启用。
             withContext(NonCancellable) {
@@ -881,6 +1178,12 @@ internal object EtaBackupRepository {
             }
             SkillRuntime.importUserSkills(context, decodeFiles(document.skillFiles))
             McpSecretStore(context).replaceAll(document.mcpTokens)
+            // 语音配置属于应用数据；空快照表示旧备份没带，保留本机设置。
+            if (document.voicePreferences.isNotEmpty()) {
+                BackupPrefsFiles.restore(context, document.voicePreferences, BackupPrefsFiles.VOICE)
+                // 该配置在内存里有一份 StateFlow 投影，重读磁盘才会反映到运行中的语音入口。
+                DoubaoVoiceConfig.load(context)
+            }
             document.settings?.let { SettingsDataStore.restoreBackup(it) }
                 ?: SettingsDataStore.setSelection(document.selectedProviderId, document.selectedModelId)
         } else {
@@ -968,6 +1271,15 @@ internal object EtaBackupRepository {
         }
         require(document.assistantAvatars.keys.none { '/' in it }) { "头像文件名无效" }
         require(document.assistantMemories.values.all { it.toByteArray().size <= 1024 * 1024 }) { "助手记忆超过限制" }
+        // 语音 / 浏览器配置是可选 prefs 快照：只做规模校验，真正的白名单在 BackupPrefsFiles.restore 里。
+        listOf(document.voicePreferences, document.browserPreferences).forEach { snapshot ->
+            require(snapshot.size <= 8) { "备份中的配置文件过多" }
+            snapshot.forEach { (name, values) ->
+                BackupArchiveSafety.relativePath(name)
+                require(values.size <= 512) { "备份中的配置项过多" }
+                require(values.all { (key, value) -> key.length <= 256 && value.length <= 8192 }) { "备份中的配置值过大" }
+            }
+        }
         require(document.contextCheckpoints.all { checkpoint -> document.conversations.any { it.id == checkpoint.conversationId } }) { "检查点缺少所属会话" }
         val modelIds = document.providers.flatMap { it.models }.map { it.id }
         require(modelIds.size == modelIds.toSet().size && modelIds.none(String::isBlank)) { "模型 ID 无效或重复" }
@@ -1263,6 +1575,11 @@ internal object EtaBackupRepository {
         mediaIndexDim = mediaIndex?.vectorDim ?: 0,
         downloadedModelCount = models?.models?.size ?: 0,
         downloadedModelBytes = models?.models?.sumOf { model -> model.files.sumOf { it.bytes } } ?: 0L,
+        providersNeedingKey = if (apiKeysIncluded) {
+            0
+        } else {
+            providers.count { it.provider.authMode == ProviderAuthModes.API_KEY }
+        },
     )
 
     private fun EtaConversationExport.toConversationSummary(): EtaBackupSummary = EtaBackupSummary(
@@ -1276,6 +1593,69 @@ internal object EtaBackupRepository {
 
     private fun ProviderEntity.withoutOAuthSecrets(): ProviderEntity =
         if (authMode == ProviderAuthModes.API_KEY) this else copy(apiKey = "")
+
+    /**
+     * 导出时的密钥策略。
+     *
+     * 带上密钥：只剥 OAuth 衍生数据，API Key 原样进清单（与 schema 8 一致）。
+     * 不带密钥（默认）：所有认证模式的 `apiKey` 一律清空，提供商其余配置照常备份。
+     *
+     * 光清 `apiKey` 不够：中转站常在自定义请求头 / 请求体里手写密钥，那两处一并脱敏。
+     */
+    private fun ProviderEntity.withApiKeyPolicy(includeApiKey: Boolean): ProviderEntity =
+        if (includeApiKey) withoutOAuthSecrets() else copy(
+            apiKey = "",
+            customHeadersJson = redactHeaders(customHeadersJson),
+            customBodyJson = redactBodies(customBodyJson),
+        )
+
+    /**
+     * 清空自定义请求头里像密钥的值。
+     *
+     * `authorization` / `x-api-key` 已在 `CustomHeaderFilter` 的禁止名单里，但
+     * `api-key` / `x-goog-api-key` / `x-auth-token` 这类中转站常用写法仍然可以设置。
+     * 只清值、留名字：导入后用户能看到「这里原本有个 header」，重填一次即可，不必猜配置。
+     * 解析失败就写空数组——宁可丢配置，也不把可能含密钥的原文写进包。
+     */
+    private fun redactHeaders(raw: String): String {
+        if (raw.isBlank()) return raw
+        val headers = runCatching {
+            compactJson.decodeFromString(ListSerializer(CustomHeader.serializer()), raw)
+        }.getOrElse { return "[]" }
+        return compactJson.encodeToString(
+            ListSerializer(CustomHeader.serializer()),
+            headers.map { header -> if (isSecretHeaderName(header.name)) header.copy(value = "") else header },
+        )
+    }
+
+    /**
+     * 清空自定义请求体里像密钥的字段值。
+     *
+     * 判定用「归一化后完全相等」而不是包含：`max_tokens` / `max_completion_tokens`
+     * 归一化后是 `maxtokens` / `maxcompletiontokens`，不会误伤，否则导入后请求直接失败。
+     */
+    private fun redactBodies(raw: String): String {
+        if (raw.isBlank()) return raw
+        val bodies = runCatching {
+            compactJson.decodeFromString(ListSerializer(CustomBody.serializer()), raw)
+        }.getOrElse { return "[]" }
+        return compactJson.encodeToString(
+            ListSerializer(CustomBody.serializer()),
+            bodies.map { body ->
+                if (normalizeName(body.key) in BODY_SECRET_KEYS) body.copy(value = JsonNull) else body
+            },
+        )
+    }
+
+    private fun isSecretHeaderName(name: String): Boolean {
+        val normalized = normalizeName(name)
+        return normalized.contains("apikey") || normalized.contains("token") ||
+            normalized.contains("secret") || normalized.contains("authorization") ||
+            normalized.endsWith("auth")
+    }
+
+    private fun normalizeName(name: String): String =
+        name.lowercase().filter { it.isLetterOrDigit() }
 
     private fun ProviderEntity.awaitingCredentialCleanup(exactRestore: Boolean): ProviderEntity = when {
         exactRestore -> withoutOAuthSecrets()

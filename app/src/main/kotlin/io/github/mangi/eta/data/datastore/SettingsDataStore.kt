@@ -263,6 +263,7 @@ internal object SettingsDataStore {
             selectedModelByProvider = stringMap(prefs, SELECTED_MODEL_BY_PROVIDER_PREFIX),
             appearance = settings.appearance,
             modelUsageJson = prefs[MODEL_USAGE_JSON].orEmpty(),
+            webToolsJson = prefs[WEB_TOOLS_SETTINGS].orEmpty(),
             retiredInputTokens = prefs[RETIRED_INPUT_TOKENS] ?: 0L,
             retiredOutputTokens = prefs[RETIRED_OUTPUT_TOKENS] ?: 0L,
             retiredCachedTokens = prefs[RETIRED_CACHED_TOKENS] ?: 0L,
@@ -309,6 +310,12 @@ internal object SettingsDataStore {
                 }
             }
             snapshot.modelUsageJson?.let { usageLedger.replaceIn(prefs, it) }
+            snapshot.webToolsJson?.let { raw ->
+                // 坏数据不落盘：解析不了就当作「备份没带这一项」，保留本机配置。
+                val usable = raw.isBlank() ||
+                    runCatching { webToolsJson.decodeFromString<WebToolsSettings>(raw) }.isSuccess
+                if (usable) prefs.putOrRemove(WEB_TOOLS_SETTINGS, raw.takeIf { it.isNotBlank() })
+            }
             snapshot.retiredHeatmapJson?.let { raw ->
                 prefs.putOrRemove(RETIRED_HEATMAP_JSON, raw.takeIf { it.isNotBlank() })
             }
@@ -637,6 +644,14 @@ internal data class EtaSettingsBackup(
     val appearance: AppearanceSettings = AppearanceSettings(),
     // Missing in an older/partial backup means preserve; explicit "" still means reset.
     val modelUsageJson: String? = null,
+    /**
+     * 网页工具配置（搜索 / 抓取后端、自定义 endpoint），原始 JSON。
+     *
+     * 只搬配置，不搬凭据：API Key 存在独立的 `eta_web_tools_secrets` 且由 KeyStore 加密，
+     * 密钥不可跨设备迁移，换机后需要用户重填（UI 已有 `web_tools_credentials_lost` 提示）。
+     * null 表示旧备份没带这一项，保留本机配置。
+     */
+    val webToolsJson: String? = null,
     // Missing retired fields also preserve; explicit zero/empty is still an exact restore.
     val retiredInputTokens: Long? = null,
     val retiredOutputTokens: Long? = null,

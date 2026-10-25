@@ -193,14 +193,29 @@ internal object ToolRecipePaths {
     fun directory(context: android.content.Context): File =
         File(context.filesDir, ToolRecipeConstants.DIRECTORY_NAME)
 
-    /** 当前配方数量（含停用），不触发反序列化以外的额外开销。 */
-    fun count(context: android.content.Context): Int =
-        directory(context).listFiles { file -> file.isFile && file.name.endsWith(".json") }?.size ?: 0
+    /**
+     * 备份归档里的配方条目前缀。
+     *
+     * 配方**只能**靠 Eta 自己的备份离开设备：本应用 `android:allowBackup="false"`，
+     * 系统级备份不会带走 `filesDir/tool_recipes`，分享包又只限单批 32 份。
+     */
+    const val ENTRY_PREFIX = "recipes/"
 
-    /** 配方占用体积，供备份界面提示「分享/备份会带走多少数据」。 */
-    fun bytes(context: android.content.Context): Long {
-        val files = directory(context).listFiles { file -> file.isFile && file.name.endsWith(".json") }
-            ?: return 0L
-        return files.sumOf { it.length() }
-    }
+    /**
+     * 可备份 / 可统计的配方文件。
+     *
+     * 只认「文件名符合 [ToolRecipeConstants.TOOL_NAME_PATTERN] 的 `.json`」：
+     * 目录里可能有 Store 写坏留下的 `.tmp` 或用户手放的杂文件，这些不该进备份包。
+     */
+    fun files(context: android.content.Context): List<File> =
+        directory(context).listFiles { file ->
+            file.isFile && file.name.endsWith(".json") &&
+                ToolRecipeConstants.TOOL_NAME_PATTERN.matches(file.name.removeSuffix(".json"))
+        }?.sortedBy { it.name } ?: emptyList()
+
+    /** 当前配方数量（含停用），不触发反序列化以外的额外开销。 */
+    fun count(context: android.content.Context): Int = files(context).size
+
+    /** 配方占用体积，供备份界面提示「备份会带走多少数据」。 */
+    fun bytes(context: android.content.Context): Long = files(context).sumOf { it.length() }
 }

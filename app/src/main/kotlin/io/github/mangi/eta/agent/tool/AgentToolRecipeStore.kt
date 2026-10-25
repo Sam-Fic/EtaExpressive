@@ -26,6 +26,16 @@ internal class AgentToolRecipeStore(
 
     private val recipesDir: File get() = rootDir
 
+    /**
+     * 丢弃内存缓存，下一轮读磁盘。
+     *
+     * 备份恢复直接改 `tool_recipes/` 目录、绕过了本 Store，必须显式失效掉缓存：
+     * 否则 agent 那一侧仍拿着旧配方表，模型看不到刚恢复出来的工具。
+     */
+    fun invalidate() {
+        lock.write { cache = null }
+    }
+
     /** 全部配方（含未启用）。 */
     fun all(): List<ToolRecipe> {
         lock.read {
@@ -375,6 +385,15 @@ internal class AgentToolRecipeStore(
                     File(context.applicationContext.filesDir, ToolRecipeConstants.DIRECTORY_NAME),
                 ).also { instance = it }
             }
+
+        /**
+         * 外部改写了配方目录（备份恢复）后的缓存失效。
+         *
+         * 取不到实例说明进程还没读过配方，不在这里创建实例——下次 [get] 自然会读盘。
+         */
+        fun invalidateCache() {
+            synchronized(this) { instance }?.invalidate()
+        }
     }
 
     /** 保存结果。 */
