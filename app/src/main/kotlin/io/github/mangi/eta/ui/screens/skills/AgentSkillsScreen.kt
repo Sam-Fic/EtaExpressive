@@ -5,8 +5,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.FolderZip
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,10 +20,11 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
-import io.github.mangi.eta.ui.adaptive.EtaTextButton
+import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.model.AgentSkillsAction
 import io.github.mangi.eta.ui.model.AgentSkillsUiState
@@ -61,42 +63,28 @@ fun AgentSkillsScreen(
             ),
         )
     }
+    val listState = rememberLazyListState()
+    val fabExpanded by rememberFabExpandedState(listState)
 
     EtaScaffoldPage(
         title = stringResource(R.string.route_skills),
         onBack = { onAction(AgentSkillsAction.NavigateBack) },
         modifier = modifier,
+        listState = listState,
+        // 安装入口从「安装」卡片换成 MCP 服务器页同款 FAB：滚动收起、回顶展开。
+        floatingActionButton = {
+            EtaExtendedFab(
+                text = stringResource(R.string.skills_import_zip),
+                icon = Icons.Rounded.Add,
+                expanded = fabExpanded,
+                onClick = { if (!operationPending) openZipPicker() },
+            )
+        },
     ) {
         val installed = state.skills.filter { it.installed }
         val builtinInstalled = installed.filter { it.source == "builtin" }
         val userInstalled = installed.filter { it.canDeleteUserSkill }
         val removed = state.skills.filter { !it.installed }
-
-        item(key = "zip-import-card") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
-                title = stringResource(R.string.ui_install_087db6),
-            ) {
-                item {
-                    SkillActionRow(
-                        title = if (state.isImporting) {
-                            stringResource(R.string.skills_checking_package)
-                        } else {
-                            stringResource(R.string.skills_import_zip)
-                        },
-                        summary = if (state.isImporting) {
-                            stringResource(R.string.skills_installing_package)
-                        } else {
-                            stringResource(R.string.skills_choose_package)
-                        },
-                        icon = Icons.Rounded.FolderZip,
-                        iconLoading = state.isImporting,
-                        enabled = !operationPending,
-                        onClick = openZipPicker,
-                    )
-                }
-            }
-        }
 
         if (builtinInstalled.isNotEmpty()) {
             item(key = "builtin-card") {
@@ -164,16 +152,10 @@ fun AgentSkillsScreen(
 
         if (state.skills.isEmpty() && !state.isLoading) {
             item(key = "empty") {
+                // 空态的安装入口交给右下角 FAB，避免重复按钮。
                 ListEmptyState(
                     title = stringResource(R.string.ui_no_skills_installed_yet_4e960f),
                     summary = stringResource(R.string.skills_choose_package),
-                    action = {
-                        EtaTextButton(
-                            text = stringResource(R.string.skills_import_zip),
-                            enabled = !operationPending,
-                            onClick = openZipPicker,
-                        )
-                    },
                 )
             }
         }
