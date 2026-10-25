@@ -27,14 +27,11 @@ import io.github.mangi.eta.agent.model.ModelFeatureSelection
 import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.TtsModelPickerDialog
-import io.github.mangi.eta.ui.adaptive.EtaChoiceSheet
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
-
-/** 子代理设置行里由底部面板承载的枚举选择。 */
-private enum class SubAgentRowChoice { ROLE, TIER, RESOLUTION, THINKING }
 
 /** Pickers capture both editor identity and profile binding; a changed owner/run dismisses them. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -49,12 +46,10 @@ internal fun SubAgentProfileRow(profile: SubAgentProfile, providers: List<Provid
     var modelPicker by remember(editor, profile.id) { mutableStateOf(false) }
     var thinkingPicker by remember(editor, profile.id) { mutableStateOf(false) }
     var profileDraft by remember(editor, profile.id) { mutableStateOf<SubAgentProfileDraftSession?>(null) }
-    // 设置态的枚举行统一走底部单选面板，同一时刻只展开一个。
-    var choice by remember(editor, profile.id) { mutableStateOf<SubAgentRowChoice?>(null) }
     LaunchedEffect(usable, editor) {
-        if (!usable) { modelPicker = false; thinkingPicker = false; choice = null }
+        if (!usable) { modelPicker = false; thinkingPicker = false }
     }
-    LaunchedEffect(profile.role) { thinkingPicker = false; modelPicker = false; choice = null }
+    LaunchedEffect(profile.role) { thinkingPicker = false; modelPicker = false }
     val config = remember(profile.providerId, profile.modelId, profile.role, providers) {
         val provider = providers.firstOrNull { it.id == profile.providerId && it.isEnabled }
         val model = provider?.models?.firstOrNull { it.id == profile.modelId && it.isEnabled }
@@ -73,13 +68,6 @@ internal fun SubAgentProfileRow(profile: SubAgentProfile, providers: List<Provid
         else -> effective?.let { stringResource(it.labelRes) } ?: stringResource(R.string.sap_not_enabled)
     }
     LaunchedEffect(profile.providerId, profile.modelId) { thinkingPicker = false }
-    // 职责档位：行内取值与底部面板共用一份文案。
-    val roleOptions = listOf(
-        "implementation" to stringResource(R.string.sap_role_impl),
-        "review" to stringResource(R.string.sap_role_review),
-        "image_generation" to stringResource(R.string.sap_role_image),
-        "video_generation" to stringResource(R.string.sap_role_video),
-    )
     Column(verticalArrangement = Arrangement.spacedBy(if (settings) 0.dp else 12.dp)) {
         if (settings) {
             // 设置块与标题行同处一个 KernelSU 式分段列：只有组首（标题行）与组末（并行上限）
@@ -97,45 +85,96 @@ internal fun SubAgentProfileRow(profile: SubAgentProfile, providers: List<Provid
                         trailing = { SubAgentGptSpeedButton(profile, providers, usable) })
                 }
                 item(key = "role") {
-                    // 与配置弹窗、图四「选择模型」行同款：行尾取值 + 箭头，点开是底部单选面板。
-                    SubAgentSettingsRow(
-                        stringResource(R.string.sap_role),
-                        roleOptions.firstOrNull { it.first == profile.role }?.second ?: profile.role,
-                        Icons.AutoMirrored.Rounded.Assignment,
-                        stringResource(R.string.spr_select_role_for, profile.name),
+                    // 与配置弹窗、上下文压缩页「请求接口」行同款：原位弹出锚定菜单，点选即写入。
+                    val roles = listOf(
+                        "implementation" to stringResource(R.string.sap_role_impl),
+                        "review" to stringResource(R.string.sap_role_review),
+                        "image_generation" to stringResource(R.string.sap_role_image),
+                        "video_generation" to stringResource(R.string.sap_role_video),
+                    )
+                    EtaSegmentedDropdownRow(
+                        title = stringResource(R.string.sap_role),
+                        items = roles.map { it.second },
+                        selectedIndex = roles.indexOfFirst { it.first == profile.role },
+                        onItemSelected = { index ->
+                            val role = roles.getOrNull(index)?.first
+                                ?: return@EtaSegmentedDropdownRow
+                            if (currentUsable) editor?.updateProfile(profile.id) { it.withRole(role) }
+                        },
+                        icon = Icons.AutoMirrored.Rounded.Assignment,
                         enabled = usable,
-                        onClick = { if (currentUsable) choice = SubAgentRowChoice.ROLE },
+                        description = stringResource(R.string.spr_select_role_for, profile.name),
                     )
                 }
                 if (profile.supportsTaskTier) item(key = "tier") {
-                    SubAgentSettingsRow(
-                        stringResource(R.string.sap_task_tier),
-                        profile.tier?.let { stringResource(it.labelRes) } ?: stringResource(R.string.sap_tier_unset),
-                        Icons.Rounded.AccountTree,
-                        stringResource(R.string.spr_set_tier_for, profile.name),
+                    val tiers = listOf<SubAgentTaskTier?>(null) + SubAgentTaskTier.entries
+                    EtaSegmentedDropdownRow(
+                        title = stringResource(R.string.sap_task_tier),
+                        items = tiers.map { tier ->
+                            tier?.let { stringResource(it.labelRes) } ?: stringResource(R.string.sap_tier_unset)
+                        },
+                        selectedIndex = tiers.indexOf(profile.tier),
+                        onItemSelected = { index ->
+                            if (index !in tiers.indices) return@EtaSegmentedDropdownRow
+                            val tier = tiers[index]
+                            if (currentUsable) editor?.updateProfile(profile.id) { latest ->
+                                if (latest.supportsTaskTier) latest.copy(tier = tier) else latest
+                            }
+                        },
+                        icon = Icons.Rounded.AccountTree,
                         enabled = usable,
-                        onClick = { if (currentUsable) choice = SubAgentRowChoice.TIER },
+                        description = stringResource(R.string.spr_set_tier_for, profile.name),
                     )
                 }
                 if (profile.role == "image_generation") item(key = "resolution") {
-                    SubAgentSettingsRow(
-                        stringResource(R.string.sap_default_resolution),
-                        profile.imageResolution?.let(io.github.mangi.eta.agent.model.ImageResolutionTier::labelRes)
-                            ?.let { stringResource(it) } ?: stringResource(R.string.sap_follow_endpoint),
-                        Icons.Rounded.ViewInAr,
-                        stringResource(R.string.spr_set_resolution_for, profile.name),
+                    // 与配置弹窗同款：原位弹出锚定菜单；Grok 端点只留低/高，当前值始终保留以免显示错位。
+                    val verifiedGrok = runCatching {
+                        val current = config ?: return@runCatching false
+                        val body = if (current.extraBodyJson.isBlank()) org.json.JSONObject() else org.json.JSONObject(current.extraBodyJson)
+                        io.github.mangi.eta.agent.model.RequestBodyMerge.mergeCustomBody(body, current.customBody)
+                        io.github.mangi.eta.agent.model.GrokImageProfile.applies(current.baseUrl, current.model, body)
+                    }.getOrDefault(false)
+                    val tiers = listOf<String?>(null) + io.github.mangi.eta.agent.model.ImageResolutionTier.values.filter {
+                        !verifiedGrok || it in setOf("low", "high") || it == profile.imageResolution
+                    }
+                    EtaSegmentedDropdownRow(
+                        title = stringResource(R.string.sap_default_resolution),
+                        items = tiers.map { tier ->
+                            tier?.let(io.github.mangi.eta.agent.model.ImageResolutionTier::labelRes)?.let { stringResource(it) }
+                                ?: stringResource(R.string.sap_follow_endpoint)
+                        },
+                        selectedIndex = tiers.indexOf(profile.imageResolution),
+                        onItemSelected = { index ->
+                            if (index !in tiers.indices) return@EtaSegmentedDropdownRow
+                            val tier = tiers[index]
+                            if (currentUsable) editor?.updateProfile(profile.id) { latest ->
+                                if (latest.providerId == profile.providerId && latest.modelId == profile.modelId && latest.role == "image_generation") latest.copy(imageResolution = tier) else latest
+                            }
+                        },
+                        icon = Icons.Rounded.ViewInAr,
                         enabled = usable && config != null,
-                        onClick = { if (currentUsable && config != null) choice = SubAgentRowChoice.RESOLUTION },
+                        description = stringResource(R.string.spr_set_resolution_for, profile.name),
                     )
                 }
                 item(key = "thinking") {
-                    SubAgentSettingsRow(
-                        stringResource(R.string.sap_thinking),
-                        thinkingLabel,
-                        Icons.Rounded.AutoAwesome,
-                        stringResource(R.string.spr_adjust_thinking_for, profile.name),
+                    // 当前值不在可选档位里时用行上状态文本占位，占位项不可写入。
+                    val matchedIndex = if (canThink) efforts.indexOf(effective) else -1
+                    val effortLabels = efforts.map { effort -> stringResource(effort.labelRes) }
+                    val items = if (matchedIndex >= 0) effortLabels else listOf(thinkingLabel) + effortLabels
+                    EtaSegmentedDropdownRow(
+                        title = stringResource(R.string.sap_thinking),
+                        items = items,
+                        selectedIndex = if (matchedIndex >= 0) matchedIndex else 0,
+                        onItemSelected = { index ->
+                            val next = efforts.getOrNull(if (matchedIndex >= 0) index else index - 1)
+                            if (next != null && currentUsable) editor?.updateProfile(profile.id) { latest ->
+                                if (latest.role == profile.role && latest.providerId == profile.providerId && latest.modelId == profile.modelId)
+                                    latest.copy(reasoning = next) else latest
+                            }
+                        },
+                        icon = Icons.Rounded.AutoAwesome,
                         enabled = usable && canThink,
-                        onClick = { if (currentUsable && canThink) choice = SubAgentRowChoice.THINKING },
+                        description = stringResource(R.string.spr_adjust_thinking_for, profile.name),
                     )
                 }
                 addParallelLimitItem(profile, config, usable)
@@ -192,90 +231,6 @@ internal fun SubAgentProfileRow(profile: SubAgentProfile, providers: List<Provid
             session.dismiss()
             if (profileDraft === session) profileDraft = null
         }, onRetry = { if (draftRetry != null) draftRetry() else session.editor.retry() })
-    }
-    // 枚举选择走底部单选面板（与「标题模型」「离线语音下载源」同款）。
-    if (usable && choice == SubAgentRowChoice.ROLE) {
-        EtaChoiceSheet(
-            title = stringResource(R.string.sap_role),
-            items = roleOptions.map { it.second },
-            selectedIndex = roleOptions.indexOfFirst { it.first == profile.role },
-            onDismiss = { choice = null },
-            onSelected = { index ->
-                val role = roleOptions.getOrNull(index)?.first
-                if (role != null && currentUsable) editor?.updateProfile(profile.id) { it.withRole(role) }
-                choice = null
-            },
-        )
-    }
-    if (usable && profile.supportsTaskTier && choice == SubAgentRowChoice.TIER) {
-        val tiers = listOf<SubAgentTaskTier?>(null) + SubAgentTaskTier.entries
-        EtaChoiceSheet(
-            title = stringResource(R.string.sap_task_tier),
-            items = tiers.map { tier ->
-                tier?.let { stringResource(it.labelRes) } ?: stringResource(R.string.sap_tier_unset)
-            },
-            selectedIndex = tiers.indexOf(profile.tier),
-            onDismiss = { choice = null },
-            onSelected = { index ->
-                if (index in tiers.indices && currentUsable) {
-                    val tier = tiers[index]
-                    editor?.updateProfile(profile.id) { latest ->
-                        if (latest.supportsTaskTier) latest.copy(tier = tier) else latest
-                    }
-                }
-                choice = null
-            },
-        )
-    }
-    if (usable && config != null && profile.role == "image_generation" &&
-        choice == SubAgentRowChoice.RESOLUTION
-    ) {
-        // Grok 端点只留低/高；当前值始终留在列表里，避免面板里看不到已选项。
-        val verifiedGrok = runCatching {
-            val body = if (config.extraBodyJson.isBlank()) org.json.JSONObject() else org.json.JSONObject(config.extraBodyJson)
-            io.github.mangi.eta.agent.model.RequestBodyMerge.mergeCustomBody(body, config.customBody)
-            io.github.mangi.eta.agent.model.GrokImageProfile.applies(config.baseUrl, config.model, body)
-        }.getOrDefault(false)
-        val tiers = listOf<String?>(null) + io.github.mangi.eta.agent.model.ImageResolutionTier.values.filter {
-            !verifiedGrok || it in setOf("low", "high") || it == profile.imageResolution
-        }
-        EtaChoiceSheet(
-            title = stringResource(R.string.sap_default_resolution),
-            summary = stringResource(R.string.spr_resolution_note) +
-                if (verifiedGrok) stringResource(R.string.spr_resolution_grok)
-                else stringResource(R.string.spr_resolution_generic),
-            items = tiers.map { tier ->
-                tier?.let(io.github.mangi.eta.agent.model.ImageResolutionTier::labelRes)?.let { stringResource(it) }
-                    ?: stringResource(R.string.sap_follow_endpoint)
-            },
-            selectedIndex = tiers.indexOf(profile.imageResolution),
-            onDismiss = { choice = null },
-            onSelected = { index ->
-                if (index in tiers.indices && currentUsable) {
-                    val tier = tiers[index]
-                    editor?.updateProfile(profile.id) { latest ->
-                        if (latest.providerId == profile.providerId && latest.modelId == profile.modelId && latest.role == "image_generation") latest.copy(imageResolution = tier) else latest
-                    }
-                }
-                choice = null
-            },
-        )
-    }
-    if (usable && canThink && choice == SubAgentRowChoice.THINKING) {
-        EtaChoiceSheet(
-            title = stringResource(R.string.sap_thinking),
-            items = efforts.map { effort -> stringResource(effort.labelRes) },
-            selectedIndex = efforts.indexOf(effective),
-            onDismiss = { choice = null },
-            onSelected = { index ->
-                val next = efforts.getOrNull(index)
-                if (next != null && currentUsable) editor?.updateProfile(profile.id) { latest ->
-                    if (latest.role == profile.role && latest.providerId == profile.providerId && latest.modelId == profile.modelId)
-                        latest.copy(reasoning = next) else latest
-                }
-                choice = null
-            },
-        )
     }
     if (usable && modelPicker) {
         val all = AgentModelPickerProjector.project(providers, profile.providerId, profile.modelId)

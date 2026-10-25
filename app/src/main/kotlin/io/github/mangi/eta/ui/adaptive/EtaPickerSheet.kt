@@ -12,9 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -87,47 +85,6 @@ internal fun EtaPickerSheet(
                     horizontalArrangement = Arrangement.End,
                     content = actions,
                 )
-            }
-        }
-    }
-}
-
-/**
- * 枚举型单选底部面板：标题 + 可选说明 + KernelSU 式分段单选列表，点选即提交并关闭。
- *
- * 与「标题模型」「离线语音下载源」等处同一套写法；各设置页不再为枚举选择单独实现弹窗。
- */
-@Composable
-internal fun EtaChoiceSheet(
-    title: String,
-    items: List<String>,
-    selectedIndex: Int,
-    onDismiss: () -> Unit,
-    onSelected: (Int) -> Unit,
-    summary: String? = null,
-) {
-    EtaPickerSheet(title = title, onDismiss = onDismiss) {
-        if (summary != null) {
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-        }
-        Column(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
-        ) {
-            EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {
-                items.forEachIndexed { index, label ->
-                    item(key = index) {
-                        EtaSegmentedRadioRow(
-                            title = label,
-                            selected = index == selectedIndex,
-                            onClick = { onSelected(index) },
-                        )
-                    }
-                }
             }
         }
     }
