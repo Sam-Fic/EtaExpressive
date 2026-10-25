@@ -1609,7 +1609,6 @@
   <string name="route_tool_recipes">模型自建工具</string>
   <string name="action_refresh">刷新</string>
   <string name="action_ok">知道了</string>
-  <string name="recipe_page_summary_title">模型为自己写的工具 · %1$d</string>
   <string name="recipe_page_summary">配方是模型用固定声明式步骤写出来的工具。只有启用后才会执行，保存后也要到下一轮请求才会出现在模型的工具列表里。</string>
   <string name="recipe_list_title">全部配方 · %1$d</string>
   <string name="recipe_empty_title">还没有配方</string>

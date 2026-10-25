@@ -54,7 +54,6 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
-import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaPageSurface
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
@@ -236,10 +235,11 @@ internal fun ToolRecipesScreen(
         },
     ) {
         item(key = "summary") {
-            // 纯说明文字不套分段卡片：直接排在页面背景上，视觉层级更清楚。
-            EtaNoticeText(
-                title = stringResource(R.string.recipe_page_summary_title, recipes.size),
-                summary = stringResource(R.string.recipe_page_summary),
+            // 标题行与页题、分段头重复，已删除；只保留说明文字，直接排在页面背景上。
+            M3Text(
+                text = stringResource(R.string.recipe_page_summary),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(
                     start = EtaGroupHorizontalPadding,
                     end = EtaGroupHorizontalPadding,

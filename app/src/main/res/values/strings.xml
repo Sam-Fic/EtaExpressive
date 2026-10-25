@@ -1613,7 +1613,6 @@
   <string name="route_tool_recipes">Your own tools</string>
   <string name="action_refresh">Refresh</string>
   <string name="action_ok">OK</string>
-  <string name="recipe_page_summary_title">Tools the model wrote for itself · %1$d</string>
   <string name="recipe_page_summary">A recipe is a tool written by the model in a fixed declarative form. It runs only while it is enabled, and the model can only call it from the request after it is saved.</string>
   <string name="recipe_list_title">All recipes · %1$d</string>
   <string name="recipe_empty_title">No recipes yet</string>
