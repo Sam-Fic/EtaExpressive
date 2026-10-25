@@ -1366,12 +1366,6 @@ internal class AgentAppState(
             EtaBackupRepository.exportConversation(appContext, conversationId, output)
         }
 
-    /** 只导出已下载模型，不读取或改写对话数据。 */
-    suspend fun exportModels(output: OutputStream): EtaModelBackupSummary =
-        withContext(Dispatchers.IO) {
-            EtaBackupRepository.exportModels(appContext, output)
-        }
-
     /** 只恢复模型文件，不改动对话、设置与附件。 */
     suspend fun importModels(input: InputStream): EtaModelBackupSummary =
         withContext(Dispatchers.IO) {

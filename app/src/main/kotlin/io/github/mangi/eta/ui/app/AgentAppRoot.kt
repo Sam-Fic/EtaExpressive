@@ -1207,7 +1207,6 @@ fun AgentAppRoot(
                         appViewModel.refreshKimiWeb()
                         summary
                     },
-                    onExportModels = agentState::exportModels,
                     onImportModels = agentState::importModels,
                 )
             }
