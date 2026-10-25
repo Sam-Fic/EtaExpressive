@@ -8,9 +8,11 @@ import io.github.mangi.eta.config.Prefs
  * 此前只有两种状态：整类能力开着，模型就直接执行；或者整类关掉。像重启设备、卸载应用、
  * 清空数据、删除用户这类**不可逆**操作，中间没有「问问我再做」这一档。
  *
- * 这里复用已有的 [ToolExecutionDecision.Reject]：命中危险清单且用户开启了确认时，
- * 拒绝本次调用并回一个明确的可确认错误，由上层弹窗向用户确认；用户同意后模型重新发起
- * 同一个调用即可通过（确认结果只作用于一次调用，不会留下长期「已批准」状态）。
+ * 确认交互由**模型自己用 ask_user 问**，所以这里复用已有的
+ * [ToolExecutionDecision.Reject]：命中危险清单且用户开启了确认时，拒绝本次调用并回
+ * [CONFIRM_CODE]，错误文案明确要求模型「先用 ask_user 取得同意、再重发同一个调用」。
+ * 用户同意后的一次性授权由 [AgentDangerousConfirmationGate] 记录，
+ * 重发同一调用时消费它放行；换参数/换工具则仍需重新确认。
  *
  * 只在**写操作**上生效：读类工具即使名字相似也不该被打扰。
  */
@@ -50,6 +52,9 @@ internal object AgentDangerousOperationPolicy {
     /**
      * 需要用户确认时返回拒绝决策；否则返回 null（交回调用方继续原有的准入检查）。
      * [confirmationEnabled] 由用户开关决定；关闭时保持历史行为（直接执行）。
+     *
+     * 已获同意的同一个调用（工具名 + 参数完全一致）直接放行，授权一次性消费；
+     * 否则登记待确认并拒绝，让模型去问用户。
      */
     fun decision(
         toolName: String,
@@ -58,10 +63,26 @@ internal object AgentDangerousOperationPolicy {
     ): ToolExecutionDecision.Reject? {
         if (!confirmationEnabled) return null
         if (!isDangerous(toolName, argumentsJson)) return null
-        return ToolExecutionDecision.Reject(
-            code = CONFIRM_CODE,
-            message = "这个操作不可逆或影响较大，需要用户确认。已暂停本次调用，未做任何改动；" +
-                "请向用户说明将要做什么并取得同意，然后重新发起同一个调用；不要换其他工具绕过确认。",
-        )
+        val signature = AgentDangerousConfirmationGate.signature(toolName, argumentsJson)
+        // 用户已经同意过这**一次**操作：放行并消费授权。
+        if (AgentDangerousConfirmationGate.consume(signature)) {
+            AgentDangerousConfirmationGate.pruneExpired()
+            return null
+        }
+        AgentDangerousConfirmationGate.expectConfirmation(signature)
+        AgentDangerousConfirmationGate.pruneExpired()
+        return ToolExecutionDecision.Reject(code = CONFIRM_CODE, message = confirmationMessage(toolName))
     }
+
+    /**
+     * 拒绝时给模型的指令。必须同时说清三件事，否则模型会把它当成权限错误去换工具绕过：
+     * 1. 没有做任何改动；2. 明确要求用 ask_user 并指定同意选项 id；
+     * 3. 取得同意后重发**完全相同**的调用（参数变了要重新确认）。
+     */
+    fun confirmationMessage(toolName: String): String =
+        "「$toolName」这一步不可逆或影响较大，已拦下，**未做任何改动**。" +
+            "请先用 ask_user 向用户说明将要发生什么并取得明确同意：" +
+            "同意选项的 id 必须是 \"${AgentDangerousConfirmationGate.CONFIRM_OPTION_ID}\"；" +
+            "用户同意后再重新发起**参数完全相同**的同一个调用，即可执行一次。" +
+            "用户拒绝或选择其它选项时不要执行；不要换其他工具绕过确认，也不要重复提问同一件事。"
 }

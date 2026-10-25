@@ -12,6 +12,11 @@ import org.junit.Test
  * 且读类动作即使挂在同一个工具名下也不会被打扰。
  */
 class AgentDangerousOperationPolicyTest {
+    @org.junit.Before
+    fun resetGate() {
+        // 闸门是进程级单例；每个用例独立起点，避免授权从上一个用例漏过来。
+        AgentDangerousConfirmationGate.clear()
+    }
     @Test fun destructiveWritesRequireConfirmation() {
         val cases = listOf(
             "power_control" to """{"action":"reboot"}""",
@@ -73,14 +78,92 @@ class AgentDangerousOperationPolicyTest {
         val decision = AgentDangerousOperationPolicy.decision(
             "manage_app", """{"action":"clear_data"}""", confirmationEnabled = true,
         ) as ToolExecutionDecision.Reject
-        // 必须明确「未做任何改动」与「取得同意后重发同一个调用」，并禁止绕过。
+        // 必须明确「未做任何改动」、要求用 ask_user 取得同意、给出同意选项 id，并禁止绕过。
         assertTrue(decision.message.contains("未做任何改动"))
-        assertTrue(decision.message.contains("重新发起同一个调用"))
+        assertTrue(decision.message.contains("ask_user"))
+        assertTrue(decision.message.contains(AgentDangerousConfirmationGate.CONFIRM_OPTION_ID))
         assertTrue(decision.message.contains("不要换其他工具绕过"))
     }
 
     @Test fun caseAndWhitespaceAreNormalised() {
         assertTrue(AgentDangerousOperationPolicy.isDangerous(" Power_Control ", """{"action":"REBOOT"}"""))
         assertFalse(AgentDangerousOperationPolicy.isDangerous("power_control", """{"action":" LIST "}"""))
+    }
+
+
+    // ── 「模型自己用 ask_user 问」的完整闭环 ──────────────────────────────────
+
+    @Test fun resendingWithoutAskingIsStillRejected() {
+        val args = """{"action":"reboot"}"""
+        // 第一次被拒。
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        // 没有问用户就重发：仍然被拒，不能靠重试蒙过去。
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+    }
+
+    @Test fun userApprovalLetsTheSameCallThroughExactlyOnce() {
+        val args = """{"action":"reboot"}"""
+        AgentDangerousOperationPolicy.decision("power_control", args, true)
+
+        // 用户点了同意选项。
+        assertTrue(AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID))
+
+        // 重发同一个调用：放行。
+        assertNull(AgentDangerousOperationPolicy.decision("power_control", args, true))
+        // 授权只消费一次：再执行一次又要重新确认。
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+    }
+
+    @Test fun approvalDoesNotTransferToDifferentArgumentsOrTools() {
+        AgentDangerousOperationPolicy.decision("manage_app", """{"action":"uninstall","package_name":"com.a"}""", true)
+        AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID)
+
+        // 换一个应用卸载：同意过 A 不代表同意 B。
+        assertTrue(AgentDangerousOperationPolicy.decision(
+            "manage_app", """{"action":"uninstall","package_name":"com.b"}""", true,
+        ) is ToolExecutionDecision.Reject)
+        // 换一个工具：同样不继承授权。
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", """{"action":"reboot"}""", true)
+            is ToolExecutionDecision.Reject)
+    }
+
+    @Test fun nonApprovingAnswersDoNotUnlock() {
+        val args = """{"action":"reboot"}"""
+        listOf(
+            "option" to "some_other_option",
+            "other" to null,
+            "delegate" to null,
+        ).forEach { (kind, optionId) ->
+            AgentDangerousConfirmationGate.clear()
+            AgentDangerousOperationPolicy.decision("power_control", args, true)
+            assertFalse("$kind 不构成同意", AgentDangerousConfirmationGate.onUserAnswered(kind, optionId))
+            assertTrue("$kind 之后仍应要求确认",
+                AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        }
+    }
+
+    @Test fun answerWithoutAPendingDangerousCallIsIgnored() {
+        AgentDangerousConfirmationGate.clear()
+        // 普通 ask_user（不是危险操作触发的）不该产生授权。
+        assertFalse(AgentDangerousConfirmationGate.onUserAnswered(
+            "option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID,
+        ))
+    }
+
+    @Test fun confirmationMessageTellsTheModelTheExactOptionIdAndToAsk() {
+        val message = AgentDangerousOperationPolicy.confirmationMessage("power_control")
+        assertTrue(message.contains("ask_user"))
+        assertTrue(message.contains(AgentDangerousConfirmationGate.CONFIRM_OPTION_ID))
+        assertTrue(message.contains("参数完全相同"))
+        assertTrue(message.contains("未做任何改动"))
+    }
+
+    @Test fun staleApprovalExpires() {
+        val args = """{"action":"reboot"}"""
+        AgentDangerousOperationPolicy.decision("power_control", args, true)
+        AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID)
+        // 模拟授权过期：清理后重发必须重新确认。
+        AgentDangerousConfirmationGate.pruneExpired(now = System.currentTimeMillis() + AgentDangerousConfirmationGate.TTL_MS + 1)
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
     }
 }

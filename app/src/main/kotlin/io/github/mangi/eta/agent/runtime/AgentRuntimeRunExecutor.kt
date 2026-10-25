@@ -350,6 +350,14 @@ internal class AgentRuntimeRunExecutor(
                         runController.throwIfCancelled()
                         throw io.github.mangi.eta.agent.question.AgentQuestionInterruptedException()
                     }
+                    // 危险操作的确认走「模型自己用 ask_user 问」：用户明确同意时登记一次性授权，
+                    // 让随后重发的同一个调用能够通过闸门；其它回答不构成同意。
+                    runCatching {
+                        io.github.mangi.eta.agent.tool.AgentDangerousConfirmationGate.onUserAnswered(
+                            answeredKind = answer.kind,
+                            optionId = answer.optionId,
+                        )
+                    }
                     AgentModelClient.ToolResult(AgentQuestionCodec.resultJson(question, answer).toString())
                 } else if (call.name == "manage_agent_workspace") {
                     val backend = childWorkspace
