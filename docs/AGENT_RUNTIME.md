@@ -11,7 +11,7 @@ Eta 的 Agent Runtime 负责把一次用户输入组织为模型回合、工具�
 - `AgentToolCatalog` 及分组目录：模型可见的工具 schema，不执行工具。
 - `AgentToolGroups`：工具域的分层加载。常驻工具永远下发；低频的「域」只在系统提示里留一行索引，模型调用 `tools_use_group` 后从下一轮起才出现在目录里（与 Skill 的 `next_turn` 语义一致）。打开域不放宽任何权限：域内工具仍需各自通过开关与能力判定。
 - `AgentFileSystemTier`：文件与命令的三档权限。`AGENT_TERMINAL_TOOLS` 是总闸，`AGENT_SHELL_TOOLS` 在其上单独控制命令执行：总闸关则文件工具全无；总闸开、命令关则仍可读写文件但不能跑 shell。
-- `AgentDangerousOperationPolicy`：危险操作逐次确认。重启、装卸应用、清数据、删用户等不可逆写操作在用户开启确认后返回 `USER_CONFIRMATION_REQUIRED`，未做任何改动；取得同意后重发同一个调用即可通过。同名工具上的 `list`/`get`/`reset` 类动作不打扰。
+- `AgentDangerousOperationPolicy` + `AgentDangerousConfirmationGate`：危险操作逐次确认。重启、装卸应用、清数据、删用户等不可逆写操作在用户开启确认后返回 `USER_CONFIRMATION_REQUIRED`，未做任何改动。确认交互由**模型自己用 `ask_user` 提问**：拒绝文案要求模型先问、并把同意选项 id 指定为 `confirm_once`；用户选该选项后闸门登记一次性授权（绑定「工具名 + 参数指纹」，5 分钟 TTL），模型重发**参数完全相同**的调用才放行，用过即失效。授权不能转移到别的参数或别的工具，非同意类回答不解锁。同名工具上的 `list`/`get`/`reset` 类动作不打扰。
 - `AssistantToolSwitches`：按助手的工具组开关（`AssistantProfile.toolGroupSwitches`），与记忆/技能同级，缺失的组回落全局开关；**只能收紧**，全局关掉的能力不会被助手配置重新打开。
 - `AgentPureReadTools`：同一批次里可并行的幂等只读工具白名单。并行只对「整批都是只读且至少两个」生效，事件按模型给出的 index 顺序回放，共享状态仍在主线程按同样顺序合并。
 - `AgentTraceFormatter`：只生成可展示、可记录的脱敏摘要。
