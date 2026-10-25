@@ -94,6 +94,8 @@ import io.github.mangi.eta.ui.model.ToolActivityMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.fullImageSourceAt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.intellij.markdown.ast.ASTNode
@@ -278,8 +280,14 @@ private fun ChatRemoteClickableImage(
                 ChatImageBytes.load(context, source)
             }
         }
-        bitmap = loaded?.bitmap
-        failed = loaded == null
+        // ChatImageBytes.load 是阻塞 IO，withContext 即使已取消也会等它跑完再返回，
+        // 因此不能只靠协程取消来阻止这次赋值：composition 已销毁时再写 state 会在
+        // 后台线程触发一次 layout，宿主视图层级已拆掉就会崩（Robolectric 下表现为
+        // CalledFromWrongThreadException / SlotTable 越界）。这里显式检查取消态。
+        if (currentCoroutineContext().isActive) {
+            bitmap = loaded?.bitmap
+            failed = loaded == null
+        }
     }
     val image = bitmap
     when {
@@ -386,7 +394,9 @@ private fun ChatImagePreviewDialog(
             loaded = null
             return@LaunchedEffect
         }
-        loaded = withContext(Dispatchers.IO) { ChatImageBytes.load(context, source) }
+        val result = withContext(Dispatchers.IO) { ChatImageBytes.load(context, source) }
+        // 同为阻塞 IO：协程被取消后 withContext 仍会返回，宿主已销毁时再写 state 会崩。
+        if (currentCoroutineContext().isActive) loaded = result
     }
 
     BackHandler(onBack = onDismiss)
@@ -867,8 +877,11 @@ private fun ChatImagePreviewPage(
             return@LaunchedEffect
         }
         val result = withContext(Dispatchers.IO) { ChatImageBytes.load(context, source) }
-        loaded = result
-        failed = result == null
+        // 同上：只在仍存活时落 state。
+        if (currentCoroutineContext().isActive) {
+            loaded = result
+            failed = result == null
+        }
     }
     Box(modifier = Modifier.fillMaxSize()) {
         if (isVideo) {

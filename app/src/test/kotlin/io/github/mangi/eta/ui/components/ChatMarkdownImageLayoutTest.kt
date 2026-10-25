@@ -62,9 +62,24 @@ class ChatMarkdownImageLayoutTest {
             }
         }
     }
+    /**
+     * 图片解码跑在 Dispatchers.IO 上（ChatImageBytes.load 是阻塞 IO）。语义节点出现只说明
+     * bitmap 已 set，**不代表解码协程已经退出**；此时若直接结束用例，Composition 销毁与
+     * 后台线程的最后一次布局会竞争，Robolectric 下会随机崩在
+     * CalledFromWrongThreadException / SlotTable 越界。
+     *
+     * 因此除了等节点数量，还要再等一拍（waitForIdle）让已排队的重组与布局收敛，
+     * 并让出一次线程让 IO 协程有机会彻底结束。
+     */
     private fun waitForImages(count: Int) {
         compose.waitUntil(15_000) {
             compose.onAllNodesWithContentDescription(imageDescription,useUnmergedTree=true).fetchSemanticsNodes().size == count
+        }
+        compose.waitForIdle()
+        // 已排队的重组/布局落定后再确认一次，避免在「刚 set、尚未布局」的窗口里取边界。
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription(imageDescription,useUnmergedTree=true)
+                .fetchSemanticsNodes().size == count
         }
         compose.waitForIdle()
     }
