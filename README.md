@@ -24,19 +24,19 @@ EtaExpressive 不只是聊天框。把你自己的模型接到手机上：它可
 
 ## 界面预览
 
-| GUI Agent | 小布助手 BYOK |
+| GUI Agent | 作为系统语音助手使用 |
 | :-------: | :-----------: |
 | <img src="docs/Screenshots/demo_gui_agent.gif" width="320" alt="EtaExpressive GUI Agent 执行演示"> | <img src="docs/Screenshots/demo_tools.gif" width="320" alt="从小布助手入口发起 EtaExpressive 任务"> |
 
 更多界面：聊天、设备工具与设置
 
-|                  聊天首页                  |                        小布入口执行命令                        |                       系统 API 调用                       |
+|                  聊天首页                  |                        调用子代理                        |                       系统 API 调用                       |
 | :-----------------------------------------: | :------------------------------------------------------------: | :-------------------------------------------------------: |
-| ![聊天首页](docs/Screenshots/chat_home.jpg) | ![小布入口执行命令](docs/Screenshots/chat_breeno_analysis.jpg) | ![系统 API 调用](docs/Screenshots/chat_device_direct.jpg) |
+| <img src="docs/Screenshots/chat_home.jpg" width="320" alt="聊天首页"> | <img src="docs/Screenshots/call_subagents.jpg" width="320" alt=" 调用子代理"> | <img src="docs/Screenshots/chat_device_direct.jpg" width="320" alt="系统 API 调用"> |
 
-|                  设置                  |                工具能力                |                 Skills                 |
+|                  设置                  |                自建工具能力                |                 Skills                 |
 | :------------------------------------: | :-------------------------------------: | :------------------------------------: |
-| ![设置](docs/Screenshots/settings.jpg) | ![工具能力](docs/Screenshots/tools.jpg) | ![Skills](docs/Screenshots/skills.jpg) |
+| <img src="docs/Screenshots/settings.jpg" width="320" alt="设置"> | <img src="docs/Screenshots/tools.jpg" width="320" alt="工具能力"> | <img src="docs/Screenshots/skills.jpg" width="320" alt="Skills"> |
 
 
 ## 核心能力
@@ -126,7 +126,7 @@ Provider 层支持 OpenAI-compatible Chat Completions、Responses API 和 Anthro
 ### 外观与 UI
 
 - **Material Design 3 Expressive（M3E）适配**：对话气泡、卡片、按钮与过渡动效均参考 [Material Design 3 Expressive](https://m3.material.io) 的示例规范重新设计，整体视觉更贴近 Google 最新的 Material 表达风格。
-- **细节打磨**：回收站列表边距、设置页布局等界面细节持续与上游保持一致并做微调。
+- **细节打磨**： 细节仍在持续打磨中，欢迎体验。如有建议欢迎提交 issue 或 pull request。
 
 ### 功能改进
 
@@ -139,7 +139,7 @@ Provider 层支持 OpenAI-compatible Chat Completions、Responses API 和 Anthro
 
 ## 关于上游
 
-本项目是 [Eta](https://github.com/Mangi-11/Eta) 的衍生版本。下面这篇是上游作者写的设计说明，解释 Eta 为什么做成现在这样；不是本项目自己的产品故事。
+本项目是 [Eta](https://github.com/Mangi-11/Eta) 的衍生版本。下面这篇是上游作者写的设计说明，解释 Eta 为什么做成现在这样。
 
 ### 从不好用的手机助手开始
 
@@ -196,10 +196,10 @@ Eta 先从现有 Android 上的模型、上下文与工具做起。真正落地�
 ## 参考与致谢
 
 - [Eta](https://github.com/Mangi-11/Eta)：本项目基于的上游项目。
+- [y2485871697/Eta](https://github.com/y2485871697/Eta)：参考仓库，大量实用功能均来自此分支。
 - [Pi Coding Agent](https://github.com/earendil-works/pi)：Agent Runtime 的核心参考，包括 Agent Loop、Tool Calling、steering 与 transcript 状态管理。
 - [OmniBot](https://github.com/omnimind-ai/OmniBot)：Android AI Agent 方向的参考项目。
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API。
-- [y2485871697/Eta](https://github.com/y2485871697/Eta)：参考仓库，大量 UI 改进与实用功能均来自此分支。
 - [Zafiro](https://github.com/niki914/zafiro)：用户对话气泡的样式参考。其气泡设计与 Google Material Design 3 Expressive 的示例气泡高度相似，因此采用并适配到本项目。
 - [Material Design 3 Expressive](https://m3.material.io)：Google Material Design 3 Expressive 官方站点，本程序的界面设计语言与视觉风格均参考自其中的示例与规范。
 - [KernelSU](https://github.com/tiann/KernelSU)：本应用“外观与主题”子设置页面的设计参考。
