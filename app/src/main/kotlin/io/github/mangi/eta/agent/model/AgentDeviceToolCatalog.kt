@@ -178,6 +178,40 @@ internal object AgentDeviceToolCatalog {
             )
             .put(
                 function(
+                    "schedule_manage",
+                    "Manage Eta schedules in one call. action=create (title and start_time required; start_time accepts \"2026-10-24T09:30\" or epoch millis; reminder_minutes is how many minutes before start to notify, default 15, -1 disables); action=update changes any fields by id; action=delete by id (returns success even if already gone, do not retry); action=list (returns ids usable for update/delete). The return value is the final state; do not call again to confirm. Eta schedules are stored inside Eta and do not appear in the system calendar app.",
+                    properties(
+                        "action" to string("create / update / delete / list", 10),
+                        "title" to string("Schedule title; required for create, optional for update", 200),
+                        "start_time" to string("Start time; required for create; formats: 2026-10-24T09:30 / 2026-10-24 09:30:00 / epoch millis", 40),
+                        "end_time" to string("End time; optional; same formats as start_time", 40),
+                        "notes" to string("Optional notes", 2000),
+                        "reminder_minutes" to integer("Minutes before start to notify; default 15; 0 = at start; -1 = no reminder", -1, 10080),
+                        "id" to integer("Required for update/delete; from list or create results", 1, 999999999),
+                        "query" to string("Optional keyword filter for list, matches title or notes", 100),
+                        "include_past" to boolean("Include past schedules in list; default false"),
+                        "limit" to integer("Max items returned by list; default 50", 1, 200),
+                    ),
+                    "action",
+                ),
+            )
+            .put(
+                function(
+                    "alarm_manage",
+                    "Manage Eta's own alarms: they ring exactly on time and can be modified or deleted. Separate from the system Clock app; alarms created by set_alarm cannot be managed here. action=create (time=\"07:30\" in 24h required; repeat_days accepts mon..sun or daily; omit for a one-shot alarm); action=update time/label/repeat/enabled by id; action=delete by id (returns success even if already gone, do not retry); action=list returns all alarms with ids and next trigger times. The return value is the final state; do not call again to confirm.",
+                    properties(
+                        "action" to string("create / update / delete / list", 10),
+                        "time" to string("Alarm time; required for create; e.g. \"07:30\" in 24h", 10),
+                        "label" to string("Optional alarm label", 100),
+                        "repeat_days" to string("Weekdays to repeat, e.g. \"mon,fri\", \"daily\"; omit for a one-shot alarm", 60),
+                        "enabled" to boolean("For update: keep unchanged by default"),
+                        "id" to integer("Required for update/delete; from list or create results", 1, 999999999),
+                    ),
+                    "action",
+                ),
+            )
+            .put(
+                function(
                     "set_timer",
                     "Create a system timer directly; do not use the GUI. duration_seconds must be between 1 and 86400 seconds.",
                     properties(

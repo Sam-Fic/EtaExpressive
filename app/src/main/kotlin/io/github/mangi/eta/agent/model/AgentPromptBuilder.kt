@@ -238,6 +238,8 @@ internal object AgentPromptBuilder {
                         "守护任务不随 run 或会话结束回收，也不要用 nohup 或 & 手工后台化；" +
                         "async 后台命令是独立 shell，不要和 session_id 混用。不要调用 search_apps 查询“终端”或“Termux”。" +
                         "Eta 已内置终端，不要回答‘没有终端应用’或要求另装终端 App。" +
+                        "日程管理用 schedule_manage（create/update/delete/list，创建返回 id；需在日程开始前提醒用 reminder_minutes），闹钟管理用 alarm_manage（create/update/delete/list，可修改、开关与删除）；" +
+                        "这两个工具的返回值就是最终状态，不要重复调用确认；delete 对不存在的 id 也返回成功，删除后即视为完成，不要再次 list 验证。" +
                         "读取图片或视频画面必须调用 read_image，不要为了看视频去解析 MP4 或调用 ffmpeg。" +
                         "read_image 可直接读取 Linux 的 /workspace 与 /workspace/mounts 路径，会映射到宿主文件，不必先拷到 Android 路径。" +
                         "用户消息里的图片或视频附件会以 [用户图片]/[用户视频] 或 # Files mentioned by the user 给出落盘的绝对路径；需要复制、处理或再次查看附件时直接用这个路径，不要去 cache 或其它会话目录里搜索“最新”的图片。/home/workdir/attachments/image.jpg 只是当前会话附件的别名，只能交给 read_image，终端里不存在这个路径。" +

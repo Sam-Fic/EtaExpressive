@@ -26,6 +26,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         McpServerEntity::class,
         MediaIndexEntity::class,
         MediaSourceEntity::class,
+        AgentScheduleEntity::class,
+        AgentAlarmEntity::class,
     ],
     version = 36,
     exportSchema = false,
@@ -37,6 +39,8 @@ internal abstract class EtaDatabase : RoomDatabase() {
     abstract fun skillDao(): SkillDao
     abstract fun mcpServerDao(): McpServerDao
     abstract fun mediaIndexDao(): MediaIndexDao
+    abstract fun agentScheduleDao(): AgentScheduleDao
+    abstract fun agentAlarmDao(): AgentAlarmDao
 
     companion object {
         @Volatile
@@ -268,6 +272,33 @@ internal abstract class EtaDatabase : RoomDatabase() {
                     "last_scan_at INTEGER, " +
                     "item_count INTEGER NOT NULL, " +
                     "PRIMARY KEY(id))"
+            )
+        }
+
+        // Agent 日程与闹钟：仅新建 agent_schedules / agent_alarms 两表，不动既有数据。
+        internal val MIGRATION_35_36 = Migration(35, 36) { database ->
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS agent_schedules (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "title TEXT NOT NULL, " +
+                    "notes TEXT NOT NULL, " +
+                    "start_at INTEGER NOT NULL, " +
+                    "end_at INTEGER, " +
+                    "reminder_minutes INTEGER NOT NULL, " +
+                    "created_at INTEGER NOT NULL, " +
+                    "updated_at INTEGER NOT NULL)"
+            )
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_agent_schedules_start_at ON agent_schedules(start_at)")
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS agent_alarms (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "hour INTEGER NOT NULL, " +
+                    "minute INTEGER NOT NULL, " +
+                    "label TEXT NOT NULL, " +
+                    "repeat_days TEXT NOT NULL, " +
+                    "enabled INTEGER NOT NULL, " +
+                    "created_at INTEGER NOT NULL, " +
+                    "updated_at INTEGER NOT NULL)"
             )
         }
 

@@ -2135,7 +2135,8 @@ internal class AgentLocalTools(
 
     private companion object {
         val DEVICE_DIRECT_TOOL_NAMES = setOf(
-            "set_alarm",
+            "schedule_manage",
+            "alarm_manage",
             "set_timer",
             "device_status",
             "inspect_app",

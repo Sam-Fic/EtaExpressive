@@ -30,7 +30,6 @@ import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.core.AgentLogger
 import io.github.mangi.eta.agent.device.AgentNotificationHistoryService
 import io.github.mangi.eta.data.repository.NotificationHistoryRepository
-import java.util.Calendar
 import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
@@ -47,6 +46,7 @@ internal class AgentStructuredDeviceTools(
     private val colorOsMemoryTools = AgentColorOsMemoryTools(context, root)
     private val personalContextTools = AgentPersonalContextTools(context)
     private val privateDatabaseTools = AgentPrivateDatabaseTools(context, root, rootAvailable)
+    private val scheduleTools = AgentScheduleTools(context)
     private val clockAppLocator = ClockAppLocator(context)
     private val calendarTools = AgentCalendarTools(context, root, rootAvailable)
     private val systemControlTools = AgentSystemControlTools(context, root, rootAvailable)
@@ -74,7 +74,6 @@ internal class AgentStructuredDeviceTools(
         // 只接管个人数据索引自有工具名；search_media/search_files 等本地已有实现，保持原有分发。
         if (canonical in PersonalSearchTools.names) {
             personalSearch.execute(canonical, args)?.let { return sensitive(it.toString()) }
-        }
         personalDataTools.execute(name, args)?.let { native ->
             if (canonical == "search_notes" && shouldFallbackToIndexedNotes(native, args)) {
                 personalSearch.execute(canonical, args, fallback = true)?.let { indexed ->
@@ -118,6 +117,8 @@ internal class AgentStructuredDeviceTools(
                 "search_coloros_memories" -> colorOsMemoryTools.search(args)
                 "search_saved_places" -> colorOsMemoryTools.searchSavedPlaces(args)
                 "search_personal_orders" -> searchPersonalOrders(args)
+                "schedule_manage" -> text(scheduleTools.execute(name, args))
+                "alarm_manage" -> text(scheduleTools.execute(name, args))
                 "set_alarm" -> text(setAlarm(args))
                 "set_timer" -> text(setTimer(args))
                 "inspect_app" -> text(appInspectionTool.inspect(args).toString())
@@ -251,6 +252,7 @@ internal class AgentStructuredDeviceTools(
             tool = "set_alarm",
         ).put("hour", hour).put("minute", minute).toString()
     }
+
 
     /**
      * daysofweek 位掩码（provider 写入用）。语义按真机（小米 deskclock）实测：
@@ -947,16 +949,6 @@ internal class AgentStructuredDeviceTools(
         Regex("""(?m)^\s*${Regex.escape(key)}=[^(]+\((.*)\)\s*$""")
             .find(source)?.groupValues?.get(1)?.takeUnless { it == "null" }
 
-    private fun String.toCalendarDay(): Int = when (lowercase(Locale.ROOT)) {
-        "sun" -> Calendar.SUNDAY
-        "mon" -> Calendar.MONDAY
-        "tue" -> Calendar.TUESDAY
-        "wed" -> Calendar.WEDNESDAY
-        "thu" -> Calendar.THURSDAY
-        "fri" -> Calendar.FRIDAY
-        "sat" -> Calendar.SATURDAY
-        else -> throw IllegalArgumentException("不支持的重复日期")
-    }
 
     private fun String.decodeXml(): String =
         replace("&quot;", "\"")

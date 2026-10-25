@@ -421,6 +421,18 @@
             </intent-filter>
         </receiver>
 
+        <!-- Agent 日程提醒与闹钟到点触发；开机后恢复尚未到期的注册。 -->
+        <receiver
+            android:name=".agent.tool.AgentScheduleAlertReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".agent.tool.AgentScheduleBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

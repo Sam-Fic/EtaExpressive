@@ -17,7 +17,7 @@ internal object ForegroundExclusiveGate {
     fun shouldSerialize(toolName: String): Boolean {
         val name = toolName.trim().lowercase()
         return AgentOverlayVisibilityPolicy.isForegroundOperationTool(name) ||
-            name in setOf("wait_for_text", "wait_for_package", "set_alarm", "set_timer")
+            name in setOf("wait_for_text", "wait_for_package", "set_timer")
     }
 
     fun acquire(runId: String, isClosed: () -> Boolean = { false }): Admission =

@@ -34,10 +34,11 @@ internal object AgentToolRequirements {
             "long_press_element", "swipe", "scroll", "scroll_element", "type_text", "input_text",
             "replace_text", "clear_text", "set_clipboard", "get_clipboard", "paste_text",
             "wait", "wait_for_text", "wait_for_package", "open_system_panel",
-            "set_alarm", "set_timer", "device_status", "inspect_app", "media_control", "set_volume",
-            "set_ringer_mode", "list_installed_apps",
+            "schedule_manage", "alarm_manage", "set_alarm", "set_timer", "device_status", "inspect_app",
+            "media_control", "set_volume", "set_ringer_mode", "list_installed_apps",
             // 手电筒走 CameraManager 托管灯光连接；声音/热点状态读取均为公开 API。
             "get_flashlight", "set_flashlight", "get_sound_state", "set_sound_mode", "get_hotspot",
+            "device_actions",
             "search_notification_history", "recent_app_activity", "app_usage_summary",
             "get_current_location", "get_device_environment", "memory_get", "memory_write",
             "skills_list", "skills_read", "skills_read_resource", "skills_list_curated",
