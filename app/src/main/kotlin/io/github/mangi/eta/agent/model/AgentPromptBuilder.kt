@@ -22,10 +22,12 @@ internal object AgentPromptBuilder {
         shellTools: AgentShellToolAvailability.Snapshot? = null,
         onSystemCount: (Int) -> Unit = {},
         interactiveModeEnabled: Boolean = false,
+        disabledCapabilities: AgentToolGroups.ToolSwitchState? = null,
     ): JSONArray {
         val messages = buildSystemMessages(
             config, skillContext, memoryContext, rootAvailable, delegationAvailable, shellTools,
             interactiveModeEnabled = interactiveModeEnabled,
+            disabledCapabilities = disabledCapabilities,
         )
         onSystemCount(messages.length())
         appendHistoryForModel(history, messages)
@@ -108,6 +110,8 @@ internal object AgentPromptBuilder {
         selfSettingsTools: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS),
         personalDataReads: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
         deviceStateReads: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
+        /** 决定「关闭说明」内容；默认从 config 与既有开关推导，与目录同源。 */
+        disabledCapabilities: AgentToolGroups.ToolSwitchState? = null,
     ): JSONArray {
         // Only point at the detection section when this round actually carries one.
         val environmentRule = if (shellTools != null) {
@@ -298,7 +302,10 @@ internal object AgentPromptBuilder {
         buildMemorySystemMessage(memoryContext)?.let(messages::put)
         buildSkillSystemMessage(skillContext)?.let(messages::put)
         // 延迟工具域索引：只下发一行说明，整组 schema 由 tools_use_group 按需展开。
-        // 与目录共用同一份可用性判定：开关关掉的域不该出现在提示里。
+        //
+        // 这里必须用**本轮生效值**（config.* + 两档细分参数）判定，与 AgentToolCatalog.build
+        // 完全同源：索引宣传一个「能打开」的域，打开后下一轮却拿不到工具，是最糟的体验
+        // （模型白花一轮且被反复误导）。入口收窄、子代理最小配置都走这条路径。
         val availability = AgentToolGroups.availability(openedToolGroups) { group ->
             when (group.id) {
                 AgentToolGroups.SELF_SETTINGS_GROUP.id -> selfSettingsTools
@@ -310,6 +317,18 @@ internal object AgentPromptBuilder {
         }
         AgentToolGroups.indexMessage(availability)?.let { index ->
             messages.put(systemMessage(index))
+        }
+
+        // 被关闭的能力：用户关掉某个开关后，工具从目录里消失，但能力本身还在。
+        // 静默省略会让模型回答「我没有这个能力」（错的），或试图绕过。
+        //
+        // 与上面的域索引刻意用**不同的输入**：这里问的是「用户关掉了什么」，只能用 Prefs 里的
+        // 用户设置值。config.* 是「Prefs 且入口权限」的生效值，入口收窄时它也 false，
+        // 拿它生成说明就会谎称「用户已在设置里关闭」，而用户其实什么都没关。
+        disabledCapabilities?.let { userSwitches ->
+            AgentToolGroups.disabledCapabilitiesMessage(
+                AgentToolGroups.disabledCapabilities(userSwitches),
+            )?.let { notice -> messages.put(systemMessage(notice)) }
         }
         return messages
     }

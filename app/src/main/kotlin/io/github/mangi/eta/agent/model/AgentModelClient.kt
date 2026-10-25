@@ -139,6 +139,9 @@ internal object AgentModelClient {
                 { (durable, _) -> durable })
         }.getOrNull()
         val delegationAvailable = AgentPromptBuilder.delegationToolsAvailable(additionalTools)
+        // 只在此处（真实主 run）从 Prefs 捕获；子代理/压缩模型不会走到这里，
+        // 因此不会因为最小配置而误报「用户关闭了终端」。
+        val capabilitySwitches = ToolCapabilitySwitches.capture()
         var systemCount = 0
         val messages = AgentPromptBuilder.buildInitialMessages(
             config,
@@ -151,6 +154,7 @@ internal object AgentModelClient {
             delegationAvailable = delegationAvailable,
             shellTools = initialCapabilities.shellTools,
             interactiveModeEnabled = interactiveModeEnabled,
+            disabledCapabilities = capabilitySwitches.toDisabledState(),
             onSystemCount = { systemCount = it },
         )
         var transcriptStartIndex = messages.length()
@@ -259,6 +263,8 @@ internal object AgentModelClient {
                         openedToolGroups = openedToolGroupsProvider(),
                         // 用户可能在两轮之间改开关：签名必须覆盖它，否则目录与系统提示不会刷新。
                         toolSwitches = ToolSwitchSnapshot.capture(),
+                        // 关闭说明的内容同样随开关变化，必须一起参与判定。
+                        capabilitySwitches = ToolCapabilitySwitches.capture(),
                     )
                     if (signature != lastRoundSignature) {
                         val switches = signature.toolSwitches
@@ -270,6 +276,9 @@ internal object AgentModelClient {
                             selfSettingsTools = switches.selfSettingsTools,
                             personalDataReads = switches.personalDataReads,
                             deviceStateReads = switches.deviceStateReads,
+                            // 每轮重新捕获：用户可能在两轮之间改了开关。
+                            disabledCapabilities = ToolCapabilitySwitches
+                                .capture().toDisabledState(),
                         )
                         for (index in 0 until systemMessages.length()) {
                             messages.put(index, systemMessages.getJSONObject(index))
@@ -430,6 +439,8 @@ internal object AgentModelClient {
         val openedToolGroups: Set<String> = emptySet(),
         /** 决定域可用性的 Prefs 开关；运行中改开关必须让目录与提示重新生成。 */
         val toolSwitches: ToolSwitchSnapshot = ToolSwitchSnapshot.DEFAULT,
+        /** 决定「已关闭能力」说明的完整开关快照；同样必须参与重建判定。 */
+        val capabilitySwitches: ToolCapabilitySwitches? = null,
     )
 
     /**
@@ -454,6 +465,58 @@ internal object AgentModelClient {
                 deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
             )
         }
+    }
+
+    /**
+     * 主 run 的完整工具开关快照，**只用于生成「已关闭能力」说明**。
+     *
+     * 与 [ToolSwitchSnapshot] 分开：那个只关心「域能否打开」，字段少、默认全开；
+     * 这个要覆盖所有会让工具缺席的开关，因此必须在真实主 run 里从 Prefs 捕获，
+     * 不能靠 ModelConfig 默认值推导——子代理与压缩模型的最小配置会让它误报
+     * 「用户关闭了终端」。
+     */
+    internal data class ToolCapabilitySwitches(
+        val terminalTools: Boolean,
+        val browserTools: Boolean,
+        val deviceDirectTools: Boolean,
+        val deviceSensitiveReadTools: Boolean,
+        val personalDataReads: Boolean,
+        val deviceStateReads: Boolean,
+        val deviceSensitiveActionTools: Boolean,
+        val selfSettingsTools: Boolean,
+        val delegationTools: Boolean,
+    ) {
+        companion object {
+            /**
+             * 只从 Prefs 读取**用户设置**。刻意不接受 `config.*`：那是「Prefs 且入口权限」的
+             * 生效值，入口收窄时同样为 false，据此生成关闭说明会向模型撒谎。
+             */
+            fun capture() = ToolCapabilitySwitches(
+                terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
+                browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
+                deviceDirectTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
+                deviceSensitiveReadTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
+                personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
+                deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
+                deviceSensitiveActionTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS),
+                selfSettingsTools = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS),
+                // 独立开关：不能用 delegationAvailable，那是「本轮是否真的下发了 delegate_task」，
+                // 入口未附带委派工具时它为 false，会被误报成「用户关闭了子代理」。
+                delegationTools = Prefs.isEnabled(Prefs.Keys.AGENT_SUBAGENT_TOOLS),
+            )
+        }
+
+        fun toDisabledState() = AgentToolGroups.ToolSwitchState(
+            terminalTools = terminalTools,
+            browserTools = browserTools,
+            deviceDirectTools = deviceDirectTools,
+            deviceSensitiveReadTools = deviceSensitiveReadTools,
+            personalDataReads = personalDataReads,
+            deviceStateReads = deviceStateReads,
+            deviceSensitiveActionTools = deviceSensitiveActionTools,
+            selfSettingsTools = selfSettingsTools,
+            delegationTools = delegationTools,
+        )
     }
 
     @Serializable

@@ -118,12 +118,101 @@ internal object AgentToolGroups {
      * 能否下发的那个开关（自设置管理域看 `selfSettingsTools`，设备域看各自的风险组开关）。
      * 已经打开但随后关掉开关的域会从 [Availability.opened] 里消失，因为它的工具本就不再下发。
      */
+    /**
+     * 从 [ToolSwitchState] 推导域可用性。
+     *
+     * 注意它与「关闭说明」用的是同一份输入，但判定目标不同：这里问「这个域此刻能不能打开」，
+     * 关闭说明问「用户关掉了什么」。由于 [ToolSwitchState] 定义为用户设置值，
+     * 当入口收窄导致域不可用时，索引会照常宣传它（用户没关，打开仍然合理），
+     * 而关闭说明不会误报——这正是两者需要的差异。
+     */
+    fun availability(openedGroups: Set<String>, switches: ToolSwitchState): Availability =
+        availability(openedGroups) { group ->
+            when (group.id) {
+                SELF_SETTINGS_GROUP.id -> switches.selfSettingsTools
+                DEVICE_ACTION_GROUP.id -> switches.deviceSensitiveActionTools
+                DEVICE_TAIL_READ_GROUP.id ->
+                    switches.deviceSensitiveReadTools && (switches.personalDataReads || switches.deviceStateReads)
+                else -> false
+            }
+        }
+
     fun availability(openedGroups: Set<String>, gate: (AgentToolGroup) -> Boolean): Availability {
         val allowed = groups.filter { it.deferredByDefault && gate(it) }.map { it.id }.toSet()
         return Availability(
             opened = openedGroups.filterTo(mutableSetOf()) { it in allowed },
             openable = allowed - openedGroups,
         )
+    }
+
+    /**
+     * 本轮被用户关闭的能力，按面向模型的说法列出。
+     *
+     * 为什么要告诉模型而不是静默省略：能力本来存在、只是开关被关掉。若什么都不说，
+     * 模型面对「执行一下 ls」只能回答「我没有这个能力」——那是错的，用户会以为 Eta
+     * 不支持；也可能转而尝试绕过（建议装 Termux、改用别的工具）。
+     *
+     * 与目录、域索引共用同一份开关判定，避免出现「提示说关了、目录里却有」的自相矛盾。
+     * 措辞刻意克制：只在用户明确要求时说明，不主动推荐去开开关。
+     */
+    data class DisabledCapabilities(val labels: List<String>) {
+        val isEmpty: Boolean get() = labels.isEmpty()
+    }
+
+    /**
+     * [switches] 是决定各开关是否生效的事实来源；只有真正会导致工具缺席的项才列出。
+     * 例如敏感读总开关关掉时，「个人信息」「设备状态」两档都缺席，就只报一个总项。
+     */
+    fun disabledCapabilities(switches: ToolSwitchState): DisabledCapabilities {
+        val labels = mutableListOf<String>()
+        if (!switches.terminalTools) labels += "终端、命令执行与文件读写"
+        if (!switches.browserTools) labels += "网页读取与浏览器"
+        if (!switches.deviceDirectTools) labels += "设备直达操作（闹钟、计时器、音量、媒体控制等）"
+        if (switches.deviceSensitiveReadTools) {
+            if (!switches.personalDataReads) labels += "个人信息读取（通讯录、短信、通话、账单、便签等）"
+            if (!switches.deviceStateReads) labels += "设备状态读取（设置、闹钟列表、位置、应用使用等）"
+        } else {
+            labels += "敏感设备信息读取（个人信息与设备状态）"
+        }
+        if (!switches.deviceSensitiveActionTools) labels += "设备写操作（修改设置、应用管理、电源、Wi-Fi 等）"
+        if (!switches.selfSettingsTools) labels += "Eta 自身配置管理"
+        if (!switches.delegationTools) labels += "子代理委派"
+        // 记忆与 Skills 已有各自的负面门禁（buildMemorySystemMessage / buildSkillSystemMessage），
+        // 这里不再重复列出，避免同一件事被说两遍。
+        return DisabledCapabilities(labels)
+    }
+
+    /** 决定工具是否在场的开关快照；由调用方从既有配置/开关读取，避免各处重复取值。 */
+    /**
+     * 每个字段回答的是**「用户是否在设置里关掉了它」**，而不是「本轮是否真的可用」。
+     *
+     * 这两者必须区分：`config.terminalTools` 是「Prefs 且入口权限」的生效值，入口
+     * （小布、超级小爱、电源键）收窄配置时它也会是 false。若拿生效值生成关闭说明，
+     * 就会对模型谎称「用户已在设置里关闭终端」，而用户其实什么都没关。
+     * 因此这里只接受来自 Prefs 的用户设置值。
+     */
+    data class ToolSwitchState(
+        val terminalTools: Boolean,
+        val browserTools: Boolean,
+        val deviceDirectTools: Boolean,
+        val deviceSensitiveReadTools: Boolean,
+        val personalDataReads: Boolean,
+        val deviceStateReads: Boolean,
+        val deviceSensitiveActionTools: Boolean,
+        val selfSettingsTools: Boolean,
+        val delegationTools: Boolean,
+    )
+
+    /**
+     * 关闭说明。只在至少一项被关闭时出现，全开时零成本。
+     * 刻意不写「主动提醒用户去开」：那会让模型在无关回复里推销设置项。
+     */
+    fun disabledCapabilitiesMessage(disabled: DisabledCapabilities): String? {
+        if (disabled.isEmpty) return null
+        return "本次运行中，用户已在设置里关闭以下能力（这是正常配置，不是故障或设备限制）：" +
+            disabled.labels.joinToString("、") + "。" +
+            "用户要求其中某项操作时，如实说明该能力已被关闭、可在设置中开启，不要声称自己不具备这项能力，" +
+            "也不要改用其它工具或建议安装第三方应用绕开。"
     }
 
     /**
