@@ -128,6 +128,8 @@ Shell 子进程在校验失败或取消时可能提前关闭输入管道，执�
 
 APK 分析在 Alpine 与 Debian 中都作为可选档案显示。JADX、Apktool、smali 与 baksmali 使用当前最新正式版的固定官方 Release URL、大小和 SHA-256，下载完整校验后才进入 App 可写的 cache staging；不能把下载或解包暂存目录放进由 Root 创建的 Linux 管理目录。GitHub 制品先尝试一个 HTTPS 下载入口，再回到官方地址，但仍只接受与官方清单 SHA-256 完全一致的字节。JADX 只解出 CLI 脚本、运行库与许可证，成功验证全部命令后再原子切换当前版本。档案在 Alpine 安装 `openjdk25-jdk`，在 Debian 安装 `openjdk-25-jdk-headless`，但不安装全局 Gradle、Android SDK 或 NDK。由于 Google 的 Linux SDK、AAPT2 与 NDK 主机工具只提供 x86_64 构建，手机 ARM64 chroot 无法原生组成受官方支持的完整 Android 编译链；`apktool build` 因而稳定拒绝，解码、代码查看和独立 Smali 汇编/反汇编不受影响。
 
+Debian 安装基础工具时会刷新 `eta-apt` 入口，旧环境初始化中断后可直接重试。入口在安装前结合 `dpkg --audit` 与 `apt-get check` 检查包状态和依赖；发现异常时先尝试完成未配置的包，必要时运行 `apt-get --fix-broken --no-remove install`，修复后重新配置并验证。恢复依据包管理器自身的状态，自动修复不会删除软件包。修复未完成或安装留下不一致状态时停止本次操作，界面提示检查或修复失败及手动诊断命令；超时和其他安装失败也不再统一归因为网络。相关语义见 Debian 的 [dpkg 手册](https://manpages.debian.org/trixie/dpkg/dpkg.1.en.html)和 [APT 手册](https://manpages.debian.org/trixie/apt/apt-get.8.en.html)。
+
 ## 后台执行生命周期
 
 `AgentExecutionService` 使用 `specialUse` 前台类型，为当前 Agent 运行、普通终端和 PRoot 后台进程持有任务引用。用户退出页面只断开 UI；最后一个任务结束时服务释放，通知中的停止操作回收它实际持有的任务。普通后台任务保持宿主 tracer 与输出读取，不能像 Root daemon 那样脱离 App 生命周期。Root daemon 保持原有独立生命周期，普通任务清理不会批量停止 Root daemon。Root 用户的原有 Runtime 绑定链路在新增前台服务启动受限时仍可继续，不因新增服务阻断厂商助手入口。
