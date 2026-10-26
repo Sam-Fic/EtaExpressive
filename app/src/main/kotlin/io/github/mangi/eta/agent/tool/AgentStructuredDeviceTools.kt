@@ -30,6 +30,7 @@ import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.core.AgentLogger
 import io.github.mangi.eta.agent.device.AgentNotificationHistoryService
 import io.github.mangi.eta.data.repository.NotificationHistoryRepository
+import java.util.Calendar
 import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
@@ -74,6 +75,7 @@ internal class AgentStructuredDeviceTools(
         // 只接管个人数据索引自有工具名；search_media/search_files 等本地已有实现，保持原有分发。
         if (canonical in PersonalSearchTools.names) {
             personalSearch.execute(canonical, args)?.let { return sensitive(it.toString()) }
+        }
         personalDataTools.execute(name, args)?.let { native ->
             if (canonical == "search_notes" && shouldFallbackToIndexedNotes(native, args)) {
                 personalSearch.execute(canonical, args, fallback = true)?.let { indexed ->
@@ -949,6 +951,18 @@ internal class AgentStructuredDeviceTools(
         Regex("""(?m)^\s*${Regex.escape(key)}=[^(]+\((.*)\)\s*$""")
             .find(source)?.groupValues?.get(1)?.takeUnless { it == "null" }
 
+
+    /** AlarmClock.EXTRA_DAYS 要求 [Calendar] 的星期常量，旧 set_alarm 路径仍在用。 */
+    private fun String.toCalendarDay(): Int = when (lowercase(Locale.ROOT)) {
+        "sun", "sunday" -> Calendar.SUNDAY
+        "mon", "monday" -> Calendar.MONDAY
+        "tue", "tuesday" -> Calendar.TUESDAY
+        "wed", "wednesday" -> Calendar.WEDNESDAY
+        "thu", "thursday" -> Calendar.THURSDAY
+        "fri", "friday" -> Calendar.FRIDAY
+        "sat", "saturday" -> Calendar.SATURDAY
+        else -> throw IllegalArgumentException("不支持的重复日期")
+    }
 
     private fun String.decodeXml(): String =
         replace("&quot;", "\"")
