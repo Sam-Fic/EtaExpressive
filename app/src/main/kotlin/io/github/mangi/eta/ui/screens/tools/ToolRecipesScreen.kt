@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -20,13 +19,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,10 +45,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
@@ -47,6 +58,7 @@ import io.github.mangi.eta.agent.tool.AgentToolRecipeStore
 import io.github.mangi.eta.agent.tool.ToolRecipe
 import io.github.mangi.eta.agent.tool.ToolRecipeShareException
 import io.github.mangi.eta.agent.tool.ToolRecipeShareFormat
+import io.github.mangi.eta.agent.tool.ToolRecipeStep
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
@@ -72,7 +84,7 @@ import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.material3.Text as M3Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -80,6 +92,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 
 /**
  * 配方运行时——设置页与管理页共用的唯一数据源。
@@ -298,6 +311,8 @@ internal fun ToolRecipesScreen(
     editing?.let { recipe ->
         RecipeEditPage(
             recipe = recipe,
+            // Root 依赖按完整配方图算（组合链上游也要 Root），与列表页同一份快照。
+            rootNeeded = recipe.name in rootNeeding,
             onDismiss = { editing = null },
             onSave = { updated ->
                 scope.launch(Dispatchers.IO) {
@@ -540,110 +555,327 @@ private fun RecipeSwitch(
     )
 }
 
-/** 配方编辑页：改描述与步骤说明；步骤本身由 JSON 承载，用户改坏也能继续让模型修。 */
+/**
+ * 配方编辑页：审计 + 启停 + 改描述。
+ *
+ * 版式对齐兄弟页（KernelSU 式分段列表 + M3 大标题）：
+ * - **启用置顶**：开关是这份配方最要紧的状态，放在第一屏第一张卡，用户不必滚动去找；
+ * - 「它做什么」是可编辑的描述，紧随其后——模型靠这段文字决定什么时候调用这个工具；
+ * - 步骤与入参是只读的审计信息，逐条分段行展示：前导图标区分操作类型，命令原样透出；
+ * - 「工具信息」给出模型侧工具名与 Root 依赖，审这份配方到底做了什么时要看这两项。
+ *
+ * 保存挂在顶栏动作位（与助手编辑页同款），返回键即取消：没有改动时保存键置灰，
+ * 避免一次空保存把配方版本号顶上去。
+ */
 @Composable
 private fun RecipeEditPage(
     recipe: ToolRecipe,
+    rootNeeded: Boolean,
     onDismiss: () -> Unit,
     onSave: (ToolRecipe) -> Unit,
 ) {
     var description by remember { mutableStateOf(recipe.description) }
     var enabled by remember { mutableStateOf(recipe.enabled) }
+    val dirty = description != recipe.description || enabled != recipe.enabled
+    val parameters = remember(recipe.parameters) { recipeParameters(recipe.parameters) }
     EtaPageSurface(onDismissRequest = onDismiss) {
         EtaScaffold(
             title = stringResource(R.string.recipe_edit_title, recipe.name),
             onBack = onDismiss,
             modifier = Modifier.fillMaxSize().imePadding(),
-            bottomBar = {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                    EtaDialogActions(
-                        modifier = Modifier.navigationBarsPadding().imePadding()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        confirmText = stringResource(R.string.action_save),
-                        onCancel = onDismiss,
-                        onConfirm = { onSave(recipe.copy(description = description, enabled = enabled)) },
-                    )
+            actions = {
+                // 官方 TextButton（自带涟漪与禁用态）；返回键即取消，不再另摆一条底栏动作。
+                M3TextButton(
+                    onClick = { onSave(recipe.copy(description = description, enabled = enabled)) },
+                    enabled = dirty,
+                ) {
+                    M3Text(text = stringResource(R.string.action_save))
                 }
             },
         ) { padding, scrollConnection, _ ->
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(EtaSegmentedGroupSpacing),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
                     .consumeWindowInsets(padding)
                     .nestedScroll(scrollConnection)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
+                    .padding(horizontal = EtaGroupHorizontalPadding)
+                    .padding(bottom = EtaSegmentedGroupSpacing),
             ) {
+                // ① 启用置顶：这一页最要紧的状态就是「模型还能不能调用它」。
+                EtaSegmentedColumn {
+                    item {
+                        EtaSwitchRow(
+                            title = stringResource(R.string.recipe_enable),
+                            summary = buildString {
+                                append(stringResource(R.string.recipe_enable_summary))
+                                if (rootNeeded) {
+                                    append('\n')
+                                    append(stringResource(R.string.recipe_root_warning))
+                                }
+                            },
+                            checked = enabled,
+                            onCheckedChange = { enabled = it },
+                            leading = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Build,
+                                    contentDescription = null,
+                                    tint = if (enabled) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            },
+                        )
+                    }
+                }
+
+                // ② 它做什么：模型靠这段描述决定什么时候调用这个工具，所以它可编辑。
+                //    走官方 OutlinedTextField：自带描边圆角与浮动标签，直接落在页面背景上。
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { M3Text(text = stringResource(R.string.recipe_description)) },
+                    placeholder = { M3Text(text = stringResource(R.string.recipe_description_hint)) },
                     minLines = 2,
                 )
+
+                // ③ 步骤：逐条分段行。原先把全部步骤塞进一个容器用小字排版，
+                //    命令一长就被挤成不可读的一坨；这里一条一行，摘要原样透出。
                 EtaSegmentedColumn(
                     title = stringResource(R.string.recipe_steps_section, recipe.steps.size),
                 ) {
-                    item {
-                        EtaSegmentedItemContainer {
-                            RecipeStepsText(recipe)
+                    recipe.steps.forEachIndexed { index, step ->
+                        item(key = "step-$index") {
+                            EtaSegmentedRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingContent = {
+                                    Icon(
+                                        imageVector = recipeStepIcon(step),
+                                        contentDescription = null,
+                                    )
+                                },
+                                content = {
+                                    M3Text(
+                                        text = stringResource(R.string.recipe_step_title, index + 1),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                },
+                                supportingContent = {
+                                    M3Text(
+                                        text = recipeStepLabel(step),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                            )
                         }
                     }
                 }
-                EtaSwitchRow(
-                    title = stringResource(R.string.recipe_enable),
-                    summary = stringResource(R.string.recipe_enable_summary),
-                    checked = enabled,
-                    onCheckedChange = { enabled = it },
-                )
+
+                // ④ 入参：模型调用时要填的实参，写清类型与是否必填。
+                if (parameters.isNotEmpty()) {
+                    EtaSegmentedColumn(
+                        title = stringResource(R.string.recipe_params_section, parameters.size),
+                    ) {
+                        parameters.forEach { parameter ->
+                            item(key = "param-${parameter.name}") {
+                                EtaSegmentedRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    leadingContent = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Tune,
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    content = {
+                                        M3Text(
+                                            text = parameter.name,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                            ),
+                                        )
+                                    },
+                                    supportingContent = {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            M3Text(
+                                                text = stringResource(
+                                                    R.string.recipe_param_meta,
+                                                    parameter.type,
+                                                    stringResource(
+                                                        if (parameter.required) {
+                                                            R.string.recipe_param_required
+                                                        } else {
+                                                            R.string.recipe_param_optional
+                                                        },
+                                                    ),
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            parameter.description?.let { note ->
+                                                M3Text(
+                                                    text = note,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ⑤ 工具信息：模型侧叫什么名字、要不要 Root——审这份配方时必看两项。
+                EtaSegmentedColumn(title = stringResource(R.string.recipe_info_section)) {
+                    item {
+                        EtaSegmentedRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Link,
+                                    contentDescription = null,
+                                )
+                            },
+                            content = {
+                                M3Text(
+                                    text = stringResource(R.string.recipe_model_name),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            },
+                            supportingContent = {
+                                M3Text(
+                                    text = recipe.modelToolName,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                        )
+                    }
+                    item {
+                        EtaSegmentedRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Shield,
+                                    contentDescription = null,
+                                    tint = if (rootNeeded) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            },
+                            content = {
+                                M3Text(
+                                    text = stringResource(R.string.recipe_root_dependence),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            },
+                            supportingContent = {
+                                M3Text(
+                                    text = stringResource(
+                                        if (rootNeeded) {
+                                            R.string.recipe_state_root
+                                        } else {
+                                            R.string.recipe_state_no_root
+                                        },
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/** 步骤一览：按顺序列出 op 与关键字段，让用户一眼看清配方做了什么。 */
-@Composable
-private fun RecipeStepsText(recipe: ToolRecipe) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        recipe.steps.forEachIndexed { index, step ->
-            M3Text(
-                text = "${index + 1}. ${recipeStepLabel(step)}",
-                style = MaterialTheme.typography.bodySmall,
-            )
+/**
+ * 步骤图标：按 op 选一个能一眼分辨类型的图标。
+ *
+ * 步骤类型是白名单，穷举即可；新增 op 时在这里补一个图标，不要退化成同一个。
+ */
+private fun recipeStepIcon(step: ToolRecipeStep): ImageVector = when (step) {
+    is ToolRecipeStep.HttpRequest -> Icons.Rounded.Public
+    is ToolRecipeStep.RootShell -> Icons.Rounded.Terminal
+    is ToolRecipeStep.SettingsRead, is ToolRecipeStep.SettingsWrite -> Icons.Rounded.Settings
+    is ToolRecipeStep.FileRead, is ToolRecipeStep.FileWrite -> Icons.Rounded.FolderOpen
+    is ToolRecipeStep.ContentQuery -> Icons.Rounded.Search
+    is ToolRecipeStep.Compose -> Icons.Rounded.AccountTree
+    is ToolRecipeStep.Literal -> Icons.Rounded.Description
+}
+
+/** 配方入参的一行摘要：名字、类型、是否必填、参数说明。 */
+private data class RecipeParameter(
+    val name: String,
+    val type: String,
+    val required: Boolean,
+    val description: String?,
+)
+
+/**
+ * 从配方的 parameters schema 抽出可读的入参列表。
+ *
+ * schema 由模型写就，字段可能缺失或类型不对：解析一律容错，拿不到就当成空列表，
+ * 页面照常渲染其余部分，不因为一段坏 schema 打不开整个编辑页。
+ */
+private fun recipeParameters(parameters: JSONObject): List<RecipeParameter> {
+    val properties = parameters.optJSONObject("properties") ?: return emptyList()
+    val required = buildSet<String> {
+        val array = parameters.optJSONArray("required") ?: return@buildSet
+        for (index in 0 until array.length()) {
+            array.optString(index).takeIf { it.isNotBlank() }?.let { add(it) }
         }
     }
+    return properties.keys().asSequence().map { name ->
+        val spec = properties.optJSONObject(name)
+        RecipeParameter(
+            name = name,
+            type = spec?.optString("type")?.takeIf { it.isNotBlank() } ?: "string",
+            required = name in required,
+            description = spec?.optString("description")?.takeIf { it.isNotBlank() },
+        )
+    }.toList()
 }
 
 @Composable
-private fun recipeStepLabel(step: io.github.mangi.eta.agent.tool.ToolRecipeStep): String = when (step) {
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.HttpRequest ->
+private fun recipeStepLabel(step: ToolRecipeStep): String = when (step) {
+    is ToolRecipeStep.HttpRequest ->
         stringResource(R.string.recipe_step_http, step.method, step.url)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.RootShell ->
+    is ToolRecipeStep.RootShell ->
         stringResource(R.string.recipe_step_root, step.command)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.SettingsRead ->
+    is ToolRecipeStep.SettingsRead ->
         stringResource(R.string.recipe_step_settings_read, step.namespace, step.key)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.SettingsWrite ->
+    is ToolRecipeStep.SettingsWrite ->
         stringResource(R.string.recipe_step_settings_write, step.namespace, step.key)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.FileRead ->
+    is ToolRecipeStep.FileRead ->
         stringResource(R.string.recipe_step_file_read, step.path)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.FileWrite ->
+    is ToolRecipeStep.FileWrite ->
         stringResource(R.string.recipe_step_file_write, step.path)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.ContentQuery ->
+    is ToolRecipeStep.ContentQuery ->
         stringResource(R.string.recipe_step_content, step.uri)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.Compose ->
+    is ToolRecipeStep.Compose ->
         stringResource(R.string.recipe_step_compose, step.recipe)
 
-    is io.github.mangi.eta.agent.tool.ToolRecipeStep.Literal ->
+    is ToolRecipeStep.Literal ->
         stringResource(R.string.recipe_step_literal)
 }
 

@@ -1673,6 +1673,17 @@
   <string name="recipe_step_content">查询 Content Provider %1$s</string>
   <string name="recipe_step_compose">调用配方 %1$s</string>
   <string name="recipe_step_literal">常量文本</string>
+  <string name="recipe_step_title">第 %1$d 步</string>
+  <string name="recipe_description_hint">说明这个工具做什么，模型靠它决定什么时候调用它。</string>
+  <string name="recipe_params_section">入参 · %1$d</string>
+  <string name="recipe_param_meta">%1$s · %2$s</string>
+  <string name="recipe_param_required">必填</string>
+  <string name="recipe_param_optional">可选</string>
+  <string name="recipe_info_section">工具信息</string>
+  <string name="recipe_model_name">模型侧名称</string>
+  <string name="recipe_root_dependence">Root 依赖</string>
+  <string name="recipe_state_no_root">不需要 Root</string>
+  <string name="recipe_root_warning">需要 Root：模型没有 Root 时看不到这个工具。</string>
   <string name="settings_tool_recipes">模型自建工具</string>
   <string name="settings_tool_recipes_summary">查看、启停、编辑、删除并分享模型为自己写的配方。</string>
   <string name="data_backup_recipes">配方 · %1$d</string>

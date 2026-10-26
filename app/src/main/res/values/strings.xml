@@ -1663,6 +1663,17 @@
   <string name="recipe_step_content">Query provider %1$s</string>
   <string name="recipe_step_compose">Run recipe %1$s</string>
   <string name="recipe_step_literal">Constant text</string>
+  <string name="recipe_step_title">Step %1$d</string>
+  <string name="recipe_description_hint">Explain what this tool does — the model uses this to decide when to call it.</string>
+  <string name="recipe_params_section">Parameters · %1$d</string>
+  <string name="recipe_param_meta">%1$s · %2$s</string>
+  <string name="recipe_param_required">required</string>
+  <string name="recipe_param_optional">optional</string>
+  <string name="recipe_info_section">Tool info</string>
+  <string name="recipe_model_name">Model-side name</string>
+  <string name="recipe_root_dependence">Root dependency</string>
+  <string name="recipe_state_no_root">No Root needed</string>
+  <string name="recipe_root_warning">Needs Root: the model cannot see this tool without Root.</string>
   <string name="settings_tool_recipes">Tools the model wrote</string>
   <string name="settings_tool_recipes_summary">Review, enable, edit, delete and share the recipes the model wrote for itself.</string>
   <string name="data_backup_recipes">Recipes · %1$d</string>
