@@ -18,7 +18,7 @@ It is based on [Eta](https://github.com/Mangi-11/Eta). Upstream built the agent 
 - **On-device data:** notifications, photos, calendars, SMS, and more. Some sources need root, plus a matching ROM and app.
 - **System entry points:** with LSPosed, route the power button, Breeno, or Super XiaoAI into EtaExpressive.
 
-Requires **Android 14 or later**. The app is not brand-locked; core features work without root. Root and LSPosed unlock more system access and assistant integration, depending on permission and ROM support.
+Requires **Android 14 or later on ARM64 (arm64-v8a)**. The APK ships ARM64 native libraries only; there are no 32-bit ARM or x86 builds. The app is not brand-locked; core features work without root. Root and LSPosed unlock more system access and assistant integration, depending on permission and ROM support.
 
 [Download APK](https://github.com/Sam-Fic/EtaExpressive/releases/latest) · [Getting started](#getting-started)
 
@@ -111,7 +111,7 @@ System tools, sensitive reads, sensitive actions, terminal and file access, brow
 2. Enable the tools and permissions you need. GUI control requires EtaExpressive's accessibility service. Notification access and usage access are granted separately; location tools require **Allow all the time**. The tools page shows what is available on your device.
 3. Start a conversation. For Linux, install a distribution, base tools, and any development tools you need under **Linux tool environment**. For assistant integration, see [System assistant entry points](#system-assistant-entry-points).
 
-- **Unrooted devices:** Android 14+ supports chat, browsing, memory, Skills, MCP, the ordinary terminal, and a private workspace. GUI control and personal data access need their respective permissions. Linux is available on supported 64-bit devices.
+- **Unrooted devices:** Android 14+ on ARM64 supports chat, browsing, memory, Skills, MCP, the ordinary terminal, and a private workspace. GUI control and personal data access need their respective permissions. Linux is available on supported 64-bit devices.
 - **Rooted devices:** gain access to protected system settings, app management, privileged files, dedicated personal-data searches, root shells, and chroot.
 - **LSPosed with a compatible ROM:** adds OEM assistant integration, system shortcuts, and Google feature enablement. Some features also require root.
 

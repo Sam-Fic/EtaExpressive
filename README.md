@@ -18,7 +18,7 @@ EtaExpressive 不只是聊天框。把你自己的模型接到手机上：它可
 - **本机数据**：通知、相册、日历、短信等；部分来源需要 Root，以及对应 ROM 与应用。
 - **系统入口**：有 LSPosed 时，可接管电源键、小布和超级小爱，从原来的助手入口把任务交给 EtaExpressive。
 
-支持 **Android 14 及以上**。App 本体不限品牌，基础功能不用 Root。Root 和 LSPosed 能再打开系统访问与助手入口，具体取决于授权和 ROM。
+支持 **Android 14 及以上的 ARM64（arm64-v8a）设备**。APK 只打包 ARM64 原生库，不提供 32 位 ARM 与 x86 构建。App 本体不限品牌，基础功能不用 Root。Root 和 LSPosed 能再打开系统访问与助手入口，具体取决于授权和 ROM。
 
 [下载 APK](https://github.com/Sam-Fic/EtaExpressive/releases/latest) · [快速开始](#快速开始)
 
@@ -113,7 +113,7 @@ Provider 层支持 OpenAI-compatible Chat Completions、Responses API 和 Anthro
 2. 按任务需要配置工具开关与权限：GUI Agent 需要无障碍服务；通知、应用使用情况分别授权；位置工具需要“始终允许”。工具页可查看当前设备的可用能力。
 3. 开始对话。需要 Linux 时，在“Linux 工具环境”中安装发行版、基础工具及所需开发工具；需要系统入口时，参见[系统助手入口](#系统助手入口)。
 
-- **普通设备**：Android 14+，可使用聊天、浏览器、记忆、Skills、MCP、普通终端与私有工作区；GUI 和本机信息读取按需授权。Linux 支持对应的 64 位设备。
+- **普通设备**：Android 14+ 的 ARM64 机型，可使用聊天、浏览器、记忆、Skills、MCP、普通终端与私有工作区；GUI 和本机信息读取按需授权。Linux 支持对应的 64 位设备。
 - **Root 设备**：进一步开放系统设置修改、应用管理、受保护文件与专用个人数据检索，以及 Root Shell 和 chroot。
 - **LSPosed 与适配 ROM**：开放厂商助手接管、系统快捷入口及 Google 能力增强；部分功能另需 Root。
 

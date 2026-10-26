@@ -50,6 +50,11 @@ android {
         versionName = "5.3.15"
         val diagnosticSha = System.getenv("GITHUB_SHA")?.takeIf { it.matches(Regex("[0-9a-fA-F]{40}")) } ?: "unknown"
         buildConfigField("String", "GIT_SHA", "\"$diagnosticSha\"")
+
+        ndk {
+            // 同时过滤本地与依赖 AAR 的原生库，确保 APK 仅包含 ARM64。
+            abiFilters += "arm64-v8a"
+        }
     }
 
     signingConfigs {
@@ -99,6 +104,10 @@ android {
     }
 
     packaging {
+        dex {
+            // DEX 压缩后入包，安装时释放；classes.dex 不压缩直接占一成体积。
+            useLegacyPackaging = true
+        }
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols += setOf("**/libproot_exec.so", "**/libproot_loader.so", "**/libeta_pty.so")

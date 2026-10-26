@@ -6,9 +6,14 @@ import os
 from pathlib import Path
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.request
 
-ABIS = ('arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86')
+# APK 只打包 ARM64（与 app/build.gradle.kts 的 ndk.abiFilters 一致），
+# 因此只从归档抽取 arm64-v8a。归档整包读取不变——SHA-256 校验要求完整字节，
+# 收窄的是落盘产物：其余三个 ABI 不再进入构建输入，避免它们被带进 APK。
+ABIS = ('arm64-v8a',)
 
 # Two engines coexist so the user can pick a model without a rebuild:
 # sherpa-ncnn   -> ncnn/pnnx Streaming Zipformer transducer (2023 bilingual pack);
@@ -33,6 +38,10 @@ RUNTIMES = (
 # A single ABI's JNI library is far below this; guards a corrupted member header.
 MAX_LIBRARY_BYTES = 64 * 1024 * 1024
 
+# 归档最大 44 MB，release 资产域名偶发断连；整包重试，不中断构建。
+DOWNLOAD_ATTEMPTS = 4
+RETRY_BACKOFF_SECONDS = (2, 5, 10)
+
 
 def find_member(archive, abi, name):
     """Match by path suffix; the archive root prefix is not part of the contract."""
@@ -46,12 +55,28 @@ def find_member(archive, abi, name):
     return matches[0]
 
 
-def prepare(output):
-    for url, sha256, size, libraries in RUNTIMES:
-        with urllib.request.urlopen(url, timeout=120) as response:
-            data = response.read(size + 1)
+def download(url, size):
+    """Return the pinned archive bytes, retrying transient transport failures."""
+    last_error = None
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response:
+                data = response.read(size + 1)
+        except (OSError, urllib.error.URLError) as error:
+            last_error = error
+            if attempt > DOWNLOAD_ATTEMPTS - 1:
+                break
+            time.sleep(RETRY_BACKOFF_SECONDS[min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)])
+            continue
         if len(data) != size:
             raise RuntimeError('Speech runtime size mismatch')
+        return data
+    raise RuntimeError(f'Speech runtime download failed after {DOWNLOAD_ATTEMPTS} attempts: {last_error}')
+
+
+def prepare(output):
+    for url, sha256, size, libraries in RUNTIMES:
+        data = download(url, size)
         if hashlib.sha256(data).hexdigest() != sha256:
             raise RuntimeError('Speech runtime SHA-256 mismatch')
         with tarfile.open(fileobj=io.BytesIO(data), mode='r:bz2') as archive:
