@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -37,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -420,6 +422,9 @@ private fun SubAgentConversationSection(
                         EtaSegmentedItemContainer {
                             val autoDelegation = panelConfig?.enabled == true
                             ListItem(
+                                // ListItem 默认底色是 surface（深色主题下几乎纯黑），
+                                // 会盖掉外层卡片容器的 surfaceBright；这里统一交给容器绘制。
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 leadingContent = { Icon(Icons.Rounded.Hub, contentDescription = null) },
                                 supportingContent = { Text(stringResource(R.string.sas_auto_delegation_desc)) },
                                 trailingContent = {
