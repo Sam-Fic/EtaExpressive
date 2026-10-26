@@ -6,13 +6,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Assignment
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.CallSplit
+import androidx.compose.material.icons.automirrored.rounded.FactCheck
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -37,12 +37,16 @@ import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.data.model.supportsGptSpeedBinding
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.TtsModelPickerDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaPageSurface
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedScope
+import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import kotlinx.coroutines.CancellationException
@@ -151,70 +155,16 @@ private class SubAgentResolvedDraftBinding(val providerId: String, val modelId: 
 private val ProfileDialogGroupSpacing = 13.dp
 
 /**
- * 草稿表单的分段设置行：标题为正文（content），取值为次要行（supportingContent），
- * 尾部前缀箭头。与兄弟页面的 [EtaSegmentedRow] 形态保持一致，行内不再自绘字段描边，
- * 因此窄屏下取值也不会被标题挤成逐字折行。
+ * 分段卡片条目。
  *
- * 轻触反馈由 [EtaSegmentedRow] 自己触发，调用方**不要**在 onClick 里再写 TouchHaptics。
+ * 本页是 [EtaPageSurface] 的整屏弹窗，比分段行所在的普通页面多一层窗口：分段行自带的容器色
+ * 在这里不会绘制出来，行会直接贴在页面上（预设组详情页不套弹窗，所以那边有卡片底板）。
+ * 与工具配方编辑页同样的做法，显式套一层 [EtaSegmentedItemContainer]，由容器负责
+ * `surfaceBright` 底板与首末外圆角，行本身转为透明，两处外观由此一致。
  */
-@Composable
-private fun SubAgentDraftSettingRow(
-    label: String,
-    value: String,
-    icon: ImageVector,
-    description: String,
-    enabled: Boolean = true,
-    badge: String? = null,
-    onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
-) {
-    EtaSegmentedRow(
-        modifier = Modifier.fillMaxWidth().semantics { contentDescription = description },
-        onClick = onClick,
-        onLongClick = onLongClick,
-        enabled = enabled,
-        leadingContent = {
-            // 不写死 tint：禁用时交给分段行提供的 M3 内容色统一变暗。
-            Icon(icon, contentDescription = null)
-        },
-        supportingContent = {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        trailingContent = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (!badge.isNullOrBlank()) {
-                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
-                        Text(
-                            text = badge,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                )
-            }
-        },
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+private fun EtaSegmentedScope.cardItem(key: Any?, content: @Composable () -> Unit) {
+    item(key = key) {
+        EtaSegmentedItemContainer(modifier = Modifier.fillMaxWidth()) { content() }
     }
 }
 
@@ -242,6 +192,10 @@ internal fun SubAgentProfileConfigDialog(
     val draft = session.draft
     val usable = session.canCommit(currentEditor, enabled) && !session.submitting
     var modelPicker by remember(session) { mutableStateOf(false) }
+    // 与预设组详情页同款：并行上限是「取值行 + 箭头 → 编辑弹窗」，不再在卡片里内联输入。
+    var parallelEditor by remember(session) { mutableStateOf(false) }
+    // 名称同样只在标题行展示，改名走与预设组详情页一致的重命名弹窗。
+    var nameEditor by remember(session) { mutableStateOf(false) }
     // 模型面板与草稿共用一套投影：只列出该角色可接受的模态模型，供应商分组保持原顺序。
     val modelPickerState = remember(providers, draft.providerId, draft.modelId, draft.role) {
         AgentModelPickerProjector.project(providers, draft.providerId, draft.modelId).let { projected ->
@@ -264,7 +218,7 @@ internal fun SubAgentProfileConfigDialog(
         // Do not discard a manual/pending pool edit during a transient lookup of the same binding.
         if (!resolutionPending) session.bindParallel(boundConfig)
     }
-    LaunchedEffect(usable) { if (!usable) modelPicker = false }
+    LaunchedEffect(usable) { if (!usable) { modelPicker = false; parallelEditor = false; nameEditor = false } }
     // Require the resolved role-compatible binding AND the selected record's actual GPT capability.
     // The preference key is the selection ID, never boundConfig.model (an API alias).
     val speedProvider = providers.singleOrNull { it.id == draft.providerId && it.isEnabled }
@@ -288,7 +242,6 @@ internal fun SubAgentProfileConfigDialog(
     val ready = usable && !resolutionPending && session.parallelBoundTo(boundConfig) &&
         session.name.trim().isNotBlank() && session.parallelIsValid() &&
         (session.expectedProfile != null || boundConfig != null)
-    val nameHint = stringResource(R.string.sap_name)
     val dismiss = { session.dismiss(); latestDismiss() }
     // Back/outside taps cannot abandon an in-flight commit. Saved/owner invalidation still close.
     val userDismiss = { if (!session.submitting) dismiss() }
@@ -352,35 +305,62 @@ internal fun SubAgentProfileConfigDialog(
                             .padding(horizontal = 16.dp)
                             .padding(bottom = 16.dp),
                     ) {
-                        EtaFormTextField(session.name, { if (usable) session.name = it.take(80) }, hint = nameHint,
-                            singleLine = true, enabled = usable,
-                            modifier = Modifier.fillMaxWidth().padding(bottom = ProfileDialogGroupSpacing))
-                        // 分段列表：启用开关与各设置行同处一组，首末项自动获得外圆角、行间留缝。
+                        // 分段列表：名称、启用开关与各设置行同处一组，首末项自动获得外圆角、行间留缝。
+                        // 名称与并行上限不再单独摆描边输入框，避免同一页混用「卡片行」与「表单字段」两种形态。
                         EtaSegmentedColumn(
                             modifier = Modifier.fillMaxWidth().padding(bottom = ProfileDialogGroupSpacing),
                         ) {
-                            item(key = "enable") {
-                                // 官方 Switch 只呈现状态，整行切换由分段行的点击承载。
+                            // 与预设组详情页的标题行逐像素同款：同一套 EtaSegmentedRow（choiceRow）
+                            // + 只读名称正文 + 行尾 Expressive 开关；改名为点击整行打开重命名弹窗。
+                            cardItem(key = "header") {
                                 EtaSegmentedRow(
-                                    choiceRow = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     enabled = usable,
-                                    onClick = { session.edit { it.copy(enabled = !draft.enabled) } },
-                                    trailingContent = { Switch(checked = draft.enabled, enabled = usable, onCheckedChange = null) },
+                                    choiceRow = true,
+                                    onClick = { if (usable) nameEditor = true },
+                                    leadingContent = {
+                                        // 不显式 tint：让官方行内容色在禁用态把图标一并压暗。
+                                        Icon(
+                                            imageVector = when (draft.role) {
+                                                "review" -> Icons.AutoMirrored.Rounded.FactCheck
+                                                "image_generation" -> Icons.Rounded.Image
+                                                "video_generation" -> Icons.Rounded.Videocam
+                                                else -> Icons.Rounded.AccountTree
+                                            },
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    trailingContent = {
+                                        EtaSwitch(
+                                            checked = draft.enabled,
+                                            enabled = usable,
+                                            modifier = Modifier.semantics {
+                                                contentDescription = context.getString(R.string.sas_enable_for, session.name)
+                                            },
+                                            onCheckedChange = { active ->
+                                                session.edit { it.copy(enabled = active) }
+                                            },
+                                        )
+                                    },
                                 ) {
-                                    Text(stringResource(R.string.sap_enable))
+                                    Text(
+                                        text = session.name.ifBlank { stringResource(R.string.sap_name) },
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 }
                             }
-                            item(key = "model") {
-                                SubAgentDraftSettingRow(stringResource(R.string.sap_model),
+                            cardItem(key = "model") {
+                                SubAgentSettingsRow(stringResource(R.string.sap_model),
                                     boundConfig?.let { it.modelDisplayName.ifBlank { it.model } }
                                         ?: if (draft.modelId.isBlank()) stringResource(R.string.sap_select_model) else stringResource(R.string.sap_model_unavailable),
                                     Icons.Rounded.ViewInAr, stringResource(R.string.sap_draft_model), usable,
                                     badge = boundConfig?.providerName,
                                     onClick = { if (usable) modelPicker = true })
                             }
-                            if (canEditSpeed) item(key = "speed") {
-                                SubAgentDraftSettingRow(stringResource(R.string.sap_gpt_speed), gptSpeedDisplayName(draft.gptSpeedForModel()),
+                            if (canEditSpeed) cardItem(key = "speed") {
+                                SubAgentSettingsRow(stringResource(R.string.sap_gpt_speed), gptSpeedDisplayName(draft.gptSpeedForModel()),
                                     Icons.Rounded.Speed, stringResource(R.string.sap_draft_gpt_speed), usable, onClick = {
                                         session.edit { profile ->
                                             if (profile.providerId != draft.providerId || profile.modelId != draft.modelId || profile.role != draft.role) profile
@@ -389,7 +369,7 @@ internal fun SubAgentProfileConfigDialog(
                                         }
                                     })
                             }
-                            item(key = "role") {
+                            cardItem(key = "role") {
                                 // 与上下文压缩页「请求接口」行同款：原位弹出锚定菜单，点选即写入草稿。
                                 val roles = listOf(
                                     "implementation" to stringResource(R.string.sap_role_impl),
@@ -413,7 +393,7 @@ internal fun SubAgentProfileConfigDialog(
                                     description = stringResource(R.string.sap_draft_role),
                                 )
                             }
-                            if (draft.supportsTaskTier) item(key = "tier") {
+                            if (draft.supportsTaskTier) cardItem(key = "tier") {
                                 val tiers = listOf<SubAgentTaskTier?>(null) + SubAgentTaskTier.entries
                                 EtaSegmentedDropdownRow(
                                     title = stringResource(R.string.sap_task_tier),
@@ -435,7 +415,7 @@ internal fun SubAgentProfileConfigDialog(
                                     description = stringResource(R.string.sap_draft_tier),
                                 )
                             }
-                            if (draft.role == "image_generation") item(key = "resolution") {
+                            if (draft.role == "image_generation") cardItem(key = "resolution") {
                                 // 与职责/任务分工同款：原位弹出锚定菜单；Grok 端点只留低/高，但当前值始终保留以免取值显示错位。
                                 val tierValues = (listOf<String?>(null) + ImageResolutionTier.values.filter {
                                     !verifiedGrok || it in setOf("low", "high") || it == draft.imageResolution
@@ -462,7 +442,7 @@ internal fun SubAgentProfileConfigDialog(
                                     description = stringResource(R.string.sap_draft_resolution),
                                 )
                             }
-                            item(key = "thinking") {
+                            cardItem(key = "thinking") {
                                 // 当前值不在可选档位里（无模型/端点不支持/未启用/需重选）时用行上状态文本占位，
                                 // 占位项不可写入，语义与原二级选择页的提示保持一致。
                                 val matchedIndex = if (canThink) efforts.indexOf(effective) else -1
@@ -484,15 +464,23 @@ internal fun SubAgentProfileConfigDialog(
                                     description = stringResource(R.string.sap_draft_thinking),
                                 )
                             }
+                            // 与预设组详情页同款：行内只呈现生效值，点开二级弹窗再输入数字。
+                            cardItem(key = "parallel") {
+                                SubAgentSettingsRow(
+                                    label = stringResource(R.string.sap_parallel_label),
+                                    value = when {
+                                        boundConfig == null && draft.modelId.isBlank() -> stringResource(R.string.sap_parallel_no_model)
+                                        boundConfig == null -> stringResource(R.string.sap_model_unavailable)
+                                        session.parallelValue.trim() == "0" -> stringResource(R.string.sap_parallel_unlimited)
+                                        else -> session.parallelValue.ifBlank { "-" }
+                                    },
+                                    icon = Icons.AutoMirrored.Rounded.CallSplit,
+                                    description = stringResource(R.string.sap_parallel_set_for, session.name),
+                                    enabled = usable && boundConfig != null,
+                                    onClick = { parallelEditor = true },
+                                )
+                            }
                         }
-                        EtaFormTextField(session.parallelValue, { if (usable) session.editParallel(it) },
-                            hint = stringResource(R.string.sap_parallel_hint), singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            enabled = usable && boundConfig != null, modifier = Modifier.fillMaxWidth())
-                        if (!session.parallelIsValid()) Text(stringResource(R.string.sap_parallel_invalid), color = MaterialTheme.colorScheme.error)
-                        Text(stringResource(R.string.sap_parallel_note),
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp))
                         session.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
                         val editorState = session.editor.state
                         if (editorState is SubAgentEditorState.Error) {
@@ -522,6 +510,64 @@ internal fun SubAgentProfileConfigDialog(
                     }
                 },
             )
+            // 重命名弹窗：与预设组详情页的改名入口同一个组件，写入的仍是本页草稿。
+            if (nameEditor && usable) {
+                var editName by remember { mutableStateOf(session.name) }
+                SubAgentPresetNameDialog(
+                    title = stringResource(R.string.sas_rename_agent),
+                    name = editName,
+                    onNameChange = { if (usable) editName = it },
+                    saveEnabled = editName.trim().isNotBlank(),
+                    onDismiss = { nameEditor = false },
+                    onSave = {
+                        if (usable && editName.trim().isNotBlank()) {
+                            session.name = editName.trim()
+                            nameEditor = false
+                        }
+                    },
+                    fieldHint = stringResource(R.string.sap_name),
+                )
+            }
+            // 并行上限二级弹窗：与预设组详情页 SubAgentParallelLimitContent 同款布局与文案，
+            // 区别仅在提交时机——这里改的是草稿，随本页「确认」一并写入。
+            if (parallelEditor && usable && boundConfig != null) {
+                var editValue by remember { mutableStateOf(session.parallelValue) }
+                val number = editValue.trim().toIntOrNull()?.takeIf { it >= 0 }
+                EtaDialog(
+                    show = true,
+                    title = stringResource(R.string.sap_parallel_dialog_title,
+                        session.name.trim().ifBlank { pageTitle }),
+                    onDismissRequest = { parallelEditor = false },
+                    actions = {
+                        EtaDialogActions(
+                            confirmText = stringResource(R.string.action_save),
+                            cancelText = stringResource(R.string.action_cancel),
+                            confirmEnabled = number != null,
+                            onCancel = { parallelEditor = false },
+                            onConfirm = {
+                                if (number != null) {
+                                    session.editParallel(editValue)
+                                    parallelEditor = false
+                                }
+                            },
+                        )
+                    },
+                ) {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("${boundConfig.providerName} · ${boundConfig.modelDisplayName.ifBlank { boundConfig.model }}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        EtaFormTextField(editValue, { if (usable) editValue = it },
+                            hint = stringResource(R.string.sap_parallel_input_hint), singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = usable, modifier = Modifier.fillMaxWidth())
+                        if (number == null) Text(stringResource(R.string.sap_parallel_invalid), color = MaterialTheme.colorScheme.error)
+                        Text(stringResource(R.string.sap_parallel_shared_note),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
     }
 }
