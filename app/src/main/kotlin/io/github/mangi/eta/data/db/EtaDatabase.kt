@@ -29,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AgentScheduleEntity::class,
         AgentAlarmEntity::class,
     ],
-    version = 36,
+    version = 37,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -84,6 +84,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_33_34,
                         MIGRATION_34_35,
                         MIGRATION_35_36,
+                        MIGRATION_36_37,
                     )
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
@@ -276,7 +277,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
         }
 
         // Agent 日程与闹钟：仅新建 agent_schedules / agent_alarms 两表，不动既有数据。
-        internal val MIGRATION_35_36 = Migration(35, 36) { database ->
+        internal val MIGRATION_36_37 = Migration(36, 37) { database ->
             database.execSQL(
                 "CREATE TABLE IF NOT EXISTS agent_schedules (" +
                     "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +

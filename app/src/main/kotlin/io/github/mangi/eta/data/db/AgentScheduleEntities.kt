@@ -3,6 +3,7 @@ package io.github.mangi.eta.data.db
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -14,7 +15,11 @@ import kotlinx.coroutines.flow.Flow
  * 读写，到点触发走 AgentScheduleAlertReceiver，重启后由 AgentScheduleBootReceiver 重排。
  * 两个表都由工具全权管理，不与系统日历 / OEM 时钟混用，避免双数据源。
  */
-@Entity(tableName = "agent_schedules")
+@Entity(
+    tableName = "agent_schedules",
+    // 与 MIGRATION_36_37 建的索引一致；Room 会严格校验索引集合，两边必须同步。
+    indices = [Index(value = ["start_at"])],
+)
 internal data class AgentScheduleEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
