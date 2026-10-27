@@ -495,6 +495,17 @@ internal fun SettingsScreen(
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
+                        title = stringResource(R.string.settings_screen_tools),
+                        summary = stringResource(R.string.settings_screen_tools_summary),
+                        key = Prefs.Keys.AGENT_SCREEN_TOOLS,
+                        icon = Icons.Rounded.TouchApp,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
                         title = stringResource(R.string.ui_enable_web_browsing_tools_8b6b03),
                         key = Prefs.Keys.AGENT_BROWSER_TOOLS,
                         icon = Icons.Rounded.Language,

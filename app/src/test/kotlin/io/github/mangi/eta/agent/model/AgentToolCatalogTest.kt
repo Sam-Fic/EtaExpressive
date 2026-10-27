@@ -208,6 +208,35 @@ class AgentToolCatalogTest {
         )
     }
 
+
+    @Test
+    fun screenSwitchRemovesEveryGuiToolButKeepsNonGuiTools() {
+        val capabilities = io.github.mangi.eta.agent.tool.AgentToolCapabilities(
+            rootAvailable = true,
+            virtualDisplay = true,
+        )
+        val on = AgentToolCatalog.build(
+            terminalTools = false,
+            browserTools = false,
+            screenTools = true,
+            capabilities = capabilities,
+        ).toolNames().toSet()
+        val offTools = AgentToolCatalog.build(
+            terminalTools = false,
+            browserTools = false,
+            screenTools = false,
+            capabilities = capabilities,
+        )
+        val off = offTools.toolNames().toSet()
+
+        val gui = io.github.mangi.eta.agent.tool.AgentToolRequirements.SCREEN_TOOL_NAMES
+        assertTrue("screen-on must advertise the GUI family", on.containsAll(gui))
+        val leaked = gui.filter { it in off }
+        assertTrue("screen-off must drop the whole GUI family, leaked=$leaked", leaked.isEmpty())
+        assertTrue("non-GUI core tools must survive", off.containsAll(setOf("ask_user", "get_current_context", "launch_app")))
+        assertTrue(offTools.toolNames().size == off.size)
+    }
+
     private fun JSONArray.toolNames(): List<String> =
         (0 until length()).map { index ->
             getJSONObject(index).getJSONObject("function").getString("name")

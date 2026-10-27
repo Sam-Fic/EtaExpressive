@@ -90,6 +90,8 @@ internal class AgentRuntimeRunExecutor(
             assistantTools, AssistantToolSwitches.PERSONAL_DATA, request.config.deviceSensitiveReadTools)
         val allowSensitiveAction = AssistantToolSwitches.allows(
             assistantTools, AssistantToolSwitches.DEVICE_ACTIONS, request.config.deviceSensitiveActionTools)
+        val allowScreen = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.SCREEN, request.config.screenTools)
         // Parent-only prompt policy, frozen for this run rather than re-read between rounds.
         val interactiveModeEnabled = InteractiveModePreference.read()
         var response: AgentModelClient.ModelResponse.Text? = null
@@ -171,6 +173,7 @@ internal class AgentRuntimeRunExecutor(
                     )
                 },
                 browserToolsEnabled = { allowBrowser && currentPermissions().browserTools },
+                screenToolsEnabled = { allowScreen && currentPermissions().screenTools },
                 terminalToolsEnabled = { allowTerminal && currentPermissions().terminalTools },
                 deviceDirectToolsEnabled = { allowDirect && currentPermissions().deviceDirectTools },
                 deviceSensitiveReadToolsEnabled = { allowSensitiveRead && currentPermissions().deviceSensitiveReadTools },
@@ -255,6 +258,7 @@ internal class AgentRuntimeRunExecutor(
                             val readTools = SubAgentTools.filter(AgentToolCatalog.build(
                                 terminalTools = allowTerminal && currentPermissions().terminalTools,
                                 browserTools = false, // Installed separately with a task-owned executor.
+                                screenTools = false, // Children never get Android GUI tools.
                                 deviceDirectTools = allowDirect && currentPermissions().deviceDirectTools,
                                 deviceSensitiveReadTools = allowSensitiveRead && currentPermissions().deviceSensitiveReadTools,
                                 memoryTools = memoryEnabled,
@@ -411,7 +415,8 @@ internal class AgentRuntimeRunExecutor(
                 AgentChildWorkerAvailability.appendToPrompt(request.prompt, childDispatchPlan), childSessionId)
             runController.throwIfCancelled()
             val completedResponse = AgentModelClient.complete(
-                config = request.config, sessionId = request.effectiveModelSessionId,
+                config = request.config.copy(screenTools = allowScreen && request.config.screenTools),
+                sessionId = request.effectiveModelSessionId,
                 capabilitiesProvider = { AgentToolCapabilities.captureForRound(appContext).copy(virtualDisplay = runVirtualDisplay()) },
                 // 延迟工具域：tools_use_group 成功后由执行器累积，下一轮重建目录时生效。
                 openedToolGroupsProvider = { executor.openedToolGroups() },

@@ -8,18 +8,17 @@ internal object AgentBrowserToolCatalog {
         tools.put(
             AgentToolSchema.function(
                 name = "browser_use",
-                description = "Operate Eta's offscreen multi-tab browser (max 3 tabs per session, numbered 0-2, " +
-                    "never borrowing pages from other sessions); never switches to an external browser. " +
-                    "One call = one action. Tab management: new_tab, close_tab, list_tabs. " +
-                    "tab_id selects a tab (default: current). navigate accepts a full URL, domain, " +
-                    "search phrase, /workspace, /var/minis or minis://. Identities: desktop_chrome, mobile_chrome. " +
-                    "get_cookies returns only a summary plus /var/minis/offloads/env_cookies_xxx.sh; " +
-                    "plaintext never enters the conversation. Typical flow: navigate, then get_readable for " +
-                    "Markdown, or find_elements / get_backbone for structure. Selectors follow the current DOM: " +
-                    "a search box may be textarea or contenteditable, not necessarily input. If scroll_and_collect " +
-                    "returns 0, check structure and keyword filter before concluding the page is empty. " +
-                    "go_back/go_forward step the history index one entry at a time. Use open_uri to hand a URI " +
-                    "to an external app.",
+                description = "Operate Eta's offscreen multi-tab browser (max 3 tabs per session, ids 0-2; " +
+                    "never borrows pages from other sessions) without switching to an external browser. " +
+                    "One call = one action. Manage tabs with new_tab/close_tab/list_tabs; tab_id defaults " +
+                    "to the current tab. navigate accepts a URL, domain, search phrase, /workspace, " +
+                    "/var/minis or minis://. Identities: desktop_chrome, mobile_chrome. get_cookies returns " +
+                    "only a summary plus /var/minis/offloads/env_cookies_xxx.sh; plaintext never enters the " +
+                    "conversation. Typical flow: navigate, then get_readable for Markdown or find_elements/" +
+                    "get_backbone for structure. Selectors follow the current DOM (a search box may be " +
+                    "textarea/contenteditable). If scroll_and_collect returns 0, check structure and filters " +
+                    "before concluding the page is empty. go_back/go_forward step history one entry at a time. " +
+                    "Use open_uri only to hand a URI to an external app.",
                 parameters = JSONObject()
                     .put("type", "object")
                     .put(

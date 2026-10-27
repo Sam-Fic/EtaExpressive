@@ -602,6 +602,7 @@
   <string name="tool_current_context">時間與位置</string>
   <string name="tool_memory_get">讀取記憶</string>
   <string name="tool_memory_write">整理記憶</string>
+  <string name="tool_set_alarm">設定鬧鐘</string>
   <string name="tool_alarm_manage">管理鬧鐘</string>
   <string name="agent_schedule_channel_reminder">日程提醒</string>
   <string name="agent_schedule_channel_reminder_desc">Agent 建立的日程到點提醒</string>
@@ -706,6 +707,8 @@
   <string name="settings_confirm_dangerous_tools_summary">在執行重啟、卸載應用、清除資料或刪除使用者前先詢問。唯讀工具不會被打斷。</string>
   <string name="settings_subagent_tools">子代理委派</string>
   <string name="settings_subagent_tools_summary">允許模型將獨立任務交給已配置的工作進程。每次委派運行在另一個模型上，並單獨計費。</string>
+  <string name="settings_screen_tools">螢幕觀察與 GUI 操作</string>
+  <string name="settings_screen_tools_summary">允許模型讀取介面節點並點擊、滑動、輸入與按鍵。關閉後不再下發任何無障礙介面工具。</string>
   <string name="settings_shell_tools">允許執行命令</string>
   <string name="settings_shell_tools_summary">允許模型執行 Shell 命令。關閉後將保留檔案讀寫，但會屏蔽 run_command 與終端。</string>
   <string name="settings_self_settings_tools">應用自身配置工具</string>
@@ -754,7 +757,7 @@
   <string name="state_deletion_is_not_complete_eta_will_try_to_recover_whe_c4297e">刪除未完成。Eta 會在重新整理 Skills 清單時嘗試恢復，請確認狀態後再重試。</string>
   <string name="state_background_running_permission_dde21b">背景執行權限</string>
   <string name="state_follow_up_ability_589688">後續能力</string>
-  <string name="state_screens_and_controls_3f095b">螢幕與控制</string>
+  <string name="state_screens_and_controls_3f095b">螢幕觀察與 GUI 操作</string>
   <string name="state_applications_and_systems_9624e6">應用與系統</string>
   <string name="state_application_list_reading_135f16">應用程式列表讀取</string>
   <string name="state_the_skill_list_is_temporarily_unavailable_please_try_29b0be">Skills 清單暫時不可用，請稍後重試。</string>
@@ -2937,4 +2940,8 @@
   <string name="media_reasoning_supported">端點顯式配置</string>
   <string name="media_reasoning_unsupported">當前介面未配適</string>
   <string name="media_reasoning_invalid">思考配置無效</string>
+  <string name="tool_ui_wait_for_the_given_number_of_milliseconds">等待指定毫秒數後繼續。</string>
+  <string name="tool_ui_wait_for_the_specified_app_to_come_to_the_foreground">等待指定應用程式進入前景。</string>
+  <string name="tool_ui_copy_text_to_the_system_clipboard">將文字寫入系統剪貼簿。</string>
+  <string name="tool_ui_read_the_current_system_clipboard">讀取系統剪貼簿的目前內容。</string>
 </resources>

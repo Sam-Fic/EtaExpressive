@@ -5,8 +5,8 @@ import org.json.JSONObject
 
 /** 上下文、应用入口与屏幕观察工具 schema。 */
 internal object AgentContextAppToolCatalog {
-    fun appendTo(tools: JSONArray) {
-        for ((name,description) in listOf(
+    fun appendTo(tools: JSONArray, screenTools: Boolean = true) {
+        if (screenTools) for ((name,description) in listOf(
             "start_virtual_session" to "Start the background virtual-display session for this run; repeated calls do not create another, and failure does not fall back to the main screen.",
             "finish_virtual_session" to "Hand the marked delivery tasks over to the main screen in the background. With no marked tasks it cleans up this run's intermediate tasks and closes the virtual display without delivering (handedOff=false, released=true). Always check handedOff and released; on failure do not kill processes and do not claim the delivery succeeded."
         )) tools.put(AgentToolSchema.function(name=name,description=description,parameters=JSONObject().put("type","object").put("properties",JSONObject())))
@@ -129,7 +129,15 @@ internal object AgentContextAppToolCatalog {
                         .put("required", JSONArray().put("uri"))
                 )
             )
-            .put(
+        // 虚拟显示只有 GUI 工具会用到；关闭屏幕开关时一并隐藏，避免留下必然无用的入口。
+        if (!screenTools) {
+            val virtual = setOf("inspect_virtual_backend", "keep_virtual_result")
+            for (index in tools.length() - 1 downTo 0) {
+                val name = tools.getJSONObject(index).optJSONObject("function")?.optString("name")
+                if (name in virtual) tools.remove(index)
+            }
+        }
+        if (screenTools) tools.put(
                 AgentToolSchema.function(
                     name = "observe_screen",
                     description = "Observe the current phone screen. By default it returns only the foreground app, screen size, observation_id and visible UI nodes, without a screenshot. Set include_screenshot=true explicitly when nodes are empty, when the target cannot be uniquely identified, when the UI is mostly visual content such as Canvas/maps/images/QR codes, or when the task depends on colour, imagery or spatial layout; when adding a screenshot keep include_ui_tree=true so the same new observation refreshes both nodes and observation_id, and never mix a new screenshot with old nodes. Node actions must carry the observation_id of that same observation. When the tree is truncated but node semantics are still usable, raise max_nodes to 120 and retry instead of requesting a screenshot just because of truncation.",
@@ -163,6 +171,6 @@ internal object AgentContextAppToolCatalog {
                                 )
                         )
                 )
-            )
+        )
     }
 }

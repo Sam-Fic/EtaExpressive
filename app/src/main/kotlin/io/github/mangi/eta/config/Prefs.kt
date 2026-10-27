@@ -51,6 +51,13 @@ internal object Prefs {
          */
         const val AGENT_SHELL_TOOLS = "agent_shell_tools"
         const val AGENT_BROWSER_TOOLS = "agent_browser_tools"
+
+        /**
+         * 屏幕观察与 GUI 操作总开关：observe_screen、点击/长按/滑动/滚动、文本输入、
+         * wait 系列、press_key 与系统面板。关闭后这些工具既不声明也不执行，提示词同步移除
+         * GUI 指引，避免为不存在的工具付固定 token。
+         */
+        const val AGENT_SCREEN_TOOLS = "agent_screen_tools"
         const val AGENT_DEVICE_DIRECT_TOOLS = "agent_device_direct_tools"
         const val AGENT_DEVICE_SENSITIVE_READ_TOOLS = "agent_device_sensitive_read_tools"
 
@@ -136,6 +143,7 @@ internal object Prefs {
             AGENT_TERMINAL_TOOLS to true,
             AGENT_SHELL_TOOLS to true,
             AGENT_BROWSER_TOOLS to true,
+            AGENT_SCREEN_TOOLS to true,
             AGENT_DEVICE_DIRECT_TOOLS to true,
             AGENT_DEVICE_SENSITIVE_READ_TOOLS to true,
             AGENT_PERSONAL_DATA_READ_TOOLS to true,
@@ -167,6 +175,7 @@ internal object Prefs {
             AGENT_TERMINAL_TOOLS,
             AGENT_SHELL_TOOLS,
             AGENT_BROWSER_TOOLS,
+            AGENT_SCREEN_TOOLS,
             AGENT_DEVICE_DIRECT_TOOLS,
             AGENT_DEVICE_SENSITIVE_READ_TOOLS,
             AGENT_PERSONAL_DATA_READ_TOOLS,

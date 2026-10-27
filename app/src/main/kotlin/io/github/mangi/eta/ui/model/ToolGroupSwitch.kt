@@ -16,6 +16,7 @@ internal object ToolGroupSwitch {
     /** 分组 id → 开关。返回 null 表示该组没有单一开关可用。 */
     fun keyFor(groupId: String): String? = when (groupId) {
         "web" -> Prefs.Keys.AGENT_BROWSER_TOOLS
+        "screen" -> Prefs.Keys.AGENT_SCREEN_TOOLS
         "device_direct" -> Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS
         "device_sensitive" -> Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS
         "personal_data" -> Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS

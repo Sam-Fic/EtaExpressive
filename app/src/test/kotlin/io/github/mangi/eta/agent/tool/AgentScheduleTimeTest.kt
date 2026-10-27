@@ -46,12 +46,12 @@ class AgentScheduleTimeTest {
 
     @Test
     fun computesNextTriggerForOnceAndRepeatAlarms() {
-        // 现在=2026-10-22（周四）02:00
+        // 现在=2026-10-22（周四）02:00；单次触发取「下一个」该时刻。
         val now = atMillis(2026, 10, 22, 2, 0)
-        // 07:30 单次：今天已过点 → 明天同时刻
-        assertEquals(atMillis(2026, 10, 23, 7, 30), AgentScheduleTime.nextTriggerAt(7, 30, emptySet(), now))
-        // 01:00 单次：今天未到 → 今天
-        assertEquals(atMillis(2026, 10, 22, 1, 0), AgentScheduleTime.nextTriggerAt(1, 0, emptySet(), now))
+        // 07:30 单次：今天尚未到点 → 今天
+        assertEquals(atMillis(2026, 10, 22, 7, 30), AgentScheduleTime.nextTriggerAt(7, 30, emptySet(), now))
+        // 01:00 单次：今天已过点 → 明天
+        assertEquals(atMillis(2026, 10, 23, 1, 0), AgentScheduleTime.nextTriggerAt(1, 0, emptySet(), now))
         // 周一三五重复（1,3,5）：周四之后最近的周五是 10-23
         assertEquals(atMillis(2026, 10, 23, 8, 0), AgentScheduleTime.nextTriggerAt(8, 0, setOf(1, 3, 5), now))
         // 每天重复：今天 02:00 整点已过分钟 → 明天 02:00

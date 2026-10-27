@@ -52,6 +52,31 @@ class AgentPromptBuilderTest {
         }
     }
 
+
+    @Test
+    fun screenSwitchDropsGuiInstructionsAndKeepsCoreGuidance() {
+        val config = modelConfig("", terminalTools = false, browserTools = false)
+        val on = AgentPromptBuilder.buildSystemMessages(
+            config = config.copy(screenTools = true),
+            skillContext = SkillContext.EMPTY,
+            memoryContext = AgentMemoryContext.DISABLED,
+            rootAvailable = false,
+        ).systemContents()
+        val off = AgentPromptBuilder.buildSystemMessages(
+            config = config.copy(screenTools = false),
+            skillContext = SkillContext.EMPTY,
+            memoryContext = AgentMemoryContext.DISABLED,
+            rootAvailable = false,
+        ).systemContents()
+
+        assertTrue(on.any { it.contains("需要看屏幕时") })
+        assertFalse(off.any { it.contains("需要看屏幕时") })
+        assertFalse(off.any { it.contains("observe_screen") })
+        assertTrue(off.any { it.contains("用户询问你的身份时") })
+        assertTrue(off.any { it.contains("get_current_context") })
+        assertTrue(off.sumOf { it.length } < on.sumOf { it.length })
+    }
+
     @Test
     fun messagesKeepSystemHistoryAndCurrentImageInputInStableOrder() {
         val image = AgentModelClient.ModelImage(

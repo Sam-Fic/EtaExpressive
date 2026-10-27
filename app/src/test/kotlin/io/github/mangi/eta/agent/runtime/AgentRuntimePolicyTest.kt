@@ -34,6 +34,7 @@ class AgentRuntimePolicyTest {
             AgentRuntimePolicy.Permissions(
                 terminalTools = false,
                 browserTools = false,
+                screenTools = false,
                 thinking = false,
             ),
             AgentRuntimePolicy.permissions(null),
@@ -48,6 +49,7 @@ class AgentRuntimePolicyTest {
             AgentRuntimePolicy.Permissions(
                 terminalTools = true,
                 browserTools = true,
+                screenTools = true,
                 deviceDirectTools = true,
                 deviceSensitiveReadTools = true,
                 deviceSensitiveActionTools = true,
@@ -65,6 +67,7 @@ class AgentRuntimePolicyTest {
             AgentRuntimePolicy.Permissions(
                 terminalTools = false,
                 browserTools = false,
+                screenTools = false,
                 thinking = false,
             ),
             AgentRuntimePolicy.permissions(preferences),

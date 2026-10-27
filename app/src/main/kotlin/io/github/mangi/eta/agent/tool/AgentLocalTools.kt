@@ -87,6 +87,9 @@ internal class AgentLocalTools(
     private val browserToolsEnabled: () -> Boolean = {
         Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS)
     },
+    private val screenToolsEnabled: () -> Boolean = {
+        Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS)
+    },
     private val terminalToolsEnabled: () -> Boolean = {
         Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS)
     },
@@ -503,6 +506,7 @@ internal class AgentLocalTools(
             }
             if (toolCall.name in virtualLifecycle) return@runCatching textResult(errorResult("BACKGROUND_MODE_REQUIRED", "当前任务不是后台模式"))
             deviceToolPermissionError(toolCall.name)?.let { return@runCatching it }
+            screenToolPermissionError(toolCall.name)?.let { return@runCatching it }
             memoryToolPermissionError(toolCall.name)?.let { return@runCatching it }
             confirmDangerousOperation(toolCall.name, toolCall.argumentsJson).let { decision ->
                 when (decision) {
@@ -663,6 +667,15 @@ internal class AgentLocalTools(
             return errorResult("SELF_SETTINGS_TOOLS_DISABLED", "应用自身配置工具已关闭，本次未执行")
         }
         return block()
+    }
+
+    /** 屏幕/GUI 总开关关闭后，即使模型重放旧调用也直接拒绝，而不是执行后才发现工具已下架。 */
+    private fun screenToolPermissionError(toolName: String): AgentModelClient.ToolResult? {
+        if (!AgentToolRequirements.isScreenTool(toolName) || screenToolsEnabled()) return null
+        return AgentModelClient.ToolResult(
+            content = errorResult("SCREEN_TOOLS_DISABLED", "屏幕观察与 GUI 操作已在设置中关闭，本次未执行"),
+            sensitive = true,
+        )
     }
 
     private fun deviceToolPermissionError(
@@ -2137,6 +2150,7 @@ internal class AgentLocalTools(
         val DEVICE_DIRECT_TOOL_NAMES = setOf(
             "schedule_manage",
             "alarm_manage",
+            "set_alarm",
             "set_timer",
             "device_status",
             "inspect_app",

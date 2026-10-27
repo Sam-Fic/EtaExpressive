@@ -21,13 +21,16 @@ internal object AgentToolGroups {
     /** 一批低频自设置管理工具，合并成一个可按需打开的域。 */
     val SELF_SETTINGS_GROUP: AgentToolGroup = AgentToolGroup(
         id = "self_settings_admin",
-        title = "Eta configuration management",
-        summary = "Manage models, sub-agent presets, conversation history and MCP servers.",
+        title = "Eta configuration and self-authored tools",
+        summary = "Manage models, sub-agent presets, conversation history and MCP servers, " +
+            "or write/list your own recipe tools (eta_author_tool/eta_list_recipes).",
         toolNames = setOf(
             AgentSelfSettingsToolCatalog.MANAGE_MODELS,
             AgentSelfSettingsToolCatalog.MANAGE_SUBAGENTS,
             AgentSelfSettingsToolCatalog.MANAGE_HISTORY,
             AgentSelfSettingsToolCatalog.CONFIGURE_MCP,
+            AgentSelfSettingsToolCatalog.AUTHOR_TOOL,
+            AgentSelfSettingsToolCatalog.LIST_RECIPES,
         ),
         // 自设置管理工具本身就不是只读的，且会改配置；打开域不改变这一点。
         deferredByDefault = true,
@@ -167,6 +170,7 @@ internal object AgentToolGroups {
         val labels = mutableListOf<String>()
         if (!switches.terminalTools) labels += "终端、命令执行与文件读写"
         if (!switches.browserTools) labels += "网页读取与浏览器"
+        if (!switches.screenTools) labels += "屏幕观察与 GUI 操作"
         if (!switches.deviceDirectTools) labels += "设备直达操作（闹钟、计时器、音量、媒体控制等）"
         if (switches.deviceSensitiveReadTools) {
             if (!switches.personalDataReads) labels += "个人信息读取（通讯录、短信、通话、账单、便签等）"
@@ -194,6 +198,7 @@ internal object AgentToolGroups {
     data class ToolSwitchState(
         val terminalTools: Boolean,
         val browserTools: Boolean,
+        val screenTools: Boolean,
         val deviceDirectTools: Boolean,
         val deviceSensitiveReadTools: Boolean,
         val personalDataReads: Boolean,

@@ -45,6 +45,7 @@ internal object AgentModelClient {
                 return runtime.copy(
                     terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
                     browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
+                    screenTools = Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS),
                     deviceDirectTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
                     deviceSensitiveReadTools =
                         Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
@@ -71,6 +72,7 @@ internal object AgentModelClient {
             systemPrompt = BuiltinProviders.DEFAULT_SYSTEM_PROMPT,
             terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
             browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
+            screenTools = Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS),
             deviceDirectTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
             deviceSensitiveReadTools =
                 Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
@@ -165,6 +167,7 @@ internal object AgentModelClient {
             val tools = AgentToolCatalog.build(
                 terminalTools = config.terminalTools,
                 browserTools = config.browserTools,
+                screenTools = config.screenTools,
                 deviceDirectTools = config.deviceDirectTools,
                 deviceSensitiveReadTools = config.deviceSensitiveReadTools,
                 deviceSensitiveActionTools = config.deviceSensitiveActionTools,
@@ -394,6 +397,8 @@ internal object AgentModelClient {
         val hostedWebSearchEnabled: Boolean = false,
         val terminalTools: Boolean = false,
         val browserTools: Boolean = true,
+        /** 屏幕观察与 GUI 操作总开关；false 时目录与提示词都不包含无障碍界面能力。 */
+        val screenTools: Boolean = true,
         val deviceDirectTools: Boolean = true,
         val deviceSensitiveReadTools: Boolean = false,
         val deviceSensitiveActionTools: Boolean = false,
@@ -478,6 +483,7 @@ internal object AgentModelClient {
     internal data class ToolCapabilitySwitches(
         val terminalTools: Boolean,
         val browserTools: Boolean,
+        val screenTools: Boolean,
         val deviceDirectTools: Boolean,
         val deviceSensitiveReadTools: Boolean,
         val personalDataReads: Boolean,
@@ -494,6 +500,7 @@ internal object AgentModelClient {
             fun capture() = ToolCapabilitySwitches(
                 terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
                 browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
+                screenTools = Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS),
                 deviceDirectTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
                 deviceSensitiveReadTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
                 personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
@@ -509,6 +516,7 @@ internal object AgentModelClient {
         fun toDisabledState() = AgentToolGroups.ToolSwitchState(
             terminalTools = terminalTools,
             browserTools = browserTools,
+            screenTools = screenTools,
             deviceDirectTools = deviceDirectTools,
             deviceSensitiveReadTools = deviceSensitiveReadTools,
             personalDataReads = personalDataReads,

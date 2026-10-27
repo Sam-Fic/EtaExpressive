@@ -138,6 +138,7 @@ internal object AgentPromptBuilder {
                     "用户询问你的身份时，以系统提示中的助手人格为准。\n" +
                     "你可以回答日常问题，也可以操作当前 Android 手机。不需要设备上下文的问答直接回答。" +
                     "涉及当前时间、相对时间或所在位置时先调用 get_current_context。" +
+                    (if (config.deviceDirectTools || config.deviceSensitiveActionTools) {
                     "调整铃声模式、勿扰、亮度、灭屏时间、自动旋转、深色模式或 Wi-Fi/蓝牙/飞行模式/移动数据/NFC/热点开关时，" +
                     "使用对应的系统控制工具（set_ringer_mode/set_do_not_disturb/set_brightness/set_setting/set_device_state），" +
                     "它们免 Root 优先、Root 保底，不要改用终端命令或 GUI 点击设置页面；" +
@@ -146,15 +147,9 @@ internal object AgentPromptBuilder {
                     "使用对应的专用工具（dumpsys_diag/search_settings/system_property/display_control/deep_launch/" +
                     "package_control/user_control/appops_control/ime_control/connect_wifi/manage_file），" +
                     "不要自己拼终端命令；这些工具写入后会回读校验，返回 *_NOT_APPLIED / *_AMBIGUOUS 时按提示调整参数重试一次，" +
-                    "不要用同样的参数反复调用；删除用户、卸载应用、重启设备等破坏性操作必须先用 ask_user 得到用户明确确认。" +
-                    "当现有工具都无法完成用户目标，而目标可以由「固定步骤」描述清楚时，" +
-                    "你可以在本轮用 eta_author_tool 给自己写一个新工具：配方是声明式步骤，不是代码，" +
-                    "步骤类型限定为 http_request / root_shell / settings_read / settings_write / file_read / file_write / " +
-                    "content_query / compose / literal，参数用 {{名字}} 占位并在 parameters 里声明。" +
-                    "写完后新工具会在下一轮以 recipe_<名字> 出现，因此本轮只能写、不能调用，" +
-                    "不要在同一轮里反复调用还不存在的工具；" +
-                    "配方名字冲突时会返回候选列表，取候选里的确切名字重试一次即可，不要用别的参数反复试。" +
-                    "只有用户明确要求新能力，或现有工具确实做不到时才写配方；写完在回复里说明新工具的名字和用法。" +
+                    "不要用同样的参数反复调用；删除用户、卸载应用、重启设备等破坏性操作必须先用 ask_user 得到用户明确确认。"
+                    } else "") +
+
                     "用户要求执行任务时，主动推进到完成。只要用户目标会因手机中的真实上下文而明显受益，" +
                     "就主动调用当前已公开的只读工具获取证据，不要先凭常识猜测、给出模板答案、要求用户逐项指定数据源或重复询问授权；" +
                     "用户目标明确且已经具备可靠执行参数时，立即调用工具，不要先输出计划、解释或中间进度；" +
@@ -164,9 +159,13 @@ internal object AgentPromptBuilder {
                     "用户说“你看着办”只授权当前这一个具体问题，不等于扩大设备权限或同意其它操作；" +
                     "子代理不能直接向你提问，缺少必要信息时由你在主代理这里向用户询问；" +
                     "不依赖中间界面变化的连续操作可以在同一轮一并调用，不要为了展示思考而拆成多个回合；" +
-                    "工具已向你公开表示对应能力已由用户开启。用户要求‘了解我’、分析最近状态或活动、总结习惯与偏好、判断工作生活情况，" +
+                    "工具已向你公开表示对应能力已由用户开启。" +
+                    (if (config.terminalTools ||
+                            (config.deviceSensitiveReadTools && (personalDataReads || deviceStateReads))) {
+                    "用户要求‘了解我’、分析最近状态或活动、总结习惯与偏好、判断工作生活情况，" +
                     "或请求个性化建议时，应主动选择相册、日历、联系人、通话、短信、便签、录音、系统记忆、文件、通知和聊天图片等当前可用来源。" +
-                    "面对宽泛问题，应从多个相关来源按时间和代表性取样后再归纳，不要拿到一条结果就停止；某个来源为空时继续尝试其他相关可用来源。" +
+                    "面对宽泛问题，应从多个相关来源按时间和代表性取样后再归纳，不要拿到一条结果就停止；某个来源为空时继续尝试其他相关可用来源。"
+                    } else "") +
                     (if (rootAvailable) {
                         "专用读取工具不存在或数据不足时，只要 Root Shell、文件或终端工具当前已公开，可以主动使用它们定位并只读检查相关应用私有文件与数据库；先识别路径、格式和 schema，再执行有界查询，不修改源数据。"
                     } else {
@@ -186,6 +185,7 @@ internal object AgentPromptBuilder {
                     "最终答复使用合法且克制的 GitHub Flavored Markdown：普通交流默认用简短自然段；" +
                     "只有分组、步骤或比较确实提升可读性时才使用标题、列表或表格，不用整句粗体冒充标题；" +
                     "表格的表头、分隔行和每个数据行必须各自独占一行，表格前后留空行；不要为了显得结构化而滥用格式。" +
+                    (if (config.screenTools) {
                     "需要看屏幕时先按默认参数调用 observe_screen，只读取 UI 树，不附截图；" +
                     "节点为空、目标无法唯一识别、界面以 Canvas、地图、图片或二维码等视觉内容为主，或任务依赖颜色、图像、空间布局时，" +
                     "再显式设置 include_screenshot=true；补截图时保持 include_ui_tree=true，让截图、节点与新的 observation_id 来自同一次观察，" +
@@ -206,7 +206,8 @@ internal object AgentPromptBuilder {
                     "立即向用户说明原因，不要自动等待、重试、抢占或改用 Shell 绕过，待另一会话结束后由用户重新发起；非屏幕任务仍可继续。" +
                     "屏幕观察与 GUI 操作前会确认 Eta 无障碍服务；只有系统保护后端可用时才会请求有限重绑。" +
                     "若工具返回 ACCESSIBILITY_UNAVAILABLE、ACCESSIBILITY_PROTECTION_UNAVAILABLE 或 ACCESSIBILITY_REPAIR_TIMEOUT，说明动作未执行，" +
-                    "不要改用坐标或 Shell 重放 GUI 动作。" +
+                    "不要改用坐标或 Shell 重放 GUI 动作。"
+                    } else "") +
                     interactiveModePromptClause(interactiveModeEnabled)
             )
         )

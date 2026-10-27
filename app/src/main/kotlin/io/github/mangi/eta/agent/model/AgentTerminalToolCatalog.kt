@@ -30,17 +30,14 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "terminal",
-                    description = "Manage terminal sessions on this device. environment=android runs Android " +
-                        "system commands and root operations; environment=linux runs the Alpine or Debian " +
-                        "environment chosen in settings (pass environment=linux and cwd=/workspace/<project> " +
-                        "for Linux tools and project Git). Default android; run_command is Android-only and " +
-                        "never enters Linux. Do not repeat a failed call in an unchanged environment. " +
-                        "Apktool build needs an ARM64 AAPT2 runtime. Lifecycles: open_and_exec = one-shot; " +
-                        "open = persistent session, then exec/close with session_id; async=true without " +
-                        "session_id = long-running job, read with read_async_result by job_id; daemon_start = " +
-                        "service that must survive the run (ports, panels, watchers), detached and logged to a " +
-                        "file until daemon_stop or reboot, managed by daemon_list/daemon_logs/daemon_stop with " +
-                        "task_id; close stops jobs and sessions.",
+                    description = "Manage terminal sessions. environment=android runs Android system/root " +
+                        "commands; environment=linux runs the Alpine or Debian environment chosen in settings " +
+                        "(pass environment=linux and cwd=/workspace/<project>). Default android; run_command is " +
+                        "Android-only. Do not repeat a failed call unchanged. Apktool build needs ARM64 AAPT2. " +
+                        "Lifecycles: open_and_exec one-shot; open then exec/close via session_id; async=true " +
+                        "without session_id runs a long job read by read_async_result; daemon_start starts a " +
+                        "detached service that survives the run (ports, panels, watchers), managed with " +
+                        "daemon_list/daemon_logs/daemon_stop; close stops jobs and sessions.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -63,7 +60,7 @@ internal object AgentTerminalToolCatalog {
                                                 .put("daemon_logs")
                                                 .put("daemon_stop")
                                         )
-                                        .put("description", "Session/job lifecycle. open: create session. exec: run in session or cwd. open_and_exec: one-shot. read_async_result: async output by job_id. close: session_id or job_id. daemon_start: detached long-lived service, returns task_id. daemon_list: tasks with liveness. daemon_logs: tail a task log. daemon_stop: terminate and remove.")
+                                        .put("description", "open: create session. exec: run in session/cwd. open_and_exec: one-shot. read_async_result: output by job_id. close: session_id or job_id. daemon_start: detached service, returns task_id. daemon_list: liveness. daemon_logs: tail. daemon_stop: terminate.")
                                 )
                                 .put(
                                     "identity",
@@ -152,7 +149,7 @@ internal object AgentTerminalToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "run_command",
-                    description = "Run a command only in the non-interactive Android Root shell; it never enters Debian or Alpine. Suited to Android system information, package management and local file inspection. Linux tooling and workspace Git operations must use terminal(environment=linux,cwd=/workspace/project); this tool does not accept environment. Every call is a new shell; do not run interactive or long-lived commands. If a command does not exist, do not retry it unchanged in the same environment, and never replay commands with side effects in another environment automatically.",
+                    description = "Run one command in a new non-interactive Android Root shell; it never enters Debian/Alpine. Use it for Android system information, package management and local file inspection. Linux tooling and workspace Git must use terminal(environment=linux,cwd=/workspace/project). Do not run interactive or long-lived commands. If a command is missing, do not retry it unchanged; never replay side effects in another environment automatically.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(

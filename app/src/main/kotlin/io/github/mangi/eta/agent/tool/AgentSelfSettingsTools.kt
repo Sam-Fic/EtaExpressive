@@ -45,6 +45,7 @@ internal class AgentSelfSettingsTools {
     private val TOOL_KEYS = setOf(
         Prefs.Keys.AGENT_TERMINAL_TOOLS,
         Prefs.Keys.AGENT_BROWSER_TOOLS,
+        Prefs.Keys.AGENT_SCREEN_TOOLS,
         Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS,
         Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
         Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
@@ -55,6 +56,7 @@ internal class AgentSelfSettingsTools {
     private val settings: List<EtaSetting> = listOf(
         EtaSetting(Prefs.Keys.AGENT_TERMINAL_TOOLS, "终端工具", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_BROWSER_TOOLS, "浏览器工具", Kind.SWITCH, Area.TOOLS),
+        EtaSetting(Prefs.Keys.AGENT_SCREEN_TOOLS, "屏幕观察与 GUI 操作", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS, "设备直达工具", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS, "敏感信息读取", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS, "敏感设备操作", Kind.SWITCH, Area.TOOLS),

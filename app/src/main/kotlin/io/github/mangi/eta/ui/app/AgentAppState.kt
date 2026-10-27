@@ -908,6 +908,7 @@ internal class AgentAppState(
             val overheadKeys = setOf(
                 Prefs.Keys.AGENT_TERMINAL_TOOLS,
                 Prefs.Keys.AGENT_BROWSER_TOOLS,
+                Prefs.Keys.AGENT_SCREEN_TOOLS,
                 Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS,
                 Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
                 Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
@@ -966,6 +967,7 @@ internal class AgentAppState(
                     val config = RuntimeConfigRepository.buildRuntimeConfig(provider, model, assistant).copy(
                         terminalTools = agentBooleanForUi(Prefs.Keys.AGENT_TERMINAL_TOOLS),
                         browserTools = agentBooleanForUi(Prefs.Keys.AGENT_BROWSER_TOOLS),
+                        screenTools = agentBooleanForUi(Prefs.Keys.AGENT_SCREEN_TOOLS),
                         deviceDirectTools = agentBooleanForUi(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
                         deviceSensitiveReadTools = agentBooleanForUi(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
                         deviceSensitiveActionTools = agentBooleanForUi(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS),
@@ -3742,6 +3744,7 @@ internal class AgentAppState(
                 errorReconnectPolicy = SettingsDataStore.settings().errorReconnectPolicy.persistedValue,
                 terminalTools = agentBooleanForUi(Prefs.Keys.AGENT_TERMINAL_TOOLS),
                 browserTools = agentBooleanForUi(Prefs.Keys.AGENT_BROWSER_TOOLS),
+                screenTools = agentBooleanForUi(Prefs.Keys.AGENT_SCREEN_TOOLS),
                 deviceDirectTools = agentBooleanForUi(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
                 deviceSensitiveReadTools =
                     agentBooleanForUi(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
@@ -7819,27 +7822,32 @@ internal fun buildToolsState(context: Context): AgentToolsUiState {
 
 private fun buildToolGroups(context: Context): List<ToolGroupUi> = listOf(
             ToolGroupUi(
+                // 屏幕观察、手势、文本输入、等待与系统按键同属一个用户级总开关：
+                // 拆成「屏幕」和「文本」两组会出现一个开关关掉另一组工具的误导状态。
                 id = "screen",
                 title = context.getString(R.string.state_screens_and_controls_3f095b),
                 tools = listOf(
                     ToolItemUi("observe_screen", context.getString(R.string.tool_ui_watch_the_screen_e70f2a), context.getString(R.string.tool_ui_read_the_current_node_and_attach_the_original_im_df1fec)),
+                    ToolItemUi("tap", context.getString(R.string.tool_tap), context.getString(R.string.tool_ui_click_by_coordinate_area_2ad961)),
                     ToolItemUi("tap_element", context.getString(R.string.tool_ui_click_element_7a3d91), context.getString(R.string.tool_ui_click_on_the_most_recently_observed_node_b4cf5a)),
                     ToolItemUi("tap_area", context.getString(R.string.tool_ui_click_area_cbaa08), context.getString(R.string.tool_ui_click_by_coordinate_area_2ad961)),
                     ToolItemUi("long_press", context.getString(R.string.tool_ui_long_press_f7a417), context.getString(R.string.tool_ui_long_press_on_coordinates_or_elements_796384)),
+                    ToolItemUi("long_press_element", context.getString(R.string.tool_long_press_element), context.getString(R.string.tool_ui_long_press_on_coordinates_or_elements_796384)),
                     ToolItemUi("swipe", context.getString(R.string.tool_ui_slide_3723aa), context.getString(R.string.tool_ui_perform_up_down_left_and_right_swipe_gestures_3ef0de)),
                     ToolItemUi("scroll", context.getString(R.string.tool_ui_scroll_220e68), context.getString(R.string.tool_ui_scroll_the_page_or_specify_a_node_83ab24)),
-                ),
-            ),
-            ToolGroupUi(
-                id = "text",
-                title = context.getString(R.string.state_text_and_clipboard_3a7340),
-                tools = listOf(
+                    ToolItemUi("scroll_element", context.getString(R.string.tool_scroll_element), context.getString(R.string.tool_ui_scroll_the_page_or_specify_a_node_83ab24)),
                     ToolItemUi("type_text", context.getString(R.string.tool_ui_type_text), context.getString(R.string.tool_ui_type_text_summary)),
                     ToolItemUi("input_text", context.getString(R.string.tool_ui_enter_text_ae47ab), context.getString(R.string.tool_ui_append_or_paste_text_to_the_current_focus_1efdcc)),
                     ToolItemUi("replace_text", context.getString(R.string.tool_ui_replacement_text_1a5c8d), context.getString(R.string.tool_ui_replace_text_in_focus_or_node_30d332)),
                     ToolItemUi("clear_text", context.getString(R.string.tool_ui_clear_text_d4cb57), context.getString(R.string.tool_ui_clear_focus_or_node_text_3e754a)),
                     ToolItemUi("paste_text", context.getString(R.string.tool_ui_paste_text_791b85), context.getString(R.string.tool_ui_reliably_enter_long_text_with_the_clipboard_b6041e)),
+                    ToolItemUi("set_clipboard", context.getString(R.string.tool_set_clipboard), context.getString(R.string.tool_ui_copy_text_to_the_system_clipboard)),
+                    ToolItemUi("get_clipboard", context.getString(R.string.tool_get_clipboard), context.getString(R.string.tool_ui_read_the_current_system_clipboard)),
+                    ToolItemUi("wait", context.getString(R.string.tool_wait), context.getString(R.string.tool_ui_wait_for_the_given_number_of_milliseconds)),
                     ToolItemUi("wait_for_text", context.getString(R.string.tool_ui_wait_for_text_9e9a54), context.getString(R.string.tool_ui_wait_for_the_specified_text_to_appear_on_the_scr_43f9b0)),
+                    ToolItemUi("wait_for_package", context.getString(R.string.tool_wait_for_package), context.getString(R.string.tool_ui_wait_for_the_specified_app_to_come_to_the_foreground)),
+                    ToolItemUi("press_key", context.getString(R.string.tool_ui_button_02eafa), context.getString(R.string.tool_ui_system_buttons_such_as_return_homepage_recent_ta_1b4cf0)),
+                    ToolItemUi("open_system_panel", context.getString(R.string.tool_ui_system_panel_b0f7a3), context.getString(R.string.tool_ui_open_the_notification_bar_quick_settings_and_oth_5e51cf)),
                 ),
             ),
             ToolGroupUi(
@@ -7862,8 +7870,6 @@ private fun buildToolGroups(context: Context): List<ToolGroupUi> = listOf(
                     ToolItemUi("get_current_context", context.getString(R.string.tool_ui_time_and_location_693893), context.getString(R.string.tool_ui_read_system_time_and_recent_location_b9f4ae)),
                     ToolItemUi("launch_app", context.getString(R.string.tool_ui_open_app_7c65e7), context.getString(R.string.tool_ui_start_the_specified_package_name_or_application__beabff)),
                     ToolItemUi("open_uri", context.getString(R.string.tool_ui_open_with_app_32c24e), context.getString(R.string.tool_ui_explicitly_hand_over_links_or_deep_links_to_exte_35ff26)),
-                    ToolItemUi("press_key", context.getString(R.string.tool_ui_button_02eafa), context.getString(R.string.tool_ui_system_buttons_such_as_return_homepage_recent_ta_1b4cf0)),
-                    ToolItemUi("open_system_panel", context.getString(R.string.tool_ui_system_panel_b0f7a3), context.getString(R.string.tool_ui_open_the_notification_bar_quick_settings_and_oth_5e51cf)),
                 ),
             ),
             ToolGroupUi(

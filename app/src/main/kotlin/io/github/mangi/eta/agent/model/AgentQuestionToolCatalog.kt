@@ -32,13 +32,11 @@ internal object AgentQuestionToolCatalog {
             AgentToolSchema.function(
                 name = NAME,
                 description =
-                    "Ask the user one key question that changes the outcome and wait for the answer. Use it only when a critical parameter is genuinely missing" +
-                        "and cannot be reasonably inferred from the current context; details that can be determined from context or defaulted reliably should just be handled, not asked about." +
-                        "Must be called alone in its batch: do not mix other tools into the same batch, and send exactly one ask_user." +
-                        "Provide 2-8 mutually exclusive, actionable options; recommended_option_id is only a hint," +
-                        "so do not decide for the user and do not imply it is the only choice." +
-                        "The user answers with an option to choose explicitly, with other to write a custom answer, or with delegate to defer the decision;" +
-                        "do not request capabilities that allow_other/allow_delegation/allow_note do not grant.",
+                    "Ask the user one key question and wait for the answer. Use only when a critical parameter is missing " +
+                        "and cannot be inferred; handle inferable or defaultable details yourself. Call it alone in its batch " +
+                        "with exactly one ask_user. Provide 2-8 mutually exclusive, actionable options; recommended_option_id " +
+                        "is only a hint, so never decide for the user. The answer may choose an option, write a custom answer, " +
+                        "or defer; request only capabilities that allow_other/allow_delegation/allow_note grant.",
                 parameters = JSONObject()
                     .put("type", "object")
                     .put("additionalProperties", false)
@@ -46,9 +44,9 @@ internal object AgentQuestionToolCatalog {
                         "properties",
                         JSONObject()
                             .put("title", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 200)
-                                .put("description", "Question title, briefly stating what must be decided."))
+                                .put("description", "Question title stating what must be decided."))
                             .put("question", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 4000)
-                                .put("description", "The full question, including the background and constraints needed to choose."))
+                                .put("description", "Full question with the background and constraints needed to choose."))
                             .put(
                                 "options",
                                 JSONObject()
@@ -56,10 +54,10 @@ internal object AgentQuestionToolCatalog {
                                     .put("minItems", 2)
                                     .put("maxItems", 8)
                                     .put("items", option)
-                                    .put("description", "2-8 candidate options; each id must be unique and stable."),
+                                    .put("description", "2-8 candidate options; ids must be unique and stable."),
                             )
                             .put("recommended_option_id", JSONObject().put("type", "string").put("maxLength", 64)
-                                .put("description", "Optional; when given it must be the id of one option, serves only as a hint, and never selects automatically."))
+                                .put("description", "Optional hint; must match an option id and never selects automatically."))
                             .put("allow_other", JSONObject().put("type", "boolean")
                                 .put("description", "Whether the user may write a custom answer; default true."))
                             .put("allow_delegation", JSONObject().put("type", "boolean")

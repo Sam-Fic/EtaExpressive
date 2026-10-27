@@ -590,6 +590,7 @@
   <string name="tool_current_context">Time and location</string>
   <string name="tool_memory_get">Read memory</string>
   <string name="tool_memory_write">Update memory</string>
+  <string name="tool_set_alarm">Set alarm</string>
   <string name="tool_alarm_manage">Manage alarm</string>
   <string name="agent_schedule_channel_reminder">Schedule reminders</string>
   <string name="agent_schedule_channel_reminder_desc">Reminders for schedules created by the agent</string>
@@ -694,6 +695,8 @@
   <string name="settings_confirm_dangerous_tools_summary">Ask before reboots, uninstalling apps, clearing data or removing users. Read-only tools are never interrupted.</string>
   <string name="settings_subagent_tools">Sub-agent delegation</string>
   <string name="settings_subagent_tools_summary">Let the model hand self-contained tasks to configured workers. Each delegation runs on another model and is billed separately.</string>
+  <string name="settings_screen_tools">Screen observation and GUI</string>
+  <string name="settings_screen_tools_summary">Let the model read UI nodes and tap, swipe, type and press keys. Turn this off to remove every accessibility GUI tool.</string>
   <string name="settings_shell_tools">Allow command execution</string>
   <string name="settings_shell_tools_summary">Let the model run shell commands. Turn this off to keep file reading and writing but block run_command and terminal.</string>
   <string name="settings_self_settings_tools">Eta self-configuration tools</string>
@@ -746,7 +749,7 @@
   <string name="state_deletion_is_not_complete_eta_will_try_to_recover_whe_c4297e">Deletion is not complete. Eta will try to recover when refreshing the skill list; please confirm the status and try again.</string>
   <string name="state_background_running_permission_dde21b">Background running permission</string>
   <string name="state_follow_up_ability_589688">Follow-up capabilities</string>
-  <string name="state_screens_and_controls_3f095b">Screens and controls</string>
+  <string name="state_screens_and_controls_3f095b">Screen observation and GUI</string>
   <string name="state_applications_and_systems_9624e6">Apps and system</string>
   <string name="state_application_list_reading_135f16">App list access</string>
   <string name="state_the_skill_list_is_temporarily_unavailable_please_try_29b0be">The skill list is temporarily unavailable, please try again later.</string>
@@ -2970,4 +2973,8 @@
   <string name="media_reasoning_supported">Explicitly configured endpoint</string>
   <string name="media_reasoning_unsupported">Current endpoint not adapted</string>
   <string name="media_reasoning_invalid">Invalid thinking configuration</string>
+  <string name="tool_ui_wait_for_the_given_number_of_milliseconds">Wait for the given number of milliseconds before continuing.</string>
+  <string name="tool_ui_wait_for_the_specified_app_to_come_to_the_foreground">Wait for the specified app to come to the foreground.</string>
+  <string name="tool_ui_copy_text_to_the_system_clipboard">Copy text to the system clipboard.</string>
+  <string name="tool_ui_read_the_current_system_clipboard">Read the current system clipboard.</string>
 </resources>

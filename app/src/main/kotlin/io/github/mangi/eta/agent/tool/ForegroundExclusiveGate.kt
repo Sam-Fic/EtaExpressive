@@ -17,7 +17,8 @@ internal object ForegroundExclusiveGate {
     fun shouldSerialize(toolName: String): Boolean {
         val name = toolName.trim().lowercase()
         return AgentOverlayVisibilityPolicy.isForegroundOperationTool(name) ||
-            name in setOf("wait_for_text", "wait_for_package", "set_timer")
+            // 闹钟/计时器直达会把用户交给系统界面，同样独占主屏；但它们只撤入口浮层，不揭示操作浮层。
+            name in setOf("wait_for_text", "wait_for_package", "set_alarm", "set_timer")
     }
 
     fun acquire(runId: String, isClosed: () -> Boolean = { false }): Admission =

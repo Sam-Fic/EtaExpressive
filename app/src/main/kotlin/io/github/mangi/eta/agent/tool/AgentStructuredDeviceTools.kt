@@ -951,7 +951,6 @@ internal class AgentStructuredDeviceTools(
         Regex("""(?m)^\s*${Regex.escape(key)}=[^(]+\((.*)\)\s*$""")
             .find(source)?.groupValues?.get(1)?.takeUnless { it == "null" }
 
-
     /** AlarmClock.EXTRA_DAYS 要求 [Calendar] 的星期常量，旧 set_alarm 路径仍在用。 */
     private fun String.toCalendarDay(): Int = when (lowercase(Locale.ROOT)) {
         "sun", "sunday" -> Calendar.SUNDAY

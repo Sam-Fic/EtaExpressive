@@ -21,6 +21,7 @@ class AgentDisabledCapabilitiesPromptTest {
     private fun switches(
         terminal: Boolean = true,
         browser: Boolean = true,
+        screen: Boolean = true,
         direct: Boolean = true,
         sensitiveRead: Boolean = true,
         personal: Boolean = true,
@@ -31,6 +32,7 @@ class AgentDisabledCapabilitiesPromptTest {
     ) = AgentToolGroups.ToolSwitchState(
         terminalTools = terminal,
         browserTools = browser,
+        screenTools = screen,
         deviceDirectTools = direct,
         deviceSensitiveReadTools = sensitiveRead,
         personalDataReads = personal,

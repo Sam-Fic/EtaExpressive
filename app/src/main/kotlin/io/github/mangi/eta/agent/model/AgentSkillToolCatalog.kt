@@ -13,7 +13,7 @@ internal object AgentSkillToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "skills_list",
-                    description = "List installed skills with their id, name, description, and capabilities. Use when the user asks what skills are available or whether a certain type of skill is installed.",
+                    description = "List installed skills with id, name, description and capabilities. Use when the user asks what skills exist or whether one is installed.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -37,7 +37,7 @@ internal object AgentSkillToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "skills_read",
-                    description = "Read the full SKILL.md body of an installed skill by id, name, or path. Use when you know a skill might be relevant but its full body was not injected this turn.",
+                    description = "Read the full SKILL.md body of an installed skill by id, name or path. Use when a skill may be relevant but its body was not injected this turn.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -62,7 +62,7 @@ internal object AgentSkillToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "skills_read_resource",
-                    description = "Read a bounded UTF-8 text resource inside an enabled Skill, such as references/guide.md. The path must be relative to that Skill root; this tool never executes scripts or reads outside the Skill.",
+                    description = "Read a bounded UTF-8 text resource inside an enabled Skill, such as references/guide.md. Paths are relative to the Skill root; scripts are never executed.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -100,7 +100,7 @@ internal object AgentSkillToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "skills_install_local",
-                    description = "Install a Skill from a directory on this phone, such as a folder the user downloaded, an unzipped archive, or a path inside the workspace. The directory must hold exactly one Skill (one SKILL.md); if it holds several, the result lists their directories so one can be retried. Reading public storage requires all-files access. Installation does not run bundled scripts, and the installed Skill becomes available next turn.",
+                    description = "Install a Skill from a phone directory that holds exactly one SKILL.md (a downloaded folder, unzipped archive or workspace path). If it holds several, the result lists directories so one can be retried. Public storage needs all-files access. Installation never runs bundled scripts; the Skill is available next turn.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -111,20 +111,20 @@ internal object AgentSkillToolCatalog {
                                     JSONObject()
                                         .put("type", "string")
                                         .put("maxLength", 1_000)
-                                        .put("description", "Absolute phone path such as /sdcard/Download/my-skill, or a workspace path such as minis://workspace/my-skill."),
+                                        .put("description", "Absolute phone path, e.g. /sdcard/Download/my-skill, or a workspace path such as minis://workspace/my-skill."),
                                 )
                                 .put(
                                     "replaceExisting",
                                     JSONObject()
                                         .put("type", "boolean")
-                                        .put("description", "Set true only when retrying one replaceable SKILL_CONFLICT for the same directory and id."),
+                                        .put("description", "True only when retrying one replaceable SKILL_CONFLICT for the same directory and id."),
                                 )
                                 .put(
                                     "expectedReplacementId",
                                     JSONObject()
                                         .put("type", "string")
                                         .put("maxLength", 500)
-                                        .put("description", "Required when replaceExisting is true. Copy the exact id from the prior SKILL_CONFLICT result of the same directory; never infer it."),
+                                        .put("description", "Required with replaceExisting; copy the exact id from the prior SKILL_CONFLICT."),
                                 ),
                         )
                         .put("required", JSONArray().put("directory")),
@@ -139,7 +139,7 @@ internal object AgentSkillToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "skills_list_curated",
-                    description = "List installable Skills from the public openai/skills curated catalog. This is read-only. Use the returned commitSha as ref for a subsequent installation so the inspected content cannot change.",
+                    description = "List installable Skills from the public openai/skills catalog. Read-only. Use the returned commitSha as ref when installing so the inspected content cannot change.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put("properties", JSONObject()),
@@ -148,7 +148,7 @@ internal object AgentSkillToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "skills_inspect_github",
-                    description = "Inspect a public GitHub repository and list every directory containing SKILL.md. This never installs anything. Use the returned commitSha as ref for installation; if multiple candidates match, ask the user to choose exact paths.",
+                    description = "Inspect a public GitHub repository and list every directory containing SKILL.md. Never installs. Use the returned commitSha as ref; if multiple candidates match, ask the user to choose exact paths.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -166,14 +166,14 @@ internal object AgentSkillToolCatalog {
                                     JSONObject()
                                         .put("type", "string")
                                         .put("maxLength", 200)
-                                        .put("description", "Optional branch, tag, or commit. Omit to use the repository default branch."),
+                                        .put("description", "Optional branch, tag or commit; defaults to the repository default branch."),
                                 )
                                 .put(
                                     "path",
                                     JSONObject()
                                         .put("type", "string")
                                         .put("maxLength", 1_000)
-                                        .put("description", "Optional repository-relative directory used to narrow discovery."),
+                                        .put("description", "Optional repository-relative directory to narrow discovery."),
                                 ),
                         )
                         .put("required", JSONArray().put("repository")),
@@ -185,7 +185,7 @@ internal object AgentSkillToolCatalog {
         tools.put(
             AgentToolSchema.function(
                 name = "skills_install_from_github",
-                description = "Install selected Skill directories from a public GitHub repository. Paths must come from skills_inspect_github. If one replaceable user Skill conflicts, retry that exact repository, commitSha, path, and id with replaceExisting=true; built-in Skills can never be overwritten. Skills that require Apple runtimes, MiniS Android CLI, or MiniS iOS sandbox are rejected before install. Installation does not run bundled scripts, and installed Skills become available next turn.",
+                description = "Install selected Skill directories from a public GitHub repository. Paths must come from skills_inspect_github. For one replaceable user Skill conflict, retry the same repository, commitSha, path and id with replaceExisting=true; built-in Skills cannot be overwritten. Unsupported Apple/MiniS runtimes are rejected. Installation never runs scripts; Skills are available next turn.",
                 parameters = JSONObject()
                     .put("type", "object")
                     .put(
@@ -203,13 +203,13 @@ internal object AgentSkillToolCatalog {
                                 JSONObject()
                                     .put("type", "string")
                                     .put("maxLength", 200)
-                                    .put("description", "Optional branch, tag, or commit. Omit to use the repository default branch."),
+                                    .put("description", "Optional branch, tag or commit; defaults to the repository default branch."),
                             )
                             .put(
                                 "paths",
                                 JSONObject()
                                     .put("type", "array")
-                                    .put("description", "One or more exact repository-relative Skill root paths returned by inspection.")
+                                    .put("description", "Exact repository-relative Skill roots returned by inspection.")
                                     .put(
                                         "items",
                                         JSONObject()
@@ -224,14 +224,14 @@ internal object AgentSkillToolCatalog {
                                 "replaceExisting",
                                 JSONObject()
                                     .put("type", "boolean")
-                                    .put("description", "Set true only when precisely replaying one replaceable SKILL_CONFLICT. paths must contain one item and ref must use the conflict's commitSha."),
+                                    .put("description", "True only when replaying one replaceable SKILL_CONFLICT; paths has one item and ref uses the conflict commitSha."),
                             )
                             .put(
                                 "expectedReplacementId",
                                 JSONObject()
                                     .put("type", "string")
                                     .put("maxLength", 500)
-                                    .put("description", "Required when replaceExisting is true. Copy the exact id from the single prior SKILL_CONFLICT result; never infer it."),
+                                    .put("description", "Required with replaceExisting; copy the exact id from the prior SKILL_CONFLICT."),
                             ),
                     )
                     .put("required", JSONArray().put("repository").put("paths")),

@@ -2801,6 +2801,7 @@ private fun EmptyChatState(
     // 谁能用：按当前设备能力过滤建议池，没授权的条目直接不出现。
     val device = rememberDeviceCapabilities()
     val terminalToolsEnabled = remember { Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS) }
+    val screenToolsEnabled = remember { Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS) }
     // 记忆开关的初值取默认值：绝大多数设备是开的，抽签结果不会因此重抽一次。
     val memoryEnabled by remember { AgentMemoryRepository.enabledFlow() }
         .collectAsState(initial = true)
@@ -2811,13 +2812,14 @@ private fun EmptyChatState(
         device.tools,
         device.root.isGranted,
         terminalToolsEnabled,
+        screenToolsEnabled,
         memoryEnabled,
     ) {
         selectChatSuggestions(
             limit = 4,
             random = Random(suggestionSeed),
             isAvailable = { spec ->
-                spec.requirement.isSatisfied(device, terminalToolsEnabled, memoryEnabled)
+                spec.requirement.isSatisfied(device, terminalToolsEnabled, screenToolsEnabled, memoryEnabled)
             },
         )
     }
@@ -3014,10 +3016,11 @@ private fun RoundedPolygon.sampledOutline(): List<Offset> {
 private fun ChatSuggestionRequirement.isSatisfied(
     device: DeviceCapabilitiesUi,
     terminalToolsEnabled: Boolean,
+    screenToolsEnabled: Boolean,
     memoryEnabled: Boolean,
 ): Boolean = when (this) {
     ChatSuggestionRequirement.NONE -> true
-    ChatSuggestionRequirement.ACCESSIBILITY -> device.accessibilityAvailable
+    ChatSuggestionRequirement.ACCESSIBILITY -> device.accessibilityAvailable && screenToolsEnabled
     ChatSuggestionRequirement.NOTIFICATIONS -> device.tools.notificationsAllowed
     ChatSuggestionRequirement.USAGE -> device.tools.usageAllowed
     ChatSuggestionRequirement.LOCATION -> device.tools.locationAllowed

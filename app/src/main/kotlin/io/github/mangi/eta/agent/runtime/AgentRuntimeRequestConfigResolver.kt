@@ -43,6 +43,7 @@ internal object AgentRuntimeRequestConfigResolver {
             config = config.copy(
                 terminalTools = entry.terminalTools,
                 browserTools = entry.browserTools,
+                screenTools = entry.screenTools,
                 deviceDirectTools = entry.deviceDirectTools,
                 deviceSensitiveReadTools = entry.deviceSensitiveReadTools,
                 deviceSensitiveActionTools = entry.deviceSensitiveActionTools,

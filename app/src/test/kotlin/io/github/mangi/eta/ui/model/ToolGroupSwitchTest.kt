@@ -14,6 +14,7 @@ import org.junit.Test
 class ToolGroupSwitchTest {
     @Test fun groupsBackedByASingleSwitchExposeIt() {
         assertEquals(Prefs.Keys.AGENT_BROWSER_TOOLS, ToolGroupSwitch.keyFor("web"))
+        assertEquals(Prefs.Keys.AGENT_SCREEN_TOOLS, ToolGroupSwitch.keyFor("screen"))
         assertEquals(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS, ToolGroupSwitch.keyFor("device_direct"))
         assertEquals(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS, ToolGroupSwitch.keyFor("device_sensitive"))
         assertEquals(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS, ToolGroupSwitch.keyFor("personal_data"))
@@ -25,10 +26,9 @@ class ToolGroupSwitchTest {
     @Test fun groupsWithoutASingleSwitchDoNotOfferOne() {
         // 记忆是按助手的开关，不是全局 Prefs：不能在工具页给一个全局开关假装控制它。
         assertNull(ToolGroupSwitch.keyFor("memory"))
-        // 屏幕/文本/应用组没有对应的全局开关。
-        assertNull(ToolGroupSwitch.keyFor("screen"))
-        assertNull(ToolGroupSwitch.keyFor("text"))
+        // 应用组没有单一全局开关；文本工具已并入屏幕组，不再有独立组。
         assertNull(ToolGroupSwitch.keyFor("app"))
+        assertNull(ToolGroupSwitch.keyFor("text"))
         assertFalse(ToolGroupSwitch.showsInGroup("memory"))
     }
 
@@ -42,7 +42,7 @@ class ToolGroupSwitchTest {
     @Test fun everyKeyIsALocalAgentKey() {
         // 开关必须落在运行时真正消费的键集合里，否则改了也不生效。
         val groups = listOf(
-            "web", "device_direct", "device_sensitive", "personal_data",
+            "web", "screen", "device_direct", "device_sensitive", "personal_data",
             "file_vision", "terminal", "media_search", "self",
         )
         groups.forEach { group ->

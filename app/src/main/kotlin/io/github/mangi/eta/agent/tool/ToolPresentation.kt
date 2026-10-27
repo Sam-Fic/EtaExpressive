@@ -135,6 +135,7 @@ internal object ToolPresentation {
         "press_key" -> R.string.tool_press_key
         "open_system_panel" -> R.string.tool_open_system_panel
         "alarm_manage" -> R.string.tool_alarm_manage
+        "set_alarm" -> R.string.tool_set_alarm
         "schedule_manage" -> R.string.tool_schedule_manage
         "set_timer" -> R.string.tool_set_timer
         "delete_alarm" -> R.string.tool_delete_alarm
@@ -285,7 +286,7 @@ internal object ToolPresentation {
         "open_system_panel" -> Icons.Rounded.WebAsset
         "read_image" -> Icons.Rounded.Image
         "schedule_manage" -> Icons.Rounded.CalendarMonth
-        "alarm_manage" -> Icons.Rounded.Alarm
+        "alarm_manage", "set_alarm" -> Icons.Rounded.Alarm
         "set_timer" -> Icons.Rounded.Alarm
         "list_alarms", "list_active_timers" -> Icons.Rounded.Alarm
         "delete_alarm", "update_alarm" -> Icons.Rounded.Alarm

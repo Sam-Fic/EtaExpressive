@@ -30,7 +30,8 @@ internal object SubAgentRunner {
             compactHistory: ((List<AgentModelClient.ConversationMessage>, AgentLoop.CompactPolicy) -> List<AgentModelClient.ConversationMessage>)? = null,
             browserExecutor: AgentModelClient.ToolExecutor? = null): String {
         val child = config.copy(systemPrompt = "", hostedWebSearchEnabled = false,
-            terminalTools = false, browserTools = browserExecutor != null, deviceSensitiveActionTools = false)
+            terminalTools = false, browserTools = browserExecutor != null, screenTools = false,
+            deviceSensitiveActionTools = false)
         val compression = compactPolicy ?: runBlocking { AgentCompressionPolicy.resolve(child, child = true) }
         val messages = JSONArray()
             .put(JSONObject().put("role", "system").put("content",

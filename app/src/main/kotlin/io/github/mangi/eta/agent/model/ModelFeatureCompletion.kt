@@ -41,7 +41,7 @@ internal object ModelFeatureCompletion {
             watchdog.start()
             val requestConfig = io.github.mangi.eta.agent.runtime.AgentRuntimePolicy.withoutOptionalThinking(config).copy(
                 hostedWebSearchEnabled = false,
-                terminalTools = false, browserTools = false,
+                terminalTools = false, browserTools = false, screenTools = false,
                 deviceDirectTools = false, deviceSensitiveReadTools = false, deviceSensitiveActionTools = false,
                 summaryOutputLimit = outputLimit,
             )

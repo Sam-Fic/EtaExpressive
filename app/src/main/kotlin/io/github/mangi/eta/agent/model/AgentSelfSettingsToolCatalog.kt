@@ -24,7 +24,7 @@ internal object AgentSelfSettingsToolCatalog {
      * 读/改配置这两个常驻工具不在此列。
      */
     fun manageTools(): Set<String> =
-        setOf(MANAGE_MODELS, MANAGE_SUBAGENTS, MANAGE_HISTORY, CONFIGURE_MCP)
+        setOf(MANAGE_MODELS, MANAGE_SUBAGENTS, MANAGE_HISTORY, CONFIGURE_MCP, AUTHOR_TOOL, LIST_RECIPES)
 
     /**
      * 下发自设置工具。[withheld] 里的工具不下发（由 [AgentToolGroups] 折叠成按需打开的域）。

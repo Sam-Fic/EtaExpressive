@@ -83,10 +83,18 @@ class AgentDeviceToolCatalogTest {
 
     @Test
     fun selfAuthoringToolsArePublishedWithTheSelfSettingsGroup() {
+        val deferred = AgentToolCatalog.build(
+            terminalTools = false,
+            browserTools = false,
+            selfSettingsTools = true,
+        ).toolNames()
+        assertFalse("低频率自建工具默认折叠，省固定 token", "eta_author_tool" in deferred)
+
         val tools = AgentToolCatalog.build(
             terminalTools = false,
             browserTools = false,
             selfSettingsTools = true,
+            openedToolGroups = setOf(AgentToolGroups.SELF_SETTINGS_GROUP.id),
         ).toolNames()
 
         // 自进化：模型写工具与列出工具的接口。

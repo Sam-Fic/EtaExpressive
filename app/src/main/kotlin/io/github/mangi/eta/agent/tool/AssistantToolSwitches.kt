@@ -14,6 +14,7 @@ import io.github.mangi.eta.data.model.AssistantProfile
 internal object AssistantToolSwitches {
     /** 组 id 与 [io.github.mangi.eta.agent.model.AgentToolGroups] / 工具页分组保持一致。 */
     const val TERMINAL = "terminal"
+    const val SCREEN = "screen"
     const val BROWSER = "web"
     const val DEVICE_DIRECT = "device_direct"
     const val DEVICE_ACTIONS = "device_sensitive"
@@ -23,7 +24,7 @@ internal object AssistantToolSwitches {
     const val SELF_SETTINGS = "self"
 
     val all: List<String> = listOf(
-        TERMINAL, BROWSER, DEVICE_DIRECT, DEVICE_ACTIONS,
+        TERMINAL, SCREEN, BROWSER, DEVICE_DIRECT, DEVICE_ACTIONS,
         PERSONAL_DATA, DEVICE_STATE, MEDIA_SEARCH, SELF_SETTINGS,
     )
 
@@ -44,6 +45,7 @@ internal object AssistantToolSwitches {
 internal object UiToolGroupLabel {
     fun label(groupId: String): String = when (groupId) {
         AssistantToolSwitches.TERMINAL -> "终端与文件"
+        AssistantToolSwitches.SCREEN -> "屏幕观察与 GUI 操作"
         AssistantToolSwitches.BROWSER -> "网页与浏览器"
         AssistantToolSwitches.DEVICE_DIRECT -> "设备直达"
         AssistantToolSwitches.DEVICE_ACTIONS -> "敏感设备操作"
@@ -58,6 +60,8 @@ internal object UiToolGroupLabel {
     fun globallyEnabled(groupId: String): Boolean = when (groupId) {
         AssistantToolSwitches.TERMINAL -> io.github.mangi.eta.config.Prefs.isEnabled(
             io.github.mangi.eta.config.Prefs.Keys.AGENT_TERMINAL_TOOLS)
+        AssistantToolSwitches.SCREEN -> io.github.mangi.eta.config.Prefs.isEnabled(
+            io.github.mangi.eta.config.Prefs.Keys.AGENT_SCREEN_TOOLS)
         AssistantToolSwitches.BROWSER -> io.github.mangi.eta.config.Prefs.isEnabled(
             io.github.mangi.eta.config.Prefs.Keys.AGENT_BROWSER_TOOLS)
         AssistantToolSwitches.DEVICE_DIRECT -> io.github.mangi.eta.config.Prefs.isEnabled(

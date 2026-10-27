@@ -74,6 +74,7 @@ class EtaDatabaseMigrationTest {
                 EtaDatabase.MIGRATION_33_34,
                 EtaDatabase.MIGRATION_34_35,
                 EtaDatabase.MIGRATION_35_36,
+                EtaDatabase.MIGRATION_36_37,
             )
             .build()
         } catch (error: Throwable) {
@@ -101,7 +102,7 @@ class EtaDatabaseMigrationTest {
                 database.conversationDao().contextCheckpoint("conv-1")
             }
             assertEquals("", retainedCheckpoint?.cloudUsageJson)
-            assertEquals(36, database.openHelper.readableDatabase.version)
+            assertEquals(37, database.openHelper.readableDatabase.version)
             assertTrue(conversations.none { it.hasCompletionMarker })
             val oversizedCheckpoint = runBlocking(Dispatchers.IO) {
                 database.conversationDao().contextCheckpoint("conv-oversized")
@@ -521,10 +522,11 @@ class EtaDatabaseMigrationTest {
                 .addMigrations(EtaDatabase.MIGRATION_28_29, EtaDatabase.MIGRATION_29_30,
                     EtaDatabase.MIGRATION_30_31, EtaDatabase.MIGRATION_31_32,
                     EtaDatabase.MIGRATION_32_33, EtaDatabase.MIGRATION_33_34,
-                    EtaDatabase.MIGRATION_34_35, EtaDatabase.MIGRATION_35_36)
+                    EtaDatabase.MIGRATION_34_35, EtaDatabase.MIGRATION_35_36,
+                    EtaDatabase.MIGRATION_36_37)
                 .build()
             try {
-                assertEquals(36, database.openHelper.writableDatabase.version)
+                assertEquals(37, database.openHelper.writableDatabase.version)
                 runBlocking(Dispatchers.IO) {
                     val result = database.runtimeRunDao().runtimeResults().single()
                     val archive = database.runtimeRunDao().archivedRunHeaders().single()

@@ -8,6 +8,8 @@ internal object AgentToolCatalog {
     fun build(
         terminalTools: Boolean,
         browserTools: Boolean,
+        /** 屏幕观察与 GUI 操作总开关；关闭时不声明任何无障碍界面工具。 */
+        screenTools: Boolean = true,
         deviceDirectTools: Boolean = true,
         deviceSensitiveReadTools: Boolean = false,
         deviceSensitiveActionTools: Boolean = false,
@@ -27,10 +29,12 @@ internal object AgentToolCatalog {
     ): JSONArray =
         capabilities.project(JSONArray().also { tools ->
             AgentQuestionToolCatalog.appendTo(tools)
-            AgentContextAppToolCatalog.appendTo(tools)
+            AgentContextAppToolCatalog.appendTo(tools, screenTools = screenTools)
             AgentSpeechToolCatalog.appendTo(tools)
-            AgentGestureToolCatalog.appendTo(tools)
-            AgentTextSystemToolCatalog.appendTo(tools)
+            if (screenTools) {
+                AgentGestureToolCatalog.appendTo(tools)
+                AgentTextSystemToolCatalog.appendTo(tools)
+            }
             // 域可用性只算一次，目录过滤、索引行与 tools_use_group 枚举共用同一份，
             // 避免「开关关了但仍宣传该域」这类三处判断不一致的缺陷。
             val groupAvailability = AgentToolGroups.availability(openedToolGroups) { group ->

@@ -38,7 +38,6 @@ internal object AgentToolRequirements {
             "media_control", "set_volume", "set_ringer_mode", "list_installed_apps",
             // 手电筒走 CameraManager 托管灯光连接；声音/热点状态读取均为公开 API。
             "get_flashlight", "set_flashlight", "get_sound_state", "set_sound_mode", "get_hotspot",
-            "device_actions",
             "search_notification_history", "recent_app_activity", "app_usage_summary",
             "get_current_location", "get_device_environment", "memory_get", "memory_write",
             "skills_list", "skills_read", "skills_read_resource", "skills_list_curated",
@@ -136,6 +135,18 @@ internal object AgentToolRequirements {
             "read_personal_item", "summarize_bills",
         ).forEach { name -> put(name, LocalToolRequirement(RootRequirement.REQUIRED, colorOs = true)) }
     }
+
+
+    /** 屏幕观察与 GUI 操作族；受用户级 [Prefs.Keys.AGENT_SCREEN_TOOLS] 总开关约束。 */
+    val SCREEN_TOOL_NAMES: Set<String> = setOf(
+        "observe_screen", "tap", "tap_area", "tap_element", "long_press", "long_press_element",
+        "swipe", "scroll", "scroll_element", "type_text", "input_text", "replace_text",
+        "clear_text", "set_clipboard", "get_clipboard", "paste_text", "press_key", "wait",
+        "wait_for_text", "wait_for_package", "open_system_panel",
+        "start_virtual_session", "finish_virtual_session", "keep_virtual_result", "inspect_virtual_backend",
+    )
+
+    fun isScreenTool(name: String): Boolean = name in SCREEN_TOOL_NAMES
 
     val toolNames: Set<String> get() = definitions.keys
 

@@ -50,6 +50,7 @@ internal object AgentRequestOverhead {
         val tools = AgentToolCatalog.build(
             terminalTools = config.terminalTools,
             browserTools = config.browserTools,
+            screenTools = config.screenTools,
             deviceDirectTools = config.deviceDirectTools,
             deviceSensitiveReadTools = config.deviceSensitiveReadTools,
             deviceSensitiveActionTools = config.deviceSensitiveActionTools,
