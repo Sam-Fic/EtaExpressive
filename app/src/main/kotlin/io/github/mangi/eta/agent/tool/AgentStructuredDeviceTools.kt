@@ -784,6 +784,9 @@ internal class AgentStructuredDeviceTools(
 
     private fun wifiCredentials(args: JSONObject): String {
         val requestedSsid = args.optString("ssid").trim().trim('"')
+        // 安全加固：默认只返回网络名，不把整份已保存明文密码送进模型上下文出网；
+        // 模型在任务确需密码时显式传 include_password=true 二次调用，凭据才会进入本轮结果。
+        val includePassword = args.optBoolean("include_password", false)
         val result = root.execute(
             "cat /data/misc/apexdata/com.android.wifi/WifiConfigStore.xml",
             maxOutputBytes = 2 * 1024 * 1024,
@@ -793,23 +796,29 @@ internal class AgentStructuredDeviceTools(
             val block = match.value
             val ssid = XML_SSID.find(block)?.groupValues?.get(1)?.decodeXml()?.trim('"')
                 ?: return@mapNotNull null
-            val password = XML_PSK.find(block)
-                ?.groupValues?.get(1)
-                ?.decodeXml()
-                ?.trim('"')
-                ?.takeUnless { it == "null" }
-            JSONObject()
-                .put("ssid", ssid)
-                .put("password", password ?: JSONObject.NULL)
+            val entry = JSONObject().put("ssid", ssid)
+            if (includePassword) {
+                val password = XML_PSK.find(block)
+                    ?.groupValues?.get(1)
+                    ?.decodeXml()
+                    ?.trim('"')
+                    ?.takeUnless { it == "null" }
+                entry.put("password", password ?: JSONObject.NULL)
+            }
+            entry
         }.filter {
             requestedSsid.isBlank() || it.optString("ssid").equals(requestedSsid, ignoreCase = true)
         }.distinctBy {
             it.optString("ssid").lowercase(Locale.ROOT)
         }.take(args.optInt("limit", 20).coerceIn(1, 50)).toList()
-        return ok("wifi_credentials")
+        val response = ok("wifi_credentials")
             .put("items", JSONArray(networks))
             .put("count", networks.size)
-            .toString()
+            .put("passwords_included", includePassword)
+        if (!includePassword) {
+            response.put("hint", "默认只返回网络名；确需密码时带 include_password=true 重新调用")
+        }
+        return response.toString()
     }
 
     private fun recentNotifications(args: JSONObject): String {

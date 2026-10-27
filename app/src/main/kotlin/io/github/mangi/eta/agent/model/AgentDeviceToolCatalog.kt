@@ -288,9 +288,10 @@ internal object AgentDeviceToolCatalog {
             .put(
                 function(
                     "wifi_credentials",
-                    "Read Wi-Fi names and passwords saved on the phone. The raw result is not persisted.",
+                    "Read Wi-Fi networks saved on the phone. By default only network names are returned; pass include_password=true only when the task genuinely needs the password. The raw result is not persisted.",
                     properties(
                         "ssid" to string("Optional exact Wi-Fi name", 128),
+                        "include_password" to boolean("Include saved passwords in the result; default false"),
                         "limit" to integer("Maximum number of results; default 20", 1, 50),
                     ),
                 ),
