@@ -257,6 +257,11 @@
         </service>
 
         <service
+            android:name=".data.repository.AppUpdateService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name="com.google.android.accessibility.selecttospeak.SelectToSpeakService"
             android:exported="false"
             android:label="@string/agent_accessibility_label"
