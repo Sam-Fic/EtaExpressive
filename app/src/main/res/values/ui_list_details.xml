@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ui_view_description">View description</string>
-    <string name="ui_description_named">View the description of %1$s</string>
     <string name="skills_more_named">More actions for %1$s</string>
     <string name="assistant_more_named">More actions for %1$s</string>
     <string name="tools_manage_permissions">Manage permissions</string>
