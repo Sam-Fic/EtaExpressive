@@ -263,7 +263,7 @@ internal object SettingsDataStore {
             selectedModelByProvider = stringMap(prefs, SELECTED_MODEL_BY_PROVIDER_PREFIX),
             appearance = settings.appearance,
             modelUsageJson = prefs[MODEL_USAGE_JSON].orEmpty(),
-            webToolsJson = prefs[WEB_TOOLS_SETTINGS].orEmpty(),
+            webToolsJson = prefs[WEB_TOOLS_SETTINGS],
             retiredInputTokens = prefs[RETIRED_INPUT_TOKENS] ?: 0L,
             retiredOutputTokens = prefs[RETIRED_OUTPUT_TOKENS] ?: 0L,
             retiredCachedTokens = prefs[RETIRED_CACHED_TOKENS] ?: 0L,

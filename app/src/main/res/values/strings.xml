@@ -1151,6 +1151,7 @@
   <string name="tool_ui_reliably_enter_long_text_with_the_clipboard_b6041e">Type long text reliably via the clipboard</string>
   <string name="tool_ui_open_with_app_32c24e">Open with app</string>
   <string name="tool_ui_directly_create_system_timers_up_to_24_hours_87c476">Directly create system timers up to 24 hours</string>
+  <string name="tool_ui_create_a_system_alarm_directly_and_open_the_cloc_9aa214">Create a system alarm directly; open the Clock app to confirm if it fails.</string>
   <string name="tool_ui_directly_execute_a_single_shell_command_c40cef">Directly execute a single shell command</string>
   <string name="tool_ui_directly_control_wi_fi_or_bluetooth_4fa0b9">Directly control Wi-Fi, Bluetooth, airplane mode, mobile data, NFC and hotspot</string>
   <string name="tool_ui_album_pictures_23bcc2">Album photos</string>

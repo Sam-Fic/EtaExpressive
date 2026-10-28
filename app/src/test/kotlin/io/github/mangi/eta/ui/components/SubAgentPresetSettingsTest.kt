@@ -37,7 +37,9 @@ class SubAgentPresetSettingsTest {
         compose.onNodeWithText("添加子代理", substring = false).assertDoesNotExist()
         compose.onNodeWithContentDescription("编辑子代理组 ${group.name}").performClick()
         compose.onNodeWithText("添加子代理", substring = false, useUnmergedTree = true).assertIsEnabled().performClick()
+        compose.onNode(hasClickAction() and hasText("子代理", substring = true)).performClick() // 新代理默认名"子代理 N"，点行开重命名弹窗
         compose.onNodeWithContentDescription("名称").performTextReplacement("未确认的新代理")
+        compose.onNodeWithText("保存").performClick()
         compose.onNodeWithText("确认").assertIsNotEnabled() // New profiles require a valid model.
         compose.runOnIdle {
             assertEquals(group.config, fixture.repository.snapshot(SubAgentConfigKey.Preset(group.id)))

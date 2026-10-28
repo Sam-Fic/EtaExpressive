@@ -57,11 +57,15 @@ class SubAgentProfileConfigDialogTest {
         compose.setSubAgentContent(fixture) {
             if (open.value) SubAgentProfileConfigDialog(session, fixture.editor, listOf(provider), onDismiss = { open.value = false })
         }
+        compose.onNode(hasClickAction() and hasText("草稿测试代理")).performClick() // 名称改为点行开重命名弹窗
         compose.onNodeWithContentDescription("名称").performTextReplacement("改名但取消")
+        compose.onNodeWithText("保存").performClick()
         compose.onNodeWithContentDescription("草稿任务分工").performScrollTo().performClick()
         compose.onNodeWithText("复杂任务").performClick()
         compose.runOnIdle { assertEquals(SubAgentTaskTier.COMPLEX, session.draft.tier) }
-        compose.onNodeWithContentDescription("并行上限（0 为不限）").performScrollTo().performTextReplacement("0")
+        compose.onNodeWithContentDescription("并行上限", substring = true).performScrollTo().performClick()
+        compose.onNodeWithContentDescription("0 为不限，或输入正整数").performTextReplacement("0")
+        compose.onNodeWithText("保存").performClick()
         compose.onNodeWithText("取消").performClick()
         compose.runOnIdle {
             assertFalse(open.value)
@@ -177,7 +181,9 @@ class SubAgentProfileConfigDialogTest {
         compose.setSubAgentContent(fixture) {
             if (open.value) SubAgentProfileConfigDialog(session, fixture.editor, listOf(gptProvider), onDismiss = { open.value = false })
         }
+        compose.onNode(hasClickAction() and hasText("草稿测试代理")).performClick()
         compose.onNodeWithContentDescription("名称").performTextReplacement("成功才关闭")
+        compose.onNodeWithText("保存").performClick()
         compose.onNodeWithContentDescription("草稿 GPT 速度").performScrollTo().performClick()
         compose.runOnIdle { preferences.failNext = true }
         compose.onNodeWithText("确认").assertIsEnabled().performClick()
@@ -224,7 +230,9 @@ class SubAgentProfileConfigDialogTest {
             if (open.value) SubAgentProfileConfigDialog(session, fixture.editor, listOf(provider), enabled = allowed.value,
                 onDismiss = { open.value = false })
         }
+        compose.onNode(hasClickAction() and hasText("草稿测试代理")).performClick()
         compose.onNodeWithContentDescription("名称").performTextReplacement("失效不写")
+        compose.onNodeWithText("保存").performClick()
         compose.runOnIdle { allowed.value = false }
         compose.onNodeWithText("确认").assertDoesNotExist()
         compose.runOnIdle { assertFalse(open.value); assertEquals(before, fixture.snapshot()) }
@@ -242,11 +250,11 @@ class SubAgentProfileConfigDialogTest {
         compose.setSubAgentContent(fixture) {
             if (open.value) SubAgentProfileConfigDialog(session, fixture.editor, listOf(provider), onDismiss = { open.value = false })
         }
-        compose.onNodeWithContentDescription("名称").assertIsDisplayed()
+        compose.onNodeWithText("草稿测试代理").assertIsDisplayed() // 名称行：点开重命名弹窗
         compose.onNodeWithText("确认").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithText("取消").assertIsDisplayed()
         val actionsBeforeScroll = compose.onNodeWithText("取消").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithContentDescription("并行上限（0 为不限）").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("并行上限", substring = true).performScrollTo().assertIsDisplayed()
         assertEquals(actionsBeforeScroll, compose.onNodeWithText("取消").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithText("确认").assertIsDisplayed()
         compose.onNodeWithContentDescription("草稿任务分工").performScrollTo().performClick()
