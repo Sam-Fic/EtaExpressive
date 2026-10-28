@@ -23,6 +23,9 @@ captures/
 output-metadata.json
 *.hprof
 
+# 本地一键编译安装脚本（含设备路径等本地信息）
+/install.sh
+
 # 日志与本地凭据
 *.log
 *.jks
