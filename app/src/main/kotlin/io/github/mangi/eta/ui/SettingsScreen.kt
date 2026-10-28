@@ -20,6 +20,8 @@ import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.Groups
@@ -491,6 +493,20 @@ internal fun SettingsScreen(
                     }
                 }
 
+                // 七个分组开关与模型侧的延迟工具组、工具清单页的分节是同一份定义
+                // （AgentToolGroups）。关掉一组＝这组工具既不下发也不执行，
+                // 单个工具的取舍在「工具清单」页里做。
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_basic_tools),
+                        summary = stringResource(R.string.settings_basic_tools_summary),
+                        key = Prefs.Keys.AGENT_BASIC_TOOLS,
+                        icon = Icons.Rounded.Forum,
+                    )
+                }
+
                 row {
                     SwitchPref(
                         context = context,
@@ -506,7 +522,8 @@ internal fun SettingsScreen(
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
-                        title = stringResource(R.string.ui_enable_web_browsing_tools_8b6b03),
+                        title = stringResource(R.string.settings_web_tools),
+                        summary = stringResource(R.string.settings_web_tools_summary),
                         key = Prefs.Keys.AGENT_BROWSER_TOOLS,
                         icon = Icons.Rounded.Language,
                     )
@@ -516,59 +533,8 @@ internal fun SettingsScreen(
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
-                        title = stringResource(R.string.ui_enable_device_direct_tools_e2d595),
-                        key = Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS,
-                        icon = Icons.Rounded.Smartphone,
-                    )
-                }
-
-                row {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.ui_allow_reading_of_sensitive_device_information_feaec0),
-                        key = Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
-                        icon = Icons.Rounded.Visibility,
-                    )
-                }
-
-                row {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_personal_data_reads),
-                        summary = stringResource(R.string.settings_personal_data_reads_summary),
-                        key = Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS,
-                        icon = Icons.Rounded.VpnKey,
-                    )
-                }
-
-                row {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_device_state_reads),
-                        summary = stringResource(R.string.settings_device_state_reads_summary),
-                        key = Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS,
-                        icon = Icons.Rounded.Info,
-                    )
-                }
-
-                row {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.ui_allow_sensitive_device_operation_3d42ea),
-                        key = Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
-                        icon = Icons.Rounded.GppMaybe,
-                    )
-                }
-
-                row {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.ui_enable_terminal_file_tools_18bb43),
+                        title = stringResource(R.string.settings_terminal_tools),
+                        summary = stringResource(R.string.settings_terminal_tools_summary),
                         key = Prefs.Keys.AGENT_TERMINAL_TOOLS,
                         icon = Icons.Rounded.Terminal,
                     )
@@ -589,10 +555,32 @@ internal fun SettingsScreen(
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
-                        title = stringResource(R.string.settings_self_settings_tools),
-                        summary = stringResource(R.string.settings_self_settings_tools_summary),
-                        key = Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS,
-                        icon = Icons.Rounded.Tune,
+                        title = stringResource(R.string.settings_device_tools),
+                        summary = stringResource(R.string.settings_device_tools_summary),
+                        key = Prefs.Keys.AGENT_DEVICE_TOOLS,
+                        icon = Icons.Rounded.Smartphone,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_personal_tools),
+                        summary = stringResource(R.string.settings_personal_tools_summary),
+                        key = Prefs.Keys.AGENT_PERSONAL_TOOLS,
+                        icon = Icons.Rounded.Badge,
+                    )
+                }
+
+                row {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_extensions_tools),
+                        summary = stringResource(R.string.settings_extensions_tools_summary),
+                        key = Prefs.Keys.AGENT_EXTENSIONS_TOOLS,
+                        icon = Icons.Rounded.Extension,
                     )
                 }
 

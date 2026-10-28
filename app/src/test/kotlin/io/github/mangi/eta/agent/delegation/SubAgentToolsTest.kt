@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.delegation
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.model.AgentToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolCallValidator
+import io.github.mangi.eta.agent.model.AgentToolGroups
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -24,7 +25,8 @@ class SubAgentToolsTest {
 
     @Test fun catalogContainsOnlyExecutableReads() {
         val all = AgentToolCatalog.build(terminalTools = true, browserTools = true,
-            deviceSensitiveReadTools = true, deviceSensitiveActionTools = true, memoryTools = true)
+            deviceTools = true, personalTools = true, memoryTools = true,
+            openedToolGroups = AgentToolGroups.allIds)
         SubAgentTools.appendTo(all, listOf("worker"))
         val filtered = SubAgentTools.filter(all)
         assertTrue(filtered.length() > 0)

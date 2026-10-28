@@ -9,21 +9,21 @@ import io.github.mangi.eta.config.Prefs
  * 必须退出去找全局开关，而且找不到（它混在几十个敏感读工具里）。把分组直接绑到
  * [Prefs.Keys.LOCAL_AGENT_KEYS] 里的开关，卡片旁就有开关，用户能就地收紧能力。
  *
- * 只有整组恰好由一个开关控制时才提供开关；跨开关或没有开关的分组返回 null，
- * 避免出现一个开关只关掉组里一半工具这种误导性状态。
+ * 分组 id 取自 [io.github.mangi.eta.agent.model.AgentToolGroups]：设置首页、工具清单页、
+ * 模型侧目录与助手收窄共用同一份定义，这里只是「组 id → 用户开关」的映射。
+ * 组内的单个工具由 [Prefs.disabledTools] 承接，不再有跨开关的组。
  */
 internal object ToolGroupSwitch {
     /** 分组 id → 开关。返回 null 表示该组没有单一开关可用。 */
     fun keyFor(groupId: String): String? = when (groupId) {
-        "web" -> Prefs.Keys.AGENT_BROWSER_TOOLS
+        "basic" -> Prefs.Keys.AGENT_BASIC_TOOLS
         "screen" -> Prefs.Keys.AGENT_SCREEN_TOOLS
-        "device_direct" -> Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS
-        "device_sensitive" -> Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS
-        "personal_data" -> Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS
-        "file_vision", "terminal" -> Prefs.Keys.AGENT_TERMINAL_TOOLS
-        "memory" -> null // 记忆是按助手的开关，不是全局 Prefs
-        "media_search" -> Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS
-        "self" -> Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS
+        "web" -> Prefs.Keys.AGENT_BROWSER_TOOLS
+        "terminal" -> Prefs.Keys.AGENT_TERMINAL_TOOLS
+        "device" -> Prefs.Keys.AGENT_DEVICE_TOOLS
+        "personal" -> Prefs.Keys.AGENT_PERSONAL_TOOLS
+        // Eta 自身配置组刻意不提供开关入口之外的模型控制，但用户可以在这里关掉。
+        "extensions" -> Prefs.Keys.AGENT_EXTENSIONS_TOOLS
         else -> null
     }
 
@@ -34,12 +34,6 @@ internal object ToolGroupSwitch {
         runCatching { Prefs.reconcileAgentPreferences(io.github.mangi.eta.EtaApp.serviceInstance) }
     }
 
-    /**
-     * 该分组是否还能提供开关。`file_vision` 与 `terminal` 共用一个开关：
-     * 只在 `terminal` 组显示，`file_vision` 组不重复显示，避免两处开关互相打架。
-     */
-    fun showsInGroup(groupId: String): Boolean = when (groupId) {
-        "file_vision" -> false
-        else -> keyFor(groupId) != null
-    }
+    /** 该分组是否还能提供开关；没有对应 Prefs 键的分组不渲染开关行。 */
+    fun showsInGroup(groupId: String): Boolean = keyFor(groupId) != null
 }

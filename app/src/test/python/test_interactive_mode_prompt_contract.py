@@ -50,12 +50,12 @@ class InteractiveModePromptContractTest(unittest.TestCase):
         self.assertEqual(2, len(re.findall(r'\binteractiveModeEnabled\b', arguments)))
         self.assertNotIn('InteractiveModePreference', arguments)
 
-    def test_false_is_last_optional_argument_for_pure_prompt_builders_and_client(self):
+    def test_false_is_the_declared_default_for_pure_prompt_builders_and_client(self):
         for text, name in ((self.builder, 'buildInitialMessages'),
                            (self.builder, 'buildSystemMessages'), (self.client, 'complete')):
             signatures = argument_groups(text, r'\bfun\s+' + name)
             self.assertEqual(1, len(signatures))
-            self.assertRegex(signatures[0][1], r'interactiveModeEnabled\s*:\s*Boolean\s*=\s*false\s*,\s*$')
+            self.assertRegex(signatures[0][1], r'interactiveModeEnabled\s*:\s*Boolean\s*=\s*false\s*,')
         self.assertNotIn('InteractiveModePreference', code_mask(self.builder))
         self.assertNotIn('InteractiveModePreference', code_mask(self.client))
 
@@ -134,7 +134,8 @@ class InteractiveModePromptContractTest(unittest.TestCase):
             self.assertNotIn('interactiveModeEnabled', code_mask(tool_assembly))
             self.assertNotIn('InteractiveModePreference', code_mask(tool_assembly))
         catalog = (ROOT / 'agent/model/AgentToolCatalog.kt').read_text()
-        self.assertRegex(catalog, r'capabilities\.project\(JSONArray\(\)\.also\s*\{\s*tools\s*->\s*AgentQuestionToolCatalog\.appendTo\(tools\)')
+        # ask_user follows the basic-interaction group switch, never the interactive-mode switch.
+        self.assertRegex(catalog, r'if \(basicTools\) AgentQuestionToolCatalog\.appendTo\(emitted\)')
         self.assertNotIn('interactiveModeEnabled', catalog)
         self.assertNotIn('InteractiveModePreference', catalog)
         question = (ROOT / 'agent/model/AgentQuestionToolCatalog.kt').read_text()
@@ -148,7 +149,9 @@ class InteractiveModePromptContractTest(unittest.TestCase):
             self.assertNotIn('AgentTaskSurface.save', text)
             self.assertNotIn('Prefs.putBoolean', text)
         self.assertEqual(1, self.builder.count('interactiveModePromptClause(interactiveModeEnabled)'))
-        self.assertIn('"不要改用坐标或 Shell 重放 GUI 动作。" +\n                    interactiveModePromptClause(interactiveModeEnabled)', self.builder)
+        # The clause closes the base guidance message: screen/terminal guidance now lives in
+        # group-conditional blocks, so the tail before it is the conditional's `else ""`.
+        self.assertIn('} else "") +\n                    interactiveModePromptClause(interactiveModeEnabled)', self.builder)
 
 
 if __name__ == '__main__':

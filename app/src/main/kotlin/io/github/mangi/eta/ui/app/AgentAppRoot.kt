@@ -68,8 +68,7 @@ import io.github.mangi.eta.agent.device.BoundedRootCommandExecutor
 import io.github.mangi.eta.agent.device.DeviceLocationProvider
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.core.AndroidAgentLogger
-import io.github.mangi.eta.core.safeLogType
-import io.github.mangi.eta.data.model.AppUpdateOffer
+import io.github.mangi.eta.data.repository.AppUpdateCoordinator
 import io.github.mangi.eta.data.repository.AppUpdateRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.AgentTaskPreferenceScreen
@@ -141,7 +140,6 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
 
@@ -222,7 +220,7 @@ fun AgentAppRoot(
     val lifecycleOwner = LocalLifecycleOwner.current
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    var updateOffer by remember { mutableStateOf<AppUpdateOffer?>(null) }
+    val updateOffer by AppUpdateCoordinator.offer.collectAsState()
     val currentVersion = remember { AppUpdateRepository.currentVersionName(context) }
     DisposableEffect(lifecycleOwner, focusManager, keyboard) {
         val observer = LifecycleEventObserver { _, event ->
@@ -238,11 +236,8 @@ fun AgentAppRoot(
                     agentState.refreshPermissionHealth()
                     agentState.refreshRuntimeResults()
                     agentState.refreshRequestOverhead()
-                    uiScope.launch {
-                        AppUpdateRepository.checkForUpdate(context, force = false)
-                            .getOrNull()
-                            ?.let { updateOffer = it }
-                    }
+                    // 更新检查只在冷启动做一次（见下方 LaunchedEffect）。
+                    // 回到前台（授权、分享、装完 APK…）不应该再弹更新弹窗。
                 }
                 else -> Unit
             }
@@ -352,16 +347,9 @@ fun AgentAppRoot(
         RuntimeConfigRepository.ensureDefaults(EtaApp.serviceInstance)
     }
 
+    // 冷启动（进程新建）只自动检查一次更新；Activity recreate、回前台都不重弹。
     LaunchedEffect(Unit) {
-        delay(800)
-        AppUpdateRepository.checkForUpdate(context, force = true)
-            .onFailure { failure ->
-                AndroidAgentLogger.warn(
-                    "App update check failed: type=${failure.safeLogType()}",
-                )
-            }
-            .getOrNull()
-            ?.let { updateOffer = it }
+        AppUpdateCoordinator.checkOnceOnStartup(context)
     }
 
     LaunchedEffect(assistantConversationKey) {
@@ -837,6 +825,11 @@ fun AgentAppRoot(
                             AgentToolsAction.OpenWebToolsSettings -> pushRoute(AppRoute.WebToolsSettings)
                             is AgentToolsAction.ToggleGroup -> {
                                 ToolGroupSwitch.setEnabled(action.key, action.enabled)
+                                agentState.refreshToolsState()
+                            }
+                            is AgentToolsAction.ToggleTool -> {
+                                io.github.mangi.eta.config.Prefs.setToolDisabled(
+                                    action.name, disabled = !action.enabled)
                                 agentState.refreshToolsState()
                             }
                         }
@@ -1503,7 +1496,7 @@ fun AgentAppRoot(
     AppUpdateDialog(
         offer = updateOffer,
         currentVersion = currentVersion,
-        onDismiss = { updateOffer = null },
+        onDismiss = { AppUpdateCoordinator.dismiss() },
     )
 
     messageRegenerateTarget?.let { target ->

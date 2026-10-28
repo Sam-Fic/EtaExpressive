@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.tool
 import io.github.mangi.eta.agent.memory.AgentMemoryContext
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.model.AgentPromptBuilder
+import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.skill.SkillContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -237,6 +238,8 @@ class AgentShellToolAvailabilityTest {
                 memoryContext = AgentMemoryContext.DISABLED,
                 rootAvailable = rootAvailable,
                 shellTools = tools,
+                // 终端组默认延迟；这里断言终端指引的措辞，因此视为已打开。
+                openedToolGroups = setOf(AgentToolGroups.TERMINAL_GROUP.id),
             )
             return (0 until messages.length()).joinToString("\n") { messages.getJSONObject(it).optString("content") }
         }

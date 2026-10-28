@@ -175,15 +175,17 @@ class AgentModelClientLoopTest {
             },
         ))
         AgentModelClient.complete(
-            config = modelConfig().copy(terminalTools = true, deviceSensitiveActionTools = true),
+            config = modelConfig().copy(terminalTools = true, deviceTools = true),
             prompt = "开始",
             provider = provider,
             capabilitiesProvider = {
                 captures++
                 AgentToolCapabilities(rootAvailable = root)
             },
-            // 设备写操作默认折叠，这里要先打开该域，才能观察到「Root 消失后工具离开目录」。
-            openedToolGroupsProvider = { setOf(AgentToolGroups.DEVICE_ACTION_GROUP.id) },
+            // 设备控制与终端组默认折叠：这里要先打开它们，才能观察到「Root 消失后工具离开目录」。
+            openedToolGroupsProvider = {
+                setOf(AgentToolGroups.DEVICE_GROUP.id, AgentToolGroups.TERMINAL_GROUP.id)
+            },
             toolExecutor = AgentModelClient.ToolExecutor {
                 executed += it.id
                 root = false
@@ -193,6 +195,53 @@ class AgentModelClientLoopTest {
         assertEquals(listOf("first"), executed)
         // 首轮复用初始快照，只有工具可能改变能力之后（第 2/3 轮）才重新捕获。
         assertEquals(3, captures)
+    }
+
+    @Test
+    fun openingAToolGroupMidRunGrowsTheSystemPrefixWithoutTouchingHistory() {
+        val opened = mutableSetOf<String>()
+        val provider = ScriptedProvider(listOf(
+            { request, _ ->
+                assertFalse(request.messages.toString().contains("日程管理用 schedule_manage"))
+                assistant(finishReason = "tool_calls",
+                    toolCalls = listOf(toolCall("call-1", "get_current_context", "{}")))
+            },
+            { request, _ ->
+                assertTrue(request.messages.toString().contains("日程管理用 schedule_manage"))
+                assistant(content = "完成", finishReason = "stop")
+            },
+        ))
+
+        val result = AgentModelClient.complete(
+            config = modelConfig().copy(deviceTools = true),
+            prompt = "现在",
+            history = listOf(
+                AgentModelClient.ConversationMessage(role = "user", content = "旧问题"),
+                AgentModelClient.ConversationMessage(role = "assistant", content = "旧回答"),
+            ),
+            provider = provider,
+            openedToolGroupsProvider = { opened.toSet() },
+            toolExecutor = AgentModelClient.ToolExecutor {
+                // 等价于 tools_use_group 成功：设备控制组从下一轮起同时进入目录与系统提示。
+                opened += AgentToolGroups.DEVICE_GROUP.id
+                AgentModelClient.ToolResult("{\"ok\":true}")
+            },
+        )
+
+        val first = provider.requests[0]
+        val second = provider.requests[1]
+        assertEquals(second.systemMessages(), first.systemMessages() + 1)
+        // 系统前缀变长时历史必须整体后移：JSONArray.put(index, …) 是替换，
+        // 按索引覆写会把第一条历史消息盖成系统消息。
+        listOf("旧问题", "旧回答", "现在").forEach { text ->
+            assertTrue("$text 必须还在第二轮请求里", second.toString().contains(text))
+        }
+        assertEquals(
+            listOf("user", "assistant", "user", "assistant", "tool"),
+            second.roles().dropWhile { it == "system" },
+        )
+        // transcript 起点同样按条数计，前缀变长后必须跟着移动，否则会把用户消息重复写回历史。
+        assertEquals(listOf("assistant", "tool", "assistant"), result.transcript.map { it.role })
     }
 
     @Test
@@ -562,6 +611,8 @@ class AgentModelClientLoopTest {
         val result = AgentModelClient.complete(
             config = modelConfig(),
             prompt = "观察",
+            // 屏幕组默认折叠；这里断言的是工具图片如何回灌，与分层加载无关。
+            openedToolGroupsProvider = { setOf(AgentToolGroups.SCREEN_GROUP.id) },
             toolExecutor = AgentModelClient.ToolExecutor { call ->
                 AgentModelClient.ToolResult(
                     content = JSONObject().put("ok", true).toString(),
@@ -607,6 +658,7 @@ class AgentModelClientLoopTest {
         val result = AgentModelClient.complete(
             config = modelConfig().copy(supportsVision = true),
             prompt = "观察后点击",
+            openedToolGroupsProvider = { setOf(AgentToolGroups.SCREEN_GROUP.id) },
             toolExecutor = AgentModelClient.ToolExecutor { call ->
                 AgentModelClient.ToolResult(
                     content = JSONObject().put("ok", true).toString(),
@@ -653,6 +705,7 @@ class AgentModelClientLoopTest {
         AgentModelClient.complete(
             config = modelConfig().copy(supportsVision = true),
             prompt = "连续观察",
+            openedToolGroupsProvider = { setOf(AgentToolGroups.SCREEN_GROUP.id) },
             toolExecutor = AgentModelClient.ToolExecutor {
                 val reference = if (observationIndex++ == 0) firstImage else secondImage
                 AgentModelClient.ToolResult(
@@ -1560,6 +1613,11 @@ class AgentModelClientLoopTest {
         ((length() - count) until length()).map { index ->
             getJSONObject(index).getString("role")
         }
+
+    private fun JSONArray.roles(): List<String> =
+        (0 until length()).map { index -> getJSONObject(index).getString("role") }
+
+    private fun JSONArray.systemMessages(): Int = roles().count { it == "system" }
 
     private fun JSONArray.getJSONObjectFromEnd(offset: Int): JSONObject =
         getJSONObject(length() - offset)

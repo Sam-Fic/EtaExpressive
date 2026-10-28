@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.TravelExplore
 import io.github.mangi.eta.agent.model.AgentToolCatalog
+import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.agent.tool.RootRequirement
 import io.github.mangi.eta.agent.tool.ToolPresentation
@@ -29,12 +30,13 @@ class ToolCatalogUiTest {
         val tools = AgentToolCatalog.build(
             terminalTools = true,
             browserTools = true,
-            deviceSensitiveReadTools = true,
-            deviceSensitiveActionTools = true,
+            deviceTools = true,
+            personalTools = true,
             skillGitHubDiscovery = true,
             skillGitHubInstall = true,
             memoryTools = true,
             capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
+            openedToolGroups = AgentToolGroups.allIds,
         )
         val runtimeNames = (0 until tools.length()).map {
             tools.getJSONObject(it).getJSONObject("function").getString("name")

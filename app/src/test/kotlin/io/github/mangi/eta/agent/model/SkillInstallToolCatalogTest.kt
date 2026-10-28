@@ -10,7 +10,7 @@ import org.junit.Test
 class SkillInstallToolCatalogTest {
     @Test
     fun `Skill resource reader is always visible with bounded relative path schema`() {
-        val function = AgentToolCatalog.build(false, false).function("skills_read_resource")
+        val function = catalog().function("skills_read_resource")
         val parameters = function.getJSONObject("parameters")
         val properties = parameters.getJSONObject("properties")
 
@@ -23,18 +23,9 @@ class SkillInstallToolCatalogTest {
 
     @Test
     fun `GitHub tools are only exposed at their authorization level`() {
-        val base = AgentToolCatalog.build(false, false).toolNames()
-        val discovery = AgentToolCatalog.build(
-            terminalTools = false,
-            browserTools = false,
-            skillGitHubDiscovery = true,
-        ).toolNames()
-        val install = AgentToolCatalog.build(
-            terminalTools = false,
-            browserTools = false,
-            skillGitHubDiscovery = true,
-            skillGitHubInstall = true,
-        ).toolNames()
+        val base = catalog().toolNames()
+        val discovery = catalog(skillGitHubDiscovery = true).toolNames()
+        val install = catalog(skillGitHubDiscovery = true, skillGitHubInstall = true).toolNames()
 
         assertFalse("skills_list_curated" in base)
         assertFalse("skills_inspect_github" in base)
@@ -47,12 +38,8 @@ class SkillInstallToolCatalogTest {
 
     @Test
     fun `install schema requires explicit string paths and replacement flag is boolean`() {
-        val function = AgentToolCatalog.build(
-            terminalTools = false,
-            browserTools = false,
-            skillGitHubDiscovery = true,
-            skillGitHubInstall = true,
-        ).function("skills_install_from_github")
+        val function = catalog(skillGitHubDiscovery = true, skillGitHubInstall = true)
+            .function("skills_install_from_github")
         val parameters = function.getJSONObject("parameters")
         val properties = parameters.getJSONObject("properties")
         val paths = properties.getJSONObject("paths")
@@ -71,7 +58,7 @@ class SkillInstallToolCatalogTest {
 
     @Test
     fun `local install tool is always visible and only requires a directory`() {
-        val base = AgentToolCatalog.build(false, false)
+        val base = catalog()
         assertTrue("skills_install_local" in base.toolNames())
         val function = base.function("skills_install_local")
         val parameters = function.getJSONObject("parameters")
@@ -85,6 +72,18 @@ class SkillInstallToolCatalogTest {
         assertEquals(setOf("directory"), parameters.requiredNames())
         assertTrue(function.getString("description").contains("next turn"))
     }
+
+    /** Skills 工具分属基础组与扩展组；扩展组默认延迟，这里统一视为已打开。 */
+    private fun catalog(
+        skillGitHubDiscovery: Boolean = false,
+        skillGitHubInstall: Boolean = false,
+    ): JSONArray = AgentToolCatalog.build(
+        terminalTools = false,
+        browserTools = false,
+        skillGitHubDiscovery = skillGitHubDiscovery,
+        skillGitHubInstall = skillGitHubInstall,
+        openedToolGroups = AgentToolGroups.allIds,
+    )
 
     private fun JSONArray.toolNames(): Set<String> =
         (0 until length()).mapTo(mutableSetOf()) { index ->

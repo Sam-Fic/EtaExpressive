@@ -23,4 +23,6 @@ data class ToolItemUi(
     val id: String,
     val title: String,
     val summary: String,
+    /** 单工具开关：false 表示用户已在工具清单页单独禁用它（见 [io.github.mangi.eta.config.Prefs.disabledTools]）。 */
+    val enabled: Boolean = true,
 )

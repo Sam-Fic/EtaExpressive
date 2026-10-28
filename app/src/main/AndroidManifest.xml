@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- AppUpdateService 用 dataSync 前台服务下载更新包；Android 14+ 缺此权限会直接 SecurityException。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Agent run 期间把执行通知提升为 Live Update，显示在状态栏胶囊与锁屏；普通权限，用户可在通知设置中关闭。 -->
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />

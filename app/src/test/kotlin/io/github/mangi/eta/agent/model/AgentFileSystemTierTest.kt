@@ -16,6 +16,8 @@ class AgentFileSystemTierTest {
         terminalTools = AgentFileSystemTier.allowsFileTools(tier),
         browserTools = false,
         fileSystemTier = tier,
+        // 终端组默认延迟；这里断言档位对 schema 的影响，因此视为已打开。
+        openedToolGroups = AgentToolGroups.allIds,
     )
 
     private fun JSONArray.names(): Set<String> = (0 until length()).mapTo(linkedSetOf()) {

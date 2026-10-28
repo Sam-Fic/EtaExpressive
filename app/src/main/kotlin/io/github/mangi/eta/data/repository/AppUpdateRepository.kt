@@ -18,8 +18,15 @@ import okhttp3.Request
 internal object AppUpdateRepository {
     const val FILE_PROVIDER_AUTHORITY = "io.github.mangi.eta.fileprovider"
     const val LATEST_RELEASE_URL = "https://api.github.com/repos/Sam-Fic/Eta/releases/latest"
-    private const val AUTO_CHECK_INTERVAL_MS = 30_000L
     private const val MAX_APK_BYTES = 120L * 1024L * 1024L
+
+    /**
+     * 同一版本的自动提醒间隔。
+     *
+     * 用户点「稍后」后，一天之内多次冷启动不应该反复被同一个版本拦一次；
+     * 过了这个窗口自动检查才会再提。手动检查与更高版本不受影响。
+     */
+    private const val PROMPT_INTERVAL_MS = 24L * 60L * 60L * 1000L
 
     fun currentVersionName(context: Context): String =
         runCatching {
@@ -28,43 +35,71 @@ internal object AppUpdateRepository {
                 .versionName
         }.getOrNull().orEmpty()
 
-    suspend fun checkForUpdate(context: Context, force: Boolean = false): Result<AppUpdateOffer?> =
+    /**
+     * 检查更新。
+     *
+     * 自动检查（冷启动）不要传 `respectIgnored = false`：用户点了「忽略此版本」之后，
+     * 只应该在发布更高版本时再提醒。用户在关于页主动检查时传 `false`，否则会
+     * 因为命中忽略列表或提醒节流而错误地提示「已是最新版本」。
+     */
+    suspend fun checkForUpdate(
+        context: Context,
+        respectIgnored: Boolean = true,
+    ): Result<AppUpdateOffer?> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val current = currentVersionName(context)
-                if (!force) {
-                    val lastCheck = SettingsDataStore.updateLastCheckAt()
-                    if (lastCheck > 0L && System.currentTimeMillis() - lastCheck < AUTO_CHECK_INTERVAL_MS) {
-                        return@runCatching null
-                    }
-                }
                 val offer = fetchLatest()
-                SettingsDataStore.setUpdateLastCheckAt(System.currentTimeMillis())
                 if (offer == null) return@runCatching null
                 val newer = AppVersion.isNewer(offer.versionName, current) ||
                     AppVersion.isNewer(offer.tagName, current)
                 if (!newer) {
                     return@runCatching null
                 }
-                val dismissed = SettingsDataStore.updateDismissedVersion()
-                val remote = AppVersion.normalize(offer.versionName).ifBlank {
-                    AppVersion.normalize(offer.tagName)
+                if (respectIgnored && isIgnored(offer)) {
+                    return@runCatching null
                 }
-                // 用户选择「忽略此版本」后，无论是自动检查还是冷启动检查都不再提醒；
-                // 仅当发布更新的版本时才重新弹出。手动检查同样遵循忽略状态。
-                if (remote.isNotBlank() && remote == AppVersion.normalize(dismissed)) {
+                if (respectIgnored && recentlyPrompted(offer)) {
                     return@runCatching null
                 }
                 offer
             }
         }
 
+    /** 同一版本在 [PROMPT_INTERVAL_MS] 内已经提醒过。 */
+    private suspend fun recentlyPrompted(offer: AppUpdateOffer): Boolean {
+        val (version, promptedAt) = SettingsDataStore.updateLastPrompt()
+        if (promptedAt <= 0L) return false
+        if (AppVersion.normalize(version) != offer.normalizedVersion) return false
+        return System.currentTimeMillis() - promptedAt < PROMPT_INTERVAL_MS
+    }
+
+    /** 记住“这个版本刚刚提醒过”，用于 [recentlyPrompted] 的节流。 */
+    suspend fun markPrompted(offer: AppUpdateOffer) {
+        SettingsDataStore.setUpdateLastPrompt(offer.normalizedVersion, System.currentTimeMillis())
+    }
+
+    /**
+     * 该 offer 是否已被用户忽略。
+     *
+     * 忽略是“不高于已忽略版本都不再提醒”，所以用户忽略 5.3.16 后，5.3.17 仍会提示。
+     */
+    private suspend fun isIgnored(offer: AppUpdateOffer): Boolean =
+        AppVersion.isIgnoredBy(
+            remoteVersion = offer.normalizedVersion,
+            ignoredVersion = SettingsDataStore.updateDismissedVersion(),
+        )
+
+    /**
+     * 用户选择「忽略此版本」：持久化后，自动检查不再提示该版本及更低版本。
+     */
     suspend fun dismissVersion(version: String) {
         val normalized = AppVersion.normalize(version)
         if (normalized.isNotBlank()) {
             SettingsDataStore.setUpdateDismissedVersion(normalized)
+            // 忽略本身就意味着长期静默，不必再占着“刚刚提醒过”的标记。
+            SettingsDataStore.setUpdateLastPrompt("", 0L)
         }
-        SettingsDataStore.setUpdateLastCheckAt(System.currentTimeMillis())
     }
 
     /**
@@ -81,7 +116,7 @@ internal object AppUpdateRepository {
         val name = offer.apkName
             ?.substringAfterLast('/')
             ?.takeIf { it.endsWith(".apk", ignoreCase = true) }
-            ?: "eta-${AppVersion.normalize(offer.versionName).ifBlank { "update" }}.apk"
+            ?: "eta-${offer.normalizedVersion.ifBlank { "update" }}.apk"
         val dir = File(context.applicationContext.cacheDir, "updates").apply { mkdirs() }
         val destination = File(dir, name)
         val request = Request.Builder()
@@ -89,35 +124,35 @@ internal object AppUpdateRepository {
             .header("Accept", "application/octet-stream")
             .get()
             .build()
-        AgentHttpClient.client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                error("下载失败 HTTP ${response.code}")
-            }
-            val declared = response.body.contentLength()
-            if (declared > MAX_APK_BYTES) error("安装包过大")
-            destination.outputStream().use { output ->
-                response.body.byteStream().use { input ->
-                    val buffer = ByteArray(16 * 1024)
-                    var total = 0L
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        total += read
-                        if (total > MAX_APK_BYTES) {
-                            destination.delete()
-                            error("安装包过大")
+        try {
+            AgentHttpClient.client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    error("下载失败 HTTP ${response.code}")
+                }
+                val declared = response.body.contentLength()
+                if (declared > MAX_APK_BYTES) error("安装包过大")
+                destination.outputStream().use { output ->
+                    response.body.byteStream().use { input ->
+                        val buffer = ByteArray(16 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > MAX_APK_BYTES) error("安装包过大")
+                            output.write(buffer, 0, read)
+                            onProgress?.invoke(total, declared)
                         }
-                        output.write(buffer, 0, read)
-                        onProgress?.invoke(total, declared)
                     }
                 }
             }
-        }
-        if (!destination.isFile || destination.length() <= 0L) {
+            if (!destination.isFile || destination.length() <= 0L) error("下载失败")
+            destination
+        } catch (failure: Throwable) {
+            // 半截 APK 不能留在缓存目录：下次下载会误命中损坏文件。
             destination.delete()
-            error("下载失败")
+            throw failure
         }
-        destination
     }
 
     fun canInstallPackages(context: Context): Boolean =

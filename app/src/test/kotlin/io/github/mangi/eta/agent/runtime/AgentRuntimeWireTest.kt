@@ -330,9 +330,8 @@ class AgentRuntimeWireTest {
         )
 
         assertEquals(true, config.browserTools)
-        assertEquals(true, config.deviceDirectTools)
-        assertEquals(false, config.deviceSensitiveReadTools)
-        assertEquals(false, config.deviceSensitiveActionTools)
+        assertEquals(true, config.deviceTools)
+        assertEquals(false, config.personalTools)
     }
 
     @Test
@@ -367,9 +366,8 @@ class AgentRuntimeWireTest {
                 systemPrompt = "你是手机 Agent",
                 terminalTools = true,
                 browserTools = true,
-                deviceDirectTools = true,
-                deviceSensitiveReadTools = true,
-                deviceSensitiveActionTools = true,
+                deviceTools = true,
+                personalTools = true,
                 thinkingEnabled = true,
                 reasoningEffort = ReasoningEffort.HIGH,
                 reasoningCapabilities = ModelReasoningCapabilities(
@@ -463,23 +461,20 @@ class AgentRuntimeWireTest {
                 apiKey = "test-key",
                 model = "gpt-test",
                 systemPrompt = "你是手机 Agent",
-                deviceDirectTools = false,
-                deviceSensitiveReadTools = true,
-                deviceSensitiveActionTools = true,
+                deviceTools = false,
+                personalTools = true,
             ),
             images = emptyList(),
         )
         val legacyBundle = AgentRuntimeWire.toLegacyBundle(request, emptyHistoryDescriptor()).apply {
-            remove("device_direct_tools")
-            remove("device_sensitive_read_tools")
-            remove("device_sensitive_action_tools")
+            remove("device_tools")
+            remove("personal_tools")
         }
 
         val config = AgentRuntimeWire.runRequestFromBundle(legacyBundle).config
 
-        assertEquals(true, config.deviceDirectTools)
-        assertEquals(false, config.deviceSensitiveReadTools)
-        assertEquals(false, config.deviceSensitiveActionTools)
+        assertEquals(true, config.deviceTools)
+        assertEquals(false, config.personalTools)
     }
 
     @Test

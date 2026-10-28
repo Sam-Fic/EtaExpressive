@@ -9,6 +9,7 @@ import io.github.mangi.eta.config.InteractiveModePreference
 import io.github.mangi.eta.agent.delegation.*
 import io.github.mangi.eta.agent.browser.ChildBrowserSession
 import io.github.mangi.eta.agent.model.AgentToolCatalog
+import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityKeeper
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.model.AgentModelExecutionException
@@ -81,15 +82,13 @@ internal class AgentRuntimeRunExecutor(
         // 按助手的工具开关：只能收紧。全局关掉的能力不会被助手配置重新打开。
         val assistantTools = AssistantRepository.currentProfile(request.assistantId)
         val allowBrowser = AssistantToolSwitches.allows(
-            assistantTools, AssistantToolSwitches.BROWSER, request.config.browserTools)
+            assistantTools, AssistantToolSwitches.WEB, request.config.browserTools)
         val allowTerminal = AssistantToolSwitches.allows(
             assistantTools, AssistantToolSwitches.TERMINAL, request.config.terminalTools)
-        val allowDirect = AssistantToolSwitches.allows(
-            assistantTools, AssistantToolSwitches.DEVICE_DIRECT, request.config.deviceDirectTools)
-        val allowSensitiveRead = AssistantToolSwitches.allows(
-            assistantTools, AssistantToolSwitches.PERSONAL_DATA, request.config.deviceSensitiveReadTools)
-        val allowSensitiveAction = AssistantToolSwitches.allows(
-            assistantTools, AssistantToolSwitches.DEVICE_ACTIONS, request.config.deviceSensitiveActionTools)
+        val allowDevice = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.DEVICE, request.config.deviceTools)
+        val allowPersonal = AssistantToolSwitches.allows(
+            assistantTools, AssistantToolSwitches.PERSONAL, request.config.personalTools)
         val allowScreen = AssistantToolSwitches.allows(
             assistantTools, AssistantToolSwitches.SCREEN, request.config.screenTools)
         // Parent-only prompt policy, frozen for this run rather than re-read between rounds.
@@ -175,9 +174,8 @@ internal class AgentRuntimeRunExecutor(
                 browserToolsEnabled = { allowBrowser && currentPermissions().browserTools },
                 screenToolsEnabled = { allowScreen && currentPermissions().screenTools },
                 terminalToolsEnabled = { allowTerminal && currentPermissions().terminalTools },
-                deviceDirectToolsEnabled = { allowDirect && currentPermissions().deviceDirectTools },
-                deviceSensitiveReadToolsEnabled = { allowSensitiveRead && currentPermissions().deviceSensitiveReadTools },
-                deviceSensitiveActionToolsEnabled = { allowSensitiveAction && currentPermissions().deviceSensitiveActionTools },
+                deviceToolsEnabled = { allowDevice && currentPermissions().deviceTools },
+                personalToolsEnabled = { allowPersonal && currentPermissions().personalTools },
                 memoryToolsEnabled = { AgentMemoryRepository.isEnabled(assistant.id) },
                 screenshotExcludedPackages = { entrySurfaceGuard?.consumeScreenshotExcludedPackages().orEmpty() },
                 // 危险操作逐次确认：未确认时拒绝本次调用，用户同意后重发即可通过。
@@ -255,14 +253,18 @@ internal class AgentRuntimeRunExecutor(
                                     workspaceMode = true, writable = writable, sessionId = childSessionId,
                                     onProgress = progress, browserExecutor = browser?.executor)
                             }
+                            // 子代理没有「按需打开工具组」的回合，因此这里直接把所有组视为已打开，
+                            // 再由 SubAgentTools 的只读白名单决定最终下发什么（双重 fail-closed）。
                             val readTools = SubAgentTools.filter(AgentToolCatalog.build(
                                 terminalTools = allowTerminal && currentPermissions().terminalTools,
                                 browserTools = false, // Installed separately with a task-owned executor.
                                 screenTools = false, // Children never get Android GUI tools.
-                                deviceDirectTools = allowDirect && currentPermissions().deviceDirectTools,
-                                deviceSensitiveReadTools = allowSensitiveRead && currentPermissions().deviceSensitiveReadTools,
+                                deviceTools = allowDevice && currentPermissions().deviceTools,
+                                personalTools = allowPersonal && currentPermissions().personalTools,
                                 memoryTools = memoryEnabled,
-                                capabilities = AgentToolCapabilities.capture(appContext).copy(virtualDisplay = runVirtualDisplay())))
+                                capabilities = AgentToolCapabilities.capture(appContext).copy(virtualDisplay = runVirtualDisplay()),
+                                openedToolGroups = AgentToolGroups.allIds,
+                                disabledTools = Prefs.disabledTools()))
                             return SubAgentRunner.run(config, prompt, readTools, executor, controller,
                                 sessionId = childSessionId, onProgress = progress, browserExecutor = browser?.executor)
                         } finally {
@@ -415,7 +417,15 @@ internal class AgentRuntimeRunExecutor(
                 AgentChildWorkerAvailability.appendToPrompt(request.prompt, childDispatchPlan), childSessionId)
             runController.throwIfCancelled()
             val completedResponse = AgentModelClient.complete(
-                config = request.config.copy(screenTools = allowScreen && request.config.screenTools),
+                // 助手级收窄必须同时作用于目录与执行：只收窄执行会让模型看到一批
+                // 调用后必然被拒的工具，白付 schema token 还误导规划。
+                config = request.config.copy(
+                    screenTools = allowScreen && request.config.screenTools,
+                    browserTools = allowBrowser && request.config.browserTools,
+                    terminalTools = allowTerminal && request.config.terminalTools,
+                    deviceTools = allowDevice && request.config.deviceTools,
+                    personalTools = allowPersonal && request.config.personalTools,
+                ),
                 sessionId = request.effectiveModelSessionId,
                 capabilitiesProvider = { AgentToolCapabilities.captureForRound(appContext).copy(virtualDisplay = runVirtualDisplay()) },
                 // 延迟工具域：tools_use_group 成功后由执行器累积，下一轮重建目录时生效。

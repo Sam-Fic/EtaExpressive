@@ -206,9 +206,8 @@ internal object AgentRuntimeWire {
     private const val KEY_TERMINAL_TOOLS = "terminal_tools"
     private const val KEY_BROWSER_TOOLS = "browser_tools"
     private const val KEY_SCREEN_TOOLS = "screen_tools"
-    private const val KEY_DEVICE_DIRECT_TOOLS = "device_direct_tools"
-    private const val KEY_DEVICE_SENSITIVE_READ_TOOLS = "device_sensitive_read_tools"
-    private const val KEY_DEVICE_SENSITIVE_ACTION_TOOLS = "device_sensitive_action_tools"
+    private const val KEY_DEVICE_TOOLS = "device_tools"
+    private const val KEY_PERSONAL_TOOLS = "personal_tools"
     private const val KEY_THINKING_ENABLED = "thinking_enabled"
     private const val KEY_SUPPORTS_VISION = "supports_vision"
     private const val KEY_SUPPORTS_VIDEO = "supports_video"
@@ -417,9 +416,8 @@ internal object AgentRuntimeWire {
         putBoolean(KEY_TERMINAL_TOOLS, request.config.terminalTools)
         putBoolean(KEY_BROWSER_TOOLS, request.config.browserTools)
         putBoolean(KEY_SCREEN_TOOLS, request.config.screenTools)
-        putBoolean(KEY_DEVICE_DIRECT_TOOLS, request.config.deviceDirectTools)
-        putBoolean(KEY_DEVICE_SENSITIVE_READ_TOOLS, request.config.deviceSensitiveReadTools)
-        putBoolean(KEY_DEVICE_SENSITIVE_ACTION_TOOLS, request.config.deviceSensitiveActionTools)
+        putBoolean(KEY_DEVICE_TOOLS, request.config.deviceTools)
+        putBoolean(KEY_PERSONAL_TOOLS, request.config.personalTools)
         putBoolean(KEY_THINKING_ENABLED, request.config.effectiveReasoningEffort.enablesReasoning)
         putBoolean(KEY_SUPPORTS_VISION, request.config.supportsVision)
         putBoolean(KEY_SUPPORTS_VIDEO, request.config.supportsVideo)
@@ -550,15 +548,12 @@ internal object AgentRuntimeWire {
                 } else {
                     true
                 },
-                deviceDirectTools = if (bundle.containsKey(KEY_DEVICE_DIRECT_TOOLS)) {
-                    bundle.getBoolean(KEY_DEVICE_DIRECT_TOOLS)
+                deviceTools = if (bundle.containsKey(KEY_DEVICE_TOOLS)) {
+                    bundle.getBoolean(KEY_DEVICE_TOOLS)
                 } else {
                     true
                 },
-                deviceSensitiveReadTools =
-                    bundle.getBoolean(KEY_DEVICE_SENSITIVE_READ_TOOLS, false),
-                deviceSensitiveActionTools =
-                    bundle.getBoolean(KEY_DEVICE_SENSITIVE_ACTION_TOOLS, false),
+                personalTools = bundle.getBoolean(KEY_PERSONAL_TOOLS, false),
                 thinkingEnabled = bundle.getBoolean(KEY_THINKING_ENABLED),
                 supportsVision = bundle.getBoolean(KEY_SUPPORTS_VISION, false),
                 supportsVideo = bundle.getBoolean(KEY_SUPPORTS_VIDEO, false),

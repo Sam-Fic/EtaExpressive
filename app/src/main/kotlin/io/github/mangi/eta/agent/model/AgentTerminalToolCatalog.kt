@@ -32,12 +32,8 @@ internal object AgentTerminalToolCatalog {
                     name = "terminal",
                     description = "Manage terminal sessions. environment=android runs Android system/root " +
                         "commands; environment=linux runs the Alpine or Debian environment chosen in settings " +
-                        "(pass environment=linux and cwd=/workspace/<project>). Default android; run_command is " +
-                        "Android-only. Do not repeat a failed call unchanged. Apktool build needs ARM64 AAPT2. " +
-                        "Lifecycles: open_and_exec one-shot; open then exec/close via session_id; async=true " +
-                        "without session_id runs a long job read by read_async_result; daemon_start starts a " +
-                        "detached service that survives the run (ports, panels, watchers), managed with " +
-                        "daemon_list/daemon_logs/daemon_stop; close stops jobs and sessions.",
+                        "(pass environment=linux and cwd=/workspace/<project>). Default android. Do not repeat " +
+                        "a failed call unchanged; per-action semantics are in the action parameter.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(

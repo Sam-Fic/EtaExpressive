@@ -64,7 +64,10 @@ internal object SettingsDataStore {
     private val APPEARANCE_ICON_DARK = intPreferencesKey("appearance_icon_dark")
     private val APP_LAUNCH_COUNT = intPreferencesKey("app_launch_count")
     private val UPDATE_DISMISSED_VERSION = stringPreferencesKey("update_dismissed_version")
-    private val UPDATE_LAST_CHECK_AT = longPreferencesKey("update_last_check_at")
+
+    /** 上次自动弹出提醒的版本与时间，用“同一版本 24 小时内只打扰一次”做持久化节流。 */
+    private val UPDATE_LAST_PROMPT_VERSION = stringPreferencesKey("update_last_prompt_version")
+    private val UPDATE_LAST_PROMPT_AT = longPreferencesKey("update_last_prompt_at")
     private val RETIRED_INPUT_TOKENS = longPreferencesKey("retired_input_tokens")
     private val RETIRED_OUTPUT_TOKENS = longPreferencesKey("retired_output_tokens")
     private val RETIRED_CACHED_TOKENS = longPreferencesKey("retired_cached_tokens")
@@ -375,17 +378,20 @@ internal object SettingsDataStore {
         }
     }
 
-    suspend fun updateLastCheckAt(): Long {
+    suspend fun updateLastPrompt(): Pair<String, Long> {
         ensureInitialized()
         return dataStore.data
-            .map { prefs -> prefs[UPDATE_LAST_CHECK_AT] ?: 0L }
+            .map { prefs ->
+                prefs[UPDATE_LAST_PROMPT_VERSION].orEmpty() to (prefs[UPDATE_LAST_PROMPT_AT] ?: 0L)
+            }
             .first()
     }
 
-    suspend fun setUpdateLastCheckAt(epochMillis: Long) {
+    suspend fun setUpdateLastPrompt(version: String, epochMillis: Long) {
         ensureInitialized()
         dataStore.edit { prefs ->
-            prefs[UPDATE_LAST_CHECK_AT] = epochMillis
+            prefs.putOrRemove(UPDATE_LAST_PROMPT_VERSION, version.trim().takeIf { it.isNotEmpty() })
+            prefs[UPDATE_LAST_PROMPT_AT] = epochMillis
         }
     }
 

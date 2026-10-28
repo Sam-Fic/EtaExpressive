@@ -24,9 +24,8 @@ internal object AgentRuntimePolicy {
         val terminalTools: Boolean,
         val browserTools: Boolean,
         val screenTools: Boolean = true,
-        val deviceDirectTools: Boolean = false,
-        val deviceSensitiveReadTools: Boolean = false,
-        val deviceSensitiveActionTools: Boolean = false,
+        val deviceTools: Boolean = false,
+        val personalTools: Boolean = false,
         val thinking: Boolean,
     )
 
@@ -35,11 +34,8 @@ internal object AgentRuntimePolicy {
             terminalTools = preferences.allowed(Prefs.Keys.AGENT_TERMINAL_TOOLS),
             browserTools = preferences.allowed(Prefs.Keys.AGENT_BROWSER_TOOLS),
             screenTools = preferences.allowed(Prefs.Keys.AGENT_SCREEN_TOOLS),
-            deviceDirectTools = preferences.allowed(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
-            deviceSensitiveReadTools =
-                preferences.allowed(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
-            deviceSensitiveActionTools =
-                preferences.allowed(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS),
+            deviceTools = preferences.allowed(Prefs.Keys.AGENT_DEVICE_TOOLS),
+            personalTools = preferences.allowed(Prefs.Keys.AGENT_PERSONAL_TOOLS),
             thinking = preferences.allowed(Prefs.Keys.AGENT_THINKING_ENABLED),
         )
 
@@ -51,9 +47,8 @@ internal object AgentRuntimePolicy {
                 terminalTools = true,
                 browserTools = true,
                 screenTools = true,
-                deviceDirectTools = true,
-                deviceSensitiveReadTools = true,
-                deviceSensitiveActionTools = true,
+                deviceTools = true,
+                personalTools = true,
                 thinking = false,
             ),
         )
@@ -85,9 +80,8 @@ internal object AgentRuntimePolicy {
                 terminalTools = true,
                 browserTools = true,
                 screenTools = true,
-                deviceDirectTools = true,
-                deviceSensitiveReadTools = true,
-                deviceSensitiveActionTools = true,
+                deviceTools = true,
+                personalTools = true,
                 thinking = effort.enablesReasoning,
             ),
         )
@@ -105,11 +99,8 @@ internal object AgentRuntimePolicy {
             terminalTools = config.terminalTools && permissions.terminalTools,
             browserTools = config.browserTools && permissions.browserTools,
             screenTools = config.screenTools && permissions.screenTools,
-            deviceDirectTools = config.deviceDirectTools && permissions.deviceDirectTools,
-            deviceSensitiveReadTools =
-                config.deviceSensitiveReadTools && permissions.deviceSensitiveReadTools,
-            deviceSensitiveActionTools =
-                config.deviceSensitiveActionTools && permissions.deviceSensitiveActionTools,
+            deviceTools = config.deviceTools && permissions.deviceTools,
+            personalTools = config.personalTools && permissions.personalTools,
             thinkingEnabled = thinkingEnabled,
             reasoningEffort = effectiveEffort,
         )

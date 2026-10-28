@@ -22,15 +22,19 @@ class AgentInteractiveModePromptTest {
                 for (browser in listOf(false, true)) {
                     for (delegation in listOf(false, true)) {
                         val config = config().copy(systemPrompt = persona, terminalTools = terminal, browserTools = browser)
+                        // 断言的是提示内容与条数，与分层加载无关：所有组视为已打开，
+                        // 否则 terminal/browser 的指引块根本不会出现，下面的条数公式会全部落空。
                         fun systems(enabled: Boolean) = AgentPromptBuilder.buildSystemMessages(
                             config, SkillContext.EMPTY, AgentMemoryContext.DISABLED, rootAvailable = false,
                             delegationAvailable = delegation, interactiveModeEnabled = enabled,
+                            openedToolGroups = AgentToolGroups.allIds,
                         )
                         val off = systems(false)
                         val on = systems(true)
                         val defaults = AgentPromptBuilder.buildSystemMessages(
                             config, SkillContext.EMPTY, AgentMemoryContext.DISABLED, rootAvailable = false,
                             delegationAvailable = delegation,
+                            openedToolGroups = AgentToolGroups.allIds,
                         )
                         assertEquals(off.toString(), defaults.toString())
                         // 基线条数随内置工具族增长（例如网页搜索/正文读取），
@@ -39,6 +43,7 @@ class AgentInteractiveModePromptTest {
                             config.copy(systemPrompt = "", terminalTools = false, browserTools = false),
                             SkillContext.EMPTY, AgentMemoryContext.DISABLED, rootAvailable = false,
                             delegationAvailable = false,
+                            openedToolGroups = AgentToolGroups.allIds,
                         ).length()
                         // browserTools 现在贡献两段提示（fetch_url/web_search 一段 + browser_use 一段）。
                         val expectedCount = baseline + (if (persona.isNotBlank()) 1 else 0) +
@@ -135,7 +140,9 @@ class AgentInteractiveModePromptTest {
                 assertFalse(guidance.contains(if (enabled) "交互模式已关闭" else "交互模式已开启"))
                 assertQuestionDiscipline(guidance)
                 assertEquals(round != 1, guidance.contains("相关应用私有文件与数据库"))
-                assertEquals(4, messages.systemContents().size)
+                // 基础/记忆/Skills/延迟组索引各一条，再加一条「已关闭能力」说明：
+                // 媒体语义搜索的 Prefs 默认值是 false，纯 JVM 测试里它总是被如实报为已关闭。
+                assertEquals(5, messages.systemContents().size)
             }
             provider.tools.forEach { assertTrue(it.toolNames().contains("ask_user")) }
             catalogs[enabled] = provider.tools.map { it.toString() }
@@ -163,7 +170,8 @@ class AgentInteractiveModePromptTest {
 
         val child = CapturingProvider(textOnly = true)
         assertEquals("done", SubAgentRunner.run(
-            config = config(), prompt = "child task", tools = AgentToolCatalog.build(false, false),
+            config = config(), prompt = "child task",
+            tools = AgentToolCatalog.build(terminalTools = false, browserTools = false),
             executor = AgentModelClient.ToolExecutor { error("no tools expected") },
             controller = AgentRunController(), provider = child, compactPolicy = AgentLoop.CompactPolicy.Disabled,
         ))
@@ -177,8 +185,12 @@ class AgentInteractiveModePromptTest {
         val config = config()
         val caps = AgentToolCapabilities(rootAvailable = false)
         val catalog = AgentToolCatalog.build(
-            terminalTools = false, browserTools = false, skillGitHubDiscovery = true,
-            skillGitHubInstall = true, capabilities = caps,
+            // 能力族必须与 estimate 内部按 config 推导的一致：延迟组索引里的 tools_use_group
+            // 会枚举「开关允许但还没打开」的组，少一个开关就少一个枚举项，token 也就对不上。
+            terminalTools = config.terminalTools, browserTools = config.browserTools,
+            screenTools = config.screenTools, deviceTools = config.deviceTools,
+            personalTools = config.personalTools,
+            skillGitHubDiscovery = true, skillGitHubInstall = true, capabilities = caps,
         )
         val overheads = mutableListOf<Int>()
         val promptTokens = mutableListOf<Int>()
@@ -186,6 +198,9 @@ class AgentInteractiveModePromptTest {
             val systems = AgentPromptBuilder.buildSystemMessages(
                 config, SkillContext.EMPTY, AgentMemoryContext.DISABLED, rootAvailable = false,
                 interactiveModeEnabled = enabled,
+                // estimate 内部按同一份用户开关生成「已关闭能力」说明；这里必须同源，
+                // 否则两边的系统提示差一条，token 就不可能相等。
+                disabledCapabilities = AgentModelClient.ToolCapabilitySwitches.capture().toDisabledState(),
             )
             val systemTokens = systems.systemContents().sumOf { content ->
                 AgentContextBudget.countMessage(AgentModelClient.ConversationMessage("system", content))

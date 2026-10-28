@@ -107,6 +107,9 @@ sealed interface AgentToolsAction {
 
     /** 工具页卡片旁的内联开关：就地收紧或恢复某个能力域。 */
     data class ToggleGroup(val key: String, val enabled: Boolean) : AgentToolsAction
+
+    /** 单个工具的开关：组开关之下的细粒度取舍，落在 [io.github.mangi.eta.config.Prefs] 的禁用集里。 */
+    data class ToggleTool(val name: String, val enabled: Boolean) : AgentToolsAction
 }
 
 sealed interface AgentSkillsAction {

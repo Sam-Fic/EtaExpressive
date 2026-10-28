@@ -154,7 +154,7 @@ class AgentCompressionBoundaryTest {
         var paused = false
         val loop = AgentLoop(config(9000), source, JSONArray(), provider,
             AgentModelClient.ToolExecutor { error("No tools") }, controller, AgentTraceFormatter(),
-            systemCount = 1, onEvent = { if (it is AgentEvent.ContextCompacted && it.blocked) { paused = true; controller.cancel() } })
+            systemCountProvider = { 1 }, onEvent = { if (it is AgentEvent.ContextCompacted && it.blocked) { paused = true; controller.cancel() } })
         assertThrows(AgentRunCancelledException::class.java) { loop.run() }
         assertTrue(paused)
         source.getJSONObject(1).remove(AgentTurnIdentity.JSON_KEY)

@@ -93,17 +93,17 @@ internal class AgentLocalTools(
     private val terminalToolsEnabled: () -> Boolean = {
         Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS)
     },
-    private val deviceDirectToolsEnabled: () -> Boolean = {
-        Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS)
+    private val basicToolsEnabled: () -> Boolean = {
+        Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS)
     },
-    private val deviceSensitiveReadToolsEnabled: () -> Boolean = {
-        Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS)
+    private val deviceToolsEnabled: () -> Boolean = {
+        Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS)
     },
-    private val deviceSensitiveActionToolsEnabled: () -> Boolean = {
-        Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS)
+    private val personalToolsEnabled: () -> Boolean = {
+        Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS)
     },
-    private val selfSettingsToolsEnabled: () -> Boolean = {
-        Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS)
+    private val extensionsToolsEnabled: () -> Boolean = {
+        Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
     },
     private val mediaSearchToolsEnabled: () -> Boolean = {
         Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS)
@@ -290,20 +290,24 @@ internal class AgentLocalTools(
         terminalController.sessionIdentity(sessionId)
 
     /**
-     * 域的开关闸门：与 AgentToolCatalog / AgentPromptBuilder 使用同一套映射。
-     * 打开域不放宽任何权限——这里只说「这个域此刻是否允许存在」，
-     * 域内工具在下一轮仍要各自通过 Prefs 与 AgentToolCapabilities。
+     * 组的开关闸门：与 AgentToolCatalog / AgentPromptBuilder 使用同一套映射。
+     * 打开组不放宽任何权限——这里只说「这个组此刻是否允许存在」，
+     * 组内工具在下一轮仍要各自通过 Prefs 与 AgentToolCapabilities。
      */
     private fun toolGroupGate(group: AgentToolGroup): Boolean = when (group.id) {
-        AgentToolGroups.SELF_SETTINGS_GROUP.id -> selfSettingsToolsEnabled()
-        AgentToolGroups.DEVICE_ACTION_GROUP.id -> deviceSensitiveActionToolsEnabled()
-        AgentToolGroups.DEVICE_TAIL_READ_GROUP.id -> deviceSensitiveReadToolsEnabled()
+        AgentToolGroups.BASIC_GROUP.id -> basicToolsEnabled()
+        AgentToolGroups.SCREEN_GROUP.id -> screenToolsEnabled()
+        AgentToolGroups.WEB_GROUP.id -> browserToolsEnabled()
+        AgentToolGroups.TERMINAL_GROUP.id -> terminalToolsEnabled()
+        AgentToolGroups.DEVICE_GROUP.id -> deviceToolsEnabled()
+        AgentToolGroups.PERSONAL_GROUP.id -> personalToolsEnabled()
+        AgentToolGroups.EXTENSIONS_GROUP.id -> extensionsToolsEnabled()
         else -> false
     }
 
     /**
-     * 打开一个延迟工具域。目录与系统提示只会宣传「开关允许且尚未打开」的域，
-     * 这里再按同一份判定复查：模型重放旧的 tools_use_group 调用也不能打开已关闭的域。
+     * 打开一个延迟工具组。目录与系统提示只会宣传「开关允许且尚未打开」的组，
+     * 这里再按同一份判定复查：模型重放旧的 tools_use_group 调用也不能打开已关闭的组。
      */
     private fun useToolGroup(args: JSONObject): String {
         val requested = args.optString("group").trim()
@@ -313,11 +317,11 @@ internal class AgentLocalTools(
         if (group == null || !group.deferredByDefault) {
             return AgentToolGroupCatalog.unknownGroup(requested, known)
         }
-        // 开关关闭的域不允许打开：否则会成功返回 next_turn，而域内工具永远不会出现。
+        // 开关关闭的组不允许打开：否则会成功返回 next_turn，而组内工具永远不会出现。
         if (requested !in availability.openable && requested !in availability.opened) {
             return errorResult(
                 "TOOL_GROUP_DISABLED",
-                "该工具域已在设置中关闭，无法打开；请让用户先在设置里启用对应能力。",
+                "该工具组已在设置中关闭，无法打开；请让用户先在设置里启用对应能力。",
             )
         }
         openedToolGroups += group.id
@@ -505,7 +509,7 @@ internal class AgentLocalTools(
                 }
             }
             if (toolCall.name in virtualLifecycle) return@runCatching textResult(errorResult("BACKGROUND_MODE_REQUIRED", "当前任务不是后台模式"))
-            deviceToolPermissionError(toolCall.name)?.let { return@runCatching it }
+            groupToolPermissionError(toolCall.name)?.let { return@runCatching it }
             screenToolPermissionError(toolCall.name)?.let { return@runCatching it }
             memoryToolPermissionError(toolCall.name)?.let { return@runCatching it }
             confirmDangerousOperation(toolCall.name, toolCall.argumentsJson).let { decision ->
@@ -633,11 +637,11 @@ internal class AgentLocalTools(
      * 执行一份自进化配方。
      *
      * 配方是模型自己创建的，因此这里把「自建工具」视为敏感操作：
-     * 结果不写入持久会话，且必须落在敏感操作组开关的授权范围内。
+     * 结果不写入持久会话，且必须落在应用自身配置组（extensions）开关的授权范围内。
      */
     private fun executeRecipeTool(toolName: String, args: JSONObject): String {
-        if (!deviceSensitiveActionToolsEnabled()) {
-            return errorResult("DEVICE_SENSITIVE_ACTION_TOOLS_DISABLED", "请先允许敏感设备操作后再使用自建工具")
+        if (!extensionsToolsEnabled()) {
+            return errorResult("SELF_SETTINGS_TOOLS_DISABLED", "应用自身配置与自建工具已关闭，本次未执行")
         }
         val recipeName = toolName.removePrefix(ToolRecipeConstants.TOOL_PREFIX)
         val recipe = recipeStore.find(recipeName)
@@ -663,7 +667,7 @@ internal class AgentLocalTools(
 
     /** 自写工具的统一门禁：关闭开关后，模型重放旧的写配方调用也直接拒绝。 */
     private fun selfAuthorTool(block: () -> String): String {
-        if (!selfSettingsToolsEnabled()) {
+        if (!extensionsToolsEnabled()) {
             return errorResult("SELF_SETTINGS_TOOLS_DISABLED", "应用自身配置工具已关闭，本次未执行")
         }
         return block()
@@ -678,28 +682,39 @@ internal class AgentLocalTools(
         )
     }
 
-    private fun deviceToolPermissionError(
-        toolName: String,
-    ): AgentModelClient.ToolResult? {
-        val error = when {
-            toolName in DEVICE_DIRECT_TOOL_NAMES && !deviceDirectToolsEnabled() ->
-                "DEVICE_DIRECT_TOOLS_DISABLED" to "请先启用设备直达工具"
-            toolName in DEVICE_SENSITIVE_READ_TOOL_NAMES && !deviceSensitiveReadToolsEnabled() ->
-                "DEVICE_SENSITIVE_READ_TOOLS_DISABLED" to "请先允许读取敏感设备信息"
-            toolName in DEVICE_SENSITIVE_ACTION_TOOL_NAMES && !deviceSensitiveActionToolsEnabled() ->
-                "DEVICE_SENSITIVE_ACTION_TOOLS_DISABLED" to "请先允许敏感设备操作"
+    /**
+     * 分组开关与逐工具禁用的兜底门禁。目录侧已按组过滤，执行侧再判一次：
+     * 用户可能在两轮之间改了设置，旧调用不能因为「当时下发过」就继续执行。
+     * screen/web/terminal/extensions 各自还有专用门禁，这里只兜住其余三组。
+     */
+    private fun groupToolPermissionError(toolName: String): AgentModelClient.ToolResult? {
+        if (toolName in Prefs.disabledTools()) {
+            return AgentModelClient.ToolResult(
+                content = errorResult("TOOL_DISABLED_BY_USER", "用户已在设置中单独禁用「$toolName」，本次未执行"),
+                sensitive = true,
+            )
+        }
+        val error = when (AgentToolGroups.groupOfTool(toolName)) {
+            AgentToolGroups.BASIC_GROUP.id ->
+                if (basicToolsEnabled()) null else
+                    "BASIC_TOOLS_DISABLED" to "基础交互工具已在设置中关闭，本次未执行"
+            AgentToolGroups.DEVICE_GROUP.id ->
+                if (deviceToolsEnabled()) null else
+                    "DEVICE_TOOLS_DISABLED" to "设备控制工具已在设置中关闭，本次未执行"
+            AgentToolGroups.PERSONAL_GROUP.id ->
+                if (personalToolsEnabled()) null else
+                    "PERSONAL_TOOLS_DISABLED" to "个人信息读取已在设置中关闭，本次未执行"
             else -> null
         } ?: return null
         return AgentModelClient.ToolResult(
             content = errorResult(error.first, error.second),
-            sensitive = toolName in DEVICE_SENSITIVE_READ_TOOL_NAMES ||
-                toolName in DEVICE_SENSITIVE_ACTION_TOOL_NAMES,
+            sensitive = error.first != "BASIC_TOOLS_DISABLED",
         )
     }
 
     /** 自身配置工具的统一门禁：开关从设置页关闭后，即使模型重放旧的工具调用也直接拒绝。 */
     private fun selfSettingsTool(block: () -> String): String {
-        if (!selfSettingsToolsEnabled()) {
+        if (!extensionsToolsEnabled()) {
             return errorResult("SELF_SETTINGS_TOOLS_DISABLED", "应用自身配置工具已关闭，本次未执行")
         }
         return block()
@@ -2147,114 +2162,15 @@ internal class AgentLocalTools(
     )
 
     private companion object {
-        val DEVICE_DIRECT_TOOL_NAMES = setOf(
-            "schedule_manage",
-            "alarm_manage",
-            "set_alarm",
-            "set_timer",
-            "device_status",
-            "inspect_app",
-            "network_info",
-            "top_memory_apps",
-            "top_storage_apps",
-            "media_control",
-            "set_volume",
-            "set_ringer_mode",
-            "set_sound_mode",
-        )
-        val DEVICE_SENSITIVE_READ_TOOL_NAMES = setOf(
-            "get_setting",
-            "wifi_credentials",
-            "recent_notifications",
-            "search_notification_history",
-            "recent_app_activity",
-            "app_usage_summary",
-            "get_current_location",
-            "get_device_environment",
-            "list_alarms",
-            "list_active_timers",
-            "search_clipboard_history",
-            "get_health_summary",
-            "read_sms_code",
-            "get_logcat",
-            "search_media",
-            "search_audio",
-            "search_recordings",
-            "search_files",
-            "search_calendar_events",
-            "list_calendars",
-            "read_calendar_event",
-            "read_note",
-            "get_flashlight",
-            "get_hotspot",
-            "get_display_state",
-            "get_sound_state",
-            "get_device_state",
-            "search_contacts",
-            "search_call_history",
-            "search_messages",
-            "search_downloads",
-            "search_coloros_notes",
-            "search_notes",
-            "search_coloros_recordings",
-            "search_recording_summaries",
-            "search_coloros_memories",
-            "search_saved_places",
-            "search_personal_orders",
-            // ColorOS 个人数据历史索引（DMP）：只读索引查询与引用读取。
-            "search_bills",
-            "search_todos",
-            "search_calendar_todos",
-            "search_memory_collections",
-            "search_daily_events",
-            "search_flights",
-            "search_hotels",
-            "search_trains",
-            "read_personal_item",
-            "summarize_bills",
-            "search_qq_chat_images",
-            "search_wechat_chat_images",
-            "list_installed_apps",
-            // Root 诊断读取：输出包含系统内部状态，原始结果不进入持久会话。
-            "search_settings",
-            "dumpsys_diag",
-        )
-        val DEVICE_SENSITIVE_ACTION_TOOL_NAMES = setOf(
-            "set_setting",
-            "set_device_state",
-            "app_state_control",
-            "create_calendar_event",
-            "create_calendar_events",
-            "update_calendar_event",
-            "delete_calendar_event",
-            "create_note",
-            "delete_note",
-            "set_alarm_enabled",
-            "update_alarm_time",
-            "set_flashlight",
-            "set_hotspot",
-            "set_screen_timeout",
-            "delete_alarm",
-            "update_alarm",
-            "set_do_not_disturb",
-            "set_brightness",
-            "screen_action",
-            "manage_app",
-            "manage_file",
-            "system_property",
-            "display_control",
-            "deep_launch",
-            "package_control",
-            "user_control",
-            "appops_control",
-            "power_control",
-            "ime_control",
-            "connect_wifi",
-            "set_timezone",
-        )
+        // 名单一律取自统一 taxonomy（AgentToolGroups / AgentDeviceToolCatalog），
+        // 本地再抄一份必然漂移。这里只保留「派发给结构化设备执行器」的路由集合；
+        // semantic_search_media 有自己的门禁与执行路径，不参与结构化设备派发。
         val DEVICE_TOOL_NAMES =
-            DEVICE_DIRECT_TOOL_NAMES + DEVICE_SENSITIVE_READ_TOOL_NAMES +
-                DEVICE_SENSITIVE_ACTION_TOOL_NAMES
+            io.github.mangi.eta.agent.model.AgentToolGroups.DEVICE_GROUP.toolNames +
+                (
+                    io.github.mangi.eta.agent.model.AgentToolGroups.PERSONAL_GROUP.toolNames -
+                        io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog.SEARCH_MEDIA
+                    )
         val MEMORY_TOOL_NAMES = setOf("memory_get", "memory_write")
     }
 }

@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.model
 
+import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -8,9 +9,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentToolCatalogTest {
+    /**
+     * 本文件断言的是 schema 内容，与分层加载无关：所有组一律视为已打开，
+     * 否则延迟组里的工具根本不在目录里，断言会全部落空。
+     */
+    private fun catalog(
+        terminalTools: Boolean = false,
+        browserTools: Boolean = false,
+        screenTools: Boolean = true,
+        memoryTools: Boolean = false,
+        capabilities: AgentToolCapabilities = AgentToolCapabilities(rootAvailable = true),
+    ): JSONArray = AgentToolCatalog.build(
+        terminalTools = terminalTools,
+        browserTools = browserTools,
+        screenTools = screenTools,
+        memoryTools = memoryTools,
+        capabilities = capabilities,
+        openedToolGroups = AgentToolGroups.allIds,
+    )
+
     @Test
     fun featureFlagsProduceExactUniqueToolUnions() {
-        val base = AgentToolCatalog.build(
+        val base = catalog(
             terminalTools = false,
             browserTools = false,
         ).toolNames()
@@ -36,7 +56,7 @@ class AgentToolCatalogTest {
         assertFalse("terminal" in base)
 
         variants.forEach { variant ->
-            val names = AgentToolCatalog.build(
+            val names = catalog(
                 terminalTools = variant.terminalTools,
                 browserTools = variant.browserTools,
             ).toolNames()
@@ -49,7 +69,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun browserToolAllowsArbitraryUrlsAndFormSubmission() {
-        val function = AgentToolCatalog.build(
+        val function = catalog(
             terminalTools = false,
             browserTools = true,
         ).function("browser_use")
@@ -73,7 +93,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun elementToolsRequireObservationIdFromTheSameObservation() {
-        val tools = AgentToolCatalog.build(terminalTools = false, browserTools = false)
+        val tools = catalog(terminalTools = false, browserTools = false)
 
         listOf("tap_element", "long_press_element", "scroll_element").forEach { name ->
             val function = tools.function(name)
@@ -90,7 +110,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun screenObservationDefaultsToTreeAndDescribesVisualEscalation() {
-        val function = AgentToolCatalog.build(
+        val function = catalog(
             terminalTools = false,
             browserTools = false,
         ).function("observe_screen")
@@ -109,7 +129,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun scrollDirectionsUseContentBrowsingSemantics() {
-        val tools = AgentToolCatalog.build(terminalTools = false, browserTools = false)
+        val tools = catalog(terminalTools = false, browserTools = false)
         val expectedDirections = listOf("up", "down", "left", "right")
 
         listOf("scroll", "scroll_element").forEach { name ->
@@ -129,7 +149,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun indexedTextToolsDescribeObservationPairingWithoutRequiringItForFocusedInput() {
-        val tools = AgentToolCatalog.build(terminalTools = false, browserTools = false)
+        val tools = catalog(terminalTools = false, browserTools = false)
 
         listOf("replace_text", "clear_text").forEach { name ->
             val function = tools.function(name)
@@ -159,7 +179,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun textToolsDeclareTheSameLimitsAsRuntime() {
-        val tools = AgentToolCatalog.build(terminalTools = false, browserTools = false)
+        val tools = catalog(terminalTools = false, browserTools = false)
 
         assertEquals(1_000, tools.maxTextLength("input_text"))
         assertEquals(4_000, tools.maxTextLength("replace_text"))
@@ -169,7 +189,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun terminalSeparatesAndroidAndLinuxEnvironments() {
-        val terminal = AgentToolCatalog.build(
+        val terminal = catalog(
             terminalTools = true,
             browserTools = false,
         ).function("terminal")
@@ -185,7 +205,7 @@ class AgentToolCatalogTest {
 
     @Test
     fun memoryToolsAreExposedOnlyWhenEnabledAndDeclareBoundedOperations() {
-        val disabled = AgentToolCatalog.build(
+        val disabled = catalog(
             terminalTools = false,
             browserTools = false,
             memoryTools = false,
@@ -193,7 +213,7 @@ class AgentToolCatalogTest {
         assertFalse("memory_get" in disabled)
         assertFalse("memory_write" in disabled)
 
-        val enabled = AgentToolCatalog.build(
+        val enabled = catalog(
             terminalTools = false,
             browserTools = false,
             memoryTools = true,
@@ -215,13 +235,13 @@ class AgentToolCatalogTest {
             rootAvailable = true,
             virtualDisplay = true,
         )
-        val on = AgentToolCatalog.build(
+        val on = catalog(
             terminalTools = false,
             browserTools = false,
             screenTools = true,
             capabilities = capabilities,
         ).toolNames().toSet()
-        val offTools = AgentToolCatalog.build(
+        val offTools = catalog(
             terminalTools = false,
             browserTools = false,
             screenTools = false,

@@ -8,8 +8,8 @@ import org.junit.Test
 class AgentFileVisionToolCatalogTest {
     @Test
     fun readImageFollowsFileToolsInsteadOfPersonalDataReads() {
-        assertFalse("read_image" in names(terminalTools = false, sensitiveReads = true))
-        assertTrue("read_image" in names(terminalTools = true, sensitiveReads = false))
+        assertFalse("read_image" in names(terminalTools = false, personalTools = true))
+        assertTrue("read_image" in names(terminalTools = true, personalTools = false))
         assertTrue(readImageDescription().contains("at most once per round"))
         assertTrue(readImageDescription().contains("reading the next one in a later round"))
         assertTrue(readImageDescription().contains("video"))
@@ -18,7 +18,11 @@ class AgentFileVisionToolCatalogTest {
     }
 
     private fun readImageDescription(): String {
-        val tools = AgentToolCatalog.build(terminalTools = true, browserTools = false)
+        val tools = AgentToolCatalog.build(
+            terminalTools = true,
+            browserTools = false,
+            openedToolGroups = AgentToolGroups.allIds,
+        )
         return (0 until tools.length())
             .map(tools::getJSONObject)
             .first { it.getJSONObject("function").getString("name") == "read_image" }
@@ -26,13 +30,12 @@ class AgentFileVisionToolCatalogTest {
             .getString("description")
     }
 
-    private fun names(terminalTools: Boolean, sensitiveReads: Boolean): Set<String> =
+    private fun names(terminalTools: Boolean, personalTools: Boolean): Set<String> =
         AgentToolCatalog.build(
             terminalTools = terminalTools,
             browserTools = false,
-            deviceDirectTools = false,
-            deviceSensitiveReadTools = sensitiveReads,
-            deviceSensitiveActionTools = false,
+            personalTools = personalTools,
+            openedToolGroups = AgentToolGroups.allIds,
         ).toolNames()
 
     private fun JSONArray.toolNames(): Set<String> =

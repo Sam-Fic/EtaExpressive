@@ -3,13 +3,8 @@ package io.github.mangi.eta.agent.model
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** 常用设备能力的结构化 schema；按风险组决定是否向模型公开。 */
+/** 常用设备能力的结构化 schema；按统一分组决定是否向模型公开。 */
 internal object AgentDeviceToolCatalog {
-    /**
-     * 敏感只读组里「特定场景才用」的冷门长尾：出行、账单、记忆合集、便签/录音、聊天图片缓存。
-     * 日常高频入口（日历、短信、通知、通讯录、应用列表、位置、设备状态、文件检索）不在此列，
-     * 这样折叠它们不会让日常任务多一次往返。
-     */
     /** 敏感动作组的全部工具名，与 appendSensitiveActionTools 保持一致。 */
     private val ACTION_NAMES: Set<String> = setOf(
         "app_state_control", "appops_control", "connect_wifi", "create_calendar_event",
@@ -81,66 +76,29 @@ internal object AgentDeviceToolCatalog {
         "wifi_credentials",
     )
 
-    private val TAIL_READ_NAMES: Set<String> = setOf(
-        "search_flights", "search_trains", "search_hotels", "search_bills", "summarize_bills",
-        "search_memory_collections", "search_saved_places", "search_daily_events", "search_todos",
-        "search_qq_chat_images", "search_wechat_chat_images",
-        "search_recordings", "search_recording_summaries", "search_coloros_recordings",
-        "search_coloros_memories", "search_coloros_notes",
-    )
-
-    /** 敏感动作组的全部工具名；供工具域折叠时使用。 */
+    /** 敏感动作组的全部工具名；统一分组与单工具迁移使用。 */
     fun sensitiveActionToolNames(): Set<String> = ACTION_NAMES
-    fun tailReadToolNames(): Set<String> = TAIL_READ_NAMES
+    /** 个人内容读取档的全部工具名；统一分组与单工具迁移使用。 */
+    fun personalReadToolNames(): Set<String> = PERSONAL_READ_NAMES
+    /** 设备状态读取档的全部工具名；统一分组与单工具迁移使用。 */
+    fun deviceStateReadToolNames(): Set<String> = DEVICE_STATE_READ_NAMES
 
     /**
-     * 敏感读拆成两个独立开关，解决「想让助手看电量、设闹钟，但别翻我的短信和账单」：
-     * - [personalDataReads]：通讯录/短信/通话/健康/账单/订单/便签/日历等**个人内容**；
-     * - [deviceStateReads]：设置、系统状态、闹钟/计时器列表、位置、应用使用、Wi-Fi 凭据等**设备状态**。
-     * 默认跟随总开关，保持历史行为；用户可只关掉个人信息那一档。
+     * 下发设备侧工具。组成员边界由 [AgentToolGroups] 定义：直达 + 敏感写属于设备控制组，
+     * 个人内容读 + 设备状态读属于个人数据组。
+     *
+     * 旧的「个人信息 / 设备状态」两档细分不再由这里判断：档位差异已迁移成单工具禁用集，
+     * 在 [AgentToolCatalog.build] 的最后一次过滤里统一剔除，避免同一件事有两处真相。
      */
     fun appendTo(
         tools: JSONArray,
         directTools: Boolean,
         sensitiveReadTools: Boolean,
         sensitiveActionTools: Boolean,
-        withheldReads: Set<String> = emptySet(),
-        withheldActions: Set<String> = emptySet(),
-        personalDataReads: Boolean = sensitiveReadTools,
-        deviceStateReads: Boolean = sensitiveReadTools,
     ) {
         if (directTools) appendDirectTools(tools)
-        if (sensitiveReadTools) {
-            // 被关掉的那一档整体剔除：两档独立，只关个人信息时设备状态读仍然可用。
-            val dropped = buildSet {
-                if (!personalDataReads) addAll(PERSONAL_READ_NAMES)
-                if (!deviceStateReads) addAll(DEVICE_STATE_READ_NAMES)
-            }
-            appendGroup(tools, ::appendSensitiveReadTools, withheldReads, drop = dropped)
-        }
-        if (sensitiveActionTools) appendGroup(tools, ::appendSensitiveActionTools, withheldActions)
-    }
-
-    /** 让每个风险组先写进临时数组，再按 [withheld] 过滤掉折叠中的工具。 */
-    private fun appendGroup(
-        tools: JSONArray,
-        emit: (JSONArray) -> Unit,
-        withheld: Set<String>,
-        /** 额外要剔除的工具（例如被关掉的隐私档位）。 */
-        drop: Set<String> = emptySet(),
-    ) {
-        if (withheld.isEmpty() && drop.isEmpty()) {
-            emit(tools)
-            return
-        }
-        val emitted = JSONArray()
-        emit(emitted)
-        for (index in 0 until emitted.length()) {
-            val tool = emitted.getJSONObject(index)
-            val name = tool.optJSONObject("function")?.optString("name").orEmpty()
-            if (name in withheld || name in drop) continue
-            tools.put(tool)
-        }
+        if (sensitiveReadTools) appendSensitiveReadTools(tools)
+        if (sensitiveActionTools) appendSensitiveActionTools(tools)
     }
 
     private fun appendDirectTools(tools: JSONArray) {

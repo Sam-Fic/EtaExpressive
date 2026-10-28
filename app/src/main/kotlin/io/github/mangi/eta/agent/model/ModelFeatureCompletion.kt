@@ -42,7 +42,7 @@ internal object ModelFeatureCompletion {
             val requestConfig = io.github.mangi.eta.agent.runtime.AgentRuntimePolicy.withoutOptionalThinking(config).copy(
                 hostedWebSearchEnabled = false,
                 terminalTools = false, browserTools = false, screenTools = false,
-                deviceDirectTools = false, deviceSensitiveReadTools = false, deviceSensitiveActionTools = false,
+                deviceTools = false, personalTools = false,
                 summaryOutputLimit = outputLimit,
             )
             val provider = providerOverride ?: ProviderClientFactory.getClient(requestConfig)

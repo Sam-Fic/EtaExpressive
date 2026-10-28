@@ -203,16 +203,17 @@ class AgentSelfSettingsToolCatalogTest {
         val disabled = AgentToolCatalog.build(
             terminalTools = true,
             browserTools = true,
-            selfSettingsTools = false,
+            extensionsTools = false,
+            openedToolGroups = AgentToolGroups.allIds,
         ).toolNames()
         SELF_TOOLS.forEach { name -> assertFalse("$name must disappear", name in disabled) }
     }
 
-    // 管理域默认折叠成 tools_use_group；这里断言域内 schema，因此按「已打开」构建。
+    // 扩展组默认折叠成 tools_use_group；这里断言组内 schema，因此按「已打开」构建。
     private fun catalog(): JSONArray = AgentToolCatalog.build(
         terminalTools = true,
         browserTools = true,
-        openedToolGroups = setOf(AgentToolGroups.SELF_SETTINGS_GROUP.id),
+        openedToolGroups = setOf(AgentToolGroups.EXTENSIONS_GROUP.id),
     )
 
     private fun JSONArray.toolNames(): List<String> =

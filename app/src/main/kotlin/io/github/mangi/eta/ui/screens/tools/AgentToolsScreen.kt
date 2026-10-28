@@ -44,15 +44,23 @@ fun AgentToolsScreen(
         listState = if (showAll) allListState else currentListState,
     ) {
         item(key = "capability-view") {
-            ToolsSegmentTabs(
-                tabs = listOf(
-                    stringResource(R.string.capability_current_device),
-                    stringResource(R.string.capability_all),
-                ),
-                selectedIndex = if (showAll) 1 else 0,
-                onSelect = { showAll = it == 1 },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            androidx.compose.foundation.layout.Column {
+                ToolsSegmentTabs(
+                    tabs = listOf(
+                        stringResource(R.string.capability_current_device),
+                        stringResource(R.string.capability_all),
+                    ),
+                    selectedIndex = if (showAll) 1 else 0,
+                    onSelect = { showAll = it == 1 },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                M3Text(
+                    text = stringResource(R.string.tools_per_tool_switch_hint),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                )
+            }
         }
         groups.forEach { group ->
             item(key = "${group.id}-list") {

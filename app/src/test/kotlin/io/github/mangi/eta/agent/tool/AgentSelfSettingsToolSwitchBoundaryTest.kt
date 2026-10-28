@@ -55,11 +55,12 @@ class AgentSelfSettingsToolSwitchBoundaryTest {
         for (key in listOf(
             Prefs.Keys.AGENT_TERMINAL_TOOLS,
             Prefs.Keys.AGENT_BROWSER_TOOLS,
-            Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS,
-            Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
-            Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
+            Prefs.Keys.AGENT_SCREEN_TOOLS,
+            Prefs.Keys.AGENT_DEVICE_TOOLS,
+            Prefs.Keys.AGENT_PERSONAL_TOOLS,
+            Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
         )) {
-            // 用户关掉了这个能力域。
+            // 用户关掉了这个工具组。
             assertTrue(set(key to "off").getBoolean("ok"))
             assertFalse("$key 应已被关闭", enabled(key))
 
@@ -71,6 +72,21 @@ class AgentSelfSettingsToolSwitchBoundaryTest {
             assertEquals("USER_CONSENT_REQUIRED", result.getString("code"))
             assertEquals("off", result.getString("from"))
             assertEquals("on", result.getString("to"))
+        }
+    }
+
+    @Test
+    fun modelCannotTouchTheSwitchesThatGuardItsOwnConfiguration() {
+        // 扩展组开关若可被模型改写，模型就能关掉「用户约束模型」的唯一入口；
+        // 基础交互同理——关掉它模型连向用户提问都做不到。两者都不在可改列表里。
+        listOf(Prefs.Keys.AGENT_EXTENSIONS_TOOLS, Prefs.Keys.AGENT_BASIC_TOOLS).forEach { key ->
+            val response = set(key to "off")
+            assertFalse("$key 不该可被模型改写", response.getBoolean("ok"))
+            assertEquals(
+                "UNKNOWN_SETTING",
+                response.getJSONArray("results").getJSONObject(0).getString("code"),
+            )
+            assertTrue("$key 必须保持开启", enabled(key))
         }
     }
 
@@ -109,17 +125,17 @@ class AgentSelfSettingsToolSwitchBoundaryTest {
     @Test
     fun mixedBatchStillAppliesTheAllowedNarrowing() {
         // 一批里既有允许的收紧、也有被拒的放宽：允许项照常写入，被拒项单独报错。
-        assertTrue(enabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS))
-        assertTrue(set(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS to "off").getBoolean("ok"))
+        assertTrue(enabled(Prefs.Keys.AGENT_DEVICE_TOOLS))
+        assertTrue(set(Prefs.Keys.AGENT_PERSONAL_TOOLS to "off").getBoolean("ok"))
 
         val response = set(
-            Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS to "off",
-            Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS to "on",
+            Prefs.Keys.AGENT_DEVICE_TOOLS to "off",
+            Prefs.Keys.AGENT_PERSONAL_TOOLS to "on",
         )
         assertFalse("整批 ok 应为 false（有一项被拒）", response.getBoolean("ok"))
         assertEquals(1, response.getInt("changed"))
-        assertFalse(enabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS))
-        assertFalse("被拒的放宽不得生效", enabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS))
+        assertFalse(enabled(Prefs.Keys.AGENT_DEVICE_TOOLS))
+        assertFalse("被拒的放宽不得生效", enabled(Prefs.Keys.AGENT_PERSONAL_TOOLS))
         val results = response.getJSONArray("results")
         assertEquals(2, results.length())
         assertTrue(results.getJSONObject(0).getBoolean("ok"))

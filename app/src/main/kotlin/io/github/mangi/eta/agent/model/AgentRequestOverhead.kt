@@ -23,10 +23,10 @@ internal object AgentRequestOverhead {
         onProtocolPreview: ((Int) -> Unit)? = null,
         interactiveModeEnabled: Boolean = InteractiveModePreference.read(),
     ): Int {
-        // 估算必须与真实请求同源：域索引与目录都按同一套开关计算，否则会高估固定开销。
-        val selfSettingsTools = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS)
-        val personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS)
-        val deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS)
+        // 估算必须与真实请求同源：域索引、目录与「已关闭能力」说明都按同一套开关计算，
+        // 否则会高估或低估固定开销。
+        val disabledCapabilities =
+            AgentModelClient.ToolCapabilitySwitches.capture().toDisabledState()
         val systemMessages = AgentPromptBuilder.buildSystemMessages(
             config = config,
             skillContext = skillContext,
@@ -35,9 +35,7 @@ internal object AgentRequestOverhead {
             delegationAvailable = AgentPromptBuilder.delegationToolsAvailable(additionalTools),
             shellTools = capabilities.shellTools,
             interactiveModeEnabled = interactiveModeEnabled,
-            selfSettingsTools = selfSettingsTools,
-            personalDataReads = personalDataReads,
-            deviceStateReads = deviceStateReads,
+            disabledCapabilities = disabledCapabilities,
         )
         var tokens = 0
         for (index in 0 until systemMessages.length()) {
@@ -48,20 +46,20 @@ internal object AgentRequestOverhead {
             )
         }
         val tools = AgentToolCatalog.build(
+            basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
             terminalTools = config.terminalTools,
             browserTools = config.browserTools,
             screenTools = config.screenTools,
-            deviceDirectTools = config.deviceDirectTools,
-            deviceSensitiveReadTools = config.deviceSensitiveReadTools,
-            deviceSensitiveActionTools = config.deviceSensitiveActionTools,
-            personalDataReads = personalDataReads,
-            deviceStateReads = deviceStateReads,
+            deviceTools = config.deviceTools,
+            personalTools = config.personalTools,
+            extensionsTools = Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS),
             skillGitHubDiscovery = true,
             skillGitHubInstall = true,
             memoryTools = memoryContext.enabled,
-            selfSettingsTools = selfSettingsTools,
             mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
             capabilities = capabilities,
+            localWebSearch = !config.usesHostedWebSearch,
+            disabledTools = Prefs.disabledTools(),
             fileSystemTier = AgentFileSystemTier.of(
                 terminalTools = config.terminalTools,
                 shellTools = Prefs.isEnabled(Prefs.Keys.AGENT_SHELL_TOOLS),

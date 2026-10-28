@@ -41,15 +41,17 @@ internal class AgentSelfSettingsTools {
     /**
      * 工具开关不进入本表即时生效的例外：它们在每次工具调用时重新求值，
      * 所以当前任务里的下一次调用就会用新值。
+     *
+     * 刻意不含 [Prefs.Keys.AGENT_EXTENSIONS_TOOLS] 与 [Prefs.Keys.AGENT_BASIC_TOOLS]：
+     * 前者是「模型不能关掉自己的配置能力」，后者关掉会连 ask_user 一起收走，
+     * 模型把自己问不了用户的能力交给模型自己决定同样不合理。两者只能由用户在设置页改。
      */
     private val TOOL_KEYS = setOf(
         Prefs.Keys.AGENT_TERMINAL_TOOLS,
         Prefs.Keys.AGENT_BROWSER_TOOLS,
         Prefs.Keys.AGENT_SCREEN_TOOLS,
-        Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS,
-        Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
-        Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
-        Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS,
+        Prefs.Keys.AGENT_DEVICE_TOOLS,
+        Prefs.Keys.AGENT_PERSONAL_TOOLS,
         Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
     )
 
@@ -57,9 +59,8 @@ internal class AgentSelfSettingsTools {
         EtaSetting(Prefs.Keys.AGENT_TERMINAL_TOOLS, "终端工具", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_BROWSER_TOOLS, "浏览器工具", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_SCREEN_TOOLS, "屏幕观察与 GUI 操作", Kind.SWITCH, Area.TOOLS),
-        EtaSetting(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS, "设备直达工具", Kind.SWITCH, Area.TOOLS),
-        EtaSetting(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS, "敏感信息读取", Kind.SWITCH, Area.TOOLS),
-        EtaSetting(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS, "敏感设备操作", Kind.SWITCH, Area.TOOLS),
+        EtaSetting(Prefs.Keys.AGENT_DEVICE_TOOLS, "设备控制", Kind.SWITCH, Area.TOOLS),
+        EtaSetting(Prefs.Keys.AGENT_PERSONAL_TOOLS, "个人数据", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS, "媒体语义搜索", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_TTS_AUTO_READ, "回复自动朗读", Kind.SWITCH, Area.SPEECH),
         EtaSetting(

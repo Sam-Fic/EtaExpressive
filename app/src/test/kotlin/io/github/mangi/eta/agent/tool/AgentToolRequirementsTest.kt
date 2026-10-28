@@ -14,18 +14,17 @@ import org.junit.Test
 class AgentToolRequirementsTest {
     @Test
     fun everyRegisteredToolHasExactlyOneRequirement() {
-        // 目录有两种形态：域未打开（下发 tools_use_group）与全部打开（下发域内工具）。
+        // 目录有两种形态：组未打开（下发 tools_use_group）与全部打开（下发组内工具）。
         // 注册表必须恰好覆盖两者的并集，否则要么漏注册、要么注册了永远不下发的工具。
         val closed = catalog(root = true, virtualDisplay = true, openedGroups = emptySet())
-        val opened = catalog(root = true, virtualDisplay = true,
-            openedGroups = AgentToolGroups.groups.map { it.id }.toSet())
+        val opened = catalog(root = true, virtualDisplay = true)
         val covered = closed.names() + opened.names()
         assertEquals(AgentToolRequirements.toolNames, covered)
         // 两种形态各自内部不得重复。
         assertEquals(closed.length(), closed.names().size)
         assertEquals(opened.length(), opened.names().size)
         assertFalse(opened.toString().contains("rootRequirement"))
-        // 折叠形态下必须仍能打开域；全开形态下不该出现一个必然失败的枚举工具。
+        // 折叠形态下必须仍能打开组；全开形态下不该出现一个必然失败的枚举工具。
         assertTrue(AgentToolGroupCatalog.USE_GROUP in closed.names())
         assertFalse(AgentToolGroupCatalog.USE_GROUP in opened.names())
     }
@@ -97,10 +96,10 @@ class AgentToolRequirementsTest {
     private fun catalog(
         root: Boolean,
         virtualDisplay: Boolean = false,
-        openedGroups: Set<String> = emptySet(),
+        openedGroups: Set<String> = AgentToolGroups.allIds,
     ) = AgentToolCatalog.build(
-        terminalTools = true, browserTools = true, deviceDirectTools = true,
-        deviceSensitiveReadTools = true, deviceSensitiveActionTools = true,
+        terminalTools = true, browserTools = true,
+        deviceTools = true, personalTools = true,
         skillGitHubDiscovery = true, skillGitHubInstall = true, memoryTools = true,
         mediaSearchTools = true,
         capabilities = AgentToolCapabilities(rootAvailable = root, virtualDisplay = virtualDisplay),

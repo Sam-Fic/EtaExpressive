@@ -26,6 +26,7 @@ class PrefsDefaultsTest {
     }
 
     @Test
+    @Suppress("DEPRECATION") // 断言的正是「退役开关不再出现在生效表里」，必须引用它们。
     fun defaultsMatchRecommendedInitialSettings() {
         assertEquals(
             mapOf(
@@ -42,12 +43,10 @@ class PrefsDefaultsTest {
                 Prefs.Keys.AGENT_SHELL_TOOLS to true,
                 Prefs.Keys.AGENT_BROWSER_TOOLS to true,
                 Prefs.Keys.AGENT_SCREEN_TOOLS to true,
-                Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS to true,
-                Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS to true,
-                Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS to true,
-                Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS to true,
-                Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS to true,
-                Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS to true,
+                Prefs.Keys.AGENT_BASIC_TOOLS to true,
+                Prefs.Keys.AGENT_DEVICE_TOOLS to true,
+                Prefs.Keys.AGENT_PERSONAL_TOOLS to true,
+                Prefs.Keys.AGENT_EXTENSIONS_TOOLS to true,
                 Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS to false,
                 Prefs.Keys.AGENT_SUBAGENT_TOOLS to true,
                 Prefs.Keys.AGENT_CONFIRM_DANGEROUS_TOOLS to false,
@@ -72,6 +71,16 @@ class PrefsDefaultsTest {
         assertFalse(
             Prefs.Keys.BOOLEAN_DEFAULTS.containsKey(Prefs.Keys.POWER_KEY_ASSISTANT_TARGET),
         )
+        // 退役的细分开关只由迁移读取（按 true 取旧值），不该再出现在生效开关表里：
+        // 否则增强页历史快照会把它们当成在用的开关继续同步。
+        listOf(
+            Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS,
+            Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
+            Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS,
+            Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS,
+            Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
+            Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS,
+        ).forEach { assertFalse("$it 已退役", Prefs.Keys.BOOLEAN_DEFAULTS.containsKey(it)) }
     }
 
     @Test
@@ -82,12 +91,10 @@ class PrefsDefaultsTest {
                 Prefs.Keys.AGENT_SHELL_TOOLS,
                 Prefs.Keys.AGENT_BROWSER_TOOLS,
                 Prefs.Keys.AGENT_SCREEN_TOOLS,
-                Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS,
-                Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS,
-                Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS,
-                Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS,
-                Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
-                Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS,
+                Prefs.Keys.AGENT_BASIC_TOOLS,
+                Prefs.Keys.AGENT_DEVICE_TOOLS,
+                Prefs.Keys.AGENT_PERSONAL_TOOLS,
+                Prefs.Keys.AGENT_EXTENSIONS_TOOLS,
                 Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
                 Prefs.Keys.AGENT_SUBAGENT_TOOLS,
                 Prefs.Keys.AGENT_CONFIRM_DANGEROUS_TOOLS,

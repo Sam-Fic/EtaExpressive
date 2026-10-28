@@ -1,100 +1,97 @@
 package io.github.mangi.eta.agent.model
 
+import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import org.json.JSONArray
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * 设备侧工具的组归属：直达 + 敏感写 = 设备控制组，个人内容读 + 设备状态读 = 个人数据组。
+ *
+ * 断言的是**集合级**归属而不是逐个工具名：组成员由 [AgentToolGroups] 单点定义，目录必须与
+ * 它完全一致，否则设置页会宣传一个目录里根本不存在的工具（或者反过来漏掉一个）。
+ */
 class AgentDeviceToolCatalogTest {
-    @Test
-    fun riskGroupsExposeOnlyTheirOwnTools() {
-        val none = names(false, false, false)
-        val direct = names(true, false, false)
-        val reads = names(false, true, false)
-        val actions = names(false, false, true)
-
-        assertFalse("set_alarm" in none)
-        assertTrue("set_alarm" in direct)
-        assertFalse("device_actions" in direct)
-        assertFalse("device_actions" in none)
-        assertFalse("read_sms_code" in direct)
-        assertTrue("read_sms_code" in reads)
-        assertTrue("search_coloros_notes" in reads)
-        assertTrue("search_coloros_recordings" in reads)
-        assertTrue("search_recording_summaries" in reads)
-        assertTrue("search_coloros_memories" in reads)
-        assertTrue("search_notification_history" in reads)
-        assertTrue("recent_app_activity" in reads)
-        assertTrue("app_usage_summary" in reads)
-        assertTrue("get_current_location" in reads)
-        assertTrue("get_device_environment" in reads)
-        assertTrue("list_alarms" in reads)
-        assertTrue("list_active_timers" in reads)
-        assertTrue("search_clipboard_history" in reads)
-        assertTrue("get_health_summary" in reads)
-        assertTrue("search_saved_places" in reads)
-        assertTrue("search_personal_orders" in reads)
-        assertTrue("search_qq_chat_images" in reads)
-        assertTrue("search_wechat_chat_images" in reads)
-        assertFalse("read_image" in reads)
-        assertFalse("search_messages" in direct)
-        assertFalse("send_message" in reads)
-        assertFalse("send_message" in actions)
-        assertTrue("app_state_control" in actions)
-        // 日程与闹钟管理属于敏感操作组：无 Root 时对模型隐藏，不放入直达/只读组。
-        assertTrue("create_calendar_event" in actions)
-        assertTrue("update_calendar_event" in actions)
-        assertTrue("delete_calendar_event" in actions)
-        assertTrue("delete_alarm" in actions)
-        assertTrue("update_alarm" in actions)
-        assertFalse("create_calendar_event" in direct)
-        assertFalse("create_calendar_event" in reads)
-        assertFalse("delete_alarm" in reads)
-        // 系统控制：铃声模式免 Root 直达；勿扰/亮度/电源/应用管理为敏感操作；应用清单为敏感只读。
-        assertTrue("set_ringer_mode" in direct)
-        assertFalse("set_ringer_mode" in reads)
-        assertTrue("set_do_not_disturb" in actions)
-        assertTrue("set_brightness" in actions)
-        assertTrue("screen_action" in actions)
-        assertTrue("manage_app" in actions)
-        assertFalse("set_do_not_disturb" in direct)
-        assertFalse("manage_app" in reads)
-        assertTrue("list_installed_apps" in reads)
-        assertFalse("list_installed_apps" in direct)
-        // Root 深度控制：写操作归入敏感操作组；诊断读取归入敏感只读组。
-        assertTrue("manage_file" in actions)
-        assertTrue("system_property" in actions)
-        assertTrue("display_control" in actions)
-        assertTrue("deep_launch" in actions)
-        assertTrue("package_control" in actions)
-        assertTrue("user_control" in actions)
-        assertTrue("appops_control" in actions)
-        assertTrue("power_control" in actions)
-        assertTrue("ime_control" in actions)
-        assertTrue("connect_wifi" in actions)
-        assertTrue("set_timezone" in actions)
-        assertTrue("search_settings" in reads)
-        assertTrue("dumpsys_diag" in reads)
-        assertFalse("manage_file" in direct)
-        assertFalse("system_property" in reads)
-        assertFalse("power_control" in direct)
-        assertFalse("dumpsys_diag" in actions)
+    @Test fun deviceGroupIsExactlyDirectToolsPlusSensitiveActions() {
+        assertEquals(
+            AgentToolGroups.DEVICE_GROUP.toolNames,
+            names(deviceTools = true, personalTools = false),
+        )
     }
 
-    @Test
-    fun selfAuthoringToolsArePublishedWithTheSelfSettingsGroup() {
+    @Test fun personalGroupIsExactlyTheTwoReadTiers() {
+        assertEquals(
+            AgentDeviceToolCatalog.personalReadToolNames() + AgentDeviceToolCatalog.deviceStateReadToolNames(),
+            names(deviceTools = false, personalTools = true),
+        )
+    }
+
+    @Test fun bothGroupsOffPublishesNothingOnTheDeviceSide() {
+        assertEquals(emptySet<String>(), names(deviceTools = false, personalTools = false))
+    }
+
+    @Test fun mediaSearchStaysBehindItsOwnSwitchInsideThePersonalGroup() {
+        assertFalse(AgentMediaSearchToolCatalog.SEARCH_MEDIA in names(deviceTools = false, personalTools = true))
+        val withMedia = AgentToolCatalog.build(
+            basicTools = false,
+            terminalTools = false,
+            browserTools = false,
+            screenTools = false,
+            personalTools = true,
+            extensionsTools = false,
+            mediaSearchTools = true,
+            capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
+            openedToolGroups = AgentToolGroups.allIds,
+        ).toolNames()
+        assertEquals(AgentToolGroups.PERSONAL_GROUP.toolNames, withMedia)
+    }
+
+    @Test fun representativeToolsLandInTheGroupUsersWouldExpect() {
+        val device = names(deviceTools = true, personalTools = false)
+        val personal = names(deviceTools = false, personalTools = true)
+
+        // 免 Root 直达与改设备的写操作同属一组；细粒度取舍交给单工具开关。
+        listOf(
+            "set_alarm", "set_ringer_mode", "set_volume", "media_control", "inspect_app",
+            "set_do_not_disturb", "set_brightness", "screen_action", "manage_app", "package_control",
+            "power_control", "system_property", "manage_file", "display_control", "deep_launch",
+            "user_control", "appops_control", "connect_wifi", "set_timezone", "ime_control",
+            "create_calendar_event", "update_calendar_event", "delete_calendar_event",
+            "update_alarm", "delete_alarm",
+        ).forEach { assertTrue("$it 应属设备控制组", it in device) }
+
+        // 个人内容读与设备状态读同属一组。
+        listOf(
+            "read_sms_code", "search_messages", "search_contacts", "get_health_summary",
+            "search_coloros_notes", "search_coloros_recordings", "search_recording_summaries",
+            "search_coloros_memories", "search_notification_history", "search_saved_places",
+            "search_personal_orders", "search_qq_chat_images", "search_wechat_chat_images",
+            "search_clipboard_history",
+            "get_setting", "search_settings", "list_alarms", "list_active_timers",
+            "get_current_location", "get_device_environment", "recent_app_activity",
+            "app_usage_summary", "list_installed_apps", "dumpsys_diag",
+        ).forEach { assertTrue("$it 应属个人数据组", it in personal) }
+
+        assertEquals("两组不得互相渗透", emptySet<String>(), device.intersect(personal))
+        assertFalse("send_message" in device + personal)
+        assertFalse("read_image" in device + personal)
+    }
+
+    @Test fun selfAuthoringToolsArePublishedWithTheExtensionsGroup() {
         val deferred = AgentToolCatalog.build(
             terminalTools = false,
             browserTools = false,
-            selfSettingsTools = true,
+            extensionsTools = true,
         ).toolNames()
-        assertFalse("低频率自建工具默认折叠，省固定 token", "eta_author_tool" in deferred)
+        assertFalse("扩展组默认折叠，省固定 token", "eta_author_tool" in deferred)
 
         val tools = AgentToolCatalog.build(
             terminalTools = false,
             browserTools = false,
-            selfSettingsTools = true,
-            openedToolGroups = setOf(AgentToolGroups.SELF_SETTINGS_GROUP.id),
+            extensionsTools = true,
+            openedToolGroups = setOf(AgentToolGroups.EXTENSIONS_GROUP.id),
         ).toolNames()
 
         // 自进化：模型写工具与列出工具的接口。
@@ -102,27 +99,25 @@ class AgentDeviceToolCatalogTest {
         assertTrue("eta_list_recipes" in tools)
     }
 
-    @Test
-    fun selfAuthoringToolsDisappearWithTheSelfSettingsSwitch() {
+    @Test fun selfAuthoringToolsDisappearWithTheExtensionsSwitch() {
         val tools = AgentToolCatalog.build(
             terminalTools = false,
             browserTools = false,
-            selfSettingsTools = false,
+            extensionsTools = false,
+            openedToolGroups = AgentToolGroups.allIds,
         ).toolNames()
 
         assertFalse("eta_author_tool" in tools)
         assertFalse("eta_list_recipes" in tools)
     }
 
-    @Test
-    fun onDeviceActionModelIsNotPartOfAnyConversationModelCatalog() {
+    @Test fun onDeviceActionModelIsNotPartOfAnyConversationModelCatalog() {
         val payload = AgentToolCatalog.build(
             terminalTools = true,
             browserTools = true,
-            deviceDirectTools = true,
-            deviceSensitiveReadTools = true,
-            deviceSensitiveActionTools = true,
-            openedToolGroups = AgentToolGroups.groups.map { it.id }.toSet(),
+            deviceTools = true,
+            personalTools = true,
+            openedToolGroups = AgentToolGroups.allIds,
         ).toString()
 
         assertFalse(payload.contains("device_actions"))
@@ -130,22 +125,20 @@ class AgentDeviceToolCatalogTest {
         assertFalse(payload.contains("端侧"))
     }
 
-    private fun names(
-        direct: Boolean,
-        reads: Boolean,
-        actions: Boolean,
-    ): Set<String> {
-        // 这里断言风险组各自暴露哪些工具，与折叠无关：全部域打开，避免默认折叠把它们藏起来。
-        val tools = AgentToolCatalog.build(
+    /** 只留设备侧两组：其余组关掉，断言才是「这个组下发了什么」而不是「目录里还有什么」。 */
+    private fun names(deviceTools: Boolean, personalTools: Boolean): Set<String> =
+        AgentToolCatalog.build(
+            basicTools = false,
             terminalTools = false,
             browserTools = false,
-            deviceDirectTools = direct,
-            deviceSensitiveReadTools = reads,
-            deviceSensitiveActionTools = actions,
-            openedToolGroups = AgentToolGroups.groups.map { it.id }.toSet(),
-        )
-        return tools.toolNames()
-    }
+            screenTools = false,
+            deviceTools = deviceTools,
+            personalTools = personalTools,
+            extensionsTools = false,
+            capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
+            // 全部组默认延迟；这里断言完整目录，因此视为都已打开。
+            openedToolGroups = AgentToolGroups.allIds,
+        ).toolNames()
 
     private fun JSONArray.toolNames(): Set<String> =
         (0 until length()).mapTo(mutableSetOf()) { index ->

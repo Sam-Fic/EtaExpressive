@@ -48,7 +48,8 @@ internal class AppUpdateService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.update_channel), NotificationManager.IMPORTANCE_LOW),
         )
-        ensureForeground()
+        // 不在这里 startForeground：onCreate 时 intent 还没解析，标题会是空的。
+        // 真正的 startForeground 在 onStartCommand 解析出 offer 之后做。
     }
 
     private fun ensureForeground() {
@@ -58,7 +59,7 @@ internal class AppUpdateService : Service() {
             foregroundActive = true
         } catch (failure: RuntimeException) {
             AndroidAgentLogger.warn("AppUpdate service foreground failed: type=${failure.safeLogType()}")
-            finish()
+            stopSelf()
         }
     }
 
@@ -71,17 +72,22 @@ internal class AppUpdateService : Service() {
         }
         // 获取 offer 序列化数据
         val versionName = intent?.getStringExtra(EXTRA_VERSION_NAME).orEmpty()
+        val tagName = intent?.getStringExtra(EXTRA_TAG_NAME).orEmpty()
         val apkUrl = intent?.getStringExtra(EXTRA_APK_URL).orEmpty()
         val apkName = intent?.getStringExtra(EXTRA_APK_NAME).orEmpty()
         val htmlUrl = intent?.getStringExtra(EXTRA_HTML_URL).orEmpty()
         val notes = intent?.getStringExtra(EXTRA_NOTES).orEmpty()
-        currentVersionName = intent?.getStringExtra(EXTRA_CURRENT_VERSION).orEmpty()
 
         if (versionName.isBlank() || apkUrl.isBlank()) {
+            // 经 startForegroundService 进来的服务必须尽快 startForeground，否则系统会抛
+            // RemoteServiceException；这里先占位再立刻收掉。
+            ensureForeground()
             finish()
             return START_NOT_STICKY
         }
 
+        // 先设好展示用的版本号，再进前台，避免通知标题是「正在下载 」这种空值。
+        currentVersionName = versionName
         ensureForeground()
         if (downloadJob?.isActive == true) {
             refreshNotification()
@@ -90,7 +96,7 @@ internal class AppUpdateService : Service() {
 
         val offer = AppUpdateOffer(
             versionName = versionName,
-            tagName = versionName,
+            tagName = tagName.ifBlank { versionName },
             notes = notes,
             htmlUrl = htmlUrl,
             apkUrl = apkUrl,
@@ -99,9 +105,9 @@ internal class AppUpdateService : Service() {
 
         currentProgress = 0L
         currentTotal = 0L
-        this@AppUpdateService.currentVersionName = versionName
         acquireWakeLock()
         downloadJob = scope.launch {
+            var downloadedFile: java.io.File? = null
             try {
                 val file = AppUpdateRepository.downloadApk(
                     context = this@AppUpdateService,
@@ -112,21 +118,31 @@ internal class AppUpdateService : Service() {
                         refreshNotification()
                     },
                 )
-                // 下载完成，显示完成通知
-                showCompletedNotification()
-                // 启动安装
-                AppUpdateRepository.installApk(this@AppUpdateService, file)
-                finish()
+                downloadedFile = file
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Throwable) {
                 AndroidAgentLogger.warn("App update download failed: type=${failure.safeLogType()}")
-                showFailedNotification(failure.message ?: getString(R.string.update_download_failed))
-                finish()
+                finishWithNotification(
+                    title = getString(R.string.update_download_failed),
+                    text = failure.message ?: getString(R.string.update_download_failed),
+                )
             } finally {
                 releaseWakeLock()
                 downloadJob = null
             }
+            val file = downloadedFile ?: return@launch
+            // 下载完成：先把完成通知交给系统，再拉起安装。
+            finishWithNotification(
+                title = getString(R.string.update_download_complete),
+                text = getString(R.string.update_click_to_install),
+                autoCancel = true,
+                openApp = true,
+            )
+            runCatching { AppUpdateRepository.installApk(this@AppUpdateService, file) }
+                .onFailure { failure ->
+                    AndroidAgentLogger.warn("App update install intent failed: type=${failure.safeLogType()}")
+                }
         }
         refreshNotification()
         return START_NOT_STICKY
@@ -141,6 +157,7 @@ internal class AppUpdateService : Service() {
         super.onDestroy()
     }
 
+    /** 停掉前台服务与通知（用户取消 / 数据无效 / 异常）。 */
     private fun finish() {
         releaseWakeLock()
         if (foregroundActive) {
@@ -149,6 +166,45 @@ internal class AppUpdateService : Service() {
             runCatching {
                 getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
             }
+        }
+        stopSelf()
+    }
+
+    /**
+     * 结束前台服务，但把最终通知（完成 / 失败）留给系统。
+     *
+     * 之前直接 [finish] 会 `cancel(NOTIFICATION_ID)`，完成/失败通知刚发出就被抹掉。
+     * 用 [STOP_FOREGROUND_DETACH] 脱开前台身份，通知就由 [NotificationManager] 接管。
+     */
+    private fun finishWithNotification(
+        title: String,
+        text: String,
+        autoCancel: Boolean = false,
+        openApp: Boolean = false,
+    ) {
+        releaseWakeLock()
+        if (foregroundActive) {
+            foregroundActive = false
+            runCatching { stopForeground(STOP_FOREGROUND_DETACH) }
+        }
+        val open = PendingIntent.getActivity(
+            this,
+            REQUEST_OPEN_APP,
+            Intent(this, MainActivity::class.java).apply {
+                if (openApp) flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(open)
+            .setAutoCancel(autoCancel)
+            .setOnlyAlertOnce(true)
+            .build()
+        runCatching {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
         }
         stopSelf()
     }
@@ -215,43 +271,6 @@ internal class AppUpdateService : Service() {
         return builder.build()
     }
 
-    private fun showCompletedNotification() {
-        val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val notification = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.update_download_complete))
-            .setContentText(getString(R.string.update_click_to_install))
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            .build()
-
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun showFailedNotification(message: String) {
-        val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val notification = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.update_download_failed))
-            .setContentText(message)
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .build()
-
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
-    }
-
     private fun formatBytes(bytes: Long): String {
         val unit = 1024
         var b = bytes.toDouble()
@@ -261,12 +280,14 @@ internal class AppUpdateService : Service() {
             b /= unit
             i++
         }
-        return "${String.format("%.1f", b)} ${units[i]}"
+        // 通知里的进度要稳定用 `.` 作小数点，不能用默认 Locale。
+        return "${String.format(java.util.Locale.US, "%.1f", b)} ${units[i]}"
     }
 
     companion object {
         private const val CHANNEL = "eta_app_update"
         private const val NOTIFICATION_ID = 1109
+        private const val REQUEST_OPEN_APP = 0
         private const val ACTION_STOP = "io.github.mangi.eta.action.STOP_APP_UPDATE"
         private const val EXTRA_VERSION_NAME = "io.github.mangi.eta.extra.VERSION_NAME"
         private const val EXTRA_TAG_NAME = "io.github.mangi.eta.extra.TAG_NAME"
@@ -274,7 +295,6 @@ internal class AppUpdateService : Service() {
         private const val EXTRA_HTML_URL = "io.github.mangi.eta.extra.HTML_URL"
         private const val EXTRA_APK_URL = "io.github.mangi.eta.extra.APK_URL"
         private const val EXTRA_APK_NAME = "io.github.mangi.eta.extra.APK_NAME"
-        private const val EXTRA_CURRENT_VERSION = "io.github.mangi.eta.extra.CURRENT_VERSION"
         private const val WAKE_LOCK_TAG = "eta:app-update"
         private const val WAKE_LOCK_TIMEOUT_MS = 30 * 60 * 1000L
 
@@ -283,7 +303,9 @@ internal class AppUpdateService : Service() {
         /**
          * 启动后台下载服务（幂等）：已在下载中则不重复启动。
          */
-        fun startDownload(context: Context, offer: AppUpdateOffer, currentVersion: String) {
+        fun startDownload(context: Context, offer: AppUpdateOffer) {
+            // 没有直链时只能走浏览器：服务不接管。
+            if (offer.apkUrl.isNullOrBlank()) return
             val intent = Intent(context, AppUpdateService::class.java).apply {
                 putExtra(EXTRA_VERSION_NAME, offer.versionName)
                 putExtra(EXTRA_TAG_NAME, offer.tagName)
@@ -291,7 +313,6 @@ internal class AppUpdateService : Service() {
                 putExtra(EXTRA_HTML_URL, offer.htmlUrl)
                 putExtra(EXTRA_APK_URL, offer.apkUrl)
                 putExtra(EXTRA_APK_NAME, offer.apkName)
-                putExtra(EXTRA_CURRENT_VERSION, currentVersion)
             }
             context.applicationContext.startForegroundService(intent)
         }

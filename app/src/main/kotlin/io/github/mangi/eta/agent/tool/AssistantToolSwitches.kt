@@ -1,5 +1,7 @@
 package io.github.mangi.eta.agent.tool
 
+import io.github.mangi.eta.agent.model.AgentToolGroups
+import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.data.model.AssistantProfile
 
 /**
@@ -7,25 +9,38 @@ import io.github.mangi.eta.data.model.AssistantProfile
  *
  * 记忆与技能早已是按助手的（`AssistantProfile.memoryEnabled` / `enabledSkillIds`），
  * 工具却是全局的：同一台设备上无法表达「给这个助手终端，另一个不给」。
- * 这里把全局 [AgentToolCapabilities] 式的开关收窄到某个助手：
- * **只能收紧，不能放宽**——助手配置不能把用户全局关掉的能力重新打开，
- * 这与 eta_set_settings 的「模型只能收紧」是同一条原则。
+ * 这里把全局开关收窄到某个助手：**只能收紧，不能放宽**——助手配置不能把用户全局
+ * 关掉的能力重新打开，这与 eta_set_settings 的「模型只能收紧」是同一条原则。
+ *
+ * 组 id 与 [AgentToolGroups] 是同一份：设置首页、工具清单页、模型侧目录、助手收窄
+ * 全部引用同一套分组，避免多套分类互相漂移。
  */
 internal object AssistantToolSwitches {
-    /** 组 id 与 [io.github.mangi.eta.agent.model.AgentToolGroups] / 工具页分组保持一致。 */
-    const val TERMINAL = "terminal"
+    const val BASIC = "basic"
     const val SCREEN = "screen"
-    const val BROWSER = "web"
-    const val DEVICE_DIRECT = "device_direct"
-    const val DEVICE_ACTIONS = "device_sensitive"
-    const val PERSONAL_DATA = "personal_data"
-    const val DEVICE_STATE = "device_state"
-    const val MEDIA_SEARCH = "media_search"
-    const val SELF_SETTINGS = "self"
+    const val WEB = "web"
+    const val TERMINAL = "terminal"
+    const val DEVICE = "device"
+    const val PERSONAL = "personal"
+    const val EXTENSIONS = "extensions"
 
+    /**
+     * 可被助手收窄的组。只有进入 `ModelConfig` 的组才能同时收窄「目录」与「执行」；
+     * 基础交互与 Eta 自身配置直接读 Prefs，助手级开关对它们无效，因此不在这里列出——
+     * 列出来只会变成一个点了没反应的假开关。
+     */
     val all: List<String> = listOf(
-        TERMINAL, SCREEN, BROWSER, DEVICE_DIRECT, DEVICE_ACTIONS,
-        PERSONAL_DATA, DEVICE_STATE, MEDIA_SEARCH, SELF_SETTINGS,
+        SCREEN, WEB, TERMINAL, DEVICE, PERSONAL,
+    )
+
+    /**
+     * 旧分组 id → 新 id。老助手档案里存的是细分 id（设备直达 / 敏感操作、个人信息 /
+     * 设备状态、Eta 自设置），合并后按最窄结果生效：任一旧细项被关掉，整组就关掉。
+     */
+    private val legacyIds: Map<String, List<String>> = mapOf(
+        DEVICE to listOf("device_direct", "device_sensitive"),
+        PERSONAL to listOf("personal_data", "device_state"),
+        EXTENSIONS to listOf("self"),
     )
 
     /**
@@ -34,7 +49,9 @@ internal object AssistantToolSwitches {
      */
     fun allows(assistant: AssistantProfile?, groupId: String, globalEnabled: Boolean): Boolean {
         if (!globalEnabled) return false
-        return assistant?.toolGroupEnabled(groupId, fallback = true) ?: true
+        if (assistant == null) return true
+        if (!assistant.toolGroupEnabled(groupId, fallback = true)) return false
+        return legacyIds[groupId].orEmpty().all { assistant.toolGroupEnabled(it, fallback = true) }
     }
 }
 
@@ -44,38 +61,25 @@ internal object AssistantToolSwitches {
  */
 internal object UiToolGroupLabel {
     fun label(groupId: String): String = when (groupId) {
-        AssistantToolSwitches.TERMINAL -> "终端与文件"
+        AssistantToolSwitches.BASIC -> "基础交互"
         AssistantToolSwitches.SCREEN -> "屏幕观察与 GUI 操作"
-        AssistantToolSwitches.BROWSER -> "网页与浏览器"
-        AssistantToolSwitches.DEVICE_DIRECT -> "设备直达"
-        AssistantToolSwitches.DEVICE_ACTIONS -> "敏感设备操作"
-        AssistantToolSwitches.PERSONAL_DATA -> "个人信息读取"
-        AssistantToolSwitches.DEVICE_STATE -> "设备状态读取"
-        AssistantToolSwitches.MEDIA_SEARCH -> "媒体语义搜索"
-        AssistantToolSwitches.SELF_SETTINGS -> "Eta 自设置"
+        AssistantToolSwitches.WEB -> "网页与浏览器"
+        AssistantToolSwitches.TERMINAL -> "终端与文件"
+        AssistantToolSwitches.DEVICE -> "设备控制"
+        AssistantToolSwitches.PERSONAL -> "个人数据"
+        AssistantToolSwitches.EXTENSIONS -> "Eta 配置与扩展"
         else -> groupId
     }
 
     /** 该组的全局开关是否开启；关闭时助手侧无法打开它。 */
     fun globallyEnabled(groupId: String): Boolean = when (groupId) {
-        AssistantToolSwitches.TERMINAL -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_TERMINAL_TOOLS)
-        AssistantToolSwitches.SCREEN -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_SCREEN_TOOLS)
-        AssistantToolSwitches.BROWSER -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_BROWSER_TOOLS)
-        AssistantToolSwitches.DEVICE_DIRECT -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS)
-        AssistantToolSwitches.DEVICE_ACTIONS -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS)
-        AssistantToolSwitches.PERSONAL_DATA -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS)
-        AssistantToolSwitches.DEVICE_STATE -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS)
-        AssistantToolSwitches.MEDIA_SEARCH -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS)
-        AssistantToolSwitches.SELF_SETTINGS -> io.github.mangi.eta.config.Prefs.isEnabled(
-            io.github.mangi.eta.config.Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS)
+        AssistantToolSwitches.BASIC -> Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS)
+        AssistantToolSwitches.SCREEN -> Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS)
+        AssistantToolSwitches.WEB -> Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS)
+        AssistantToolSwitches.TERMINAL -> Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS)
+        AssistantToolSwitches.DEVICE -> Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS)
+        AssistantToolSwitches.PERSONAL -> Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS)
+        AssistantToolSwitches.EXTENSIONS -> Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
         else -> true
     }
 }

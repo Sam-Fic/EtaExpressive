@@ -50,9 +50,8 @@ class AgentRuntimePolicyTest {
                 terminalTools = true,
                 browserTools = true,
                 screenTools = true,
-                deviceDirectTools = true,
-                deviceSensitiveReadTools = true,
-                deviceSensitiveActionTools = true,
+                deviceTools = true,
+                personalTools = true,
                 thinking = true,
             ),
             AgentRuntimePolicy.permissions(preferences),
@@ -82,9 +81,8 @@ class AgentRuntimePolicyTest {
                 browserTools = true,
                 thinking = true,
             ).copy(
-                deviceDirectTools = true,
-                deviceSensitiveReadTools = true,
-                deviceSensitiveActionTools = true,
+                deviceTools = true,
+                personalTools = true,
             ),
             permissions = AgentRuntimePolicy.Permissions(
                 terminalTools = false,
@@ -97,9 +95,8 @@ class AgentRuntimePolicyTest {
         assertFalse(constrained.browserTools)
         assertFalse(constrained.thinkingEnabled)
         assertEquals(ReasoningEffort.OFF, constrained.reasoningEffort)
-        assertFalse(constrained.deviceDirectTools)
-        assertFalse(constrained.deviceSensitiveReadTools)
-        assertFalse(constrained.deviceSensitiveActionTools)
+        assertFalse(constrained.deviceTools)
+        assertFalse(constrained.personalTools)
     }
 
     @Test
@@ -166,13 +163,13 @@ class AgentRuntimePolicyTest {
     fun withoutOptionalThinkingDisablesReasoningButKeepsTools() {
         val constrained = AgentRuntimePolicy.withoutOptionalThinking(
             modelConfig(terminalTools = true, browserTools = true, thinking = true).copy(
-                deviceDirectTools = true,
+                deviceTools = true,
                 reasoningEffort = ReasoningEffort.HIGH,
             ),
         )
         assertTrue(constrained.terminalTools)
         assertTrue(constrained.browserTools)
-        assertTrue(constrained.deviceDirectTools)
+        assertTrue(constrained.deviceTools)
         assertFalse(constrained.thinkingEnabled)
         assertEquals(ReasoningEffort.OFF, constrained.reasoningEffort)
     }

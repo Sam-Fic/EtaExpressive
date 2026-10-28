@@ -56,17 +56,21 @@ class AgentPromptBuilderTest {
     @Test
     fun screenSwitchDropsGuiInstructionsAndKeepsCoreGuidance() {
         val config = modelConfig("", terminalTools = false, browserTools = false)
+        // 本文件断言的是提示内容，与分层加载无关：所有组一律视为已打开，
+        // 否则延迟组的指引根本不会出现，断言会全部落空。
         val on = AgentPromptBuilder.buildSystemMessages(
             config = config.copy(screenTools = true),
             skillContext = SkillContext.EMPTY,
             memoryContext = AgentMemoryContext.DISABLED,
             rootAvailable = false,
+            openedToolGroups = AgentToolGroups.allIds,
         ).systemContents()
         val off = AgentPromptBuilder.buildSystemMessages(
             config = config.copy(screenTools = false),
             skillContext = SkillContext.EMPTY,
             memoryContext = AgentMemoryContext.DISABLED,
             rootAvailable = false,
+            openedToolGroups = AgentToolGroups.allIds,
         ).systemContents()
 
         assertTrue(on.any { it.contains("需要看屏幕时") })
@@ -98,6 +102,7 @@ class AgentPromptBuilderTest {
             ),
             skillContext = SkillContext.EMPTY,
             rootAvailable = true,
+            openedToolGroups = AgentToolGroups.allIds,
         )
 
         assertEquals(
@@ -250,6 +255,7 @@ class AgentPromptBuilderTest {
             memoryContext = AgentMemoryContext.DISABLED,
             rootAvailable = false,
             delegationAvailable = false,
+            openedToolGroups = AgentToolGroups.allIds,
         )
         assertFalse(without.systemContents().any { it.contains("本轮已公开子代理") })
 
@@ -259,6 +265,7 @@ class AgentPromptBuilderTest {
             memoryContext = AgentMemoryContext.DISABLED,
             rootAvailable = false,
             delegationAvailable = true,
+            openedToolGroups = AgentToolGroups.allIds,
         )
         val contents = messages.systemContents()
         val delegationAt = contents.indexOfFirst { it.contains("本轮已公开子代理") }
@@ -304,6 +311,7 @@ class AgentPromptBuilderTest {
             images = emptyList(),
             history = emptyList(),
             skillContext = SkillContext(installedSkills = listOf(skill)),
+            openedToolGroups = AgentToolGroups.allIds,
         )
 
         // 系统提示的条数随工具族增加而变（网页搜索/正文读取是一段独立提示），

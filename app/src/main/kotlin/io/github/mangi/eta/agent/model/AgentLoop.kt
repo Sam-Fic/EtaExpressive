@@ -35,7 +35,11 @@ internal class AgentLoop(
     },
     private val sessionId: String = java.util.UUID.randomUUID().toString(),
     private val compactPolicy: CompactPolicy = CompactPolicy.Disabled,
-    private val systemCount: Int = 0,
+    /**
+     * 系统前缀长度。每轮重建系统提示时它会随「本轮打开了哪些工具组」变化，
+     * 因此这里读的是提供者而不是构造时的快照：压缩、transcript 与预算都以它为历史起点。
+     */
+    private val systemCountProvider: () -> Int = { 0 },
     private val compactionArchive: AgentCompactionArchive? = null,
     private val turnId: String = java.util.UUID.randomUUID().toString(),
     private val toolDiagnostics: AgentToolCallDiagnostics = AgentToolCallDiagnostics(),
@@ -78,6 +82,7 @@ internal class AgentLoop(
     )
 
     private var auxiliaryRound = 1
+    private val systemCount: Int get() = systemCountProvider()
     private val auxiliaryVision = AuxiliaryVision.create(config, runController, sessionId) {
         onEvent(it.copy(round = auxiliaryRound))
     }

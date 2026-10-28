@@ -8,7 +8,7 @@ import org.junit.Test
 
 class SkillInstallModelToolGateTest {
     @Test
-    fun `model always sees GitHub skill tools without prompt keyword gating`() {
+    fun `github skill tools follow the extensions group, never prompt keywords`() {
         listOf(
             "总结这个仓库",
             "列出可安装的 Skills",
@@ -16,15 +16,26 @@ class SkillInstallModelToolGateTest {
             "\$skill-installer linear",
             "翻译这句话：install this Skill",
         ).forEach { prompt ->
-            val provider = CapturingProvider()
-            complete(prompt, provider)
-            assertTrue(prompt, "skills_list_curated" in provider.toolNames)
-            assertTrue(prompt, "skills_inspect_github" in provider.toolNames)
-            assertTrue(prompt, "skills_install_from_github" in provider.toolNames)
+            // 第一轮：基础读取常驻，任何提示词都能列出/读取已安装的 Skills。
+            val resident = CapturingProvider()
+            complete(prompt, resident)
+            assertTrue(prompt, "skills_list_curated" in resident.toolNames)
+            assertTrue(prompt, "skills_read" in resident.toolNames)
+            // GitHub 发现/安装属扩展组，默认延迟：不按关键词出现，也不因关键词缺席。
+            assertTrue(prompt, "skills_inspect_github" !in resident.toolNames)
+
+            val opened = CapturingProvider()
+            complete(prompt, opened, setOf(AgentToolGroups.EXTENSIONS_GROUP.id))
+            assertTrue(prompt, "skills_inspect_github" in opened.toolNames)
+            assertTrue(prompt, "skills_install_from_github" in opened.toolNames)
         }
     }
 
-    private fun complete(prompt: String, provider: CapturingProvider) {
+    private fun complete(
+        prompt: String,
+        provider: CapturingProvider,
+        openedToolGroups: Set<String> = emptySet(),
+    ) {
         AgentModelClient.complete(
             config = AgentModelClient.ModelConfig(
                 baseUrl = "https://example.invalid/v1",
@@ -38,6 +49,7 @@ class SkillInstallModelToolGateTest {
                 error("不应执行工具")
             },
             provider = provider,
+            openedToolGroupsProvider = { openedToolGroups },
         )
     }
 

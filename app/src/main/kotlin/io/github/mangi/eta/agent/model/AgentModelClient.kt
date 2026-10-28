@@ -46,11 +46,8 @@ internal object AgentModelClient {
                     terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
                     browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
                     screenTools = Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS),
-                    deviceDirectTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
-                    deviceSensitiveReadTools =
-                        Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
-                    deviceSensitiveActionTools =
-                        Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS),
+                    deviceTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS),
+                    personalTools = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS),
                     thinkingEnabled = effort.enablesReasoning,
                     reasoningEffort = effort,
                 )
@@ -73,11 +70,8 @@ internal object AgentModelClient {
             terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
             browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
             screenTools = Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS),
-            deviceDirectTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
-            deviceSensitiveReadTools =
-                Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
-            deviceSensitiveActionTools =
-                Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS),
+            deviceTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS),
+            personalTools = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS),
             thinkingEnabled = Prefs.isEnabled(Prefs.Keys.AGENT_THINKING_ENABLED),
             reasoningEffort = ReasoningEffort.fromLegacy(
                 Prefs.isEnabled(Prefs.Keys.AGENT_THINKING_ENABLED)
@@ -157,6 +151,8 @@ internal object AgentModelClient {
             shellTools = initialCapabilities.shellTools,
             interactiveModeEnabled = interactiveModeEnabled,
             disabledCapabilities = capabilitySwitches.toDisabledState(),
+            // 首轮通常还没有打开任何延迟组；仍走同一个 provider，保证提示与目录同源。
+            openedToolGroups = openedToolGroupsProvider(),
             onSystemCount = { systemCount = it },
         )
         var transcriptStartIndex = messages.length()
@@ -165,23 +161,22 @@ internal object AgentModelClient {
             memoryEnabled: Boolean = memoryContext.enabled,
         ): JSONArray {
             val tools = AgentToolCatalog.build(
+                basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
                 terminalTools = config.terminalTools,
                 browserTools = config.browserTools,
                 screenTools = config.screenTools,
-                deviceDirectTools = config.deviceDirectTools,
-                deviceSensitiveReadTools = config.deviceSensitiveReadTools,
-                deviceSensitiveActionTools = config.deviceSensitiveActionTools,
-                // 敏感读的两档细分：只关个人信息时，设备状态读仍然可用。
-                personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
-                deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
+                deviceTools = config.deviceTools,
+                personalTools = config.personalTools,
+                extensionsTools = Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS),
                 skillGitHubDiscovery = true,
                 skillGitHubInstall = true,
                 memoryTools = memoryEnabled,
-                selfSettingsTools = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS),
                 mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
                 capabilities = capabilities,
                 localWebSearch = !config.usesHostedWebSearch,
                 openedToolGroups = openedToolGroupsProvider(),
+                // 单工具禁用集：每轮重读，用户在两轮之间改工具清单页也能生效。
+                disabledTools = Prefs.disabledTools(),
                 // 命令执行是独立开关：关掉它仍可读写文件，但不能跑 shell。
                 fileSystemTier = AgentFileSystemTier.of(
                     terminalTools = config.terminalTools,
@@ -226,7 +221,7 @@ internal object AgentModelClient {
             traceFormatter = traceFormatter,
             onEvent = onEvent,
             compactPolicy = compactPolicy,
-            systemCount = systemCount,
+            systemCountProvider = { systemCount },
             compactionArchive = compactionArchive,
             turnId = turnId,
             calibratedInputTokens = calibratedInputTokens,
@@ -270,22 +265,22 @@ internal object AgentModelClient {
                         capabilitySwitches = ToolCapabilitySwitches.capture(),
                     )
                     if (signature != lastRoundSignature) {
-                        val switches = signature.toolSwitches
                         val systemMessages = AgentPromptBuilder.buildSystemMessages(
                             config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
                             capabilities.shellTools,
                             interactiveModeEnabled = interactiveModeEnabled,
                             openedToolGroups = openedToolGroupsProvider(),
-                            selfSettingsTools = switches.selfSettingsTools,
-                            personalDataReads = switches.personalDataReads,
-                            deviceStateReads = switches.deviceStateReads,
                             // 每轮重新捕获：用户可能在两轮之间改了开关。
                             disabledCapabilities = ToolCapabilitySwitches
                                 .capture().toDisabledState(),
                         )
-                        for (index in 0 until systemMessages.length()) {
-                            messages.put(index, systemMessages.getJSONObject(index))
-                        }
+                        // 系统前缀的条数会随「本轮打开了哪些工具组」变化（指引块与组索引都是条件消息）。
+                        // JSONArray.put(index, …) 是替换不是插入，按索引覆写会在前缀变长时盖掉历史与用户消息，
+                        // 变短时又会留下上一轮的陈旧指引。这里整段重排，并同步移动两个以条数为基准的边界。
+                        val previousSystemCount = systemCount
+                        rewriteSystemPrefix(messages, systemMessages, previousSystemCount)
+                        systemCount = systemMessages.length()
+                        transcriptStartIndex += systemCount - previousSystemCount
                         promptRootAvailable = capabilities.rootAvailable
                         lastRoundTools = toolsFor(capabilities, nextMemoryContext.enabled)
                         lastRoundSignature = signature
@@ -331,6 +326,23 @@ internal object AgentModelClient {
                 result.sensitiveToolCallIds,
             ),
         )
+    }
+
+    /**
+     * 用新的系统前缀替换 messages 开头的 oldCount 条，其余消息原样保留（对象身份不变，
+     * 因此已写入的 turn id 等标记不会丢）。JSONArray 没有「在头部插入」的操作，
+     * 只能先摘出尾部再整体重建；从尾部往前 remove 才是 O(n)。
+     */
+    private fun rewriteSystemPrefix(messages: JSONArray, prefix: JSONArray, oldCount: Int) {
+        val boundary = oldCount.coerceIn(0, messages.length())
+        val tail = (boundary until messages.length()).map { index -> messages.getJSONObject(index) }
+        for (index in messages.length() - 1 downTo 0) {
+            messages.remove(index)
+        }
+        for (index in 0 until prefix.length()) {
+            messages.put(prefix.getJSONObject(index))
+        }
+        tail.forEach(messages::put)
     }
 
     private fun ModelConfig.validate() {
@@ -399,9 +411,10 @@ internal object AgentModelClient {
         val browserTools: Boolean = true,
         /** 屏幕观察与 GUI 操作总开关；false 时目录与提示词都不包含无障碍界面能力。 */
         val screenTools: Boolean = true,
-        val deviceDirectTools: Boolean = true,
-        val deviceSensitiveReadTools: Boolean = false,
-        val deviceSensitiveActionTools: Boolean = false,
+        /** 设备控制组（直达 + 写操作）；细粒度差异由单工具禁用集承接。 */
+        val deviceTools: Boolean = true,
+        /** 个人数据组（个人内容 + 设备状态读取）。 */
+        val personalTools: Boolean = false,
         val thinkingEnabled: Boolean = false,
         val reasoningEffort: ReasoningEffort? = null,
         val reasoningCapabilities: ModelReasoningCapabilities? = null,
@@ -449,25 +462,46 @@ internal object AgentModelClient {
     )
 
     /**
-     * 与工具域相关的用户开关快照。只在「开关可能改变域可用性」时参与签名：
-     * 自设置管理域、设备写域、冷门只读域各自依赖其中一项。
+     * 影响工具目录的 Prefs 开关快照。目录里凡是不走 config 的输入都必须参与签名，
+     * 否则用户运行中改开关（组开关、shell 子开关、单工具禁用集）不会触发重建。
      */
     internal data class ToolSwitchSnapshot(
-        val selfSettingsTools: Boolean,
-        val personalDataReads: Boolean,
-        val deviceStateReads: Boolean,
+        val basicTools: Boolean,
+        val screenTools: Boolean,
+        val browserTools: Boolean,
+        val terminalTools: Boolean,
+        val shellTools: Boolean,
+        val deviceTools: Boolean,
+        val personalTools: Boolean,
+        val extensionsTools: Boolean,
+        val mediaSearchTools: Boolean,
+        val disabledToolsDigest: String,
     ) {
         companion object {
             val DEFAULT = ToolSwitchSnapshot(
-                selfSettingsTools = true,
-                personalDataReads = true,
-                deviceStateReads = true,
+                basicTools = true,
+                screenTools = true,
+                browserTools = true,
+                terminalTools = true,
+                shellTools = true,
+                deviceTools = true,
+                personalTools = true,
+                extensionsTools = true,
+                mediaSearchTools = true,
+                disabledToolsDigest = "",
             )
 
             fun capture() = ToolSwitchSnapshot(
-                selfSettingsTools = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS),
-                personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
-                deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
+                basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
+                screenTools = Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS),
+                browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
+                terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
+                shellTools = Prefs.isEnabled(Prefs.Keys.AGENT_SHELL_TOOLS),
+                deviceTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS),
+                personalTools = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS),
+                extensionsTools = Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS),
+                mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
+                disabledToolsDigest = Prefs.disabledTools().sorted().joinToString(","),
             )
         }
     }
@@ -475,21 +509,21 @@ internal object AgentModelClient {
     /**
      * 主 run 的完整工具开关快照，**只用于生成「已关闭能力」说明**。
      *
-     * 与 [ToolSwitchSnapshot] 分开：那个只关心「域能否打开」，字段少、默认全开；
+     * 与 [ToolSwitchSnapshot] 分开：那个只关心「组能否打开」，字段少、默认全开；
      * 这个要覆盖所有会让工具缺席的开关，因此必须在真实主 run 里从 Prefs 捕获，
      * 不能靠 ModelConfig 默认值推导——子代理与压缩模型的最小配置会让它误报
      * 「用户关闭了终端」。
      */
     internal data class ToolCapabilitySwitches(
+        val basicTools: Boolean,
         val terminalTools: Boolean,
+        val shellTools: Boolean,
         val browserTools: Boolean,
         val screenTools: Boolean,
-        val deviceDirectTools: Boolean,
-        val deviceSensitiveReadTools: Boolean,
-        val personalDataReads: Boolean,
-        val deviceStateReads: Boolean,
-        val deviceSensitiveActionTools: Boolean,
-        val selfSettingsTools: Boolean,
+        val deviceTools: Boolean,
+        val personalTools: Boolean,
+        val extensionsTools: Boolean,
+        val mediaSearchTools: Boolean,
         val delegationTools: Boolean,
     ) {
         companion object {
@@ -498,15 +532,15 @@ internal object AgentModelClient {
              * 生效值，入口收窄时同样为 false，据此生成关闭说明会向模型撒谎。
              */
             fun capture() = ToolCapabilitySwitches(
+                basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
                 terminalTools = Prefs.isEnabled(Prefs.Keys.AGENT_TERMINAL_TOOLS),
+                shellTools = Prefs.isEnabled(Prefs.Keys.AGENT_SHELL_TOOLS),
                 browserTools = Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS),
                 screenTools = Prefs.isEnabled(Prefs.Keys.AGENT_SCREEN_TOOLS),
-                deviceDirectTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_DIRECT_TOOLS),
-                deviceSensitiveReadTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_READ_TOOLS),
-                personalDataReads = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_DATA_READ_TOOLS),
-                deviceStateReads = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_STATE_READ_TOOLS),
-                deviceSensitiveActionTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_SENSITIVE_ACTION_TOOLS),
-                selfSettingsTools = Prefs.isEnabled(Prefs.Keys.AGENT_SELF_SETTINGS_TOOLS),
+                deviceTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS),
+                personalTools = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS),
+                extensionsTools = Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS),
+                mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
                 // 独立开关：不能用 delegationAvailable，那是「本轮是否真的下发了 delegate_task」，
                 // 入口未附带委派工具时它为 false，会被误报成「用户关闭了子代理」。
                 delegationTools = Prefs.isEnabled(Prefs.Keys.AGENT_SUBAGENT_TOOLS),
@@ -514,15 +548,15 @@ internal object AgentModelClient {
         }
 
         fun toDisabledState() = AgentToolGroups.ToolSwitchState(
-            terminalTools = terminalTools,
-            browserTools = browserTools,
+            basicTools = basicTools,
             screenTools = screenTools,
-            deviceDirectTools = deviceDirectTools,
-            deviceSensitiveReadTools = deviceSensitiveReadTools,
-            personalDataReads = personalDataReads,
-            deviceStateReads = deviceStateReads,
-            deviceSensitiveActionTools = deviceSensitiveActionTools,
-            selfSettingsTools = selfSettingsTools,
+            browserTools = browserTools,
+            terminalTools = terminalTools,
+            shellTools = shellTools,
+            deviceTools = deviceTools,
+            personalTools = personalTools,
+            extensionsTools = extensionsTools,
+            mediaSearchTools = mediaSearchTools,
             delegationTools = delegationTools,
         )
     }

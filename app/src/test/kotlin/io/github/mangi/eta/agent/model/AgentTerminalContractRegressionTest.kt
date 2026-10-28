@@ -12,7 +12,11 @@ class AgentTerminalContractRegressionTest {
 
     @Test
     fun runCommandContractIsAndroidOnlyAndLinuxRequiresExplicitTerminalEnvironment() {
-        val tools = AgentToolCatalog.build(terminalTools = true, browserTools = false)
+        val tools = AgentToolCatalog.build(
+            terminalTools = true,
+            browserTools = false,
+            openedToolGroups = AgentToolGroups.allIds,
+        )
         val runCommand = tools.function("run_command")
         val terminal = tools.function("terminal")
         val runDescription = runCommand.getString("description")

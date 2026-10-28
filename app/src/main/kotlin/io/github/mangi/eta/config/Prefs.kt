@@ -53,27 +53,57 @@ internal object Prefs {
         const val AGENT_BROWSER_TOOLS = "agent_browser_tools"
 
         /**
+         * 统一分组（taxonomy）后的组开关。旧的细分开关
+         * （[AGENT_DEVICE_DIRECT_TOOLS]/[AGENT_DEVICE_SENSITIVE_ACTION_TOOLS]/
+         * [AGENT_DEVICE_SENSITIVE_READ_TOOLS]/[AGENT_PERSONAL_DATA_READ_TOOLS]/
+         * [AGENT_DEVICE_STATE_READ_TOOLS]/[AGENT_SELF_SETTINGS_TOOLS]）仅用于一次性迁移，
+         * 见 [ToolGroupPrefsMigration]；设置页与目录构建只读新 key。
+         */
+        const val AGENT_BASIC_TOOLS = "agent_basic_tools"
+        /** 设备控制组：直达操作 + 写操作；细粒度用 [AGENT_DISABLED_TOOLS]。 */
+        const val AGENT_DEVICE_TOOLS = "agent_device_tools"
+        /** 个人数据组：个人内容读取 + 设备状态读取 + 媒体语义搜索（后者另有独立开关）。 */
+        const val AGENT_PERSONAL_TOOLS = "agent_personal_tools"
+        /**
+         * Eta 自身与扩展组：自设置、MCP、自写配方、Skills 安装、记忆写入。
+         * 与旧 [AGENT_SELF_SETTINGS_TOOLS] 同一原则：不出现在 AI 可见的设置列表里，
+         * 模型不能自己关掉自己的配置能力。
+         */
+        const val AGENT_EXTENSIONS_TOOLS = "agent_extensions_tools"
+
+        /**
+         * 单工具禁用集：逗号分隔的工具名。组开关之下的细粒度控制，
+         * 由工具清单页逐工具开关与旧档位迁移写入。字符串存储以便导出/恢复往返。
+         */
+        const val AGENT_DISABLED_TOOLS = "agent_disabled_tools"
+
+        /**
          * 屏幕观察与 GUI 操作总开关：observe_screen、点击/长按/滑动/滚动、文本输入、
          * wait 系列、press_key 与系统面板。关闭后这些工具既不声明也不执行，提示词同步移除
          * GUI 指引，避免为不存在的工具付固定 token。
          */
         const val AGENT_SCREEN_TOOLS = "agent_screen_tools"
+
+        @Deprecated("迁移用；由 AGENT_DEVICE_TOOLS + AGENT_DISABLED_TOOLS 取代")
         const val AGENT_DEVICE_DIRECT_TOOLS = "agent_device_direct_tools"
+
+        @Deprecated("迁移用；由 AGENT_PERSONAL_TOOLS + AGENT_DISABLED_TOOLS 取代")
         const val AGENT_DEVICE_SENSITIVE_READ_TOOLS = "agent_device_sensitive_read_tools"
 
-        /**
-         * 敏感读里的两档细分（都在 [AGENT_DEVICE_SENSITIVE_READ_TOOLS] 总闸之下）：
-         * - [AGENT_PERSONAL_DATA_READ_TOOLS]：通讯录/短信/账单/健康/订单等个人信息；
-         * - [AGENT_DEVICE_STATE_READ_TOOLS]：设置、系统状态、闹钟列表、位置等设备状态。
-         * 都默认开启，保持历史行为；用户可以只关掉个人信息那一档。
-         */
+        @Deprecated("迁移用；由 AGENT_PERSONAL_TOOLS + AGENT_DISABLED_TOOLS 取代")
         const val AGENT_PERSONAL_DATA_READ_TOOLS = "agent_personal_data_read_tools"
+
+        @Deprecated("迁移用；由 AGENT_PERSONAL_TOOLS + AGENT_DISABLED_TOOLS 取代")
         const val AGENT_DEVICE_STATE_READ_TOOLS = "agent_device_state_read_tools"
+
+        @Deprecated("迁移用；由 AGENT_DEVICE_TOOLS + AGENT_DISABLED_TOOLS 取代")
         const val AGENT_DEVICE_SENSITIVE_ACTION_TOOLS = "agent_device_sensitive_action_tools"
+
         /**
          * 是否启用「让模型读写 Eta 自身配置」的三个工具。
          * 只由用户在设置页决定：该 key 不出现在 AI 可见的设置列表里，模型不能自己关掉自己的配置能力。
          */
+        @Deprecated("迁移用；由 AGENT_EXTENSIONS_TOOLS 取代")
         const val AGENT_SELF_SETTINGS_TOOLS = "agent_self_settings_tools"
         /** 媒体语义搜索工具（semantic_search_media）：只做本机离线索引检索，默认关闭。 */
         const val AGENT_MEDIA_SEARCH_TOOLS = "agent_media_search_tools"
@@ -129,7 +159,13 @@ internal object Prefs {
         // CHOICE 写入路径共用一个格式；解析统一走 [trashRetentionDays]。
         const val TRASH_RETENTION_DAYS = "trash_retention_days"
 
-        /** 全部布尔开关及其默认值。 */
+        /**
+         * 全部布尔开关及其默认值。
+         *
+         * 只收录**当前生效**的开关：已退役的 6 个工具细分开关不在这里，
+         * [ToolGroupPrefsMigration] 直接按 `true` 读它们的旧值。把它们留在这张表里
+         * 会让「非本地 Agent 键」的遍历（增强页历史快照）继续当成在用开关处理。
+         */
         val BOOLEAN_DEFAULTS: Map<String, Boolean> = mapOf(
             POWER_KEY_TAKEOVER to false,
             ASSISTANT_AUTO_CONFIG to false,
@@ -144,12 +180,10 @@ internal object Prefs {
             AGENT_SHELL_TOOLS to true,
             AGENT_BROWSER_TOOLS to true,
             AGENT_SCREEN_TOOLS to true,
-            AGENT_DEVICE_DIRECT_TOOLS to true,
-            AGENT_DEVICE_SENSITIVE_READ_TOOLS to true,
-            AGENT_PERSONAL_DATA_READ_TOOLS to true,
-            AGENT_DEVICE_STATE_READ_TOOLS to true,
-            AGENT_DEVICE_SENSITIVE_ACTION_TOOLS to true,
-            AGENT_SELF_SETTINGS_TOOLS to true,
+            AGENT_BASIC_TOOLS to true,
+            AGENT_DEVICE_TOOLS to true,
+            AGENT_PERSONAL_TOOLS to true,
+            AGENT_EXTENSIONS_TOOLS to true,
             AGENT_MEDIA_SEARCH_TOOLS to false,
             AGENT_SUBAGENT_TOOLS to true,
             AGENT_CONFIRM_DANGEROUS_TOOLS to false,
@@ -176,12 +210,10 @@ internal object Prefs {
             AGENT_SHELL_TOOLS,
             AGENT_BROWSER_TOOLS,
             AGENT_SCREEN_TOOLS,
-            AGENT_DEVICE_DIRECT_TOOLS,
-            AGENT_DEVICE_SENSITIVE_READ_TOOLS,
-            AGENT_PERSONAL_DATA_READ_TOOLS,
-            AGENT_DEVICE_STATE_READ_TOOLS,
-            AGENT_DEVICE_SENSITIVE_ACTION_TOOLS,
-            AGENT_SELF_SETTINGS_TOOLS,
+            AGENT_BASIC_TOOLS,
+            AGENT_DEVICE_TOOLS,
+            AGENT_PERSONAL_TOOLS,
+            AGENT_EXTENSIONS_TOOLS,
             AGENT_MEDIA_SEARCH_TOOLS,
             AGENT_SUBAGENT_TOOLS,
             AGENT_CONFIRM_DANGEROUS_TOOLS,
@@ -252,6 +284,7 @@ internal object Prefs {
         }
         // 一次性迁移必须在任何 Agent 偏好读取之前完成；固定标记保证只跑一次。
         AgentTaskSurface.migrateAskToForegroundOnce()
+        ToolGroupPrefsMigration.runOnce(localAgent)
     }
 
     /** Hook 进程调用：缓存框架提供的只读 SharedPreferences。 */
@@ -344,6 +377,23 @@ internal object Prefs {
         // 落盘后重新套用迁移：带标记的备份（迁移后导出）原样保留用户选择，
         // 无标记的旧备份若存过 ASK 则补做一次迁移。
         AgentTaskSurface.migrateAskToForegroundOnce()
+        ToolGroupPrefsMigration.runOnce(localAgent)
+    }
+
+    /** 被用户单独禁用的工具名集合；组开关之下的细粒度控制。 */
+    fun disabledTools(): Set<String> =
+        getString(Keys.AGENT_DISABLED_TOOLS, "")
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
+    fun setToolDisabled(name: String, disabled: Boolean) {
+        val updated = buildSet {
+            addAll(disabledTools())
+            if (disabled) add(name) else remove(name)
+        }
+        putString(Keys.AGENT_DISABLED_TOOLS, updated.sorted().joinToString(","))
     }
 
     /** 关闭时压缩用当前对话模型；已选过自定义模型的旧配置视为开启。 */

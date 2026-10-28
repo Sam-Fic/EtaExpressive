@@ -5,12 +5,12 @@ import org.json.JSONObject
 
 /** 上下文、应用入口与屏幕观察工具 schema。 */
 internal object AgentContextAppToolCatalog {
-    fun appendTo(tools: JSONArray, screenTools: Boolean = true) {
+    fun appendTo(tools: JSONArray, screenTools: Boolean = true, basicTools: Boolean = true) {
         if (screenTools) for ((name,description) in listOf(
             "start_virtual_session" to "Start the background virtual-display session for this run; repeated calls do not create another, and failure does not fall back to the main screen.",
             "finish_virtual_session" to "Hand the marked delivery tasks over to the main screen in the background. With no marked tasks it cleans up this run's intermediate tasks and closes the virtual display without delivering (handedOff=false, released=true). Always check handedOff and released; on failure do not kill processes and do not claim the delivery succeeded."
         )) tools.put(AgentToolSchema.function(name=name,description=description,parameters=JSONObject().put("type","object").put("properties",JSONObject())))
-        tools
+        if (basicTools) tools
             .put(
                 AgentToolSchema.function(
                     name = "get_current_context",

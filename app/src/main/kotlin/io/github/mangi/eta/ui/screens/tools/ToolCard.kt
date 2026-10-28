@@ -37,6 +37,7 @@ import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.agent.tool.RootRequirement
 import io.github.mangi.eta.agent.tool.ToolPresentation
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.components.ItemDescriptionDialog
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -123,6 +124,16 @@ internal fun ToolListRow(
                         tint = accentColor,
                     )
                 }
+                // 单工具开关：组开关之下的细粒度取舍。关掉后该工具不再下发给模型，
+                // 但仍在清单里可见，用户随时能恢复。说明卡（browser_read 等）按实际工具归一。
+                Spacer(modifier = Modifier.width(8.dp))
+                EtaSwitch(
+                    checked = tool.enabled,
+                    onCheckedChange = { enabled ->
+                        TouchHaptics.click(view)
+                        onAction(AgentToolsAction.ToggleTool(actualToolName(tool.id), enabled))
+                    },
+                )
             }
         },
         content = {

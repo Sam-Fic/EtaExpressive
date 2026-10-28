@@ -82,7 +82,8 @@ internal fun AboutScreen(onBack: () -> Unit) {
                             if (checkingUpdate) return@EtaClickableRow
                             checkingUpdate = true
                             coroutineScope.launch {
-                                val result = AppUpdateRepository.checkForUpdate(context, force = true)
+                                // 手动检查不遵循「忽略此版本」，否则用户会得到“已是最新版本”的错误结论。
+                                val result = AppUpdateRepository.checkForUpdate(context, respectIgnored = false)
                                 checkingUpdate = false
                                 result.fold(
                                     onSuccess = { offer ->

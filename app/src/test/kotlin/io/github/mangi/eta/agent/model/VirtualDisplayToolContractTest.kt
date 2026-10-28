@@ -71,6 +71,8 @@ class VirtualDisplayToolContractTest {
         terminalTools = false,
         browserTools = false,
         capabilities = AgentToolCapabilities(rootAvailable = rootAvailable, virtualDisplay = true),
+        // 虚拟显示会话工具属屏幕组，默认延迟；这里断言其 schema，因此视为已打开。
+        openedToolGroups = AgentToolGroups.allIds,
     )
 
     private fun JSONArray.names(): Set<String> = (0 until length()).mapTo(linkedSetOf()) {
