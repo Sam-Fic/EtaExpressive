@@ -50,7 +50,9 @@ internal object AppUpdateRepository {
                 val remote = AppVersion.normalize(offer.versionName).ifBlank {
                     AppVersion.normalize(offer.tagName)
                 }
-                if (!force && remote.isNotBlank() && remote == AppVersion.normalize(dismissed)) {
+                // 用户选择「忽略此版本」后，无论是自动检查还是冷启动检查都不再提醒；
+                // 仅当发布更新的版本时才重新弹出。手动检查同样遵循忽略状态。
+                if (remote.isNotBlank() && remote == AppVersion.normalize(dismissed)) {
                     return@runCatching null
                 }
                 offer
@@ -65,7 +67,15 @@ internal object AppUpdateRepository {
         SettingsDataStore.setUpdateLastCheckAt(System.currentTimeMillis())
     }
 
-    suspend fun downloadApk(context: Context, offer: AppUpdateOffer): File = withContext(Dispatchers.IO) {
+    /**
+     * 下载 APK，支持进度回调。下载完成后返回文件路径。
+     * 进度回调在 IO 线程上调用，UI 线程请通过其他机制（如 StateFlow/LiveData）接收。
+     */
+    suspend fun downloadApk(
+        context: Context,
+        offer: AppUpdateOffer,
+        onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
+    ): File = withContext(Dispatchers.IO) {
         val url = offer.apkUrl?.takeIf { it.startsWith("http") }
             ?: error("没有可下载的安装包")
         val name = offer.apkName
@@ -98,6 +108,7 @@ internal object AppUpdateRepository {
                             error("安装包过大")
                         }
                         output.write(buffer, 0, read)
+                        onProgress?.invoke(total, declared)
                     }
                 }
             }
