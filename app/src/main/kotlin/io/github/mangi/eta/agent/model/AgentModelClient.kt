@@ -92,8 +92,11 @@ internal object AgentModelClient {
         skillContextProvider: () -> SkillContext = { skillContext },
         memoryContextProvider: () -> AgentMemoryContext = { memoryContext },
         additionalTools: JSONArray = JSONArray(),
-        /** 模型自建配方的 function schema；每轮重新读取，因此新建的配方下一轮即可调用。 */
-        recipeTools: JSONArray = JSONArray(),
+        /**
+         * 模型自建配方的 function schema；**每轮重新读取**，因此新建的配方下一轮即可调用。
+         * 必须是 provider：配方由模型在 run 中途创建，固定快照会让它在本 run 内永远缺席。
+         */
+        recipeToolsProvider: () -> JSONArray = { JSONArray() },
         capabilitiesProvider: () -> AgentToolCapabilities = { AgentToolCapabilities(rootAvailable = false) },
         /** 本次 run 已按需打开的工具域；由执行器在 tools_use_group 成功后累积。 */
         openedToolGroupsProvider: () -> Set<String> = { emptySet() },
@@ -170,6 +173,7 @@ internal object AgentModelClient {
         fun toolsFor(
             capabilities: AgentToolCapabilities,
             memoryEnabled: Boolean = memoryContext.enabled,
+            recipeTools: JSONArray = JSONArray(),
         ): JSONArray {
             val tools = AgentToolCatalog.build(
                 basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
@@ -204,7 +208,7 @@ internal object AgentModelClient {
             if (compactionArchive != null) tools.put(AgentCompactionArchive.tool())
             return tools
         }
-        val tools = toolsFor(initialCapabilities)
+        val tools = toolsFor(initialCapabilities, recipeTools = recipeToolsProvider())
         val traceFormatter = AgentTraceFormatter(
             linuxEnvironmentLabelProvider = linuxEnvironmentLabelProvider,
             terminalSessionEnvironmentProvider = terminalSessionEnvironmentProvider,
@@ -259,6 +263,8 @@ internal object AgentModelClient {
                     val capabilities = capabilitiesProvider()
                     val nextSkillContext = skillContextProvider()
                     val nextMemoryContext = memoryContextProvider()
+                    // 配方表每轮重读：模型可能在本 run 中途新建或停用配方。
+                    val recipeTools = recipeToolsProvider()
                     // 每轮都重建系统消息与工具目录要付约 50 KB JSON 构造 + 逐工具过滤。
                     // 只有「能力快照 + 技能索引 + 记忆修订」都变了才真正重建；否则复用上一轮
                     // 的目录与系统消息（两者都只由这三项决定）。
@@ -271,6 +277,8 @@ internal object AgentModelClient {
                         delegationEngaged = delegationEngaged.get(),
                         interactiveModeEnabled = interactiveModeEnabled,
                         openedToolGroups = openedToolGroupsProvider(),
+                        // 配方集合变了必须重建目录，否则新建的配方在这一轮仍然缺席。
+                        recipeRevision = recipeTools.toString().hashCode().toString(),
                         // 用户可能在两轮之间改开关：签名必须覆盖它，否则目录与系统提示不会刷新。
                         toolSwitches = ToolSwitchSnapshot.capture(),
                         // 关闭说明的内容同样随开关变化，必须一起参与判定。
@@ -296,7 +304,7 @@ internal object AgentModelClient {
                         systemCount = systemMessages.length()
                         transcriptStartIndex += systemCount - previousSystemCount
                         promptRootAvailable = capabilities.rootAvailable
-                        lastRoundTools = toolsFor(capabilities, nextMemoryContext.enabled)
+                        lastRoundTools = toolsFor(capabilities, nextMemoryContext.enabled, recipeTools = recipeTools)
                         lastRoundSignature = signature
                     }
                     requireNotNull(lastRoundTools)
@@ -471,6 +479,8 @@ internal object AgentModelClient {
         val delegationEngaged: Boolean = false,
         val interactiveModeEnabled: Boolean,
         val openedToolGroups: Set<String> = emptySet(),
+        /** 配方集合的指纹；模型在本 run 内新建/停用配方时必须触发目录重建。 */
+        val recipeRevision: String = "",
         /** 决定域可用性的 Prefs 开关；运行中改开关必须让目录与提示重新生成。 */
         val toolSwitches: ToolSwitchSnapshot = ToolSwitchSnapshot.DEFAULT,
         /** 决定「已关闭能力」说明的完整开关快照；同样必须参与重建判定。 */
