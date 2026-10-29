@@ -1999,7 +1999,7 @@
   <string name="appearance_message_timestamps">Message timestamps</string>
   <string name="appearance_message_timestamps_summary">Show when each reply finished generating, on the right of its action bar.</string>
   <string name="appearance_fold_work_process">Collapse after the answer</string>
-  <string name="appearance_fold_work_process_summary">Reasoning and tool steps always show as their own expandable rows. Aggressive additionally folds intermediate replies into one-line rows; off keeps those replies fully expanded.</string>
+  <string name="appearance_fold_work_process_summary">Reasoning and tool steps show as their own expandable rows. Aggressive folds a finished turn&#8217;s steps and intermediate replies into a single summary you can tap to expand; off keeps everything expanded.</string>
   <string name="appearance_fold_level_aggressive">Aggressive</string>
   <string name="appearance_fold_level_normal">Standard</string>
   <string name="appearance_fold_level_off">Off</string>

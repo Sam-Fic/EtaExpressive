@@ -24,7 +24,7 @@ def function_body(source, name):
     start = source.index("(", match.start())
     end = balanced_end(source, start, "(", ")")
     start = source.index("{", end)
-    return source[start + 1:balanced_end(source, start, "{", "")]
+    return source[start + 1:balanced_end(source, start, "{", "}")]
 
 
 def call_args(source, name):
@@ -64,7 +64,7 @@ class ChatExpandTitleIndicationContractTest(unittest.TestCase):
         match = re.search(r"val toggle:\s*\(\)\s*->\s*Unit\s*=\s*\{", body)
         self.assertIsNotNone(match, "Missing toggle lambda")
         start = body.index("{", match.end() - 1)
-        return body[start + 1:balanced_end(body, start, "{", "")]
+        return body[start + 1:balanced_end(body, start, "{", "}")]
 
     def test_thinking_row_keeps_expansion_callback(self):
         body, _, _, args = self.bubble_call("ThinkingRow")
@@ -103,10 +103,14 @@ class ChatExpandTitleIndicationContractTest(unittest.TestCase):
         # 动态形状 + AnimatedVisibility 配官方 motionScheme.fastSpatialSpec + stateDescription。
         self.assertIn("SegmentedListItem(", self.bubble)
         self.assertIn("onClick = onToggle,", self.bubble)
-        self.assertIn("ListItemDefaults.segmentedShapes(index = 0, count = itemCount)", self.bubble)
-        self.assertIn("ListItemDefaults.segmentedShapes(index = 1, count = itemCount)", self.bubble)
-        self.assertIn("expandVertically(MaterialTheme.motionScheme.fastSpatialSpec<IntSize>())", self.bubble)
-        self.assertIn("shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec<IntSize>())", self.bubble)
+        self.assertIn("ListItemDefaults.segmentedShapes(index = 0, count = 1)", self.bubble)
+        # 圆角 morph：展开/收起时父项下沿圆角随弹簧在 16dp 外圆与 4dp 内圆之间过渡。
+        self.assertIn("animateDpAsState", self.bubble)
+        self.assertIn("RoundedCornerShape(", self.bubble)
+        self.assertIn("Spring.DampingRatioNoBouncy", self.bubble)
+        self.assertIn("expandVertically(StandardExpandSpec)", self.bubble)
+        self.assertIn("shrinkVertically(StandardExpandSpec)", self.bubble)
+        self.assertIn("Spring.DampingRatioNoBouncy", self.bubble)
         self.assertIn("stateDescription", self.bubble)
         self.assertIn("ListItemDefaults.SegmentedGap", self.bubble)
 

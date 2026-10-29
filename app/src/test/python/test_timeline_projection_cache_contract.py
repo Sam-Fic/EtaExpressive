@@ -7,9 +7,11 @@ ROOT = Path(__file__).resolve().parents[3] / 'src/main/kotlin/io/github/mangi/et
 class TimelineProjectionCacheContract(unittest.TestCase):
     def test_cache_is_used_at_the_existing_measured_projection_call(self):
         text = (ROOT / 'ui/components/AgentChatBody.kt').read_text()
-        self.assertEqual(2, text.count('remember { AgentTimelineProjectionCache() }'))
-        self.assertEqual(1, text.count('val timelineProjection = remember { AgentTimelineProjectionCache() }'))
-        self.assertEqual(1, text.count('val standaloneTimelineProjection = remember { AgentTimelineProjectionCache() }'))
+        # 两个投影缓存：AgentChatBody 的主投影 + AgentConversationMessages 的独立兜底，
+        # 都按「激进与否」翻转入缓存键。
+        self.assertEqual(2, text.count('AgentTimelineProjectionCache('))
+        self.assertEqual(1, text.count('val timelineProjection = remember(aggressiveFold) {'))
+        self.assertEqual(1, text.count('val standaloneTimelineProjection = remember(aggressiveFold) {'))
         self.assertEqual(1, text.count('timelineProjection.project(visibleMessages)'))
         self.assertEqual(1, text.count('standaloneTimelineProjection.project(visibleMessages)'))
         self.assertIn('val timelineEntries = remember(visibleMessages)', text)
@@ -22,17 +24,18 @@ class TimelineProjectionCacheContract(unittest.TestCase):
         self.assertIn('timelineEntries = timelineEntries,', scaffold)
         fallback = text.split('val projectedTimelineEntries =', 1)[1].split('val timelineRowsProjection', 1)[0]
         self.assertTrue(fallback.lstrip().startswith('timelineEntries ?: run {'))
-        self.assertIn('val standaloneTimelineProjection = remember { AgentTimelineProjectionCache() }', fallback)
+        self.assertIn('val standaloneTimelineProjection = remember(aggressiveFold) {', fallback)
         self.assertIn('remember(visibleMessages)', fallback)
         self.assertEqual(1, fallback.count('standaloneTimelineProjection.project(visibleMessages)'))
 
-    def test_row_projection_reads_only_the_entry_list(self):
+    def test_row_projection_reads_entries_folds_and_overrides(self):
         text = (ROOT / 'ui/components/AgentChatBody.kt').read_text()
         self.assertIn('remember(timelineEntries.size, isCompressingContext, isWaitingForCompression, hasCompactingChildContext)', text)
         self.assertIn('val hasCompactingChildContext = remember(childContexts) { childContexts.any { it.isCompacting } }', text)
         self.assertIn('val timelineRowsProjection = remember { AgentTimelineRowsCache() }', text)
-        self.assertIn('val timelineRows = remember(projectedTimelineEntries) {', text)
-        self.assertIn('timelineRowsProjection.project(projectedTimelineEntries)', text)
+        self.assertIn('val timelineRows = remember(projectedTimelineEntries, foldedWorkKeys, workExpansionOverrides) {', text)
+        self.assertIn('timelineRowsProjection.project(', text)
+        self.assertIn('projectedTimelineEntries.aggressiveFoldedWorkKeys(aggressiveFold && isTurnSettled)', text)
         # Row-only policy reduction must not become a run-state or footer reduction.
         footers = text.split('val turnFooters =', 1)[1].split('val finalResultMessageIds =', 1)[0]
         self.assertIn('isStreaming = isStreaming', footers)

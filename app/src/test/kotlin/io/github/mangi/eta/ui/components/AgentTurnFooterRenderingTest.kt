@@ -49,7 +49,7 @@ class AgentTurnFooterRenderingTest {
         Prefs.initLocal(RuntimeEnvironment.getApplication())
     }
 
-    @Test fun actionsFollowCollapsedExpandedAndLateWorkWithoutChangingCallbackIds() {
+    @Test fun actionsFollowLateWorkWithoutChangingCallbackIds() {
         val answer = AgentMessageUi("answer", "Original answer", renderMarkdown = false)
         val messages = mutableStateOf<List<AgentChatMessageUi>>(listOf(
             UserMessageUi("user", "Question"), answer,
@@ -64,7 +64,7 @@ class AgentTurnFooterRenderingTest {
         assertEquals(listOf("edit:user"), callbacks)
         assertBelow(footer(answer.id), compose.onNodeWithText(answer.content))
 
-        compose.onNodeWithText(stepsLabel(1)).performClick()
+        // 扁平模型：步骤行恒可见（不再有组头开合），footer 锚随步骤行移动。
         compose.onNodeWithText("First step").assertIsDisplayed()
         assertBelow(footer(answer.id), compose.onNodeWithText("First step"))
         compose.runOnIdle { messages.value = messages.value + tool("two", "Late step") }
@@ -74,7 +74,6 @@ class AgentTurnFooterRenderingTest {
         footerAction(answer.id, R.string.ui_regenerate_reply_84a7d9).performClick()
         footerAction(answer.id, R.string.ui_delete_this_conversation_3f351b).performClick()
         assertEquals(listOf("edit:user", "branch:answer", "regenerate:answer", "delete:answer"), callbacks)
-        compose.onNodeWithText(stepsLabel(2)).performClick()
         footer(answer.id).assertIsDisplayed()
         compose.onAllNodesWithContentDescription(text(R.string.copy_answer)).assertCountEquals(1)
     }
@@ -88,7 +87,6 @@ class AgentTurnFooterRenderingTest {
         ))
         showConversation(messages)
         footer("partial").assertDoesNotExist()
-        compose.onNodeWithText(stepsLabel(1)).performClick()
         assertBelow(footer(notice.id), compose.onNodeWithText("Step after stop"))
         compose.onAllNodesWithContentDescription(text(R.string.copy_answer)).assertCountEquals(1)
         footerAction(notice.id, R.string.ui_regenerate_reply_84a7d9).performClick()
@@ -160,12 +158,7 @@ class AgentTurnFooterRenderingTest {
         footer("answer").assertDoesNotExist()
         footerAction("old-answer", R.string.ui_branch_conversation).assertIsEnabled().performClick()
         assertEquals(listOf("branch:old-answer"), callbacks)
-        // Streaming expands trailing work by default; explicit overrides take precedence.
-        compose.onNodeWithText("Work after the answer").assertIsDisplayed()
-        compose.onNodeWithText(stepsLabel(1)).performClick()
-        compose.onNodeWithText("Work after the answer").assertDoesNotExist()
-        footer("answer").assertDoesNotExist()
-        compose.onNodeWithText(stepsLabel(1)).performClick()
+        // 扁平模型：流式中的尾部步骤行恒可见（不再有组头开合覆盖）。
         compose.onNodeWithText("Work after the answer").assertIsDisplayed()
         footer("answer").assertDoesNotExist()
         footer("old-answer").assertIsDisplayed()
@@ -205,11 +198,10 @@ class AgentTurnFooterRenderingTest {
         footer("answer").assertDoesNotExist()
         footerAction("old-answer", R.string.ui_branch_conversation).assertIsEnabled().performClick()
         assertEquals(listOf("branch:old-answer"), callbacks)
-        compose.onNodeWithText(stepsLabel(1)).performClick()
         footer("answer").assertDoesNotExist()
     }
 
-    @Test fun suppliedProjectionAndStandaloneFallbackKeepRowsExpansionAndFooterOwner() {
+    @Test fun suppliedProjectionAndStandaloneFallbackKeepRowsAndFooterOwner() {
         val answer = AgentMessageUi("answer", "Answer", renderMarkdown = false)
         val step = tool("step", "Initial step")
         val messages = mutableStateOf<List<AgentChatMessageUi>>(listOf(
@@ -218,7 +210,6 @@ class AgentTurnFooterRenderingTest {
         val supplied = mutableStateOf(true)
         showConversation(messages, supplyTimelineEntries = supplied)
         footer(answer.id).assertIsDisplayed()
-        compose.onNodeWithText(stepsLabel(1)).performClick()
         compose.onNodeWithText("Initial step").assertIsDisplayed()
         compose.runOnIdle {
             supplied.value = false
@@ -279,11 +270,6 @@ class AgentTurnFooterRenderingTest {
     }
 
     private fun text(resource: Int): String = RuntimeEnvironment.getApplication().getString(resource)
-
-    /** 重构后展开开关是整行标题（可点击的合并 ListItem），按标题文案点击。 */
-    private fun stepsLabel(count: Int): String =
-        RuntimeEnvironment.getApplication().resources
-            .getQuantityString(R.plurals.work_completed_steps, count, count)
 
     private fun tool(id: String, label: String) = ToolActivityMessageUi(
         id = id, toolName = "shell", status = ToolActivityStatusUi.Success, argumentsSummary = label,

@@ -1978,7 +1978,7 @@
   <string name="appearance_message_timestamps">訊息時間戳</string>
   <string name="appearance_message_timestamps_summary">在回覆操作列右側顯示本輪回覆產生完成的時間。</string>
   <string name="appearance_fold_work_process">回覆後收起工作程序</string>
-  <string name="appearance_fold_work_process_summary">思考與工具步驟始終各自成行、點行展開；激進檔額外把中間回覆折成一行；不收合則中間回覆始終攤開。</string>
+  <string name="appearance_fold_work_process_summary">思考與工具步驟各自成行、點行展開；激進檔在整輪結束後把本輪的思考、工具與中間回覆摺疊成一條摘要，點按可重新展開；不收合則始終攤開。</string>
   <string name="appearance_fold_level_aggressive">激進收合</string>
   <string name="appearance_fold_level_normal">普通收合</string>
   <string name="appearance_fold_level_off">不收合</string>
