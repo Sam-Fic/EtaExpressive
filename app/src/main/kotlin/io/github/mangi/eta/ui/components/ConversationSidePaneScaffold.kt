@@ -1083,11 +1083,15 @@ private fun Material3DrawerChip(
 ) {
     // 高度不覆盖，直接落在官方 Small 档（Button 与 ToggleButton 的 MinHeight 同档）。
     // 内容排布照官方 ButtonGroupSamples.kt：Icon → Spacer(IconSpacing) → Text。
+    // 图标尺寸取官方 icon 槽的推荐档（iconSizeFor(Small) = 20dp，与文字行高同高）：
+    // 图标 + 官方上下 10dp 内容边距恰好落回 40dp MinHeight，与纯文字胶囊等高；
+    // 默认 24dp 图标会把内容撑到 44dp，带图标胶囊比纯文字胶囊高 4dp。
     val content: @Composable RowScope.() -> Unit = {
         if (leadingIcon != null) {
             Icon(
                 imageVector = leadingIcon,
                 contentDescription = null,
+                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ToggleButtonDefaults.MinHeight)),
             )
             Spacer(Modifier.size(ToggleButtonDefaults.IconSpacing))
         }
