@@ -9,16 +9,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SegmentedButton
@@ -26,7 +25,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -74,12 +72,11 @@ import kotlinx.coroutines.withContext
  * 「模型与助手」二合一选择弹窗（官方 `ModalBottomSheet`，仅 Hidden↔Expanded 两态）。
  *
  * 结构：
- * 1. 标题。（关闭走 ModalBottomSheet 的下拉 / 点遮罩，不放关闭按钮。）
+ * 1. 标题行：标题 + 行尾配置图标按钮（随页签切换图标与目标：模型 / 助手）。
+ *    （关闭走 ModalBottomSheet 的下拉 / 点遮罩，不放关闭按钮。）
  * 2. 官方单选分段按钮的页签：模型 / 助手。
- *    - 模型页签：官方搜索框 + 「配置模型」入口 + 服务商分类标题 + 分组内的官方分段单选行
- *      （全部平铺，不折叠）。
- *    - 助手页签：官方搜索框 + 「配置助手」入口 + KernelSU 式分段列表
- *      （行尾三点菜单提供复制 / 编辑 / 删除）。
+ *    - 模型页签：官方搜索框 + 服务商分类标题 + 分组内的官方分段单选行（全部平铺，不折叠）。
+ *    - 助手页签：官方搜索框 + KernelSU 式分段列表（行尾三点菜单提供复制 / 编辑 / 删除）。
  * 3. 底部固定两行「思考档位」「上下文用量」，复用输入区原有的两个控件（含各自弹窗 /
  *    长按语义），替代旧布局里的两个独立按钮。
  */
@@ -123,10 +120,38 @@ internal fun M3ComposerPickerSheet(
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = stringResource(R.string.composer_picker_title),
-                style = etaTextStyle(EtaType.Title),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.composer_picker_title),
+                    style = etaTextStyle(EtaType.Title),
+                    modifier = Modifier.weight(1f),
+                )
+                // 配置入口：随页签切换图标与目标（模型 → 模型配置，助手 → 助手管理）。
+                IconButton(
+                    onClick = {
+                        onDismiss()
+                        if (tabIndex == 0) onOpenModelProviders() else onOpenAssistants()
+                    },
+                ) {
+                    Icon(
+                        imageVector = if (tabIndex == 0) {
+                            Icons.Rounded.Memory
+                        } else {
+                            Icons.Rounded.SmartToy
+                        },
+                        contentDescription = stringResource(
+                            if (tabIndex == 0) {
+                                R.string.composer_configure_models
+                            } else {
+                                R.string.composer_configure_assistants
+                            },
+                        ),
+                    )
+                }
+            }
             val tabs = listOf(
                 stringResource(R.string.conversation_dock_models),
                 stringResource(R.string.assistant_list_title),
@@ -154,10 +179,6 @@ internal fun M3ComposerPickerSheet(
                         isStreaming = isStreaming,
                         isPaused = isPaused,
                         onModelSelected = onModelSelected,
-                        onConfigureModels = {
-                            onDismiss()
-                            onOpenModelProviders()
-                        },
                     )
                 } else {
                     M3AssistantPickerTab(
@@ -169,10 +190,6 @@ internal fun M3ComposerPickerSheet(
                         onEdit = { id ->
                             onDismiss()
                             onEditAssistant(id)
-                        },
-                        onConfigureAssistants = {
-                            onDismiss()
-                            onOpenAssistants()
                         },
                     )
                 }
@@ -281,27 +298,10 @@ private fun ContextUsageRow(
     }
 }
 
-/** 页签内的配置入口：右对齐的设置图标 + 文字按钮（模型 / 助手两个页签共用）。 */
-@Composable
-private fun PickerConfigureEntry(text: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-    ) {
-        TextButton(onClick = onClick) {
-            Icon(
-                imageVector = Icons.Rounded.Settings,
-                contentDescription = null,
-                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = text)
-        }
-    }
-}
+/** 页签内的配置入口已上移到标题行尾的图标按钮，本组件不再单独提供。 */
 
 /**
- * 助手页签：官方搜索框 + 「配置助手」入口 + KernelSU 式分段列表；行尾三点菜单提供复制 / 编辑 / 删除，
+ * 助手页签：官方搜索框 + KernelSU 式分段列表；行尾三点菜单提供复制 / 编辑 / 删除，
  * 与独立助手选择弹窗的 Material 3 分支保持同一套交互。
  */
 @Composable
@@ -309,7 +309,6 @@ private fun M3AssistantPickerTab(
     assistantId: String,
     onOpen: (String) -> Unit,
     onEdit: (String) -> Unit,
-    onConfigureAssistants: () -> Unit,
 ) {
     val profiles by AssistantRepository.profiles.collectAsState()
     val repositoryActiveId by AssistantRepository.activeId.collectAsState()
@@ -346,10 +345,6 @@ private fun M3AssistantPickerTab(
         query = searchQuery,
         onQueryChange = { searchQuery = it },
         placeholder = stringResource(R.string.assistant_search),
-    )
-    PickerConfigureEntry(
-        text = stringResource(R.string.composer_configure_assistants),
-        onClick = onConfigureAssistants,
     )
     Spacer(modifier = Modifier.height(12.dp))
     EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {
@@ -394,7 +389,6 @@ private fun M3ModelPickerTab(
     isStreaming: Boolean,
     isPaused: Boolean,
     onModelSelected: (String, String) -> Unit,
-    onConfigureModels: () -> Unit,
 ) {
     var modelQuery by remember { mutableStateOf("") }
     val pickerAvailable = (!isStreaming || isPaused) && state.providerGroups.isNotEmpty()
@@ -405,11 +399,6 @@ private fun M3ModelPickerTab(
     }
     val selected = state.selectedModel
     ModelSearchField(query = modelQuery, onQueryChange = { modelQuery = it })
-    // 入口放在空态早退之前：尚未配置任何服务商时也能进入配置页新增模型。
-    PickerConfigureEntry(
-        text = stringResource(R.string.composer_configure_models),
-        onClick = onConfigureModels,
-    )
     if (groups.isEmpty()) {
         Text(
             text = stringResource(R.string.model_search_empty),
