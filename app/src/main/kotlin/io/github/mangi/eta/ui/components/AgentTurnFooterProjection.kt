@@ -84,6 +84,15 @@ internal fun List<AgentTimelineRow>.turnFooters(
                 }
                 else -> afterRowKey = row.key
             }
+            is AgentTimelineRow.WorkSummary -> {
+                val notice = terminal
+                // A retry/continue run can start with work and no new user
+                // bubble. Do not place the previous run's footer on that work.
+                if (notice != null && row.group.messages.any { it.hasDifferentKnownOwner(notice) }) {
+                    flush(includeOpenTurn = true)
+                }
+                afterRowKey = row.key
+            }
             is AgentTimelineRow.WorkStep -> {
                 val notice = terminal
                 // A retry/continue run can start with work and no new user

@@ -15,9 +15,9 @@ import org.junit.Test
 class AgentTimelineRowsCacheTest {
     private class Fixture {
         var builds = 0
-        val cache = AgentTimelineRowsCache { entries ->
+        val cache = AgentTimelineRowsCache { entries, foldedGroups, expandedGroups ->
             builds++
-            entries.toLazyTimelineRows()
+            entries.toLazyTimelineRows(foldedGroups, expandedGroups)
         }
         fun project(entries: List<AgentTimelineEntry>): List<AgentTimelineRow> {
             val before = entries.toList()
@@ -208,9 +208,9 @@ class AgentTimelineRowsCacheTest {
         for (hinted in listOf(false, true)) {
             for (changeWork in listOf(false, true)) {
                 var builds = 0
-                val cache = AgentTimelineRowsCache { entries ->
+                val cache = AgentTimelineRowsCache { entries, foldedGroups, expandedGroups ->
                     builds++
-                    val result = entries.toLazyTimelineRows()
+                    val result = entries.toLazyTimelineRows(foldedGroups, expandedGroups)
                     listOf(result[1], result[0]) // assistant, detached step
                 }
                 val group = AgentTimelineEntry.WorkProcess("work-t", listOf(ThinkingMessageUi("t", "work", true)))
@@ -267,7 +267,7 @@ class AgentTimelineRowsCacheTest {
 
     @Test fun unexpectedRowMappingFailsClosed() {
         var builds = 0
-        val cache = AgentTimelineRowsCache { _ -> builds++; emptyList() }
+        val cache = AgentTimelineRowsCache { _, _, _ -> builds++; emptyList() }
         cache.project(listOf(AgentTimelineEntry.Message(AgentMessageUi("a", "old"))))
         cache.project(listOf(AgentTimelineEntry.Message(AgentMessageUi("a", "new"))))
         assertEquals(2, builds)

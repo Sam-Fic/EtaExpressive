@@ -6,34 +6,115 @@ import io.github.mangi.eta.ui.model.incrementalSnapshot
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.isResumeAfterCompress
+import io.github.mangi.eta.ui.model.isSteerSupplement
 
 /**
- * Flat lazy-list rows：工作过程组不再有组头卡片，思考 / 工具步骤各自成为
- * 一条独立的可展开 SegmentedListItem 气泡行（无嵌套）。
+ * Flat lazy-list rows：思考 / 工具步骤各自成为一条独立的可展开 SegmentedListItem
+ * 气泡行（无嵌套）。激进档被折叠的工作组只出一条 [WorkSummary] 摘要行，
+ * 手动展开后摘要行 + 步骤行一起出现（兄弟行，不是卡中卡）。
  */
 internal sealed interface AgentTimelineRow {
     val key: String
     data class Message(val message: AgentChatMessageUi) : AgentTimelineRow {
         override val key: String get() = message.id
     }
+
+    /**
+     * 被激进折叠档收起的工作组摘要（「已完成 N 个步骤」）。[expanded] 为 true 时
+     * 表示用户手动展开——摘要行保留，步骤行紧随其后。
+     */
+    data class WorkSummary(
+        val group: AgentTimelineEntry.WorkProcess,
+        val expanded: Boolean,
+    ) : AgentTimelineRow {
+        override val key: String get() = group.key
+    }
+
     data class WorkStep(
         val groupKey: String,
         val message: AgentChatMessageUi,
+        /** 本行在组内可见分段列表中的位置（连续工具/思考调用是设置页「同组项」样式）。 */
+        val isFirst: Boolean,
+        val isLast: Boolean,
     ) : AgentTimelineRow {
         override val key: String get() = "work-step:${message.id}"
     }
 }
 
-internal fun List<AgentTimelineEntry>.toLazyTimelineRows(): List<AgentTimelineRow> = buildList {
-    // 显式接收者：buildList 的 lambda 会把 forEach 解析到内层 MutableList<AgentTimelineRow> 上。
+internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
+    foldedGroups: Set<String> = emptySet(),
+    expandedGroups: Set<String> = emptySet(),
+): List<AgentTimelineRow> = buildList {
+    // 显式接收者：buildList 的 lambda 会把 forEach 解析到内层 MutableList 上。
     this@toLazyTimelineRows.forEach { entry ->
         when (entry) {
             is AgentTimelineEntry.Message -> add(AgentTimelineRow.Message(entry.message))
-            is AgentTimelineEntry.WorkProcess -> entry.messages.forEach { message ->
-                add(AgentTimelineRow.WorkStep(entry.key, message))
+            is AgentTimelineEntry.WorkProcess -> {
+                val folded = entry.key in foldedGroups
+                if (folded) {
+                    // 折叠组永远有摘要行；用户手动展开后步骤行跟在摘要行后面。
+                    // 摘要行是组首（上沿外圆），首步骤行不再承担组首圆角。
+                    val expanded = entry.key in expandedGroups
+                    add(AgentTimelineRow.WorkSummary(entry, expanded = expanded))
+                    if (expanded) {
+                        val size = entry.messages.size
+                        entry.messages.forEachIndexed { index, message ->
+                            add(
+                                AgentTimelineRow.WorkStep(
+                                    entry.key, message,
+                                    isFirst = false,
+                                    isLast = index == size - 1,
+                                ),
+                            )
+                        }
+                    }
+                } else {
+                    val size = entry.messages.size
+                    entry.messages.forEachIndexed { index, message ->
+                        add(
+                            AgentTimelineRow.WorkStep(
+                                entry.key, message,
+                                isFirst = index == 0,
+                                isLast = index == size - 1,
+                            ),
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+/**
+ * 激进折叠档：本轮已经给出正文回答 ⇒ 回答之前的所有工作组折叠成摘要行。
+ * 轮次边界与激进归组一致——真实用户消息开新轮，steer 补充与压缩后的 resume 只是续跑。
+ * 只在整轮停下后生效（调用方负责传入 isTurnSettled）。
+ */
+internal fun List<AgentTimelineEntry>.aggressiveFoldedWorkKeys(enabled: Boolean): Set<String> {
+    if (!enabled) return emptySet()
+    var pending: MutableList<String>? = null
+    var folded: MutableSet<String>? = null
+    forEach { entry ->
+        when (entry) {
+            is AgentTimelineEntry.Message -> {
+                val message = entry.message
+                when {
+                    message is UserMessageUi && !message.isSteerSupplement() &&
+                        !message.isResumeAfterCompress() -> pending = null
+                    message is AgentMessageUi && message.content.isNotBlank() -> {
+                        pending?.let { keys ->
+                            (folded ?: LinkedHashSet<String>().also { folded = it }).addAll(keys)
+                        }
+                        pending = null
+                    }
+                    else -> Unit
+                }
+            }
+            is AgentTimelineEntry.WorkProcess ->
+                (pending ?: ArrayList<String>().also { pending = it }) += entry.key
+        }
+    }
+    return folded.orEmpty()
 }
 
 /**
@@ -42,18 +123,31 @@ internal fun List<AgentTimelineEntry>.toLazyTimelineRows(): List<AgentTimelineRo
  * Changes to policy or structure fall back.
  */
 internal class AgentTimelineRowsCache(
-    private val fullProjection: (List<AgentTimelineEntry>) -> List<AgentTimelineRow> =
-        { entries -> entries.toLazyTimelineRows() },
+    private val fullProjection: (
+        List<AgentTimelineEntry>,
+        Set<String>,
+        Set<String>,
+    ) -> List<AgentTimelineRow> = { entries, foldedGroups, expandedGroups ->
+        entries.toLazyTimelineRows(foldedGroups, expandedGroups)
+    },
 ) {
     private var source: List<AgentTimelineEntry>? = null
+    private var folded: Set<String> = emptySet()
+    private var expandedGroups: Set<String> = emptySet()
     private var rows: List<AgentTimelineRow> = emptyList()
     private var entryToRow: IntArray? = null
     private var groupRowStart: IntArray? = null
 
-    fun project(entries: List<AgentTimelineEntry>): List<AgentTimelineRow> {
+    fun project(
+        entries: List<AgentTimelineEntry>,
+        foldedGroups: Set<String> = emptySet(),
+        expandedGroups: Set<String> = emptySet(),
+    ): List<AgentTimelineRow> {
         val previous = source
         val mapping = entryToRow
-        if (previous != null && mapping != null && groupRowStart != null && previous.size == entries.size) {
+        if (previous != null && mapping != null && groupRowStart != null && previous.size == entries.size &&
+            folded == foldedGroups && expandedGroups == this.expandedGroups
+        ) {
             val changed = (entries as? AgentIncrementalList<AgentTimelineEntry>)?.singleReplacementFrom(previous)
             if (changed != null) {
                 val old = (previous[changed] as? AgentTimelineEntry.Message)?.message as? AgentMessageUi
@@ -116,8 +210,10 @@ internal class AgentTimelineRowsCache(
             }
         }
         val input = entries.incrementalSnapshot()
-        val result = fullProjection(input).incrementalSnapshot()
+        val result = fullProjection(input, foldedGroups, expandedGroups).incrementalSnapshot()
         source = input
+        folded = foldedGroups
+        this.expandedGroups = expandedGroups
         rows = result
         entryToRow = mapAssistantRows(input, result)
         groupRowStart = if (entryToRow == null) null else mapGroupRows(input, result)
@@ -135,7 +231,8 @@ internal class AgentTimelineRowsCache(
     /**
      * A work group whose step IDs are unchanged (thinking text grows, a tool finishes)
      * re-projects only its own steps. Group key is unchanged, so the result equals the
-     * full projection when the row count holds.
+     * full projection when the row count holds. Groups carrying a summary row (folded /
+     * manually expanded) take the full projection instead — folds change rarely.
      */
     private fun patchWorkGroup(
         previous: List<AgentTimelineEntry>,
@@ -147,16 +244,18 @@ internal class AgentTimelineRowsCache(
         val current = entries[changed] as? AgentTimelineEntry.WorkProcess ?: return null
         val start = starts[changed]
         if (start < 0 || old.key != current.key || old.messages.size != current.messages.size) return null
+        if (rows.getOrNull(start) is AgentTimelineRow.WorkSummary) return null
         for (i in old.messages.indices) if (old.messages[i].id != current.messages[i].id) return null
         val oldCount = (if (changed + 1 < starts.size) starts[changed + 1] else rows.size) - start
         if (oldCount != current.messages.size) return null
         var updated = rows.incrementalSnapshot()
         current.messages.forEachIndexed { offset, message ->
-            val nextRow = AgentTimelineRow.WorkStep(current.key, message)
             val previousRow = updated[start + offset]
-            if (nextRow.key != previousRow.key) return null
-            if (previousRow is AgentTimelineRow.WorkStep && previousRow.message === message) return@forEachIndexed
-            updated = updated.replacing(start + offset, nextRow)
+            if (previousRow !is AgentTimelineRow.WorkStep) return null
+            if (previousRow.message.id != message.id) return null
+            // 位置标记只随组结构变化；补丁路径里行数与步骤 ID 都没变，原样保留。
+            if (previousRow.message === message) return@forEachIndexed
+            updated = updated.replacing(start + offset, previousRow.copy(message = message))
         }
         return updated.withoutReplacementHint()
     }
@@ -172,10 +271,17 @@ internal class AgentTimelineRowsCache(
                     if ((rows.getOrNull(row) as? AgentTimelineRow.Message)?.message !== entry.message) return null
                     row++
                 }
-                is AgentTimelineEntry.WorkProcess -> entry.messages.forEach { message ->
-                    val step = rows.getOrNull(row) as? AgentTimelineRow.WorkStep
-                    if (step == null || step.groupKey != entry.key || step.message !== message) return null
-                    row++
+                is AgentTimelineEntry.WorkProcess -> {
+                    // 折叠/手动展开的组以摘要行打头，步骤行紧随其后（或被折叠隐藏）。
+                    val summary = rows.getOrNull(row) as? AgentTimelineRow.WorkSummary
+                    if (summary != null && summary.group.key == entry.key) row++
+                    if (summary == null || summary.expanded) {
+                        entry.messages.forEach { message ->
+                            val step = rows.getOrNull(row) as? AgentTimelineRow.WorkStep
+                            if (step == null || step.groupKey != entry.key || step.message !== message) return null
+                            row++
+                        }
+                    }
                 }
             }
         }
@@ -236,6 +342,8 @@ internal fun List<AgentTimelineRow>.userBubblePosition(index: Int): UserBubblePo
 
 internal fun AgentTimelineRow.containsMessageId(id: String): Boolean = when (this) {
     is AgentTimelineRow.Message -> message.id == id
+    // 折叠组的消息不可见：滚动定位落到摘要行上。
+    is AgentTimelineRow.WorkSummary -> key == id || (!expanded && group.messages.any { it.id == id })
     is AgentTimelineRow.WorkStep -> message.id == id
 }
 

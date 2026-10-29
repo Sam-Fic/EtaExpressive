@@ -206,7 +206,7 @@ class AgentTurnFooterProjectionTest {
             val notice = SystemNoticeMessageUi(id, SystemNoticeCode.Stopped)
             val rows = listOf(
                 AgentTimelineRow.Message(notice),
-                AgentTimelineRow.WorkStep("work", tool("run-tool-1-call")),
+                AgentTimelineRow.WorkStep("work", tool("run-tool-1-call"), isFirst = true, isLast = true),
             )
             assertEquals(mapOf("work-step:run-tool-1-call" to notice), rows.turnFooters())
         }
@@ -274,6 +274,7 @@ class AgentTurnFooterProjectionTest {
     private fun List<AgentTimelineRow>.originalMessages(): List<AgentChatMessageUi> = flatMap { row ->
         when (row) {
             is AgentTimelineRow.Message -> listOf(row.message)
+            is AgentTimelineRow.WorkSummary -> row.group.messages
             is AgentTimelineRow.WorkStep -> listOf(row.message)
         }
     }
