@@ -163,12 +163,14 @@ internal fun AgentWorkSegmentedBubble(
             exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec<IntSize>()),
             modifier = expandAnimationModifier,
         ) {
+            // 显式捕获动画作用域：内层 Column 的 ColumnScope 会遮蔽隐式接收者。
+            val animationScope = this
             Column(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                 SegmentedListItem(
                     modifier = Modifier.fillMaxWidth(),
                     colors = colors,
                     shapes = ListItemDefaults.segmentedShapes(index = 1, count = itemCount),
-                    content = { Column { detailsContent() } },
+                    content = { Column { detailsContent?.invoke(animationScope) } },
                 )
             }
         }

@@ -25,7 +25,8 @@ internal sealed interface AgentTimelineRow {
 }
 
 internal fun List<AgentTimelineEntry>.toLazyTimelineRows(): List<AgentTimelineRow> = buildList {
-    forEach { entry ->
+    // 显式接收者：buildList 的 lambda 会把 forEach 解析到内层 MutableList<AgentTimelineRow> 上。
+    this@toLazyTimelineRows.forEach { entry ->
         when (entry) {
             is AgentTimelineEntry.Message -> add(AgentTimelineRow.Message(entry.message))
             is AgentTimelineEntry.WorkProcess -> entry.messages.forEach { message ->
