@@ -35,6 +35,8 @@ internal object AgentSensitiveToolPolicy {
         "search_recordings",
         "search_files",
         "search_calendar_events",
+        // 读单条日程会带回标题与描述，与搜索同为个人安排；搜索在清单里而它曾漏掉。
+        "read_calendar_event",
         "search_contacts",
         "search_call_history",
         "search_messages",
@@ -62,6 +64,10 @@ internal object AgentSensitiveToolPolicy {
         "create_note",
         "read_note",
         "delete_note",
+        // 创建闹钟/计时器与修改闹钟同样带自由文本 label（如「吃降压药」），漏登记会把个人安排
+        // 写进持久会话与导出文件；改、删、启停都在清单里，只有这两个新建入口曾漏掉。
+        "set_alarm",
+        "set_timer",
         "set_alarm_enabled",
         "update_alarm_time",
         "get_flashlight",
