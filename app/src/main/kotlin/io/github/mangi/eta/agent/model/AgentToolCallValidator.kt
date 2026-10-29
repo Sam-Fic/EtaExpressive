@@ -24,7 +24,7 @@ internal class AgentToolCallValidator(tools: JSONArray) {
 
     fun validate(call: AgentModelClient.ToolCall): String? {
         val toolSchema = schemasByName[call.name]
-            ?: return "工具未在本次运行的能力目录中声明"
+            ?: return undeclaredReason(call.name)
         val arguments = runCatching { JSONObject(call.argumentsJson.ifBlank { "{}" }) }
             .getOrElse { return "参数不是有效的 JSON object" }
         return validateValue(
@@ -34,6 +34,23 @@ internal class AgentToolCallValidator(tools: JSONArray) {
             path = "arguments",
             depth = 0,
         )
+    }
+
+    /**
+     * 缺席的工具要给出**可执行的补救**，不能只说「没声明」。
+     *
+     * 除基础交互外所有工具组默认延迟：模型可能照着组索引直接去调组内工具，
+     * 而组还没打开、工具确实不在目录里。若只回一句「未声明」，模型多半原样重试
+     * 同一个调用，三次之后纠错预算耗尽，整轮直接终止——用户看到的就是
+     * 「第一次调用成功，后面全都调不了」。
+     */
+    private fun undeclaredReason(name: String): String {
+        val base = "工具未在本次运行的能力目录中声明"
+        val group = AgentToolGroups.groupOfTool(name.trim()) ?: return base
+        if (group == AgentToolGroups.BASIC_GROUP.id) return base
+        return "$base；它属于延迟工具组 $group：" +
+            "若该组尚未打开，先调用 tools_use_group(group=$group)，下一轮再调用它；" +
+            "若组已打开，说明该能力在本设备上不可用，请换用其它方式，不要重试同一个调用。"
     }
 
     private fun validateValue(

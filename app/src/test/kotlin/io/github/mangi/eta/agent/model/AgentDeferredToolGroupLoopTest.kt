@@ -50,6 +50,33 @@ class AgentDeferredToolGroupLoopTest {
     }
 
     @Test
+    fun anUndeclaredGroupToolTellsTheModelHowToOpenItsGroup() {
+        val provider = ScriptedProvider(listOf(
+            { _, _ ->
+                assistant(finishReason = "tool_calls", toolCalls = listOf(
+                    toolCall("cmd-1", "run_command", """{"command":"ls"}"""),
+                ))
+            },
+            { request, _ ->
+                val transcript = request.messages.toString()
+                assertTrue(
+                    "拒绝理由必须点名该工具所属的组与打开方式",
+                    transcript.contains("tools_use_group(group=terminal)"),
+                )
+                assistant(content = "完成", finishReason = "stop")
+            },
+        ))
+
+        AgentModelClient.complete(
+            config = modelConfig().copy(terminalTools = true),
+            prompt = "看看文件",
+            provider = provider,
+            openedToolGroupsProvider = { emptySet() },
+            toolExecutor = AgentModelClient.ToolExecutor { error("不该执行") },
+        )
+    }
+
+    @Test
     fun aGroupToolCallIsRejectedWhenTheGroupWasNeverOpened() {
         val provider = ScriptedProvider(listOf(
             { _, _ ->
