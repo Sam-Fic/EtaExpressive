@@ -540,6 +540,8 @@
   <string name="ui_clear_84fcd7">清空</string>
   <string name="ui_clear_all_memory_a43bd3">清空全部记忆？</string>
   <string name="ui_source_code_740296">源代码</string>
+  <string name="ui_author_homepage_6b41d2">作者主页</string>
+  <string name="ui_author_homepage_summary_8f0c73">查看该作者的全部仓库</string>
   <string name="update_check_title">检查更新</string>
   <string name="update_checking">正在检查……</string>
   <string name="update_current_version">当前版本 %1$s</string>

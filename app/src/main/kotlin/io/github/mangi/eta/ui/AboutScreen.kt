@@ -1,5 +1,8 @@
 package io.github.mangi.eta.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +42,20 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.components.AppUpdateDialog
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import kotlinx.coroutines.launch
+
+/** 本项目源码仓库（origin）。 */
+private const val SOURCE_CODE_URL = "https://github.com/Sam-Fic/EtaExpressive"
+
+/** 作者在 GitHub 上的仓库列表页。 */
+private const val AUTHOR_REPOSITORIES_URL = "https://github.com/Sam-Fic?tab=repositories"
+
+/** 作者的 GitHub 账号名。 */
+private const val AUTHOR_GITHUB_HANDLE = "Sam-Fic"
+
+/** 用系统浏览器打开外部链接。 */
+private fun openExternalUrl(context: Context, url: String) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+}
 
 /**
  * 关于页（KernelSU `AboutMaterial` 对应物）：
@@ -122,13 +140,23 @@ internal fun AboutScreen(onBack: () -> Unit) {
                         endActions = {
                             SettingsStatusText(text = "GitHub")
                         },
-                        onClick = {
-                            val intent = android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse("https://github.com/Sam-Fic/Eta"),
+                        onClick = { openExternalUrl(context, SOURCE_CODE_URL) },
+                    )
+                }
+
+                item {
+                    EtaClickableRow(
+                        title = stringResource(R.string.ui_author_homepage_6b41d2),
+                        summary = stringResource(R.string.ui_author_homepage_summary_8f0c73),
+                        leading = {
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Person,
                             )
-                            context.startActivity(intent)
                         },
+                        endActions = {
+                            SettingsStatusText(text = AUTHOR_GITHUB_HANDLE)
+                        },
+                        onClick = { openExternalUrl(context, AUTHOR_REPOSITORIES_URL) },
                     )
                 }
             }
