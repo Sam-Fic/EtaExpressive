@@ -86,11 +86,12 @@ internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
 }
 
 /**
- * 激进折叠档：本轮已经给出正文回答 ⇒ 回答之前的所有工作组折叠成摘要行。
- * 轮次边界与激进归组一致——真实用户消息开新轮，steer 补充与压缩后的 resume 只是续跑。
+ * 「本轮回答出来，就把回答之前的内容收起来」：普通档收思考/工具工作组，激进档
+ * 连并进来的中间回复一起（激进归组在 toTimelineEntries）；轮次边界与归组一致——
+ * 真实用户消息开新轮，steer 补充与压缩后的 resume 只是续跑。
  * 只在整轮停下后生效（调用方负责传入 isTurnSettled）。
  */
-internal fun List<AgentTimelineEntry>.aggressiveFoldedWorkKeys(enabled: Boolean): Set<String> {
+internal fun List<AgentTimelineEntry>.autoFoldedWorkKeys(enabled: Boolean): Set<String> {
     if (!enabled) return emptySet()
     var pending: MutableList<String>? = null
     var folded: MutableSet<String>? = null

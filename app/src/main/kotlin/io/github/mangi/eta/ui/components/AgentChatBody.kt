@@ -858,8 +858,7 @@ internal fun AgentConversationMessages(
             }
         }
     }
-    // 激进折叠档：整轮停下且已给出正文回复后，回答之前的工作组折叠成一条摘要行。
-    // 用户手动展开过的组用 overrides 记住（组消失时清理）；生成过程中一律摊开。
+    // 用户手动展开过的折叠组用 overrides 记住（组消失时清理）。
     val expansionSaver = remember {
         listSaver<Map<String, Boolean>, String>(
             save = { value -> value.flatMap { (key, expanded) -> listOf(key, expanded.toString()) } },
@@ -869,9 +868,13 @@ internal fun AgentConversationMessages(
     var workExpansionOverrides by rememberSaveable(stateSaver = expansionSaver) {
         mutableStateOf<Map<String, Boolean>>(emptyMap())
     }
+    // 「本轮回答出来，就把回答之前的内容收起来」：只在整轮停下之后生效，
+    // 生成过程中一律摊开，不打扰看进度。收起范围由档位决定：
+    // 普通/激进=折叠成摘要行（激进档连中间回复一起归组）；不折叠=彻底不收。
+    val answerFoldEnabled = answerFoldLevel != AnswerFoldLevel.NONE
     val isTurnSettled = !isStreaming && !isPaused && !isCompressingContext
-    val foldedWorkKeys = remember(projectedTimelineEntries, aggressiveFold, isTurnSettled) {
-        projectedTimelineEntries.aggressiveFoldedWorkKeys(aggressiveFold && isTurnSettled)
+    val foldedWorkKeys = remember(projectedTimelineEntries, answerFoldEnabled, isTurnSettled) {
+        projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled && isTurnSettled)
     }
     LaunchedEffect(projectedTimelineEntries) {
         val activeKeys = projectedTimelineEntries.filterIsInstance<AgentTimelineEntry.WorkProcess>().mapTo(mutableSetOf()) { it.key }

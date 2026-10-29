@@ -1970,7 +1970,7 @@
   <string name="appearance_message_timestamps">消息时间戳</string>
   <string name="appearance_message_timestamps_summary">在回复操作栏右侧显示本轮回复生成完成的时间。</string>
   <string name="appearance_fold_work_process">回答后收起工作过程</string>
-  <string name="appearance_fold_work_process_summary">思考与工具步骤各自成行、点行展开；激进档在整轮结束后把本轮的思考、工具与中间回复折叠成一条摘要，点按可重新展开；不折叠则始终摊开。</string>
+  <string name="appearance_fold_work_process_summary">思考与工具步骤各自成行、点行展开；普通档在整轮结束后把本轮的思考与工具折叠成一条摘要，点按可重新展开；激进档连中间回复一起折叠；不折叠则始终摊开。</string>
   <string name="appearance_fold_level_aggressive">激进折叠</string>
   <string name="appearance_fold_level_normal">普通折叠</string>
   <string name="appearance_fold_level_off">不折叠</string>

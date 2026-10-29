@@ -35,7 +35,7 @@ class TimelineProjectionCacheContract(unittest.TestCase):
         self.assertIn('val timelineRowsProjection = remember { AgentTimelineRowsCache() }', text)
         self.assertIn('val timelineRows = remember(projectedTimelineEntries, foldedWorkKeys, workExpansionOverrides) {', text)
         self.assertIn('timelineRowsProjection.project(', text)
-        self.assertIn('projectedTimelineEntries.aggressiveFoldedWorkKeys(aggressiveFold && isTurnSettled)', text)
+        self.assertIn('projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled && isTurnSettled)', text)
         # Row-only policy reduction must not become a run-state or footer reduction.
         footers = text.split('val turnFooters =', 1)[1].split('val finalResultMessageIds =', 1)[0]
         self.assertIn('isStreaming = isStreaming', footers)
