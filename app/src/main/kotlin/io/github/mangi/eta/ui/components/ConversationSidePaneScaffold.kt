@@ -16,12 +16,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -35,7 +32,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -95,7 +91,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.ripple
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
@@ -118,7 +113,6 @@ import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
 import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
-import io.github.mangi.eta.ui.adaptive.EtaMorphChipShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
@@ -165,7 +159,6 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.repository.AssistantRepository
-import io.github.mangi.eta.ui.model.ConversationFolderUi
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
 import io.github.mangi.eta.ui.model.UNCATEGORIZED_FOLDER_ID
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -262,8 +255,6 @@ fun ConversationSidePaneScaffold(
     onOpenManageChats: () -> Unit = {},
     onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
-    onRenameFolder: (String, String) -> Unit = { _, _ -> },
-    onDeleteFolder: (String) -> Unit = {},
     onRestoreConversation: (String) -> Unit = {},
     onConversationDeleteForever: (String) -> Unit = {},
     onEmptyTrash: () -> Unit = {},
@@ -444,8 +435,6 @@ fun ConversationSidePaneScaffold(
                     onOpenManageChats = onOpenManageChats,
                     onOpenManageFolders = onOpenManageFolders,
                     onSelectFolder = onSelectFolder,
-                    onRenameFolder = onRenameFolder,
-                    onDeleteFolder = onDeleteFolder,
                     onRestoreConversation = onRestoreConversation,
                     onConversationDeleteForever = onConversationDeleteForever,
                     onEmptyTrash = onEmptyTrash,
@@ -646,8 +635,6 @@ private fun ConversationPanePanel(
     onOpenManageChats: () -> Unit = {},
     onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
-    onRenameFolder: (String, String) -> Unit = { _, _ -> },
-    onDeleteFolder: (String) -> Unit = {},
     onRestoreConversation: (String) -> Unit = {},
     onConversationDeleteForever: (String) -> Unit = {},
     onEmptyTrash: () -> Unit = {},
@@ -681,8 +668,6 @@ private fun ConversationPanePanel(
         onOpenManageChats = onOpenManageChats,
         onOpenManageFolders = onOpenManageFolders,
         onSelectFolder = onSelectFolder,
-        onRenameFolder = onRenameFolder,
-        onDeleteFolder = onDeleteFolder,
         onRestoreConversation = onRestoreConversation,
         onConversationDeleteForever = onConversationDeleteForever,
         onEmptyTrash = onEmptyTrash,
@@ -761,8 +746,6 @@ private fun Material3ConversationPane(
     onOpenManageChats: () -> Unit,
     onOpenManageFolders: () -> Unit,
     onSelectFolder: (String?) -> Unit,
-    onRenameFolder: (String, String) -> Unit,
-    onDeleteFolder: (String) -> Unit,
     onRestoreConversation: (String) -> Unit = {},
     onConversationDeleteForever: (String) -> Unit = {},
     onEmptyTrash: () -> Unit = {},
@@ -776,8 +759,6 @@ private fun Material3ConversationPane(
     val visibleConversations = state.conversations
     val groups = remember(visibleConversations) { visibleConversations.groupForDrawer() }
     val folders = state.folders
-    var folderToRename by remember { mutableStateOf<ConversationFolderUi?>(null) }
-    var folderToDelete by remember { mutableStateOf<ConversationFolderUi?>(null) }
     val view = LocalView.current
     // 抽屉底色。胶囊行的两端淡出带必须取同一个颜色，否则会浮出一层色差。
     val paneContainerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -860,45 +841,17 @@ private fun Material3ConversationPane(
                             leadingIcon = null,
                             onClick = { onSelectFolder(UNCATEGORIZED_FOLDER_ID) },
                         )
+                        // 文件夹胶囊与「聊天 / 未分类」同款官方 ToggleButton；
+                        // 重命名 / 删除只在文件夹管理页提供，这里长按不再弹菜单。
                         folders.forEach { folder ->
-                            var showMenu by remember(folder.id) { mutableStateOf(false) }
-                            Box {
-                                Material3DrawerFolderChip(
-                                    text = folder.name,
-                                    position = drawerGroupPosition(chipIndex++, chipCount),
-                                    selected = state.selectedFolderId == folder.id,
-                                    onClick = { onSelectFolder(folder.id) },
-                                    onLongClick = { showMenu = true },
-                                )
-                                EtaMenuPopup(
-                                    expanded = showMenu,
-                                    onDismissRequest = { showMenu = false },
-                                ) {
-                                    EtaMenuGroup(index = 0, count = 1) {
-                                        DrawerActionMenuItem(
-                                            index = 0,
-                                            count = 2,
-                                            text = stringResource(R.string.action_rename),
-                                            icon = Icons.Rounded.Edit,
-                                            onClick = {
-                                                showMenu = false
-                                                folderToRename = folder
-                                            },
-                                        )
-                                        DrawerActionMenuItem(
-                                            index = 1,
-                                            count = 2,
-                                            text = stringResource(R.string.action_delete),
-                                            icon = Icons.Rounded.Delete,
-                                            destructive = true,
-                                            onClick = {
-                                                showMenu = false
-                                                folderToDelete = folder
-                                            },
-                                        )
-                                    }
-                                }
-                            }
+                            Material3DrawerChip(
+                                text = folder.name,
+                                position = drawerGroupPosition(chipIndex++, chipCount),
+                                selected = state.selectedFolderId == folder.id,
+                                selectable = true,
+                                leadingIcon = Icons.Rounded.Folder,
+                                onClick = { onSelectFolder(folder.id) },
+                            )
                         }
                     }
                     // 两端淡出带：滚动到中间时，被视口切一半的胶囊与抽屉底色融合，不留硬切边。
@@ -994,37 +947,6 @@ private fun Material3ConversationPane(
         }
     }
 
-    folderToRename?.let { folder ->
-        FolderNameDialog(
-            title = stringResource(R.string.drawer_rename_folder_title),
-            initialName = folder.name,
-            onDismiss = { folderToRename = null },
-            onConfirm = { name ->
-                onRenameFolder(folder.id, name)
-                folderToRename = null
-            },
-        )
-    }
-    folderToDelete?.let { folder ->
-        EtaDialog(
-            show = true,
-            title = stringResource(R.string.drawer_delete_folder_title),
-            summary = stringResource(R.string.drawer_delete_folder_message),
-            onDismissRequest = { folderToDelete = null },
-            actions = {
-                EtaDialogActions(
-                    confirmText = stringResource(R.string.action_delete),
-                    destructive = true,
-                    onCancel = { folderToDelete = null },
-                    onConfirm = {
-                        onDeleteFolder(folder.id)
-                        folderToDelete = null
-                    },
-                )
-            },
-        ) {
-        }
-    }
 }
 
 /**
@@ -1114,7 +1036,7 @@ private fun drawerToggleButtonShapes(position: DrawerGroupPosition): ToggleButto
     DrawerGroupPosition.Trailing -> ButtonGroupDefaults.connectedTrailingButtonShapes()
 }
 
-/** 抽屉的组内位置 → M3E 套件的相连位置（[etaConnectedButtonShapes] / [EtaMorphChipShape] 取后者的枚举）。 */
+/** 抽屉的组内位置 → M3E 套件的相连位置（[etaConnectedButtonShapes] / `EtaMorphChipShape` 取后者的枚举）。 */
 private fun DrawerGroupPosition.toEtaConnectedPosition(): EtaConnectedPosition = when (this) {
     DrawerGroupPosition.Single -> EtaConnectedPosition.Single
     DrawerGroupPosition.Leading -> EtaConnectedPosition.Leading
@@ -1123,45 +1045,11 @@ private fun DrawerGroupPosition.toEtaConnectedPosition(): EtaConnectedPosition =
 }
 
 /**
- * 文件夹胶囊的形状：与同组官方 `ToggleButton` 完全同一套 morph —— 同一组形状
- * （「连体位置形状 ↔ 选中全圆角胶囊」，按压时内侧圆角收到 4dp）配同一套官方规格
- * （选中 `defaultSpatialSpec`、按压 `fastSpatialSpec`）逐帧插值。
- *
- * 文件夹胶囊要保留长按弹出「重命名 / 删除」菜单，手势必须留在 `combinedClickable` 上
- * （官方 `ToggleButton` 内部的 `toggleable` 会先消费按下事件），所以形状自己喂；
- * 形状与规格都和官方组件保持一致，因此切换同样是连续渐变。
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun rememberDrawerFolderChipShape(
-    position: DrawerGroupPosition,
-    selected: Boolean,
-    pressed: Boolean,
-): Shape {
-    val motionScheme = MaterialTheme.motionScheme
-    val selectionProgress by animateFloatAsState(
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = motionScheme.defaultSpatialSpec<Float>(),
-        label = "DrawerChipSelection",
-    )
-    val pressProgress by animateFloatAsState(
-        targetValue = if (pressed) 1f else 0f,
-        animationSpec = motionScheme.fastSpatialSpec<Float>(),
-        label = "DrawerChipPress",
-    )
-    return EtaMorphChipShape(
-        selectionProgress = selectionProgress,
-        pressProgress = pressProgress,
-        position = position.toEtaConnectedPosition(),
-    )
-}
-
-/**
  * 抽屉相连按钮组配色：与语音设置页 / 外观设置页同款（[EtaExpressiveToggleButton] 里的官方
  * `ToggleButton` 默认档）—— 未选中 `surfaceContainerHighest` / `onSurface`，选中
  * `primary` / `onPrimary`。
  *
- * 供组内非 `ToggleButton` 成员（文件夹胶囊的自绘容器等）取同一套色。
+ * 供组内非 `ToggleButton` 成员（不可选中的 `FilledTonalButton`）取同一套色。
  */
 @Composable
 private fun drawerConnectedGroupColors(selected: Boolean): Pair<Color, Color> {
@@ -1195,13 +1083,14 @@ private fun Material3DrawerChip(
     leadingIcon: ImageVector? = null,
 ) {
     // 高度不覆盖，直接落在官方 Small 档（Button 与 ToggleButton 的 MinHeight 同档）。
+    // 内容排布照官方 ButtonGroupSamples.kt：Icon → Spacer(IconSpacing) → Text。
     val content: @Composable RowScope.() -> Unit = {
         if (leadingIcon != null) {
             Icon(
                 imageVector = leadingIcon,
                 contentDescription = null,
-                modifier = Modifier.size(ButtonDefaults.IconSize),
             )
+            Spacer(Modifier.size(ToggleButtonDefaults.IconSpacing))
         }
         M3Text(
             text = text,
@@ -1231,69 +1120,6 @@ private fun Material3DrawerChip(
             ),
             content = content,
         )
-    }
-}
-
-/**
- * M3 抽屉：文件夹按钮（带长按菜单）。
- *
- * 容器外观由官方 `Surface` 提供：形状是与同组官方 `ToggleButton` 同套的
- * [rememberDrawerFolderChipShape]，容器 / 内容色取与 [EtaExpressiveToggleButton] 同档的
- * [drawerConnectedGroupColors]，高度与内容内边距用官方 `ToggleButtonDefaults` 令牌，
- * 因此与相邻的可选中胶囊对齐；手势层用官方 `Modifier.combinedClickable` + 官方 `ripple()`，
- * 以保留长按弹出重命名 / 删除菜单的既有交互。
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun Material3DrawerFolderChip(
-    text: String,
-    position: DrawerGroupPosition,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val morphShape = rememberDrawerFolderChipShape(position = position, selected = selected, pressed = pressed)
-    val (containerColor, contentColor) = drawerConnectedGroupColors(selected)
-    M3Surface(
-        modifier = Modifier
-            .heightIn(min = ToggleButtonDefaults.MinHeight)
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = ripple(
-                    color = contentColor,
-                    focusRingShape = morphShape,
-                ),
-                onClick = onClick,
-                onLongClick = onLongClick,
-            ),
-        shape = morphShape,
-        color = containerColor,
-        contentColor = contentColor,
-    ) {
-        Row(
-            modifier = Modifier.padding(
-                // 官方 ToggleButton 的 (height, hasStartIcon, hasEndIcon) 内容内边距：
-                // 有前置图标时前后内边距不对称，末位参数沿用官方默认值。
-                ToggleButtonDefaults.contentPaddingFor(ToggleButtonDefaults.MinHeight, true),
-            ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(ToggleButtonDefaults.IconSpacing),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Folder,
-                contentDescription = null,
-                modifier = Modifier.size(ToggleButtonDefaults.IconSize),
-            )
-            M3Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
     }
 }
 

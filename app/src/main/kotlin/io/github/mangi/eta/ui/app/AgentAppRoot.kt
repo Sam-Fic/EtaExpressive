@@ -635,8 +635,6 @@ fun AgentAppRoot(
             onOpenDrawerSearch = { pushFromDrawer(AppRoute.MessageSearch()) },
             onOpenManageFolders = { pushFromDrawer(AppRoute.ManageFolders) },
             onSelectFolder = { folderId -> agentState.selectFolder(folderId) },
-            onRenameFolder = { folderId, name -> agentState.renameFolder(folderId, name) },
-            onDeleteFolder = { folderId -> agentState.deleteFolder(folderId) },
             onRestoreConversation = { conversationId -> agentState.restoreConversationFromTrash(conversationId) },
             onConversationDeleteForever = { conversationId -> agentState.deleteConversationForever(conversationId) },
             onEmptyTrash = { agentState.emptyTrash() },
