@@ -72,6 +72,8 @@ import io.github.mangi.eta.ui.adaptive.EtaDecorativeShape
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaSearchHistory
+import io.github.mangi.eta.ui.adaptive.EtaSearchHistoryItems
 import io.github.mangi.eta.ui.adaptive.EtaSearchScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
@@ -96,6 +98,9 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/** 查询历史分域键：媒体搜索历史独立存储（与设置 / 助手 / 供应商 / 消息搜索互不干扰）。 */
+private const val HISTORY_KEY = "media"
 
 /** 类型过滤 chips：全部 / 图片 / 视频 / 音频 / 文件。 */
 private val FILTER_LABELS = intArrayOf(
@@ -125,6 +130,9 @@ private fun kindsForFilter(index: Int): Set<MediaKind> = when (index) {
  *
  * 检索统一走 [MediaSearchService]（与 AI 工具 `search_media` 同一入口），全程离线；
  * 模型未下载或扫描源未确认时显示引导卡片跳设置页。
+ *
+ * 搜索记录与其它独立搜索页同源（[EtaSearchHistory]，分域键 `media`）：每次真正跑检索落一条，
+ * 搜索框为空时先列记录（点一条直接检索），无记录才显示官方 Empty state。
  */
 @Composable
 internal fun MediaSearchScreen(
@@ -136,6 +144,9 @@ internal fun MediaSearchScreen(
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
+    // 搜索记录：与其它独立搜索页同一套存储（[EtaSearchHistory]），进页面读一次，
+    // 每次真正跑检索时写一次。
+    var history by remember { mutableStateOf(EtaSearchHistory.load(context, HISTORY_KEY)) }
     var filterIndex by rememberSaveable { mutableIntStateOf(0) }
     var status by remember { mutableStateOf<MediaSearchService.Status?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -183,10 +194,20 @@ internal fun MediaSearchScreen(
         minScore = EmbeddingModelStore.searchMinScore(context)
     }
 
-    /** 执行一次语义检索；查询为空或索引未就绪时不动作（引导卡片负责指向设置页）。 */
-    fun runSearch() {
-        val text = query.trim()
+    /** 记录一次检索词：空词忽略，去重置顶（与其它搜索页同一份实现）。 */
+    fun recordSearch(text: String) {
+        EtaSearchHistory.add(context, HISTORY_KEY, text)
+        history = EtaSearchHistory.load(context, HISTORY_KEY)
+    }
+
+    /**
+     * 执行一次语义检索；查询为空或索引未就绪时不动作（引导卡片负责指向设置页）。
+     * [text] 显式传入是为了「点搜索记录」这种先改词再检索的场景（state 还没重组，读 [query] 拿到的是旧值）。
+     */
+    fun runSearch(text: String = query.trim()) {
         if (text.isEmpty() || searching) return
+        // 真正跑过检索的词就是有效检索：落一条搜索记录。
+        recordSearch(text)
         // 检索是显式动作：触发后立刻收起键盘，结果区不再被输入法挤成半屏。
         focusManager.clearFocus()
         // 换结果集先退出多选：旧结果上的勾选不延续到新结果。
@@ -441,12 +462,27 @@ internal fun MediaSearchScreen(
                     }
                 }
                 result == null -> {
-                    // 空闲态：与其它搜索页同一套官方 Empty state（装饰形状 + 放大镜 + 一句说明）。
-                    item(key = "search-idle") {
-                        MediaSearchEmptyState(
-                            text = stringResource(R.string.media_search_hint),
-                            modifier = Modifier.fillParentMaxSize(),
+                    // 空闲态与其它搜索页同口径：搜索框为空且有搜索记录时先列记录（点一条直接检索），
+                    // 其余情况退回官方 Empty state（装饰形状 + 放大镜 + 一句说明）。
+                    if (query.isBlank() && history.isNotEmpty()) {
+                        EtaSearchHistoryItems(
+                            history = history,
+                            onPick = { record ->
+                                query = record
+                                runSearch(record)
+                            },
+                            onClear = {
+                                EtaSearchHistory.clear(context, HISTORY_KEY)
+                                history = emptyList()
+                            },
                         )
+                    } else {
+                        item(key = "search-idle") {
+                            MediaSearchEmptyState(
+                                text = stringResource(R.string.media_search_hint),
+                                modifier = Modifier.fillParentMaxSize(),
+                            )
+                        }
                     }
                 }
                 rawHits.isEmpty() -> {

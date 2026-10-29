@@ -8,10 +8,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaSearchHistory
 import io.github.mangi.eta.ui.adaptive.EtaSearchPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -48,6 +50,7 @@ internal fun MessageSearchScreen(
 ) {
     var searchedQuery by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<MessageSearchHit>>(emptyList()) }
+    val context = LocalContext.current
 
     EtaSearchPage(
         searchPlaceholder = stringResource(R.string.search_history_hint),
@@ -81,7 +84,11 @@ internal fun MessageSearchScreen(
                                 },
                                 // 命中词在标题、片段与摘要里都标出来：一眼能看出为什么命中。
                                 highlight = query,
-                                onClick = { onOpenHit(hit) },
+                                // 点开命中就是「这个词有用」：与其它搜索页一致，落一次搜索记录。
+                                onClick = {
+                                    EtaSearchHistory.add(context, HISTORY_KEY, query)
+                                    onOpenHit(hit)
+                                },
                                 modifier = Modifier.padding(
                                     start = EtaGroupHorizontalPadding,
                                     end = EtaGroupHorizontalPadding,

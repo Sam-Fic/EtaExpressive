@@ -79,7 +79,6 @@ internal fun AgentAppShell(
     // 否则抽屉内部回写打开状态时会把开关再翻一次。
     onToggleConversationPane: () -> Unit = onOpenConversationPane,
     onDismissConversationPane: () -> Unit,
-    onSearchConversations: (String) -> Unit,
     onNewConversation: () -> Unit,
     onOpenTerminal: () -> Unit,
     onLaunchKimiWeb: () -> Unit,
@@ -106,6 +105,8 @@ internal fun AgentAppShell(
     onConversationExport: (ConversationSummaryUi) -> Unit = {},
     onConversationAnalysisExport: (ConversationSummaryUi) -> Unit = {},
     onOpenManageChats: () -> Unit = {},
+    // 抽屉工具栏里的放大镜：与管理聊天页同一入口（全文搜索页，跨会话检索）。
+    onOpenDrawerSearch: () -> Unit = {},
     onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
     onRenameFolder: (String, String) -> Unit = { _, _ -> },
@@ -119,10 +120,7 @@ internal fun AgentAppShell(
     onEditAssistant: (String) -> Unit = {},
     onOpenAssistants: () -> Unit = {},
     onOpenUsageStats: () -> Unit,
-    onOpenSkills: () -> Unit,
-    onOpenPermissions: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenModelProviders: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -239,7 +237,6 @@ internal fun AgentAppShell(
                 backHandlerEnabled = isCurrentRoute,
                 onOpen = onOpenConversationPane,
                 onDismiss = onDismissConversationPane,
-                onSearchChange = onSearchConversations,
                 onConversationSelected = onSelectConversation,
                 onConversationRename = onConversationRename,
                 onConversationDelete = onConversationDelete,
@@ -247,6 +244,7 @@ internal fun AgentAppShell(
                 onConversationTogglePin = onConversationTogglePin,
                 onConversationExport = onConversationExport,
                 onConversationAnalysisExport = onConversationAnalysisExport,
+                onOpenSearchHistory = onOpenDrawerSearch,
                 onOpenManageChats = onOpenManageChats,
                 onOpenManageFolders = onOpenManageFolders,
                 onSelectFolder = onSelectFolder,
@@ -261,10 +259,7 @@ internal fun AgentAppShell(
                 onEditAssistant = onEditAssistant,
                 onOpenAssistants = onOpenAssistants,
                 onOpenSettings = onOpenSettings,
-                onOpenModelProviders = onOpenModelProviders,
                 onOpenUsageStats = onOpenUsageStats,
-                onOpenSkills = onOpenSkills,
-                onOpenPermissions = onOpenPermissions,
             ) {
                 pageContent()
             }

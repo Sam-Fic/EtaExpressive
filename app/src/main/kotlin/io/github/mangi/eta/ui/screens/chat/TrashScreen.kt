@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +37,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
+import io.github.mangi.eta.ui.adaptive.EtaSearchHistory
 import io.github.mangi.eta.ui.adaptive.EtaSearchPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
@@ -266,6 +268,7 @@ internal fun TrashSearchScreen(
     onDeleteForever: (String) -> Unit,
 ) {
     val view = LocalView.current
+    val context = LocalContext.current
     var pendingDeleteForever by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     val currentOnDeleteForever by rememberUpdatedState(onDeleteForever)
     val currentOnRestore by rememberUpdatedState(onRestore)
@@ -300,10 +303,13 @@ internal fun TrashSearchScreen(
                         segmentCount = hits.size,
                         onRestore = {
                             TouchHaptics.click(view)
+                            // 恢复 / 彻底删除都算「这个词确实用上了」：与其它搜索页同口径落一条记录。
+                            EtaSearchHistory.add(context, TrashSearchHistoryKey, query)
                             currentOnRestore(conversation.id)
                         },
                         onDeleteForever = {
                             TouchHaptics.click(view)
+                            EtaSearchHistory.add(context, TrashSearchHistoryKey, query)
                             pendingDeleteForever = conversation
                         },
                     )

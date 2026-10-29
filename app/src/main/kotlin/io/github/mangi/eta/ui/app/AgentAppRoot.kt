@@ -487,7 +487,7 @@ fun AgentAppRoot(
      */
     var settingsFocusKey by rememberSaveable { mutableStateOf<String?>(null) }
 
-
+    val exitGuard = remember { DoublePressExitGuard() }
 
     fun popRoute() {
         if (navigator.pop()) {
@@ -563,7 +563,6 @@ fun AgentAppRoot(
             onOpenConversationPane = { conversationPaneOpen = true },
             onToggleConversationPane = { conversationPaneOpen = !conversationPaneOpen },
             onDismissConversationPane = { conversationPaneOpen = false },
-            onSearchConversations = { query -> agentState.updateSearchQuery(query) },
             onNewConversation = { createConversation() },
             onOpenTerminal = { pushRoute(AppRoute.Terminal) },
             onLaunchKimiWeb = {
@@ -632,6 +631,8 @@ fun AgentAppRoot(
                 }
             },
             onOpenManageChats = { pushFromDrawer(AppRoute.ManageChats) },
+            // 抽屉搜索与管理聊天页的放大镜同一个目的地：跨会话全文搜索。
+            onOpenDrawerSearch = { pushFromDrawer(AppRoute.MessageSearch()) },
             onOpenManageFolders = { pushFromDrawer(AppRoute.ManageFolders) },
             onSelectFolder = { folderId -> agentState.selectFolder(folderId) },
             onRenameFolder = { folderId, name -> agentState.renameFolder(folderId, name) },
@@ -644,10 +645,7 @@ fun AgentAppRoot(
             onEditAssistant = { id -> pushFromDrawer(AppRoute.AssistantEdit(id)) },
             onOpenAssistants = { pushFromDrawer(AppRoute.Assistants()) },
             onOpenUsageStats = { pushFromDrawer(AppRoute.UsageStats) },
-            onOpenSkills = { pushFromDrawer(AppRoute.Skills) },
-            onOpenPermissions = { pushFromDrawer(AppRoute.Permissions) },
             onOpenSettings = { pushFromDrawer(AppRoute.Settings) },
-            onOpenModelProviders = { pushFromDrawer(AppRoute.ModelProviders) },
         ) { padding ->
             // M3 对话页让消息列表延伸到顶栏背后，滚入的部分由顶栏渐变板淡出；
             // 顶栏高度经 LocalShellTopBarInset 交给列表做顶部 contentPadding。

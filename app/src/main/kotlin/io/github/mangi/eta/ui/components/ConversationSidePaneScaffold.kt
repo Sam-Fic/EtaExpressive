@@ -16,7 +16,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -61,11 +60,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.ManageHistory
 import androidx.compose.material.icons.automirrored.rounded.Chat
@@ -74,13 +71,10 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Extension
-import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Badge
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
@@ -147,7 +141,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
@@ -171,7 +164,6 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.ui.model.ConversationFolderUi
-import io.github.mangi.eta.ui.model.searchResults
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
 import io.github.mangi.eta.ui.model.UNCATEGORIZED_FOLDER_ID
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -219,13 +211,9 @@ private object DrawerMetrics {
     // 临界阻尼弹簧的初始速度超过 ω·剩余距离就会越过锚点；留 8% 余量，保证不露底。
     const val SettleVelocityHeadroom = 0.92f
     val PaneHorizontalPadding = 16.dp
-    // 首排（搜索框 + 管理会话）与首页顶栏同一水平中线：首页顶栏是 64dp 行高 + 4dp 纵向内边距，
+    // 首排（胶囊行）与首页顶栏同一水平中线：首页顶栏是 64dp 行高 + 4dp 纵向内边距，
     // 40dp 图标按钮居中后中线在状态栏下 4 + 8 + 20 = 32dp；这里 12 + 20 = 32dp 与之对齐。
     val TopInset = 12.dp
-    val AfterSearch = 12.dp
-    val SearchIconSize = 18.dp
-    val SearchCornerRadius = 12.dp
-    val SearchVerticalPadding = 10.dp
     val ChipGap = 8.dp
     // 胶囊行横向滚动的两端淡出带宽度。与底色同色，滚动到中间时把视口切开的胶囊边缘擦掉。
     val ChipRowEdgeFadeWidth = 24.dp
@@ -261,7 +249,6 @@ fun ConversationSidePaneScaffold(
     backHandlerEnabled: Boolean,
     onOpen: () -> Unit,
     onDismiss: () -> Unit,
-    onSearchChange: (String) -> Unit,
     onConversationSelected: (String) -> Unit,
     onConversationRename: (ConversationSummaryUi) -> Unit,
     onConversationDelete: (ConversationSummaryUi) -> Unit,
@@ -269,6 +256,7 @@ fun ConversationSidePaneScaffold(
     onConversationTogglePin: (ConversationSummaryUi) -> Unit = {},
     onConversationExport: (ConversationSummaryUi) -> Unit = {},
     onConversationAnalysisExport: (ConversationSummaryUi) -> Unit = {},
+    onOpenSearchHistory: () -> Unit = {},
     onOpenManageChats: () -> Unit = {},
     onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
@@ -283,10 +271,7 @@ fun ConversationSidePaneScaffold(
     onEditAssistant: (String) -> Unit,
     onOpenAssistants: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenModelProviders: () -> Unit,
     onOpenUsageStats: () -> Unit,
-    onOpenSkills: () -> Unit,
-    onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -440,14 +425,13 @@ fun ConversationSidePaneScaffold(
             }
         }
         CompositionLocalProvider(LocalConversationDrawerBlocksIme provides drawerBlocksIme) {
-        val paneContent: @Composable (AbsoluteRoundedCornerShape, Boolean, Dp) -> Unit =
-            { shape, focusSearch, panelWidth ->
+        val paneContent: @Composable (AbsoluteRoundedCornerShape, Dp) -> Unit =
+            { shape, panelWidth ->
                 ConversationPanePanel(
                     state = state,
                     width = panelWidth,
                     drawerShape = shape,
-                    enableSearchFocus = focusSearch,
-                    onSearchChange = onSearchChange,
+                    onOpenSearchHistory = onOpenSearchHistory,
                     onConversationSelected = selectConversation,
                     onConversationRename = onConversationRename,
                     onConversationDelete = onConversationDelete,
@@ -469,10 +453,7 @@ fun ConversationSidePaneScaffold(
                     onEditAssistant = onEditAssistant,
                     onOpenAssistants = onOpenAssistants,
                     onOpenSettings = onOpenSettings,
-                    onOpenModelProviders = onOpenModelProviders,
                     onOpenUsageStats = onOpenUsageStats,
-                    onOpenSkills = onOpenSkills,
-                    onOpenPermissions = onOpenPermissions,
                     modifier = Modifier.fillMaxHeight(),
                 )
             }
@@ -485,7 +466,7 @@ fun ConversationSidePaneScaffold(
                 paneWidth = paneWidth,
                 onOpen = { onOpen() },
                 onDismiss = { onDismiss() },
-                paneContent = { width -> paneContent(DockedPaneShape, visible, width) },
+                paneContent = { width -> paneContent(DockedPaneShape, width) },
                 content = content,
             )
         } else {
@@ -498,9 +479,6 @@ fun ConversationSidePaneScaffold(
                 drawerContent = {
                     paneContent(
                         drawerShape,
-                        visible &&
-                            drawerState.currentValue == DrawerValue.Open &&
-                            !drawerState.isAnimationRunning,
                         paneWidth,
                     )
                 },
@@ -655,8 +633,7 @@ private fun ConversationPanePanel(
     state: ConversationPaneUiState,
     width: androidx.compose.ui.unit.Dp,
     drawerShape: AbsoluteRoundedCornerShape,
-    enableSearchFocus: Boolean,
-    onSearchChange: (String) -> Unit,
+    onOpenSearchHistory: () -> Unit = {},
     onConversationSelected: (String) -> Unit,
     onConversationRename: (ConversationSummaryUi) -> Unit,
     onConversationDelete: (ConversationSummaryUi) -> Unit,
@@ -678,17 +655,9 @@ private fun ConversationPanePanel(
     onEditAssistant: (String) -> Unit,
     onOpenAssistants: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenModelProviders: () -> Unit,
     onOpenUsageStats: () -> Unit,
-    onOpenSkills: () -> Unit,
-    onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val query = state.searchQuery.trim()
-    val visibleConversations = remember(state.conversations, query) {
-        state.searchResults()
-    }
-    val groups = remember(visibleConversations) { visibleConversations.groupForDrawer() }
     val profiles by AssistantRepository.profiles.collectAsState()
     val repositoryActiveId by AssistantRepository.activeId.collectAsState()
     val activeId = selectedAssistantId.ifBlank { repositoryActiveId }
@@ -699,8 +668,7 @@ private fun ConversationPanePanel(
         state = state,
         width = width,
         drawerShape = drawerShape,
-        enableSearchFocus = enableSearchFocus,
-        onSearchChange = onSearchChange,
+        onOpenSearchHistory = onOpenSearchHistory,
         onConversationSelected = onConversationSelected,
         onConversationRename = onConversationRename,
         onConversationDelete = onConversationDelete,
@@ -718,10 +686,7 @@ private fun ConversationPanePanel(
         onEmptyTrash = onEmptyTrash,
         onOpenTrash = onOpenTrash,
         onOpenSettings = onOpenSettings,
-        onOpenModelProviders = onOpenModelProviders,
         onOpenUsageStats = onOpenUsageStats,
-        onOpenSkills = onOpenSkills,
-        onOpenPermissions = onOpenPermissions,
         modifier = modifier,
     )
 }
@@ -783,8 +748,7 @@ private fun Material3ConversationPane(
     state: ConversationPaneUiState,
     width: androidx.compose.ui.unit.Dp,
     drawerShape: AbsoluteRoundedCornerShape,
-    enableSearchFocus: Boolean,
-    onSearchChange: (String) -> Unit,
+    onOpenSearchHistory: () -> Unit,
     onConversationSelected: (String) -> Unit,
     onConversationRename: (ConversationSummaryUi) -> Unit,
     onConversationDelete: (ConversationSummaryUi) -> Unit,
@@ -802,14 +766,12 @@ private fun Material3ConversationPane(
     onEmptyTrash: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
     onOpenSettings: () -> Unit,
-    onOpenModelProviders: () -> Unit,
     onOpenUsageStats: () -> Unit,
-    onOpenSkills: () -> Unit,
-    onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val query = state.searchQuery.trim()
-    val visibleConversations = remember(state.conversations, query) { state.searchResults() }
+    // 抽屉不再做标题过滤：搜索一律走与管理聊天页同一个全文搜索页（[onOpenSearchHistory]），
+    // 这里只按当前文件夹展示全部会话。
+    val visibleConversations = state.conversations
     val groups = remember(visibleConversations) { visibleConversations.groupForDrawer() }
     val folders = state.folders
     var folderToRename by remember { mutableStateOf<ConversationFolderUi?>(null) }
@@ -851,36 +813,6 @@ private fun Material3ConversationPane(
                 .padding(horizontal = DrawerMetrics.PaneHorizontalPadding),
         ) {
             Spacer(modifier = Modifier.height(DrawerMetrics.TopInset))
-            // 搜索栏与「管理聊天」同排：搜索框吃掉剩余宽度，右侧是一枚与搜索框同高
-            // （官方 Small 档 40dp，与下方胶囊行一致）、同容器色的图标按钮。
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    Material3PaneSearchField(
-                        query = state.searchQuery,
-                        onSearchChange = onSearchChange,
-                        enableSearchFocus = enableSearchFocus,
-                    )
-                }
-                IconButton(
-                    onClick = onOpenManageChats,
-                    modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ManageHistory,
-                        contentDescription = stringResource(R.string.drawer_manage_chats),
-                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
 
             // 胶囊行：左侧可横向滚动的「聊天 / 未分类 / [文件夹…]」，右侧固定「管理文件夹」。
             val chipCount = 2 + folders.size
@@ -999,7 +931,7 @@ private fun Material3ConversationPane(
                 ) {
                     if (visibleConversations.isEmpty()) {
                         item(contentType = "drawer-empty") {
-                            Material3EmptyConversations(isSearching = query.isNotBlank())
+                            Material3EmptyConversations()
                         }
                     } else {
                         groups.forEachIndexed { groupIndex, group ->
@@ -1033,11 +965,10 @@ private fun Material3ConversationPane(
                         }
                     }
                 }
-                // 底部入口：权限 / 模型 / 技能 / 用量 / 回收站 / 设置，同一颗居中药丸。
+                // 底部入口：搜索 / 管理聊天 / 用量 / 回收站 / 设置，同一颗居中药丸。
                 Material3DrawerToolbar(
-                    onOpenPermissions = onOpenPermissions,
-                    onOpenModelProviders = onOpenModelProviders,
-                    onOpenSkills = onOpenSkills,
+                    onOpenSearchHistory = onOpenSearchHistory,
+                    onOpenManageChats = onOpenManageChats,
                     onOpenUsageStats = onOpenUsageStats,
                     onOpenTrash = onOpenTrash,
                     onOpenSettings = onOpenSettings,
@@ -1139,121 +1070,6 @@ private fun BoxScope.ChipRowEdgeFades(
                     ),
                 ),
         )
-    }
-}
-
-/**
- * M3 抽屉：会话搜索框。
- * 胶囊形（`CircleShape`）的自绘容器 + `BasicTextField`：官方填充式 `TextField` 的内容内边距
- * 固定按 56dp 档排版，无法收到与第二排胶囊一致的 40dp，因此这里自绘容器（容器色取与
- * 输入框同档的 `surfaceContainerHighest`），文字 / 占位符 / 光标沿用官方正文与主色令牌。
- * 清除按钮用官方 `IconButton`。
- *
- * 焦点门控：官方 `DismissibleNavigationDrawer` 一打开就会把键盘焦点交给抽屉内第一个
- * 可聚焦元素（见 material3 `NavigationDrawer.kt` 的 `focusRequester.requestFocus()`），
- * 搜索框若可聚焦就会立刻弹出输入法。
- * 因此未激活前设 `canFocus = false`，由透明层接管点击，点进去才聚焦并唤起键盘。
- */
-@Composable
-private fun Material3PaneSearchField(
-    query: String,
-    onSearchChange: (String) -> Unit,
-    enableSearchFocus: Boolean,
-) {
-    val view = LocalView.current
-    val keyboard = LocalSoftwareKeyboardController.current
-    val focusManager = LocalFocusManager.current
-    val focusRequester = remember { FocusRequester() }
-    var searchActive by remember { mutableStateOf(false) }
-    LaunchedEffect(enableSearchFocus) {
-        if (!enableSearchFocus) {
-            searchActive = false
-            focusManager.clearFocus(force = true)
-        }
-    }
-    LaunchedEffect(searchActive, enableSearchFocus) {
-        if (searchActive && enableSearchFocus) {
-            showChatInputIme(focusRequester, keyboard, view)
-        }
-    }
-    // 与第二排胶囊同一官方 Small 档高度（40dp），首排不再沿用输入框默认的 56dp。
-    val fieldHeight = ToggleButtonDefaults.MinHeight
-    Box {
-        M3Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(fieldHeight),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // 起始放大镜：沿用官方输入框 leadingIcon 槽的 12dp 起始内边距与 48dp 文本起点。
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(start = 12.dp)
-                        .size(IconButtonDefaults.smallIconSize),
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                BasicTextField(
-                    value = query,
-                    onValueChange = onSearchChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(focusRequester)
-                        .focusProperties { canFocus = enableSearchFocus && searchActive },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    singleLine = true,
-                    decorationBox = { innerTextField ->
-                        Box(contentAlignment = Alignment.CenterStart) {
-                            if (query.isEmpty()) {
-                                M3Text(
-                                    text = stringResource(R.string.conversation_search_hint),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            innerTextField()
-                        }
-                    },
-                )
-                if (query.isNotEmpty()) {
-                    IconButton(
-                        onClick = { onSearchChange("") },
-                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = stringResource(R.string.action_cancel),
-                            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-                        )
-                    }
-                }
-            }
-        }
-        if (!searchActive) {
-            // 未激活时输入框不可聚焦，用透明层接管点击；点一下才真正聚焦并唤起键盘。
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .clickable(
-                        enabled = enableSearchFocus,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { searchActive = true },
-            )
-        }
     }
 }
 
@@ -1473,16 +1289,15 @@ private fun Material3DrawerFolderChip(
 /**
  * M3 抽屉：底部浮动工具栏。
  *
- * 官方 M3E [HorizontalFloatingToolbar] 承载全部入口（权限 / 模型 / 技能 / 用量 / 回收站 / 设置），
+ * 官方 M3E [HorizontalFloatingToolbar] 承载会话抽屉的全部入口（搜索 / 管理聊天 / 用量 / 回收站 / 设置），
  * 药丸整体居中、悬浮在会话列表上方；容器与内容色取官方 vibrant 档，
  * 高度、圆角、海拔全部走官方令牌，内边距按 [EtaFloatingToolbarConcentricPadding]
  * 把水平方向收到与端盖同心，`expanded = true` 常驻展开。
  */
 @Composable
 private fun Material3DrawerToolbar(
-    onOpenPermissions: () -> Unit,
-    onOpenModelProviders: () -> Unit,
-    onOpenSkills: () -> Unit,
+    onOpenSearchHistory: () -> Unit,
+    onOpenManageChats: () -> Unit,
     onOpenUsageStats: () -> Unit,
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -1509,22 +1324,17 @@ private fun Material3DrawerToolbar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Material3DrawerToolbarButton(
-                icon = Icons.Rounded.HealthAndSafety,
-                contentDescription = stringResource(R.string.ui_permission_health_3048bb),
+                icon = Icons.Rounded.Search,
+                contentDescription = stringResource(R.string.action_search_history),
                 contentColor = toolbarColors.toolbarContentColor,
-                onClick = onOpenPermissions,
+                // 与管理聊天页的放大镜同一个目的地：全文搜索页（跨会话检索标题与消息）。
+                onClick = onOpenSearchHistory,
             )
             Material3DrawerToolbarButton(
-                icon = Icons.Rounded.Memory,
-                contentDescription = stringResource(R.string.conversation_dock_models),
+                icon = Icons.Rounded.ManageHistory,
+                contentDescription = stringResource(R.string.drawer_manage_chats),
                 contentColor = toolbarColors.toolbarContentColor,
-                onClick = onOpenModelProviders,
-            )
-            Material3DrawerToolbarButton(
-                icon = Icons.Rounded.Extension,
-                contentDescription = stringResource(R.string.route_skills),
-                contentColor = toolbarColors.toolbarContentColor,
-                onClick = onOpenSkills,
+                onClick = onOpenManageChats,
             )
             Material3DrawerToolbarButton(
                 icon = Icons.Rounded.BarChart,
@@ -1634,11 +1444,9 @@ private fun Material3DrawerSectionHeader(label: String, count: Int) {
 
 /** M3 抽屉空态：官方 Text + 官方排版 / 颜色角色。 */
 @Composable
-private fun Material3EmptyConversations(isSearching: Boolean) {
+private fun Material3EmptyConversations() {
     M3Text(
-        text = stringResource(
-            if (isSearching) R.string.conversation_no_results else R.string.conversation_empty,
-        ),
+        text = stringResource(R.string.conversation_empty),
         style = etaTextStyle(EtaType.Secondary),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(ListItemDefaults.ContentPadding),

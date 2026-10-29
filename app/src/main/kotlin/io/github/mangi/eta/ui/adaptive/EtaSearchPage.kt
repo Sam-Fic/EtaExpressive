@@ -66,6 +66,7 @@ import kotlinx.coroutines.delay
  * 与 [EtaSearchPage] 的分工：[EtaSearchPage] 把「搜索历史 / 官方空态 / 结果」写死在页内，
  * 且没有搜索词就不渲染内容；本骨架只提供顶栏与列表容器，适合「顶栏常驻 + 还要挂常驻
  * 筛选条」的场景（媒体语义搜索把类型标签固定在顶栏下方，搜索前后都能切换类型）。
+ * 这类页自绘搜索记录时用 [EtaSearchHistoryItems]，与 [EtaSearchPage] 共用同一份版式。
  *
  * @param query 当前搜索词。
  * @param onQueryChange 搜索词变化回调。
@@ -216,7 +217,11 @@ fun EtaSearchScaffold(
  * 无历史则显示官方 Empty state（空状态）——居中的非交互占位图标 + 提示标语，
  * 图标下方垫一块 M3E 装饰形状（纯装饰，轮廓每次进页面随机换一枚，见 [EtaDecorativeShape]），
  * **不复制宿主页内容**（避免与主页重复）；有搜索结果由各页自己的空态文案兜底。
- * 结果点按方（各搜索页）可调 [EtaSearchHistory.add] 记录当时搜索词。
+ *
+ * 记录口径（全应用统一）：**IME 提交**由本页按 [historyKey] 自动记一条；**点开某条结果**
+ * 由各页在跳转前调 `EtaSearchHistory.add(context, historyKey, query)` 补记一条——两者合起来
+ * 才能覆盖「回车上屏页」和「实时过滤页」两类：后者根本不会按搜索键，只在点结果时才证明这个词有用。
+ * 记录列表本身统一用 [EtaSearchHistoryItems] 渲染，版式与设置主页分组列表一致。
  *
  * 与宿主页的 [EtaScaffoldPage] 保持同一套背景色与底栏安全区处理；[query] 用
  * `rememberSaveable` 保存，旋转屏幕不丢关键词。
@@ -245,6 +250,14 @@ fun EtaSearchPage(
     var history by remember(historyKey) {
         mutableStateOf(historyKey?.let { EtaSearchHistory.load(context, it) }.orEmpty())
     }
+    // 各搜索页在「点结果跳转」时会把当时的查询词写盘（见类注释）。页面可能一直留在组合里
+    // （搜索页是入栈的独立路由，跳转到详情后本页仍活着），所以每次搜索框被清空——也就是
+    // 即将展示记录列表的那一刻——重读一次，刚记下的词才会立刻出现在列表里。
+    LaunchedEffect(historyKey, query.isBlank()) {
+        if (query.isBlank()) {
+            history = historyKey?.let { EtaSearchHistory.load(context, it) }.orEmpty()
+        }
+    }
 
     /** 记录一次搜索（IME 提交时调用），空查询忽略。 */
     fun recordSearch(text: String) {
@@ -268,64 +281,14 @@ fun EtaSearchPage(
             // 未输入：有历史先列「搜索记录」（点一条回填搜索框，可一键清除）；
             // 无历史再退回官方 Empty state（空状态）占位。都不铺宿主页内容。
             if (history.isNotEmpty()) {
-                // 历史列表的间距/图标规格与设置主页的分组列表完全一致：
-                // 组标题下 8dp、行间 2dp 露出背景缝、组末 13dp、左右页边距 16dp。
-                item(key = "search_history_header") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                start = EtaGroupHorizontalPadding,
-                                end = EtaGroupHorizontalPadding,
-                                bottom = EtaSegmentedTitleSpacing,
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.action_search_history),
-                            style = MaterialTheme.typography.titleSmallEmphasized,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = {
-                            historyKey?.let { EtaSearchHistory.clear(context, it) }
-                            history = emptyList()
-                        }) {
-                            Text(text = stringResource(R.string.action_clear))
-                        }
-                    }
-                }
-                history.forEachIndexed { index, record ->
-                    item(key = "search_history_$index") {
-                        EtaSegmentedItem(index = index, count = history.size) {
-                            EtaClickableRow(
-                                title = record,
-                                leading = {
-                                    // 与设置主页行首图标同一规格（onSurfaceVariant 24dp）。
-                                    Icon(
-                                        imageVector = Icons.Rounded.History,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .padding(end = 8.dp)
-                                            .size(IconButtonDefaults.smallIconSize),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                showChevron = false,
-                                onClick = { query = record },
-                                modifier = Modifier.padding(
-                                    start = EtaGroupHorizontalPadding,
-                                    end = EtaGroupHorizontalPadding,
-                                    bottom = if (index == history.lastIndex) {
-                                        EtaSegmentedGroupSpacing
-                                    } else {
-                                        EtaSegmentedGap
-                                    },
-                                ),
-                            )
-                        }
-                    }
-                }
+                EtaSearchHistoryItems(
+                    history = history,
+                    onPick = { record -> query = record },
+                    onClear = {
+                        historyKey?.let { EtaSearchHistory.clear(context, it) }
+                        history = emptyList()
+                    },
+                )
             } else {
                 item(key = "search_empty_state") {
                     Box(
@@ -367,6 +330,80 @@ fun EtaSearchPage(
             }
         } else {
             content(query)
+        }
+    }
+}
+
+/**
+ * 搜索记录列表（[LazyListScope] 扩展）：组标题 +「清除」 + 若干记录行，点一条回填搜索框。
+ *
+ * 版式与设置主页的分组列表完全一致：组标题下 8dp、行间 2dp 露出背景缝、组末 13dp、
+ * 左右页边距 16dp。抽成扩展是为了让自绘顶栏的搜索页（[EtaSearchScaffold] 那一支，如媒体搜索）
+ * 与 [EtaSearchPage] 共用同一份「搜索记录」外观——应用内所有独立搜索页的记录列表必须是同一个样子。
+ *
+ * @param history 记录列表（最近在前，写盘由 [EtaSearchHistory] 负责）。
+ * @param onPick 点按某条记录：调用方通常把它回填进搜索框。
+ * @param onClear 点按「清除」：调用方负责清盘并清空本地列表。
+ * @param keyPrefix 列表键前缀，同一页里若还要挂别的列表，用它避免键冲突。
+ */
+fun LazyListScope.EtaSearchHistoryItems(
+    history: List<String>,
+    onPick: (String) -> Unit,
+    onClear: () -> Unit,
+    keyPrefix: String = "search_history",
+) {
+    if (history.isEmpty()) return
+    item(key = "$keyPrefix-header") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = EtaGroupHorizontalPadding,
+                    end = EtaGroupHorizontalPadding,
+                    bottom = EtaSegmentedTitleSpacing,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.action_search_history),
+                style = MaterialTheme.typography.titleSmallEmphasized,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onClear) {
+                Text(text = stringResource(R.string.action_clear))
+            }
+        }
+    }
+    history.forEachIndexed { index, record ->
+        item(key = "$keyPrefix-$index") {
+            EtaSegmentedItem(index = index, count = history.size) {
+                EtaClickableRow(
+                    title = record,
+                    leading = {
+                        // 与设置主页行首图标同一规格（onSurfaceVariant 24dp）。
+                        Icon(
+                            imageVector = Icons.Rounded.History,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .size(IconButtonDefaults.smallIconSize),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    showChevron = false,
+                    onClick = { onPick(record) },
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = if (index == history.lastIndex) {
+                            EtaSegmentedGroupSpacing
+                        } else {
+                            EtaSegmentedGap
+                        },
+                    ),
+                )
+            }
         }
     }
 }
