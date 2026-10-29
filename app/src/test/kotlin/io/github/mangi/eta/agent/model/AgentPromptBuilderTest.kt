@@ -82,6 +82,51 @@ class AgentPromptBuilderTest {
     }
 
     @Test
+    fun guidanceFollowsTheGroupThatMakesItActionable() {
+        // 常驻提示里每条可执行指令都点名了某个工具组。组没打开时那条指令无从执行，
+        // 留着只是白付 token（副屏交接约 390、Root 只读检查约 130、习惯分析约 70）。
+        fun contents(
+            terminalTools: Boolean = false,
+            personalTools: Boolean = false,
+            rootAvailable: Boolean = false,
+            opened: Set<String> = emptySet(),
+        ) = AgentPromptBuilder.buildSystemMessages(
+            config = modelConfig("", terminalTools = terminalTools, browserTools = false)
+                .copy(personalTools = personalTools),
+            skillContext = SkillContext.EMPTY,
+            memoryContext = AgentMemoryContext.DISABLED,
+            rootAvailable = rootAvailable,
+            openedToolGroups = opened,
+        ).systemContents()
+
+        // 副屏与自身交接规则：全部指令都指向屏幕组工具。
+        val screenClosed = contents()
+        assertFalse(screenClosed.any { it.contains("task_surface_scope=self_app") })
+        assertFalse(screenClosed.any { it.contains("start_virtual_session") })
+        val screenOpened = contents(opened = setOf(AgentToolGroups.SCREEN_GROUP.id))
+        assertTrue(screenOpened.any { it.contains("task_surface_scope=self_app") })
+
+        // Root 只读检查：没有终端/文件工具在场时它是空承诺；有终端才给。
+        assertFalse(contents(rootAvailable = true).any { it.contains("相关应用私有文件与数据库") })
+        val rootWithShell = contents(
+            terminalTools = true,
+            rootAvailable = true,
+            opened = setOf(AgentToolGroups.TERMINAL_GROUP.id),
+        )
+        assertTrue(rootWithShell.any { it.contains("相关应用私有文件与数据库") })
+        // 没有 Root 时的否定说法始终在场，与终端组无关：那是不许绕路的约束。
+        assertTrue(contents(rootAvailable = false).any { it.contains("不要尝试 su") })
+
+        // 习惯分析：跟着个人数据组走。
+        assertFalse(contents().any { it.contains("不根据零散记录断言用户的性格") })
+        val personal = contents(
+            personalTools = true,
+            opened = setOf(AgentToolGroups.PERSONAL_GROUP.id),
+        )
+        assertTrue(personal.any { it.contains("不根据零散记录断言用户的性格") })
+    }
+
+    @Test
     fun messagesKeepSystemHistoryAndCurrentImageInputInStableOrder() {
         val image = AgentModelClient.ModelImage(
             reference = "data:image/png;base64,AA==",
@@ -249,24 +294,21 @@ class AgentPromptBuilderTest {
 
     @Test
     fun delegationRuleIsASeparateMessageAheadOfOperationalGuidance() {
-        val without = AgentPromptBuilder.buildSystemMessages(
+        fun systems(delegation: Boolean, engaged: Boolean) = AgentPromptBuilder.buildSystemMessages(
             config = modelConfig("", terminalTools = true, browserTools = false),
             skillContext = SkillContext.EMPTY,
             memoryContext = AgentMemoryContext.DISABLED,
             rootAvailable = false,
-            delegationAvailable = false,
+            delegationAvailable = delegation,
+            delegationEngaged = engaged,
             openedToolGroups = AgentToolGroups.allIds,
         )
+        val without = systems(delegation = false, engaged = false)
         assertFalse(without.systemContents().any { it.contains("本轮已公开子代理") })
+        // 结果解读规则跟着委派走：没有子代理时它一条也不该出现，即使 engaged 被误置为 true。
+        assertEquals(without.length(), systems(delegation = false, engaged = true).length())
 
-        val messages = AgentPromptBuilder.buildSystemMessages(
-            config = modelConfig("", terminalTools = true, browserTools = false),
-            skillContext = SkillContext.EMPTY,
-            memoryContext = AgentMemoryContext.DISABLED,
-            rootAvailable = false,
-            delegationAvailable = true,
-            openedToolGroups = AgentToolGroups.allIds,
-        )
+        val messages = systems(delegation = true, engaged = false)
         val contents = messages.systemContents()
         val delegationAt = contents.indexOfFirst { it.contains("本轮已公开子代理") }
         val screenAt = contents.indexOfFirst { it.contains("需要看屏幕时") }
@@ -275,17 +317,27 @@ class AgentPromptBuilderTest {
         assertTrue(rule.contains("不能据此把源码阅读也留在主代理"))
         assertTrue(rule.contains("多文件调查不是琐碎任务"))
         assertTrue(rule.contains("必须在同一轮并行调用 delegate_task"))
-        assertTrue(rule.contains("已经派出的子任务默认继续在后台执行"))
-        assertTrue(rule.contains("不会自动恢复此前已经暂停的任务"))
-        assertTrue(rule.contains("不改变显式暂停、停止、取消及失败的既有处理"))
-        assertTrue(rule.contains("无需仅为保持子任务运行而等待所有结果或持续轮询"))
-        assertTrue(rule.contains("不得宣称已完成或已验收"))
-        assertTrue(rule.contains("凡依赖子任务结果的结论，仍必须取回结果并核对证据"))
-        assertFalse(without.systemContents().any { it.contains("默认继续在后台执行") })
         assertFalse(rule.contains("需要看屏幕时"))
         assertEquals(without.length() + 1, messages.length())
         assertTrue(contents.any { it.contains("不要用本条终端要求") })
         assertFalse(contents.any { it.contains("默认优先并行委派多个") })
+
+        // 派发之前不付「结果解读」的 token：后台继续语义、分页、验收与错误码一条都不进前缀。
+        for (clause in RESULT_RULE_PROBES) {
+            assertFalse("派发前不该出现：$clause", contents.any { it.contains(clause) })
+        }
+
+        val engagedMessages = systems(delegation = true, engaged = true)
+        assertEquals(messages.length() + 1, engagedMessages.length())
+        val engagedContents = engagedMessages.systemContents()
+        val resultAt = engagedContents.indexOfFirst { it.contains("已经派出的子代理适用以下结果规则") }
+        assertEquals(delegationAt + 1, resultAt)
+        val resultRule = engagedContents[resultAt]
+        RESULT_RULE_PROBES.forEach { assertTrue("结果规则缺：$it", resultRule.contains(it)) }
+        // 调度规则本身不因派发而改变，否则前缀会每轮漂移、prompt 缓存全部失效。
+        assertEquals(rule, engagedContents[delegationAt])
+        assertFalse(resultRule.contains("本轮已公开子代理"))
+        assertTrue(engagedContents.indexOfFirst { it.contains("需要看屏幕时") } > resultAt)
     }
 
     @Test
@@ -378,6 +430,23 @@ class AgentPromptBuilderTest {
         assertTrue(memory.contains("用户以前偏好中文"))
         assertEquals("现在改用英文回答", messages.getJSONObject(messages.length() - 1).getString("content"))
     }
+
+    /**
+     * 只有真的派发过子任务之后才进前缀的结果解读规则。挑这几句是因为它们各自代表一类：
+     * 后台继续语义、显式暂停不被覆盖、不许把「派发成功」当完成、分页取回、completed 的验收要求、
+     * 以及供应商不可用错误码。它们全都不该在第一次 delegate_task 之前出现。
+     */
+    private val RESULT_RULE_PROBES = listOf(
+        "已经派出的子任务默认继续在后台执行",
+        "不会自动恢复此前已经暂停的任务",
+        "不改变显式暂停、停止、取消及失败的既有处理",
+        "无需仅为保持子任务运行而等待所有结果或持续轮询",
+        "不得宣称已完成或已验收",
+        "凡依赖子任务结果的结论，仍必须取回结果并核对证据",
+        "get_task_result 运行中默认只返回状态进度",
+        "completed 仅表示子任务执行结束",
+        "SUB_AGENT_PROVIDER_UNAVAILABLE",
+    )
 
     private fun modelConfig(
         systemPrompt: String,

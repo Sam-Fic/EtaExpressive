@@ -26,10 +26,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         McpServerEntity::class,
         MediaIndexEntity::class,
         MediaSourceEntity::class,
-        AgentScheduleEntity::class,
-        AgentAlarmEntity::class,
     ],
-    version = 37,
+    version = 38,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -39,8 +37,6 @@ internal abstract class EtaDatabase : RoomDatabase() {
     abstract fun skillDao(): SkillDao
     abstract fun mcpServerDao(): McpServerDao
     abstract fun mediaIndexDao(): MediaIndexDao
-    abstract fun agentScheduleDao(): AgentScheduleDao
-    abstract fun agentAlarmDao(): AgentAlarmDao
 
     companion object {
         @Volatile
@@ -85,6 +81,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_34_35,
                         MIGRATION_35_36,
                         MIGRATION_36_37,
+                        MIGRATION_37_38,
                     )
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
@@ -301,6 +298,12 @@ internal abstract class EtaDatabase : RoomDatabase() {
                     "created_at INTEGER NOT NULL, " +
                     "updated_at INTEGER NOT NULL)"
             )
+        }
+
+        // Eta 私有日程/闹钟已下线：日程与闹钟一律走系统应用，这里删除仅存于 Eta 的两张表。
+        internal val MIGRATION_37_38 = Migration(37, 38) { database ->
+            database.execSQL("DROP TABLE IF EXISTS agent_schedules")
+            database.execSQL("DROP TABLE IF EXISTS agent_alarms")
         }
 
         internal val MIGRATION_30_31 = Migration(30, 31) { database ->

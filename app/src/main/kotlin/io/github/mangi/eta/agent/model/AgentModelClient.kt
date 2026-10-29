@@ -135,6 +135,16 @@ internal object AgentModelClient {
                 { (durable, _) -> durable })
         }.getOrNull()
         val delegationAvailable = AgentPromptBuilder.delegationToolsAvailable(additionalTools)
+        // 委派的「结果解读规则」只在真的派发过之后才付 token：本 run 执行到 delegate_task 就翻开。
+        // 续跑的会话要从历史里认出来，否则恢复后的第一轮会缺规则，而子任务可能正在后台跑。
+        // 工具可能并发执行，用 AtomicBoolean 保证下一轮重建前缀时看得见。
+        val delegationEngaged = java.util.concurrent.atomic.AtomicBoolean(
+            outboundHistory.any { it.toolCallsJson.contains(DELEGATE_TASK_CALL_MARKER) },
+        )
+        val observingToolExecutor = ToolExecutor { call ->
+            if (call.name == DELEGATE_TASK_NAME) delegationEngaged.set(true)
+            toolExecutor.execute(call)
+        }
         // 只在此处（真实主 run）从 Prefs 捕获；子代理/压缩模型不会走到这里，
         // 因此不会因为最小配置而误报「用户关闭了终端」。
         val capabilitySwitches = ToolCapabilitySwitches.capture()
@@ -153,6 +163,7 @@ internal object AgentModelClient {
             disabledCapabilities = capabilitySwitches.toDisabledState(),
             // 首轮通常还没有打开任何延迟组；仍走同一个 provider，保证提示与目录同源。
             openedToolGroups = openedToolGroupsProvider(),
+            delegationEngaged = delegationEngaged.get(),
             onSystemCount = { systemCount = it },
         )
         var transcriptStartIndex = messages.length()
@@ -216,7 +227,7 @@ internal object AgentModelClient {
             messages = messages,
             tools = tools,
             provider = provider,
-            toolExecutor = toolExecutor,
+            toolExecutor = observingToolExecutor,
             runController = runController,
             traceFormatter = traceFormatter,
             onEvent = onEvent,
@@ -257,6 +268,7 @@ internal object AgentModelClient {
                         memoryRevision = nextMemoryContext.revision,
                         memoryEnabled = nextMemoryContext.enabled,
                         delegationAvailable = delegationAvailable,
+                        delegationEngaged = delegationEngaged.get(),
                         interactiveModeEnabled = interactiveModeEnabled,
                         openedToolGroups = openedToolGroupsProvider(),
                         // 用户可能在两轮之间改开关：签名必须覆盖它，否则目录与系统提示不会刷新。
@@ -270,6 +282,8 @@ internal object AgentModelClient {
                             capabilities.shellTools,
                             interactiveModeEnabled = interactiveModeEnabled,
                             openedToolGroups = openedToolGroupsProvider(),
+                            // 本轮之前是否已经派发过子任务：决定结果解读规则是否进前缀。
+                            delegationEngaged = delegationEngaged.get(),
                             // 每轮重新捕获：用户可能在两轮之间改了开关。
                             disabledCapabilities = ToolCapabilitySwitches
                                 .capture().toDisabledState(),
@@ -453,6 +467,8 @@ internal object AgentModelClient {
         val memoryRevision: String,
         val memoryEnabled: Boolean,
         val delegationAvailable: Boolean,
+        /** 本 run 是否已派发过子任务；翻开后系统前缀多一条结果解读规则，必须参与重建判定。 */
+        val delegationEngaged: Boolean = false,
         val interactiveModeEnabled: Boolean,
         val openedToolGroups: Set<String> = emptySet(),
         /** 决定域可用性的 Prefs 开关；运行中改开关必须让目录与提示重新生成。 */
@@ -618,3 +634,8 @@ internal class AgentModelExecutionException(
     val reasoningContent: String,
     val transcript: List<AgentModelClient.ConversationMessage>,
 ) : RuntimeException(cause.message ?: cause.javaClass.simpleName, cause)
+
+private const val DELEGATE_TASK_NAME = "delegate_task"
+
+/** 历史里的 tool_calls JSON 片段；用来在续跑的会话上认出「已经派发过」。 */
+private const val DELEGATE_TASK_CALL_MARKER = "\"$DELEGATE_TASK_NAME\""

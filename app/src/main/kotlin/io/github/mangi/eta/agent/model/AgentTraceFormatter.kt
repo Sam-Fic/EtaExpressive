@@ -820,8 +820,6 @@ internal class AgentTraceFormatter(
 
         /** 结构化设备工具只展示动作标签，不暴露任何参数。 */
         val DEVICE_ACTION_LABELS: Map<String, Pair<Int, String>> = mapOf(
-            "schedule_manage" to (R.string.trace_dev_schedule_manage to "日程管理"),
-            "alarm_manage" to (R.string.trace_dev_alarm_manage to "闹钟管理"),
             "set_timer" to (R.string.trace_dev_set_timer to "设置计时器"),
             "delete_alarm" to (R.string.trace_dev_delete_alarm to "删除闹钟"),
             "update_alarm" to (R.string.trace_dev_update_alarm to "修改闹钟"),

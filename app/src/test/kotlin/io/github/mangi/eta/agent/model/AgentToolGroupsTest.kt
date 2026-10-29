@@ -105,6 +105,18 @@ class AgentToolGroupsTest {
         assertEquals(null, AgentToolGroups.indexMessage(AgentToolGroups.availability(AgentToolGroups.allIds) { true }))
     }
 
+    @Test fun indexLineCarriesOnlyTheIdAndWhatTheGroupContains() {
+        val index = requireNotNull(AgentToolGroups.indexMessage(AgentToolGroups.availability(emptySet()) { true }))
+        // 「何时才该打开」由表头和结尾各说一次；逐行重复的 title 与 “Open when …” 尾巴
+        // 只是把省下来的 schema token 又还回去。
+        assertFalse("索引行不该再带 title=", index.contains("title="))
+        assertFalse("索引行不该再逐组重复开启条件", index.contains("Open when"))
+        AgentToolGroups.deferredGroups.forEach { group ->
+            assertTrue("索引行应正好是 id + 摘要：${group.id}", index.contains("- id=${group.id} | ${group.summary}"))
+        }
+        assertEquals(AgentToolGroups.deferredGroups.size, index.lines().count { it.startsWith("- id=") })
+    }
+
     @Test fun openingNeverWidensPermissions() {
         // 打开组只是让 schema 进入目录；能力过滤仍在同一处生效，因此无 Root 时
         // 组内工具不会因为「被打开」而绕过 ROOT_REQUIRED 之类的判定。

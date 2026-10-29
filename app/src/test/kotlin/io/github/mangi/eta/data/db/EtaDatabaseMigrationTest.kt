@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -75,6 +76,7 @@ class EtaDatabaseMigrationTest {
                 EtaDatabase.MIGRATION_34_35,
                 EtaDatabase.MIGRATION_35_36,
                 EtaDatabase.MIGRATION_36_37,
+                EtaDatabase.MIGRATION_37_38,
             )
             .build()
         } catch (error: Throwable) {
@@ -102,7 +104,7 @@ class EtaDatabaseMigrationTest {
                 database.conversationDao().contextCheckpoint("conv-1")
             }
             assertEquals("", retainedCheckpoint?.cloudUsageJson)
-            assertEquals(37, database.openHelper.readableDatabase.version)
+            assertEquals(38, database.openHelper.readableDatabase.version)
             assertTrue(conversations.none { it.hasCompletionMarker })
             val oversizedCheckpoint = runBlocking(Dispatchers.IO) {
                 database.conversationDao().contextCheckpoint("conv-oversized")
@@ -523,10 +525,10 @@ class EtaDatabaseMigrationTest {
                     EtaDatabase.MIGRATION_30_31, EtaDatabase.MIGRATION_31_32,
                     EtaDatabase.MIGRATION_32_33, EtaDatabase.MIGRATION_33_34,
                     EtaDatabase.MIGRATION_34_35, EtaDatabase.MIGRATION_35_36,
-                    EtaDatabase.MIGRATION_36_37)
+                    EtaDatabase.MIGRATION_36_37, EtaDatabase.MIGRATION_37_38)
                 .build()
             try {
-                assertEquals(37, database.openHelper.writableDatabase.version)
+                assertEquals(38, database.openHelper.writableDatabase.version)
                 runBlocking(Dispatchers.IO) {
                     val result = database.runtimeRunDao().runtimeResults().single()
                     val archive = database.runtimeRunDao().archivedRunHeaders().single()
@@ -544,6 +546,42 @@ class EtaDatabaseMigrationTest {
             context.deleteDatabase(name)
         }
     }
+
+    @Test
+    fun migration37To38DropsTheEtaPrivateScheduleAndAlarmTables() {
+        val context = RuntimeEnvironment.getApplication() as Context
+        val name = "migration-37-38-${UUID.randomUUID()}.db"
+        try {
+            val helper = FrameworkSQLiteOpenHelperFactory().create(
+                SupportSQLiteOpenHelper.Configuration.builder(context).name(name)
+                    .callback(object : SupportSQLiteOpenHelper.Callback(37) {
+                        override fun onCreate(db: SupportSQLiteDatabase) {
+                            db.execSQL("CREATE TABLE agent_schedules (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)")
+                            db.execSQL("CREATE TABLE agent_alarms (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)")
+                        }
+
+                        override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                    }).build(),
+            )
+            try {
+                val db = helper.writableDatabase
+                assertTrue(tableExists(db, "agent_schedules"))
+                assertTrue(tableExists(db, "agent_alarms"))
+                EtaDatabase.MIGRATION_37_38.migrate(db)
+                assertFalse(tableExists(db, "agent_schedules"))
+                assertFalse(tableExists(db, "agent_alarms"))
+            } finally {
+                helper.close()
+            }
+        } finally {
+            context.deleteDatabase(name)
+        }
+    }
+
+    private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean =
+        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name=?", arrayOf<Any>(table)).use { cursor ->
+            cursor.moveToFirst()
+        }
 
     private fun createVersion6Database(
         context: Context,

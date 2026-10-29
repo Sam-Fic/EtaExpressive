@@ -611,13 +611,6 @@
   <string name="tool_memory_get">讀取記憶</string>
   <string name="tool_memory_write">整理記憶</string>
   <string name="tool_set_alarm">設定鬧鐘</string>
-  <string name="tool_alarm_manage">管理鬧鐘</string>
-  <string name="agent_schedule_channel_reminder">日程提醒</string>
-  <string name="agent_schedule_channel_reminder_desc">Agent 建立的日程到點提醒</string>
-  <string name="agent_schedule_channel_alarm">Agent 鬧鐘</string>
-  <string name="agent_schedule_channel_alarm_desc">Agent 建立的鬧鐘</string>
-  <string name="agent_schedule_default_alarm_title">鬧鐘</string>
-  <string name="tool_schedule_manage">管理日程</string>
   <string name="tool_set_timer">設定計時器</string>
   <string name="tool_delete_alarm">刪除鬧鐘</string>
   <string name="tool_update_alarm">修改鬧鐘</string>
@@ -1252,10 +1245,6 @@
   <string name="tool_ui_delete_alarm_summary">依 id、時間或標籤刪除系統時鐘裡的鬧鐘。</string>
   <string name="tool_ui_update_alarm">修改鬧鐘</string>
   <string name="tool_ui_update_alarm_summary">開關已有鬧鐘，或修改它的時間、標籤與振動。</string>
-  <string name="tool_ui_alarm_manage_f1a2b3">鬧鐘管理</string>
-  <string name="tool_ui_schedule_manage_a7b8c9">日程管理</string>
-  <string name="tool_ui_create_list_modify_and_delete_eta_alarms_with_exact_ringin_c4d5e6">建立、列出、修改、刪除 Eta 鬧鐘，到點精確響鈴。</string>
-  <string name="tool_ui_manage_schedules_with_advance_reminders_create_upd_d0e1f2">管理帶提前提醒的日程；建立、修改、刪除與列出。</string>
   <string name="tool_ui_set_volume_85a691">設定音量</string>
   <string name="tool_ui_text_to_speech">語音朗讀</string>
   <string name="tool_ui_text_to_speech_summary">用已設定的朗讀引擎把文字說出來。</string>
@@ -2683,8 +2672,6 @@
   <item quantity="other">%1$d 毫秒</item>
   </plurals>
 
-  <string name="trace_dev_alarm_manage">鬧鐘管理</string>
-  <string name="trace_dev_schedule_manage">日程管理</string>
   <string name="trace_dev_set_timer">設定計時器</string>
   <string name="trace_dev_delete_alarm">刪除鬧鐘</string>
   <string name="trace_dev_update_alarm">修改鬧鐘</string>

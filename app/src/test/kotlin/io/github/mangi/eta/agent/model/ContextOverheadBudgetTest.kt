@@ -99,23 +99,28 @@ class ContextOverheadBudgetTest {
 
     @Test
     fun screenOffKeepsTheDisabledPrefixUnderBudget() {
-        // 实测 6179（system 4561 + tools 1618 / 9 个工具）。
+        // 上一次实测 4809（system 3191 + tools 1618 / 9 个工具）。
+        // 之后系统提示正文压了一轮：委派结果规则改为派发后才下发（−750），Root 只读检查、
+        // 副屏交接、习惯分析三条指引改为跟随各自组（此配置下全部不在场，−621），
+        // 并删掉一句与「能由上下文合理推断」重复的话。tools 未变，故上界从 5000 收到 3900。
         val screenOff = measure(allOff, withDisabledNotice = true)
-        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 6_500)
+        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 3_900)
     }
 
     @Test
     fun enabledCapabilitiesCostNothingUntilTheirGroupIsOpened() {
         // 开关全开但一个组都没打开：第一轮只付基础交互 + 一行索引。
         // 这正是「除基础交互外全延迟」要买到的东西——成本跟着需要走，不跟着开关走。
-        // 实测 6284（system 4437 + tools 1847 / 11 个工具）；同一份配置全部打开是 40525。
+        // 上一次实测 4914（system 3067 + tools 1847 / 11 个工具）；同一份配置全部打开是 38998。
+        // 上面那一轮压缩在这里同样生效（终端组也没打开，Root 指引一并省掉），
+        // 另外延迟组索引去掉了 title= 字段并收紧了摘要：422 → 300。
         val resident = measure(allOn, extensionsTools = true, personalTools = true)
         assertTrue(
             "resident prefix grew to ${resident}",
-            resident.total <= 6_600,
+            resident.total <= 3_700,
         )
-        // 常驻开销里系统提示占七成：它才是下一个要压的对象，单独钉一条上界。
-        assertTrue("resident system prompt grew to ${resident.system}", resident.system <= 4_800)
+        // 常驻开销里系统提示占大头，单独钉一条上界：它是唯一每轮必付、且与任务无关的部分。
+        assertTrue("resident system prompt grew to ${resident.system}", resident.system <= 1_700)
         val screenOpened = measure(
             allOn,
             extensionsTools = true,
@@ -125,6 +130,12 @@ class ContextOverheadBudgetTest {
         assertTrue(
             "打开屏幕组应真的花掉 GUI 的钱：resident=${resident.total} opened=${screenOpened.total}",
             screenOpened.total - resident.total > 3_000,
+        )
+        // 打开屏幕组还会把副屏交接规则带进前缀：它每条指令都点名屏幕组工具，
+        // 组没打开时留着只是白付 token（见 AgentPromptBuilder 里对 screenActive 的门禁）。
+        assertTrue(
+            "屏幕组打开后应带上交接规则：resident=${resident.system} opened=${screenOpened.system}",
+            screenOpened.system > resident.system,
         )
     }
 
@@ -141,7 +152,10 @@ class ContextOverheadBudgetTest {
     @Test
     fun allCapabilitiesStayWithinTheDocumentedCeiling() {
         // 上界：所有开关打开、所有组都被模型打开、并带上关闭说明——最坏的一轮。
-        // 实测 40525（system 9580 + tools 30945 / 152 个工具）。
+        // 上一次实测 38998（system 8837 + tools 30161 / 150 个工具）。
+        // 这一轮所有组都在场，所以按组门禁的三条指引照旧付费，省下的只有委派结果规则
+        // （本 run 尚未派发，−750）、重复的一句细节处理、以及 personalTools=false 时的习惯分析句。
+        // 换句话说：最坏一轮的天花板几乎没动，压的是**第一轮**和**用不到的组**。
         val allOpened = measure(
             allOn,
             extensionsTools = true,
@@ -149,6 +163,29 @@ class ContextOverheadBudgetTest {
             withDisabledNotice = true,
             openedToolGroups = AgentToolGroups.allIds,
         )
-        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 42_000)
+        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 39_200)
+    }
+
+    @Test
+    fun delegationResultRulesAreNotPaidBeforeTheFirstDispatch() {
+        // 委派规则拆成两半：调度规则常驻，结果解读规则等本 run 真的派出过子任务才进前缀。
+        // 差值就是那半条规则的钱——它是常驻系统提示里最大的一块，之前每一轮都白付。
+        val before = measure(allOn, extensionsTools = true, personalTools = true)
+        val after = AgentPromptBuilder.buildSystemMessages(
+            config = allOn,
+            skillContext = SkillContext.EMPTY,
+            memoryContext = AgentMemoryContext.DISABLED,
+            rootAvailable = true,
+            delegationAvailable = true,
+            delegationEngaged = true,
+        ).let { messages ->
+            (0 until messages.length()).sumOf { index ->
+                AgentContextBudget.countTokens(messages.getJSONObject(index).optString("content"))
+            }
+        }
+        assertTrue(
+            "派发后才该多付结果规则：before=${before.system} after=$after",
+            after - before.system in 500..1_200,
+        )
     }
 }

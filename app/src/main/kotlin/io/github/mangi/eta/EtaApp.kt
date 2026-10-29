@@ -69,6 +69,7 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
     override fun onCreate() {
         super.onCreate()
         Prefs.initLocal(this)
+        io.github.mangi.eta.agent.tool.RetiredScheduleChannels.cleanup(this)
         io.github.mangi.eta.ui.haptics.AppForeground.install(this)
         if (!AppProcessPolicy.shouldInitializeFullRuntime(Application.getProcessName(), packageName)) {
             return

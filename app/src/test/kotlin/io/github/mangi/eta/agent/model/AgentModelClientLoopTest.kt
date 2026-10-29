@@ -202,12 +202,12 @@ class AgentModelClientLoopTest {
         val opened = mutableSetOf<String>()
         val provider = ScriptedProvider(listOf(
             { request, _ ->
-                assertFalse(request.messages.toString().contains("日程管理用 schedule_manage"))
+                assertFalse(request.messages.toString().contains("日程与闹钟一律用系统那套"))
                 assistant(finishReason = "tool_calls",
                     toolCalls = listOf(toolCall("call-1", "get_current_context", "{}")))
             },
             { request, _ ->
-                assertTrue(request.messages.toString().contains("日程管理用 schedule_manage"))
+                assertTrue(request.messages.toString().contains("日程与闹钟一律用系统那套"))
                 assistant(content = "完成", finishReason = "stop")
             },
         ))

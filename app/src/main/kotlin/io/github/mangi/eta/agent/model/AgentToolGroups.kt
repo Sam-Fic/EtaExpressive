@@ -22,10 +22,11 @@ internal object AgentToolGroups {
      * 基础交互：对话基础设施，唯一常驻组。成员各自还有能力门禁
      * （委派看子代理开关、记忆看助手记忆开关、技能看 Skills 启用状态），
      * 组开关只决定「用户是否允许这一层」。
+     *
+     * summary 不参与提示：[indexMessage] 只枚举未打开的延迟组，常驻组没有索引行。
      */
     val BASIC_GROUP: AgentToolGroup = AgentToolGroup(
         id = "basic",
-        title = "Core interaction",
         summary = "Ask the user, current context, app search/launch, speech, core memory and " +
             "skills reading, sub-agent delegation.",
         toolNames = setOf(
@@ -41,9 +42,8 @@ internal object AgentToolGroups {
     /** 屏幕观察与 GUI 操作；含虚拟显示会话工具。 */
     val SCREEN_GROUP: AgentToolGroup = AgentToolGroup(
         id = "screen",
-        title = "Screen & GUI",
-        summary = "Observe the screen and operate the GUI: taps, swipes, text input, clipboard, " +
-            "waits and virtual-display sessions. Open when the task needs the visible UI.",
+        summary = "Screen observation and GUI operation: taps, swipes, text input, clipboard, " +
+            "waits, virtual-display sessions.",
         toolNames = setOf(
             "observe_screen",
             "tap", "tap_area", "tap_element", "long_press", "long_press_element",
@@ -59,19 +59,16 @@ internal object AgentToolGroups {
     /** 网页浏览：离屏浏览器、静态抓取与本地搜索。 */
     val WEB_GROUP: AgentToolGroup = AgentToolGroup(
         id = "web",
-        title = "Web browsing",
-        summary = "Offscreen multi-tab browser (JS, login, screenshots), static fetch_url and " +
-            "local web_search. Open for any web task.",
+        summary = "Offscreen multi-tab browser (JS, login, screenshots), static fetch_url, " +
+            "local web_search.",
         toolNames = setOf("browser_use", "fetch_url", "web_search"),
     )
 
     /** 终端与文件：Android/Linux 命令、文件读写与图片/视频帧读取。shell 是组内子开关。 */
     val TERMINAL_GROUP: AgentToolGroup = AgentToolGroup(
         id = "terminal",
-        title = "Terminal & files",
-        summary = "Shell sessions on Android and the Linux environment, file read/write/edit/" +
-            "grep/glob, and read_image for pictures and video frames. Open for command, " +
-            "development or file tasks.",
+        summary = "Shell sessions on Android and in the Linux environment, file read/write/edit/" +
+            "grep/glob, read_image for pictures and video frames.",
         toolNames = setOf(
             "terminal", "run_command",
             "read_file", "write_file", "list_directory", "stat_file", "edit_file",
@@ -82,7 +79,7 @@ internal object AgentToolGroups {
 
     /** 设备直达子集；迁移与确认策略仍需要区分写操作。 */
     val DEVICE_DIRECT_NAMES: Set<String> = setOf(
-        "inspect_app", "set_alarm", "schedule_manage", "alarm_manage", "set_timer",
+        "inspect_app", "set_alarm", "set_timer",
         "media_control", "set_volume", "set_ringer_mode", "set_sound_mode",
         "device_status", "network_info", "top_memory_apps", "top_storage_apps",
     )
@@ -94,10 +91,8 @@ internal object AgentToolGroups {
      */
     val DEVICE_GROUP: AgentToolGroup = AgentToolGroup(
         id = "device",
-        title = "Device control",
-        summary = "Alarms, timers, volume, media playback, app inspection, plus device writes: " +
-            "settings, network, power, display, packages, users, calendar events and notes. " +
-            "Open when the user asks about or wants to change device state.",
+        summary = "Alarms, timers, volume, media playback, app inspection, and device writes: " +
+            "settings, network, power, display, packages, users, calendar events, notes.",
         toolNames = DEVICE_DIRECT_NAMES + AgentDeviceToolCatalog.sensitiveActionToolNames(),
     )
 
@@ -108,10 +103,9 @@ internal object AgentToolGroups {
      */
     val PERSONAL_GROUP: AgentToolGroup = AgentToolGroup(
         id = "personal",
-        title = "Personal data",
-        summary = "Read personal content (contacts, messages, calls, calendars, notes, bills, " +
-            "trips, recordings, files) and device state (settings, alarms, location, app usage), " +
-            "plus semantic media search. Open when the task involves the user's own data.",
+        summary = "Personal content (contacts, messages, calls, calendars, notes, bills, trips, " +
+            "recordings, files), device state (settings, alarms, location, app usage), " +
+            "semantic media search.",
         toolNames = AgentDeviceToolCatalog.personalReadToolNames() +
             AgentDeviceToolCatalog.deviceStateReadToolNames() +
             setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA),
@@ -123,10 +117,8 @@ internal object AgentToolGroups {
      */
     val EXTENSIONS_GROUP: AgentToolGroup = AgentToolGroup(
         id = "extensions",
-        title = "Eta configuration & extensions",
         summary = "Manage Eta itself (models, sub-agents, history, MCP, settings), author recipe " +
-            "tools, discover/install Skills from GitHub or local packages, and write long-term " +
-            "memory. Open for self-configuration or extension management tasks.",
+            "tools, discover/install Skills from GitHub or local packages, write long-term memory.",
         toolNames = AgentSelfSettingsToolCatalog.manageTools() + setOf(
             AgentSelfSettingsToolCatalog.GET_SETTINGS,
             AgentSelfSettingsToolCatalog.SET_SETTINGS,
@@ -287,9 +279,11 @@ internal object AgentToolGroups {
     }
 
     /**
-     * `tools_use_group` 的系统消息索引：每个可打开的组一行，说明它何时值得打开。
+     * `tools_use_group` 的系统消息索引：每个可打开的组一行，说明它装了什么。
      * 索引本身很短，替代的是整组 schema。
      * 只宣传 [Availability.openable] 里的组——开关关闭的组不该出现在提示里。
+     *
+     * 「何时才该打开」由表头和结尾各说一次，不再逐组重复；每行只留组 id 与内容摘要。
      */
     fun indexMessage(availability: Availability): String? {
         val available = groups.filter { it.id in availability.openable }
@@ -297,12 +291,12 @@ internal object AgentToolGroups {
         return buildString {
             appendLine("Deferred tool groups (schema not loaded yet; open one only when the task needs it):")
             available.forEach { group ->
-                appendLine("- id=${group.id} | title=${group.title} | ${group.summary}")
+                appendLine("- id=${group.id} | ${group.summary}")
             }
             append(
-                "These tools are NOT in your tool list yet. When the task genuinely needs one, call " +
-                    "tools_use_group with its id; the group's tools appear from the next round onward. " +
-                    "Do not call them before opening, and do not open a group you do not need.",
+                "None of these tools are in your tool list yet. Call tools_use_group with an id to " +
+                    "load it; its tools appear from the next round onward. Never call them before " +
+                    "opening, and do not open a group you do not need.",
             )
         }
     }
@@ -319,9 +313,12 @@ internal object AgentToolGroups {
     }
 }
 
+/**
+ * 一个工具组的定义。[summary] 只面向模型（[AgentToolGroups.indexMessage] 的一行索引）；
+ * 设置页的组名走 strings 资源，不在这里。
+ */
 internal data class AgentToolGroup(
     val id: String,
-    val title: String,
     val summary: String,
     val toolNames: Set<String>,
     val deferredByDefault: Boolean = true,

@@ -114,8 +114,11 @@ class AgentInteractiveModePromptTest {
             val provider = CapturingProvider()
             val executed = mutableListOf<String>()
             val result = AgentModelClient.complete(
-                config = config(), prompt = "complete task", provider = provider,
+                // Root 那条指引现在跟着终端组走：没有 shell/文件工具在场时它无从执行，
+                // 因此不会进前缀。这里要观察「提示随能力快照每轮重建」，就得让终端组真的打开。
+                config = config().copy(terminalTools = true), prompt = "complete task", provider = provider,
                 interactiveModeEnabled = selectedMode,
+                openedToolGroupsProvider = { setOf(AgentToolGroups.TERMINAL_GROUP.id) },
                 capabilitiesProvider = {
                     captures++
                     AgentToolCapabilities(rootAvailable = rootAvailable)
@@ -140,9 +143,9 @@ class AgentInteractiveModePromptTest {
                 assertFalse(guidance.contains(if (enabled) "交互模式已关闭" else "交互模式已开启"))
                 assertQuestionDiscipline(guidance)
                 assertEquals(round != 1, guidance.contains("相关应用私有文件与数据库"))
-                // 基础/记忆/Skills/延迟组索引各一条，再加一条「已关闭能力」说明：
+                // 基础/终端指引/记忆/Skills/延迟组索引各一条，再加一条「已关闭能力」说明：
                 // 媒体语义搜索的 Prefs 默认值是 false，纯 JVM 测试里它总是被如实报为已关闭。
-                assertEquals(5, messages.systemContents().size)
+                assertEquals(6, messages.systemContents().size)
             }
             provider.tools.forEach { assertTrue(it.toolNames().contains("ask_user")) }
             catalogs[enabled] = provider.tools.map { it.toString() }

@@ -7912,8 +7912,6 @@ private fun toolItemCatalog(context: Context): List<ToolItemUi> = listOf(
         ToolItemUi("glob_files", context.getString(R.string.tool_ui_glob_files), context.getString(R.string.tool_ui_glob_files_summary)),
         ToolItemUi("grep_files", context.getString(R.string.tool_ui_grep_files), context.getString(R.string.tool_ui_grep_files_summary)),
     // ── device ──
-        ToolItemUi("alarm_manage", context.getString(R.string.tool_ui_alarm_manage_f1a2b3), context.getString(R.string.tool_ui_create_list_modify_and_delete_eta_alarms_with_exact_ringin_c4d5e6)),
-        ToolItemUi("schedule_manage", context.getString(R.string.tool_ui_schedule_manage_a7b8c9), context.getString(R.string.tool_ui_manage_schedules_with_advance_reminders_create_upd_d0e1f2)),
         ToolItemUi("set_timer", context.getString(R.string.tool_ui_set_timer_aee60c), context.getString(R.string.tool_ui_directly_create_system_timers_up_to_24_hours_87c476)),
         ToolItemUi("delete_alarm", context.getString(R.string.tool_ui_delete_alarm), context.getString(R.string.tool_ui_delete_alarm_summary)),
         ToolItemUi("update_alarm", context.getString(R.string.tool_ui_update_alarm), context.getString(R.string.tool_ui_update_alarm_summary)),

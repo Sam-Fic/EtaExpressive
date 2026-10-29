@@ -599,13 +599,6 @@
   <string name="tool_memory_get">Read memory</string>
   <string name="tool_memory_write">Update memory</string>
   <string name="tool_set_alarm">Set alarm</string>
-  <string name="tool_alarm_manage">Manage alarm</string>
-  <string name="agent_schedule_channel_reminder">Schedule reminders</string>
-  <string name="agent_schedule_channel_reminder_desc">Reminders for schedules created by the agent</string>
-  <string name="agent_schedule_channel_alarm">Agent alarms</string>
-  <string name="agent_schedule_channel_alarm_desc">Alarms created by the agent</string>
-  <string name="agent_schedule_default_alarm_title">Alarm</string>
-  <string name="tool_schedule_manage">Manage schedule</string>
   <string name="tool_set_timer">Set timer</string>
   <string name="tool_delete_alarm">Delete alarm</string>
   <string name="tool_update_alarm">Modify alarm</string>
@@ -1224,10 +1217,6 @@
   <string name="tool_ui_delete_alarm_summary">Delete an alarm from the system clock by id, time or label.</string>
   <string name="tool_ui_update_alarm">Modify alarm</string>
   <string name="tool_ui_update_alarm_summary">Turn an existing alarm on or off, or change its time, label or vibration.</string>
-  <string name="tool_ui_alarm_manage_f1a2b3">Alarm manage</string>
-  <string name="tool_ui_schedule_manage_a7b8c9">Schedule manage</string>
-  <string name="tool_ui_create_list_modify_and_delete_eta_alarms_with_exact_ringin_c4d5e6">Create, list, modify and delete Eta alarms with exact ringing.</string>
-  <string name="tool_ui_manage_schedules_with_advance_reminders_create_upd_d0e1f2">Manage schedules with advance reminders; create, update, delete and list.</string>
   <string name="tool_ui_set_volume_85a691">Set volume</string>
   <string name="tool_ui_text_to_speech">Speak aloud</string>
   <string name="tool_ui_text_to_speech_summary">Have the assistant speak text with the configured TTS engine.</string>
@@ -2717,8 +2706,6 @@
   <item quantity="other">%1$d milliseconds</item>
   </plurals>
 
-  <string name="trace_dev_alarm_manage">Alarm manage</string>
-  <string name="trace_dev_schedule_manage">Schedule manage</string>
   <string name="trace_dev_set_timer">Set timer</string>
   <string name="trace_dev_delete_alarm">Delete alarm</string>
   <string name="trace_dev_update_alarm">Modify alarm</string>

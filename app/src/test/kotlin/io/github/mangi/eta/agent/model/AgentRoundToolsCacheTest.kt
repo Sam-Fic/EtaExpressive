@@ -88,9 +88,11 @@ class AgentRoundToolsCacheTest {
             skills: List<Pair<String, Boolean>> = listOf("a" to true),
             memoryRevision: String = "r1",
             memoryEnabled: Boolean = true,
+            delegationEngaged: Boolean = false,
         ) = AgentModelClient.RoundCapabilitySignature(
             capabilities = capabilities, skillIndex = skills, memoryRevision = memoryRevision,
-            memoryEnabled = memoryEnabled, delegationAvailable = false, interactiveModeEnabled = false,
+            memoryEnabled = memoryEnabled, delegationAvailable = false,
+            delegationEngaged = delegationEngaged, interactiveModeEnabled = false,
         )
 
         val base = signature()
@@ -105,5 +107,7 @@ class AgentRoundToolsCacheTest {
         assertTrue(base != signature(capabilities = AgentToolCapabilities(rootAvailable = true)))
         // 记忆开关影响 memory 工具是否下发。
         assertTrue(base != signature(memoryEnabled = false))
+        // 派发过子任务后系统前缀多一条结果解读规则，签名必须跟着变，否则那条规则永远进不来。
+        assertTrue(base != signature(delegationEngaged = true))
     }
 }
