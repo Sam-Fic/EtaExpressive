@@ -32,6 +32,10 @@ val LocalChatRouteCovered = compositionLocalOf { false }
  * 停稳且被盖住时聊天不再跟着流式正文排版；动画期间露出的部分仍要实时。
  */
 val LocalChatTransitionActive = compositionLocalOf { false }
+
+/** 只有停稳的覆盖才允许挂起 UI 时钟；推移、弹出、横滑返回过程中仍保持实时。 */
+internal fun isChatSettledCovered(routeCovered: Boolean, transitionActive: Boolean): Boolean =
+    routeCovered && !transitionActive
 /** 完成且不再逐帧变化的内容复用一张离屏纹理。层始终挂着，只切换合成策略，避免插入时重挂。 */
 @Composable
 internal fun completedContentDrawLayer(modifier: Modifier, enabled: Boolean): Modifier {

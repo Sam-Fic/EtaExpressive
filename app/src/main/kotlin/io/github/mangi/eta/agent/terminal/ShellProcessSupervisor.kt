@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.terminal
 import io.github.mangi.eta.agent.device.RootSu
 
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -50,20 +51,29 @@ internal class ShellProcessSupervisor(
         pty: Boolean = false,
         ptyCols: Int = DEFAULT_PTY_COLS,
         ptyRows: Int = DEFAULT_PTY_ROWS,
+        onStartFailure: (String) -> Unit = {},
     ): Process? {
-        if (isClosing) return null
+        val startNanos = System.nanoTime()
+        fun failed(stage: String, failure: Throwable? = null): Process? {
+            // 只上报受控的阶段名与异常类型，不含命令、令牌、路径或异常消息。
+            val summary = "stage=$stage" + (failure?.let { " type=${it.javaClass.simpleName}" } ?: "") +
+                " elapsedMs=${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)}"
+            runCatching { onStartFailure(summary) }
+            return null
+        }
+        if (isClosing) return failed("closing")
         require(identity == "root" || identity == "user") { "identity 仅支持 root/user" }
         require(!environment.isLinux || identity == "root" || LinuxEnvironmentPaths.backendOf(linuxRootfsPath) == LinuxExecutionBackend.PROOT) {
             "Linux 工具环境仅支持 root identity"
         }
-        if (environment.isLinux && identity == "root" && LinuxEnvironmentPaths.backendOf(linuxRootfsPath) == LinuxExecutionBackend.PROOT) return null
-        if (identity == "root" && !rootAvailable()) return null
+        if (environment.isLinux && identity == "root" && LinuxEnvironmentPaths.backendOf(linuxRootfsPath) == LinuxExecutionBackend.PROOT) return failed("root_proot_rejected")
+        if (identity == "root" && !rootAvailable()) return failed("root_unavailable")
         val ownershipFile = runCatching {
             File.createTempFile("eta-terminal-", ".owner")
-        }.getOrNull() ?: return null
+        }.getOrNull() ?: return failed("ownership_file")
         val ownershipToken = UUID.randomUUID().toString().replace("-", "")
         val prepared = try { LongShellCommand.prepare(command, environment, linuxRootfsPath) }
-        catch (_: Exception) { ownershipFile.delete(); return null }
+        catch (e: Exception) { ownershipFile.delete(); return failed("prepare", e) }
         val launcher = try {
             buildTrackedShellLauncher(
                 ownershipFile = ownershipFile,
@@ -77,14 +87,14 @@ internal class ShellProcessSupervisor(
                 ptyCols = ptyCols,
                 ptyRows = ptyRows,
             )
-        } catch (_: IllegalArgumentException) {
+        } catch (e: IllegalArgumentException) {
             ownershipFile.delete()
             prepared.file?.delete()
-            return null
-        } catch (_: java.io.IOException) {
+            return failed("launcher", e)
+        } catch (e: java.io.IOException) {
             ownershipFile.delete()
             prepared.file?.delete()
-            return null
+            return failed("launcher", e)
         }
         val process = runCatching {
             val builder = if (identity == "root") {
@@ -99,7 +109,7 @@ internal class ShellProcessSupervisor(
         }.getOrElse {
             ownershipFile.delete()
             prepared.file?.delete()
-            return null
+            return failed("spawn", it)
         }
         val metadata = ProcessMetadata(identity, ownershipFile, ownershipToken, prepared.file)
         val accepted = synchronized(activeProcesses) {
@@ -115,7 +125,7 @@ internal class ShellProcessSupervisor(
             terminateAndReap(process, metadata)
             metadata.ownershipFile.delete()
             metadata.commandFile?.delete()
-            return null
+            return failed("admission_closing")
         }
         val ownership = resolveProcessOwnership(metadata)
         val stillAccepted = synchronized(activeProcesses) {
@@ -124,7 +134,7 @@ internal class ShellProcessSupervisor(
         if (ownership == null || !stillAccepted) {
             terminateAndReap(process, metadata)
             unregisterProcess(process)
-            return null
+            return failed(if (ownership == null) "ownership" else "admission_lost")
         }
         return process
     }
