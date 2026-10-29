@@ -167,11 +167,14 @@ internal fun SystemTakeoverSettingsScreen(
     }
     val assistantEntryModes = AssistantEntryMode.entries
     val assistantEntryItems = assistantEntryModes.map { it.displayName(context) }
+    // 分组构建器与设置主页共用，位置表是它的必填入参；本页不参与搜索定位，建了不读。
+    val anchors = remember { SettingsAnchorIndex() }
 
     EtaScaffoldPage(
         title = stringResource(R.string.ui_system_assistant_takes_over_f46043),
         onBack = onBack,
     ) {
+        anchors.reset()
         // 模块未连接时页内所有依赖 hook 的开关都不可修改：顶部说明原因，分组本身始终呈现，
         // 避免整页看起来只剩「Eta 系统助手」一项。
         if (prefs == null) {
@@ -192,6 +195,8 @@ internal fun SystemTakeoverSettingsScreen(
         settingsGroup(
             title = { stringResource(R.string.settings_system_takeover_default_assistant) },
             sectionModifier = Modifier,
+            anchors = anchors,
+            highlightedKey = null,
         ) {
             row {
                 EtaClickableRow(
@@ -288,6 +293,8 @@ internal fun SystemTakeoverSettingsScreen(
         settingsGroup(
             title = { stringResource(R.string.ui_xiaobu_xiaoai_compatible_entrance_ae918a) },
             sectionModifier = Modifier,
+            anchors = anchors,
+            highlightedKey = null,
         ) {
             row {
                 SwitchPref(
@@ -314,6 +321,8 @@ internal fun SystemTakeoverSettingsScreen(
         settingsGroup(
             title = { "Gemini" },
             sectionModifier = Modifier,
+            anchors = anchors,
+            highlightedKey = null,
         ) {
             row {
                 SwitchPref(
@@ -373,6 +382,8 @@ internal fun SystemTakeoverSettingsScreen(
         settingsGroup(
             title = { stringResource(R.string.ui_search_in_one_turn_179584) },
             sectionModifier = Modifier,
+            anchors = anchors,
+            highlightedKey = null,
         ) {
             row {
                 SwitchPref(
