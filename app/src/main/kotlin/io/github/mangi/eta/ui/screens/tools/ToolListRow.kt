@@ -44,6 +44,7 @@ import androidx.compose.material3.Text as M3Text
 @Composable
 internal fun ToolListRow(
     tool: ToolItemUi,
+    groupEnabled: Boolean,
     rootGranted: Boolean,
     capabilities: AgentToolCapabilities,
     onAction: (AgentToolsAction) -> Unit,
@@ -100,8 +101,10 @@ internal fun ToolListRow(
                 }
                 // 单工具开关：组开关之下的细粒度取舍。关掉后该工具不再下发给模型，
                 // 但仍在清单里可见，用户随时能恢复。说明卡（browser_read 等）按实际工具归一。
+                // 所在分组关闭时开关禁用变灰：组已整体失效，先开分组才有意义。
                 EtaSwitch(
                     checked = tool.enabled,
+                    enabled = groupEnabled,
                     onCheckedChange = { enabled ->
                         TouchHaptics.click(view)
                         onAction(AgentToolsAction.ToggleTool(actualToolName(tool.id), enabled))

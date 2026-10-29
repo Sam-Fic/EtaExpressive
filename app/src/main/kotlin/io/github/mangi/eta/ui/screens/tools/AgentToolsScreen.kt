@@ -106,6 +106,8 @@ private fun ToolGroupSegmentedList(
             item(key = tool.id) {
                 ToolListRow(
                     tool = tool,
+                    // 分组关闭时工具开关进入禁用态：该组能力已整体失效，再逐个开关没有意义。
+                    groupEnabled = group.switchKey == null || group.switchEnabled,
                     rootGranted = rootGranted,
                     capabilities = capabilities,
                     onAction = onAction,
