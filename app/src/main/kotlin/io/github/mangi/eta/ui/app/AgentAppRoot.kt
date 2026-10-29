@@ -467,7 +467,15 @@ fun AgentAppRoot(
         pushRoute(route)
     }
 
-    val exitGuard = remember { DoublePressExitGuard() }
+    /**
+     * 设置搜索命中「行内控件」后要聚焦的主页锚点键（SettingsKeys 里的常量）。
+     *
+     * 开关 / 选择器 / 一次性动作没有自己的子页，搜索结果只能回主页定位到那一行；这个值
+     * 由主页消费（滚动 + 短暂高亮）后清空，不进路由参数，返回栈因此不会多压一层设置页。
+     */
+    var settingsFocusKey by rememberSaveable { mutableStateOf<String?>(null) }
+
+
 
     fun popRoute() {
         if (navigator.pop()) {
@@ -1170,6 +1178,8 @@ fun AgentAppRoot(
                     onBack = ::popRoute,
                     currentProviderId = shellHomeState.providerId,
                     currentModelId = shellHomeState.modelId,
+                    focusKey = settingsFocusKey,
+                    onFocusConsumed = { settingsFocusKey = null },
                 )
             }
             composable<AppRoute.MediaSearch> {
@@ -1201,6 +1211,12 @@ fun AgentAppRoot(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
+                    onFocusInSettings = { key ->
+                        // 行内控件（开关 / 选择器 / 一次性动作）没有子页：退出搜索页，
+                        // 让主页滚到那一行并短暂高亮。
+                        settingsFocusKey = key
+                        popRoute()
+                    },
                 )
             }
             composable<AppRoute.SystemTakeover> {

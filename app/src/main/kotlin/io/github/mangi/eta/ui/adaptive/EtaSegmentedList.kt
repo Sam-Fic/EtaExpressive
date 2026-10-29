@@ -30,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -105,6 +106,14 @@ private fun defaultSegmentedShape(index: Int, count: Int): ListItemShapes {
  */
 val LocalEtaSegmentedRowBare = staticCompositionLocalOf { false }
 
+/**
+ * 分段行容器色的局部覆盖：只给「搜索命中后回到主页聚焦某一行」这类一次性高亮用。
+ *
+ * 默认 null（走官方配色），不传就与原来完全一致；传了颜色则启用/禁用两种状态都用它，
+ * 保证高亮期间行的底色连续。
+ */
+val LocalEtaSegmentedRowContainerColor = compositionLocalOf<Color?> { null }
+
 /** 分段行的容器色：位于容器内时透明，否则用 surfaceBright 从页面背景浮出一档。 */
 @Composable
 internal fun etaSegmentedRowColors(selectedContainerColor: Color? = null): ListItemColors {
@@ -116,9 +125,11 @@ internal fun etaSegmentedRowColors(selectedContainerColor: Color? = null): ListI
             disabledContainerColor = Color.Transparent,
         )
     }
+    val containerColor = LocalEtaSegmentedRowContainerColor.current
+        ?: MaterialTheme.colorScheme.surfaceBright
     return ListItemDefaults.segmentedColors(
-        containerColor = MaterialTheme.colorScheme.surfaceBright,
-        disabledContainerColor = MaterialTheme.colorScheme.surfaceBright,
+        containerColor = containerColor,
+        disabledContainerColor = containerColor,
         supportingContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         selectedContainerColor = selectedContainerColor ?: Color.Unspecified,
         selectedContentColor = if (selectedContainerColor != null) {

@@ -5,9 +5,11 @@ import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.AccountTree
@@ -53,7 +55,9 @@ import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,6 +99,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import io.github.mangi.eta.ui.components.LanguagePreference
@@ -106,16 +111,27 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.LocalEtaSegmentedRowContainerColor
 import androidx.compose.material3.Text as M3StatusText
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.MaterialTheme as M3MaterialTheme
+
+/** 搜索命中后回到主页，聚焦行高亮的持续时间。 */
+private const val SETTINGS_FOCUS_HIGHLIGHT_MS = 1600L
+
+/** 位置表还没建好时的重试等待：一帧多一点，够列表完成首次组合。 */
+private const val SETTINGS_FOCUS_RETRY_DELAY_MS = 48L
 
 /**
  * 模块配置界面。
  *
  * 开关默认值由 [Prefs.Keys.BOOLEAN_DEFAULTS] 统一定义。Eta Runtime 自己消费的开关写入
  * App 本地配置；仅 Hook 消费的开关通过 RemotePreferences 提交到 LSPosed。
+ *
+ * 每行都挂一个 [SettingsKeys] 锚点键（[SettingsGroupRows.row] 的 `key`），搜索命中行内
+ * 控件（开关 / 选择器 / 一次性动作，没有自己的子页）时由 [focusKey] 滚到那一行并短暂
+ * 高亮——用户不必自己在长列表里找。
  */
 @Composable
 internal fun SettingsScreen(
@@ -124,6 +140,8 @@ internal fun SettingsScreen(
     onBack: () -> Unit,
     currentProviderId: String? = null,
     currentModelId: String? = null,
+    focusKey: String? = null,
+    onFocusConsumed: () -> Unit = {},
 ) {
     // Read only attach/detach generation so idle sections rebuild observer identities.
     StreamPerformanceDiagnostics.sessionGeneration.longValue
@@ -135,6 +153,28 @@ internal fun SettingsScreen(
     }
     val coroutineScope = rememberCoroutineScope()
     val taskBackendInstalled = rememberTaskBackendInstalled()
+    val listState = rememberLazyListState()
+    val anchors = remember { SettingsAnchorIndex() }
+    var highlightedKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(focusKey) {
+        val key = focusKey ?: return@LaunchedEffect
+        try {
+            // 位置表与本次 composition 同步构建，但首次进页偶尔赶在列表摆好之前：
+            // 取不到就等一帧再试一次，取不到也不影响高亮。
+            var index = anchors.positionOf(key)
+            if (index == null) {
+                delay(SETTINGS_FOCUS_RETRY_DELAY_MS)
+                index = anchors.positionOf(key)
+            }
+            index?.let { listState.animateScrollToItem(it) }
+            highlightedKey = key
+            delay(SETTINGS_FOCUS_HIGHLIGHT_MS)
+        } finally {
+            // 页面提前离开（协程取消）也要收掉高亮并交还焦点，焦点键不会残留到下次进页。
+            highlightedKey = null
+            onFocusConsumed()
+        }
+    }
     val enhancementHistory = remember(context.applicationContext) { EnhancementSettingsHistory(context) }
     var hasConnectedFramework by remember { mutableStateOf(enhancementHistory.hasConnected) }
     val appSettings by remember { SettingsDataStore.settingsFlow() }.collectAsState(
@@ -242,6 +282,7 @@ internal fun SettingsScreen(
             .streamDiagnosticMeasure("settings.root.measure")
             .streamDiagnosticDraw("settings.root.draw"),
         topBarModifier = Modifier.streamDiagnosticMeasure("settings.topbar.measure"),
+        listState = listState,
         listModifier = Modifier.streamDiagnosticMeasure("settings.lazy.measure").streamDiagnosticPlacement("settings.lazy.place").streamDiagnosticDraw("settings.lazy.draw"),
         actions = {
             // 搜索入口：大标题栏只保留这一个单搜索图标，点击进独立搜索页。
@@ -253,17 +294,20 @@ internal fun SettingsScreen(
             }
         },
     ) {
+            anchors.reset()
             // ── LLM 提供商 ──────────────────────────────────────────────
             settingsGroup(
                 title = { stringResource(R.string.settings_llm_providers) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("agent"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.MODEL_PROVIDER) {
                     SettingsProviderEntry(currentProviderId, currentModelId) {
                         onNavigate(AppRoute.ModelProviders)
                     }
                 }
-                row {
+                row(key = SettingsKeys.MOBILE_ACTIONS) {
                     EtaClickableRow(
                         title = stringResource(R.string.mobile_actions_settings_title),
                         leading = {
@@ -279,8 +323,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.settings_model_features) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("model_features"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.CONTEXT_COMPRESSION) {
                     EtaClickableRow(
                         title = stringResource(R.string.route_context_compression),
                         leading = {
@@ -292,7 +338,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.AUXILIARY_VISION) {
                     EtaClickableRow(
                         title = stringResource(R.string.auxiliary_vision_title),
                         leading = { PreferenceIcon(icon = Icons.Rounded.RemoveRedEye) },
@@ -300,7 +346,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TITLE_MODEL) {
                     EtaClickableRow(
                         title = stringResource(R.string.title_model_title),
                         leading = { PreferenceIcon(icon = Icons.Rounded.AutoAwesome) },
@@ -308,7 +354,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.ERROR_RECONNECT) {
                     EtaClickableRow(
                         title = stringResource(R.string.error_reconnect_title),
                         leading = { PreferenceIcon(icon = Icons.Rounded.Refresh) },
@@ -316,7 +362,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.WEB_TOOLS_SETTINGS) {
                     EtaClickableRow(
                         title = stringResource(R.string.web_tools_settings_title),
                         leading = { PreferenceIcon(icon = Icons.Rounded.TravelExplore) },
@@ -324,7 +370,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.THINKING_DEFAULT) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -339,8 +385,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.settings_context_extensions) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("context_extensions"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.ASSISTANTS) {
                     EtaClickableRow(
                         title = stringResource(R.string.settings_assistants),
                         leading = {
@@ -352,7 +400,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.MEMORY) {
                     EtaClickableRow(
                         title = stringResource(R.string.ui_memory_b55ff5),
                         leading = { PreferenceIcon(icon = Icons.Rounded.Psychology) },
@@ -360,7 +408,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.SKILLS) {
                     EtaClickableRow(
                         title = stringResource(R.string.route_skills),
                         leading = {
@@ -372,7 +420,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.MCP_SERVERS) {
                     EtaClickableRow(
                         title = stringResource(R.string.route_mcp_servers),
                         leading = {
@@ -384,7 +432,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_RECIPES) {
                     EtaClickableRow(
                         title = stringResource(R.string.settings_tool_recipes),
                         summary = stringResource(R.string.settings_tool_recipes_summary),
@@ -397,7 +445,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.SUB_AGENTS) {
                     EtaClickableRow(title = stringResource(R.string.settings_subagent_title),
                         leading = { PreferenceIcon(icon = SubAgents) },
                         onClick = { onNavigate(AppRoute.SubAgents) })
@@ -408,8 +456,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.settings_general) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("general"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.VOICE) {
                     EtaClickableRow(
                         title = stringResource(R.string.voice_title),
                         leading = { PreferenceIcon(icon = Icons.Rounded.RecordVoiceOver) },
@@ -417,7 +467,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.APPEARANCE) {
                     EtaClickableRow(
                         title = stringResource(R.string.appearance_title),
                         leading = {
@@ -429,11 +479,11 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.LANGUAGE) {
                     LanguagePreference()
                 }
 
-                row {
+                row(key = SettingsKeys.USAGE_STATS) {
                     EtaClickableRow(
                         title = stringResource(R.string.stats_page_title),
                         leading = {
@@ -445,7 +495,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.DATA_BACKUP) {
                     EtaClickableRow(
                         title = stringResource(R.string.data_backup_title),
                         leading = {
@@ -457,11 +507,11 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TRASH_RETENTION) {
                     TrashRetentionPreference()
                 }
 
-                row {
+                row(key = SettingsKeys.HAPTICS) {
                     EtaClickableRow(
                         title = stringResource(R.string.haptics_list),
                         leading = { PreferenceIcon(Icons.Rounded.Vibration) },
@@ -474,8 +524,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.settings_tool_capabilities) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("tools"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.TOOLS) {
                     EtaClickableRow(
                         title = stringResource(R.string.settings_tools_list),
                         leading = { PreferenceIcon(Icons.Rounded.Dashboard) },
@@ -484,7 +536,7 @@ internal fun SettingsScreen(
                 }
 
                 if (taskBackendInstalled == true) {
-                    row {
+                    row(key = SettingsKeys.AGENT_TASK_PREFERENCE) {
                         EtaClickableRow(
                             title = stringResource(R.string.agent_task_surface_title),
                             leading = { PreferenceIcon(Icons.Rounded.Layers) },
@@ -496,7 +548,7 @@ internal fun SettingsScreen(
                 // 七个分组开关与模型侧的延迟工具组、工具清单页的分节是同一份定义
                 // （AgentToolGroups）。关掉一组＝这组工具既不下发也不执行，
                 // 单个工具的取舍在「工具清单」页里做。
-                row {
+                row(key = SettingsKeys.TOOL_BASIC) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -507,7 +559,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_SCREEN) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -518,7 +570,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_WEB) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -529,7 +581,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_TERMINAL) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -540,7 +592,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_SHELL) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -551,7 +603,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_DEVICE) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -562,7 +614,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_PERSONAL) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -573,7 +625,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_EXTENSIONS) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -584,7 +636,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -595,7 +647,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_SUBAGENT) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -606,7 +658,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.TOOL_MEDIA_SEARCH) {
                     SwitchPref(
                         context = context,
                         prefs = agentPrefs,
@@ -617,7 +669,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.MEDIA_INDEX) {
                     EtaClickableRow(
                         title = stringResource(R.string.media_settings_entry_title),
                         summary = stringResource(R.string.media_settings_entry_summary),
@@ -631,8 +683,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.settings_runtime_environment) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("runtime"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.LINUX_ENVIRONMENT) {
                     EtaClickableRow(
                         title = stringResource(R.string.ui_linux_tool_environment_314d22),
                         leading = {
@@ -644,7 +698,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.WORKSPACE) {
                     EtaClickableRow(
                         title = stringResource(R.string.capability_workspace),
                         summary = stringResource(R.string.capability_workspace_summary),
@@ -658,8 +712,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.settings_system_takeover) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("system_takeover"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.SYSTEM_TAKEOVER) {
                     EtaClickableRow(
                         title = stringResource(R.string.ui_system_assistant_takes_over_f46043),
                         summary = stringResource(R.string.settings_system_takeover_summary),
@@ -672,8 +728,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.settings_diagnostics) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("diagnostics"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.FILE_LOGGING) {
                     SwitchPreference(
                         title = stringResource(R.string.settings_file_logging),
                         summary = stringResource(R.string.settings_file_logging_summary),
@@ -689,7 +747,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.EXPORT_LOGS) {
                     EtaClickableRow(
                         title = stringResource(R.string.settings_export_logs),
                         summary = if (exportingLogs) {
@@ -716,7 +774,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.CLEAR_LOGS) {
                     EtaClickableRow(
                         title = stringResource(R.string.settings_clear_logs),
                         enabled = !exportingLogs && !clearingLogs,
@@ -735,8 +793,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.ui_permissions_560165) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("permissions"),
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.PERMISSION_HEALTH) {
                     EtaClickableRow(
                         title = stringResource(R.string.ui_permission_health_3048bb),
                         leading = {
@@ -746,7 +806,7 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row {
+                row(key = SettingsKeys.SYSTEM_ENHANCE) {
                     EtaClickableRow(
                         title = stringResource(R.string.capability_enhancements),
                         leading = {
@@ -757,7 +817,7 @@ internal fun SettingsScreen(
                 }
 
                 if (prefs != null || hasConnectedFramework) {
-                    row {
+                    row(key = SettingsKeys.ENFORCE_ACCESSIBILITY) {
                         SwitchPreference(
                             title = stringResource(R.string.ui_enforce_accessibility_55e838),
                             checked = accessibilityProtectionEnabled,
@@ -804,8 +864,10 @@ internal fun SettingsScreen(
             settingsGroup(
                 title = { stringResource(R.string.ui_about_bed172) },
                 sectionModifier = Modifier,
+                anchors = anchors,
+                highlightedKey = highlightedKey,
             ) {
-                row {
+                row(key = SettingsKeys.ABOUT) {
                     val versionName = remember { AppUpdateRepository.currentVersionName(context) }
                     EtaClickableRow(
                         title = stringResource(R.string.app_name),
@@ -881,13 +943,52 @@ internal fun SettingsScreen(
 
 // ── 逐行懒加载的设置分组 ─────────────────────────────────────────────────────
 
+/**
+ * 设置行在列表里的位置索引：把 [SettingsKeys] 常量映射到 LazyColumn 的 item 下标。
+ *
+ * 只在列表 DSL 构建阶段（不是 item 的 Composable 体内）推进游标——item 是懒加载的，
+ * 真正组合的时机不确定，在那里计数会错位。每次重建列表前由调用方 [reset]，重建过程
+ * 是幂等的，同一份布局得到同一份下标。
+ */
+internal class SettingsAnchorIndex {
+    private val positions = HashMap<String, Int>()
+    private var cursor = 0
+
+    fun reset() {
+        positions.clear()
+        cursor = 0
+    }
+
+    /** 组标题等非行内容也占一个 item 位。 */
+    fun skip() {
+        cursor++
+    }
+
+    fun register(key: String?) {
+        if (!key.isNullOrBlank()) positions[key] = cursor
+        cursor++
+    }
+
+    fun positionOf(key: String): Int? = positions[key]
+}
+
 /** [settingsGroup] 的行作用域：注册进来的每一行都会成为独立的一条 LazyColumn item。 */
 internal class SettingsGroupRows {
-    internal val rows = mutableListOf<@Composable () -> Unit>()
+    internal data class Row(
+        val key: String?,
+        val content: @Composable () -> Unit,
+    )
 
-    /** 注册一行。不需要显示的行不要调用本方法，组内 index/count 会自动跳过它。 */
-    fun row(content: @Composable () -> Unit) {
-        rows.add(content)
+    internal val rows = mutableListOf<Row>()
+
+    /**
+     * 注册一行。不需要显示的行不要调用本方法，组内 index/count 会自动跳过它。
+     *
+     * @param key 该行的 [SettingsKeys] 锚点键；行内控件（开关 / 选择器 / 一次性动作）
+     *   必须传，搜索命中后要靠它滚回这一行。有独立子页的跳转行也传，保持一致。
+     */
+    fun row(key: String? = null, content: @Composable () -> Unit) {
+        rows.add(Row(key = key, content = content))
     }
 }
 
@@ -908,10 +1009,13 @@ internal class SettingsGroupRows {
 internal fun LazyListScope.settingsGroup(
     title: @Composable () -> String,
     sectionModifier: Modifier,
+    anchors: SettingsAnchorIndex,
+    highlightedKey: String?,
     content: SettingsGroupRows.() -> Unit,
 ) {
     val rows = SettingsGroupRows().apply(content).rows
     if (rows.isEmpty()) return
+    anchors.skip()
     item {
         M3Text(
             text = title(),
@@ -924,7 +1028,8 @@ internal fun LazyListScope.settingsGroup(
             ),
         )
     }
-    rows.forEachIndexed { index, rowContent ->
+    rows.forEachIndexed { index, row ->
+        anchors.register(row.key)
         item {
             EtaSegmentedItem(index = index, count = rows.size) {
                 Column(
@@ -934,11 +1039,40 @@ internal fun LazyListScope.settingsGroup(
                         bottom = if (index == rows.lastIndex) EtaSegmentedGroupSpacing else EtaSegmentedGap,
                     ),
                 ) {
-                    rowContent()
+                    SettingsRowHighlight(
+                        highlighted = row.key != null && row.key == highlightedKey,
+                        content = row.content,
+                    )
                 }
             }
         }
     }
+}
+
+/**
+ * 聚焦行的短暂高亮：搜索命中跳回主页时把这一行的容器色换成 `secondaryContainer`，
+ * 高亮结束再动画回官方 `surfaceBright`。
+ *
+ * 容器色只在分段行自己绘制时生效（[LocalEtaSegmentedRowContainerColor]），所以高亮
+ * 与行的分段形状严丝合缝，不会在外层叠出一块异色方块。
+ */
+@Composable
+private fun SettingsRowHighlight(
+    highlighted: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val color by animateColorAsState(
+        targetValue = if (highlighted) {
+            M3MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            M3MaterialTheme.colorScheme.surfaceBright
+        },
+        label = "settings_row_highlight",
+    )
+    CompositionLocalProvider(
+        LocalEtaSegmentedRowContainerColor provides color,
+        content = content,
+    )
 }
 
 // ── 带图标的布尔开关 ─────────────────────────────────────────────────────────

@@ -4,8 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
@@ -17,113 +18,105 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
-import io.github.mangi.eta.ui.icons.SubAgents
 import io.github.mangi.eta.ui.navigation.AppRoute
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccessibilityNew
-import androidx.compose.material.icons.rounded.AccountTree
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.BarChart
-import androidx.compose.material.icons.rounded.Compress
-import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.Extension
-import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.Handyman
-import androidx.compose.material.icons.rounded.HealthAndSafety
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Inventory2
-import androidx.compose.material.icons.rounded.Layers
-import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.PowerSettingsNew
-import androidx.compose.material.icons.rounded.Psychology
-import androidx.compose.material.icons.rounded.RecordVoiceOver
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.RemoveRedEye
-import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.SmartToy
-import androidx.compose.material.icons.rounded.TravelExplore
-import androidx.compose.material.icons.rounded.Vibration
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.padding
 
 /** 查询历史分域键：设置搜索历史独立存储。 */
 private const val HISTORY_KEY = "settings"
 
-/** 设置搜索动作：子页面路由，或系统设置意图（悬浮窗 / 无障碍）。 */
-private sealed interface SettingsSearchAction {
-    data class Route(val route: AppRoute) : SettingsSearchAction
-    data object OverlayPermission : SettingsSearchAction
-    data object AccessibilitySettings : SettingsSearchAction
-}
+/** 查询串的分词分隔符：连续空白都算一个分隔。 */
+private val SEARCH_WHITESPACE = Regex("\\s+")
+
+/** 一条命中结果：[order] 是原目录顺序（同分时的稳定次序），[score] 越小越靠前。 */
+private data class SettingsHit(
+    val order: Int,
+    val score: Int,
+    val entry: SettingsEntry,
+)
 
 /**
- * 设置搜索索引项：一个可跳转的设置入口。
+ * 多词 AND 打分：查询按空白拆成若干词，每个词都要命中才算匹配。
  *
- * 只收录「点了会走」的行（子页面路由 + 系统设置意图）；行内开关 / 选择器 / 一次性动作
- * （导出日志等）没有可跳转目标，不收录。[group] 参与匹配，让「权限」「工具」等分组词也能搜。
+ * 命中位置按权重累加——标题 0 < 同义词 1 < 摘要 2 < 分组 3——所以「震动」既能命中标题
+ * 「震动反馈」，也能命中同义词表里的「触感」，只是排在后面。返回 null 表示该条目不匹配。
  */
-private data class SettingsSearchEntry(
-    val title: String,
-    val summary: String?,
-    val icon: ImageVector,
-    val group: String,
-    val action: SettingsSearchAction,
-)
+private fun settingsSearchScore(entry: SettingsEntry, tokens: List<String>): Int? {
+    var total = 0
+    for (token in tokens) {
+        val weight = when {
+            entry.title.contains(token, ignoreCase = true) -> 0
+            entry.keywords.contains(token, ignoreCase = true) -> 1
+            entry.summary?.contains(token, ignoreCase = true) == true -> 2
+            entry.group.contains(token, ignoreCase = true) -> 3
+            else -> return null
+        }
+        total += weight
+    }
+    return total
+}
 
 /**
  * 独立搜索页：从设置主页右上角的单搜索图标跳入，整页即搜索。
  *
  * 顶栏是「返回钮 + 透明底搜索框 + 清除按钮」（官方 [EtaSearchPage]），进入即自动聚焦弹键盘；
  * 未输入时有搜索记录列表、无记录才显示官方 Empty state，不复制主页内容。
- * 结果按标题 / 摘要 / 所属分组实时过滤，点按即跳转到对应设置页（或打开系统设置意图），
- * 与主页该行的行为一致，并把查询词记入搜索历史。
+ *
+ * 索引不再单独硬编码，直接用主页同一份 [settingsCatalog]：主页加一行，这里就能搜到，
+ * 不会出现「主页有、搜索搜不到」。行内控件（开关 / 选择器 / 一次性动作）没有自己的子页，
+ * 命中后交给 [onFocusInSettings] 回到主页滚动聚焦到那一行。
+ * 点按结果会把查询词记入搜索历史。
  */
 @Composable
 internal fun SettingsSearchScreen(
     context: Context,
     onNavigate: (AppRoute) -> Unit,
     onBack: () -> Unit,
+    onFocusInSettings: (String) -> Unit,
 ) {
     // 与主页同一判定：任务后端未安装时不收录「任务界面」入口。
     val taskBackendInstalled = rememberTaskBackendInstalled()
-    val entries = settingsSearchEntries(taskBackendInstalled = taskBackendInstalled)
+    val entries = settingsCatalog(taskBackendInstalled = taskBackendInstalled)
 
     EtaSearchPage(
         searchPlaceholder = stringResource(R.string.settings_search_hint),
         onBack = onBack,
         historyKey = HISTORY_KEY,
     ) { query ->
-        // LazyListScope 不是 Composable 作用域，过滤直接内联计算。
-        val needle = query.trim()
-        val matched = entries.filter { entry ->
-            needle.isBlank() ||
-                entry.title.contains(needle, ignoreCase = true) ||
-                entry.summary?.contains(needle, ignoreCase = true) == true ||
-                entry.group.contains(needle, ignoreCase = true)
+        // LazyListScope 不是 Composable 作用域，过滤与排序直接内联计算。
+        val tokens = query.trim().split(SEARCH_WHITESPACE).filter { it.isNotBlank() }
+        val matched = if (tokens.isEmpty()) {
+            emptyList()
+        } else {
+            entries.mapIndexedNotNull { index, entry ->
+                settingsSearchScore(entry, tokens)?.let { SettingsHit(index, it, entry) }
+            }.sortedWith(compareBy<SettingsHit> { it.score }.thenBy { it.order })
         }
+        // 高亮取最长的那个词：多词查询时它是最有信息量的那一段。
+        val highlightTerm = tokens.maxByOrNull { it.length }.orEmpty()
         if (matched.isEmpty()) {
             item(key = "empty") {
                 ListEmptyState(title = stringResource(R.string.settings_search_no_matches))
             }
         } else {
-            matched.forEachIndexed { index, entry ->
-                item(key = entry.title) {
+            matched.forEachIndexed { index, hit ->
+                item(key = hit.entry.key) {
                     EtaSegmentedItem(index = index, count = matched.size) {
                         EtaClickableRow(
-                            title = entry.title,
-                            // 无自有摘要时用所属分组名兜底，保留「这在哪个分区」的上下文。
-                            summary = entry.summary ?: entry.group,
-                            leading = { PreferenceIcon(icon = entry.icon) },
+                            title = hit.entry.title,
+                            // 摘要与所属分组一起给，结果里始终看得出「这行在哪个分区」。
+                            summary = listOfNotNull(hit.entry.summary, hit.entry.group)
+                                .joinToString(" · "),
+                            leading = { PreferenceIcon(icon = hit.entry.icon) },
+                            highlight = highlightTerm,
                             onClick = {
                                 EtaSearchHistory.add(context, HISTORY_KEY, query)
-                                when (val action = entry.action) {
-                                    is SettingsSearchAction.Route -> onNavigate(action.route)
-                                    SettingsSearchAction.OverlayPermission ->
+                                when (val destination = hit.entry.destination) {
+                                    is SettingsDestination.Route -> onNavigate(destination.route)
+                                    SettingsDestination.OverlayPermission ->
                                         openOverlayPermissionSettings(context)
-                                    SettingsSearchAction.AccessibilitySettings ->
+                                    SettingsDestination.AccessibilitySettings ->
                                         openAccessibilitySettings(context)
+                                    SettingsDestination.Inline ->
+                                        onFocusInSettings(hit.entry.key)
                                 }
                             },
                             modifier = Modifier.padding(
@@ -140,285 +133,6 @@ internal fun SettingsSearchScreen(
                 }
             }
         }
-    }
-}
-
-/** 设置搜索索引：与主页分组顺序、图标、跳转目标一一对应。 */
-@Composable
-private fun settingsSearchEntries(taskBackendInstalled: Boolean?): List<SettingsSearchEntry> {
-    val groupLlmProviders = stringResource(R.string.settings_llm_providers)
-    val groupModelFeatures = stringResource(R.string.settings_model_features)
-    val groupContextExtensions = stringResource(R.string.settings_context_extensions)
-    val groupGeneral = stringResource(R.string.settings_general)
-    val groupToolCapabilities = stringResource(R.string.settings_tool_capabilities)
-    val groupRuntimeEnvironment = stringResource(R.string.settings_runtime_environment)
-    val groupSystemTakeover = stringResource(R.string.settings_system_takeover)
-    val groupPermissions = stringResource(R.string.ui_permissions_560165)
-    val groupAbout = stringResource(R.string.ui_about_bed172)
-    return buildList {
-        // ── LLM 提供商 ──────────────────────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_model_provider_e8c7f5),
-                summary = null,
-                icon = Icons.Rounded.Memory,
-                group = groupLlmProviders,
-                action = SettingsSearchAction.Route(AppRoute.ModelProviders),
-            ),
-        )
-
-        // ── 模型功能 ────────────────────────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.route_context_compression),
-                summary = null,
-                icon = Icons.Rounded.Compress,
-                group = groupModelFeatures,
-                action = SettingsSearchAction.Route(AppRoute.ContextCompression),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.auxiliary_vision_title),
-                summary = null,
-                icon = Icons.Rounded.RemoveRedEye,
-                group = groupModelFeatures,
-                action = SettingsSearchAction.Route(AppRoute.AuxiliaryVision),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.title_model_title),
-                summary = null,
-                icon = Icons.Rounded.AutoAwesome,
-                group = groupModelFeatures,
-                action = SettingsSearchAction.Route(AppRoute.TitleModel),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.error_reconnect_title),
-                summary = null,
-                icon = Icons.Rounded.Refresh,
-                group = groupModelFeatures,
-                action = SettingsSearchAction.Route(AppRoute.ErrorReconnectSettings),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.web_tools_settings_title),
-                summary = stringResource(R.string.tool_web_search_description),
-                icon = Icons.Rounded.TravelExplore,
-                group = groupModelFeatures,
-                action = SettingsSearchAction.Route(AppRoute.WebToolsSettings),
-            ),
-        )
-
-        // ── 扩展 ────────────────────────────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.settings_assistants),
-                summary = null,
-                icon = Icons.Rounded.SmartToy,
-                group = groupContextExtensions,
-                action = SettingsSearchAction.Route(AppRoute.Assistants()),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_memory_b55ff5),
-                summary = null,
-                icon = Icons.Rounded.Psychology,
-                group = groupContextExtensions,
-                action = SettingsSearchAction.Route(AppRoute.Memory),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.route_skills),
-                summary = null,
-                icon = Icons.Rounded.Extension,
-                group = groupContextExtensions,
-                action = SettingsSearchAction.Route(AppRoute.Skills),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.route_mcp_servers),
-                summary = null,
-                icon = Icons.Rounded.AccountTree,
-                group = groupContextExtensions,
-                action = SettingsSearchAction.Route(AppRoute.McpServers),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.settings_tool_recipes),
-                summary = stringResource(R.string.settings_tool_recipes_summary),
-                icon = Icons.Rounded.Handyman,
-                group = groupContextExtensions,
-                action = SettingsSearchAction.Route(AppRoute.ToolRecipes),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.settings_subagent_title),
-                summary = null,
-                icon = SubAgents,
-                group = groupContextExtensions,
-                action = SettingsSearchAction.Route(AppRoute.SubAgents),
-            ),
-        )
-
-        // ── 通用 ────────────────────────────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.voice_title),
-                summary = null,
-                icon = Icons.Rounded.RecordVoiceOver,
-                group = groupGeneral,
-                action = SettingsSearchAction.Route(AppRoute.VoiceSettings),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.appearance_title),
-                summary = null,
-                icon = Icons.Rounded.Palette,
-                group = groupGeneral,
-                action = SettingsSearchAction.Route(AppRoute.AppearanceSettings),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.stats_page_title),
-                summary = null,
-                icon = Icons.Rounded.BarChart,
-                group = groupGeneral,
-                action = SettingsSearchAction.Route(AppRoute.UsageStats),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.data_backup_title),
-                summary = null,
-                icon = Icons.Rounded.Description,
-                group = groupGeneral,
-                action = SettingsSearchAction.Route(AppRoute.DataBackup),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.haptics_list),
-                summary = null,
-                icon = Icons.Rounded.Vibration,
-                group = groupGeneral,
-                action = SettingsSearchAction.Route(AppRoute.Haptics),
-            ),
-        )
-
-        // ── Agent 工具能力 ──────────────────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.settings_tools_list),
-                summary = null,
-                icon = Icons.Rounded.Dashboard,
-                group = groupToolCapabilities,
-                action = SettingsSearchAction.Route(AppRoute.Tools),
-            ),
-        )
-        if (taskBackendInstalled == true) {
-            add(
-                SettingsSearchEntry(
-                    title = stringResource(R.string.agent_task_surface_title),
-                    summary = null,
-                    icon = Icons.Rounded.Layers,
-                    group = groupToolCapabilities,
-                    action = SettingsSearchAction.Route(AppRoute.AgentTaskPreference),
-                ),
-            )
-        }
-
-        // ── 运行环境 ────────────────────────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_linux_tool_environment_314d22),
-                summary = null,
-                icon = Icons.Rounded.Inventory2,
-                group = groupRuntimeEnvironment,
-                action = SettingsSearchAction.Route(AppRoute.LinuxEnvironment),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.capability_workspace),
-                summary = stringResource(R.string.capability_workspace_summary),
-                icon = Icons.Rounded.Folder,
-                group = groupRuntimeEnvironment,
-                action = SettingsSearchAction.Route(AppRoute.Workspace),
-            ),
-        )
-
-        // ── 系统助手接管 ────────────────────────────────────────
-        // 主页只剩子页入口：摘要里带上原四个分组的关键词，Gemini / 厂商兼容 / 一圈即搜 仍可搜到。
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_system_assistant_takes_over_f46043),
-                summary = stringResource(R.string.settings_system_takeover_summary),
-                icon = Icons.Rounded.PowerSettingsNew,
-                group = groupSystemTakeover,
-                action = SettingsSearchAction.Route(AppRoute.SystemTakeover),
-            ),
-        )
-
-        // ── 权限 ────────────────────────────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_permission_health_3048bb),
-                summary = null,
-                icon = Icons.Rounded.HealthAndSafety,
-                group = groupPermissions,
-                action = SettingsSearchAction.Route(AppRoute.Permissions),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.capability_enhancements),
-                summary = null,
-                icon = Icons.Rounded.Security,
-                group = groupPermissions,
-                action = SettingsSearchAction.Route(AppRoute.SystemEnhance),
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_floating_window_permissions_076b77),
-                summary = null,
-                icon = Icons.Rounded.Layers,
-                group = groupPermissions,
-                action = SettingsSearchAction.OverlayPermission,
-            ),
-        )
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_accessibility_enhancement_tools_8fd257),
-                summary = null,
-                icon = Icons.Rounded.AccessibilityNew,
-                group = groupPermissions,
-                action = SettingsSearchAction.AccessibilitySettings,
-            ),
-        )
-
-        // ── 关于（与主页一致，固定收尾）───────────────────────────
-        add(
-            SettingsSearchEntry(
-                title = stringResource(R.string.ui_about_bed172),
-                summary = stringResource(R.string.app_name),
-                icon = Icons.Rounded.Info,
-                group = groupAbout,
-                action = SettingsSearchAction.Route(AppRoute.About),
-            ),
-        )
     }
 }
 
