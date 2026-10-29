@@ -15,6 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import androidx.compose.material3.Card as M3Card
 import androidx.compose.material3.Text as M3Text
@@ -57,10 +59,9 @@ internal fun ContextBudgetPromptDialog(
             if (reason.isNotBlank()) {
                 ContextBudgetReasonCard(reason = reason.trim())
             }
-            M3Text(
+            EtaText(
                 text = stringResource(R.string.context_budget_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = EtaTextStyle.Secondary,
             )
         }
     }

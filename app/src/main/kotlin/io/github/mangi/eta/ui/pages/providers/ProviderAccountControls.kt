@@ -82,7 +82,7 @@ internal fun ProviderAccountControls(
     )
     EtaText(
         text = summary,
-        style = EtaTextStyle.Footnote,
+        style = EtaTextStyle.Secondary,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
     )
     Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {

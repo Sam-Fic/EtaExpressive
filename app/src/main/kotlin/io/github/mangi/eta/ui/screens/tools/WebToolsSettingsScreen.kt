@@ -33,6 +33,8 @@ import io.github.mangi.eta.data.model.WebHttpMethod
 import io.github.mangi.eta.data.model.WebToolBackend
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
+import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -348,11 +350,7 @@ private fun customFetchItems(
 
 @Composable
 private fun WebToolsNote(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    EtaText(text = text, style = EtaTextStyle.Secondary)
 }
 
 @Composable

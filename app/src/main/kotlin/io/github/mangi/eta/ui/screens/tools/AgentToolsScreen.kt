@@ -18,6 +18,8 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.app.rememberDeviceCapabilities
 import io.github.mangi.eta.ui.model.AgentToolsAction
@@ -54,10 +56,9 @@ fun AgentToolsScreen(
                     onSelect = { showAll = it == 1 },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                M3Text(
+                EtaText(
                     text = stringResource(R.string.tools_per_tool_switch_hint),
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = EtaTextStyle.Secondary,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
             }

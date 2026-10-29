@@ -86,7 +86,7 @@ internal fun ProviderAuthMethodScreen(
         item(key = "note") {
             EtaText(
                 text = stringResource(R.string.provider_auth_method_note),
-                style = EtaTextStyle.Footnote,
+                style = EtaTextStyle.Secondary,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
             )
         }

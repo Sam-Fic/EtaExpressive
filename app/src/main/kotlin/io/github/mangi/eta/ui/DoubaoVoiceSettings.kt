@@ -516,7 +516,7 @@ private fun openVoiceConsole(context: Context) {
 private fun VoiceNote(message: String, isError: Boolean = false) {
     EtaText(
         text = message,
-        style = EtaTextStyle.Footnote,
+        style = EtaTextStyle.Secondary,
         color = if (isError) MaterialTheme.colorScheme.error else null,
         modifier = Modifier.padding(VoiceGroupInsets),
     )

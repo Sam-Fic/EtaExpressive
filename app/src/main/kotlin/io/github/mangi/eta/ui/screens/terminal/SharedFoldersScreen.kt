@@ -178,8 +178,7 @@ internal fun SharedFoldersScreen(
         item(key = "footer-note") {
             EtaText(
                 text = stringResource(R.string.shared_folders_footer),
-                style = EtaTextStyle.Footnote,
-                secondary = true,
+                style = EtaTextStyle.Secondary,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }

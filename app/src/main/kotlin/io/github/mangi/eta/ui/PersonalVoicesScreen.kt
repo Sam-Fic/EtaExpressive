@@ -262,8 +262,7 @@ internal fun MimoVoicesScreen(onBack: () -> Unit) {
 private fun VoiceNote(message: String) {
     EtaText(
         text = message,
-        style = EtaTextStyle.Footnote,
-        secondary = true,
+        style = EtaTextStyle.Secondary,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
     )
 }

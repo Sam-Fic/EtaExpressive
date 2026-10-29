@@ -13,6 +13,7 @@ import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 
@@ -36,6 +37,7 @@ internal fun ModelFeatureSettingsScreen(feature: ModelFeature, onBack: () -> Uni
         item {
             EtaText(
                 text = stringResource(if (vision) R.string.vision_feature_description else R.string.title_feature_description),
+                style = EtaTextStyle.Secondary,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
             )
             EtaSegmentedColumn(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp)) {

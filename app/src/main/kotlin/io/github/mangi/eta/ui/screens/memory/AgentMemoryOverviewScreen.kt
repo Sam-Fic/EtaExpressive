@@ -8,8 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,6 +25,8 @@ import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
+import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.components.AssistantAvatar
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -91,10 +91,9 @@ internal fun AgentMemoryOverviewScreen(
         listState = listState,
     ) {
         item(key = "note") {
-            M3Text(
+            EtaText(
                 text = stringResource(R.string.memory_overview_note),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = EtaTextStyle.Secondary,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
             )
         }
