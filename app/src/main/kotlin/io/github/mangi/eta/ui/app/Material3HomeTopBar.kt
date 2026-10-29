@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -96,8 +97,8 @@ internal fun Material3HomeTopBar(
                 onOpenConversationPane()
             },
             size = EtaIconSize.S,
-            // 默认色调档（官方 FilledTonalIconButton 默认色），不再走 tertiary 强调色。
-            style = EtaButtonStyle.Tonal,
+            // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+            style = EtaButtonStyle.SurfaceHighest,
         )
         // 会话名按钮在两侧图标之间的剩余空间里居中（与官方 CenterAlignedTopAppBar 的标题布局一致）。
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -117,6 +118,12 @@ internal fun Material3HomeTopBar(
                             TouchHaptics.click(view)
                             onRenameCurrentConversation()
                         },
+                        // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface），
+                        // 与两侧的圆钮共用同一档，顶栏整排色调统一。
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
                     ) {
                         // 文案样式取官方按钮默认的 labelLarge；长标题在 SplitButtonLayout
                         // 给首段预留的剩余宽度里省略，不会把尾段挤出可见区域。
@@ -133,13 +140,17 @@ internal fun Material3HomeTopBar(
                     // 官方 DropdownMenu 的对齐策略是 start-to-start 优先、放不下自动退到
                     // end-to-end，锚在尾段按钮上时右缘自然与按钮右缘对齐。
                     Box {
-                        SplitButtonDefaults.TonalTrailingButton(
-                            checked = menuExpanded,
-                            onCheckedChange = { expanded ->
-                                TouchHaptics.click(view)
-                                menuExpanded = expanded
-                            },
-                        ) {
+                    SplitButtonDefaults.TonalTrailingButton(
+                        checked = menuExpanded,
+                        onCheckedChange = { expanded ->
+                            TouchHaptics.click(view)
+                            menuExpanded = expanded
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    ) {
                             Icon(
                                 imageVector = Icons.Rounded.KeyboardArrowDown,
                                 contentDescription = stringResource(R.string.action_more),
@@ -187,8 +198,8 @@ internal fun Material3HomeTopBar(
                 onNewConversation()
             },
             size = EtaIconSize.S,
-            // 默认色调档（官方 FilledTonalIconButton 默认色），不再走 tertiary 强调色。
-            style = EtaButtonStyle.Tonal,
+            // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+            style = EtaButtonStyle.SurfaceHighest,
         )
     }
 }

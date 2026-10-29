@@ -106,15 +106,16 @@ private fun EtaIconSize.iconSize(): Dp = when (this) {
     EtaIconSize.XL -> IconButtonDefaults.extraLargeIconSize
 }
 
-/** 按钮外观：填充 / 色调 / 色调强调（tertiary 档）/ 描边 / 标准。 */
-enum class EtaButtonStyle { Filled, Tonal, TonalEmphasis, Outlined, Standard }
+/** 按钮外观：填充 / 色调 / 色调强调（tertiary 档）/ 中性表面（surfaceContainerHighest 档）/ 描边 / 标准。 */
+enum class EtaButtonStyle { Filled, Tonal, TonalEmphasis, SurfaceHighest, Outlined, Standard }
 
 /**
  * 自适应图标按钮（M3 Expressive）。
  *
  * @param style 按钮档位；`TonalEmphasis` 在 Tonal 基础上把容器提到 tertiaryContainer
  *   强调档（官方 `FilledTonalIconButton` + 官方 `filledTonalIconButtonColors` 覆盖，
- *   形状/尺寸/涟漪仍走官方默认）。
+ *   形状/尺寸/涟漪仍走官方默认）；`SurfaceHighest` 用中性表面档
+ *   `surfaceContainerHighest` / `onSurface`（会话侧栏顶部胶囊未选中态同款配色 token）。
  * @param stretch 为 true 时横向拉伸占满剩余宽度（用于“最后的按钮向右拉伸”的行布局）。
  */
 @Composable
@@ -162,6 +163,16 @@ fun EtaIconButton(
             colors = IconButtonDefaults.filledTonalIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            ),
+            content = content,
+        )
+        EtaButtonStyle.SurfaceHighest -> FilledTonalIconButton(
+            onClick = onClick,
+            modifier = sizedModifier,
+            enabled = enabled,
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurface,
             ),
             content = content,
         )
