@@ -1587,11 +1587,13 @@ private fun DrawerActionMenuItem(
         text = { M3Text(text = text, color = contentColor) },
         shape = EtaMenuItemShape(index = index, count = count),
         leadingIcon = {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-            )
+            // 非破坏性项不显式指定 tint：`Color.Unspecified` 会让 Icon 走矢量原始色（黑色），
+            // 深色模式下菜单底板上几乎不可见，这里交给 LocalContentColor 取官方图标色。
+            if (destructive) {
+                Icon(imageVector = icon, contentDescription = null, tint = contentColor)
+            } else {
+                Icon(imageVector = icon, contentDescription = null)
+            }
         },
         onClick = onClick,
     )
