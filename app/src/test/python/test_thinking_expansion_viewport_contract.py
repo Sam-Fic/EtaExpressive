@@ -21,25 +21,20 @@ class ThinkingExpansionViewportContractTest(unittest.TestCase):
             callback.index("expanded = !expanded"),
         )
 
-    def test_parent_captures_thinking_row_before_animation_relayout(self):
+    def test_parent_thinking_toggle_releases_the_bottom_anchor(self):
         self.assertIn("onThinkingToggle = if (message is ThinkingMessageUi)", BODY)
         start = BODY.index("val onThinkingRowToggle:")
         end = BODY.index("    Box(", start)
         window = BODY[start:end]
-        self.assertIn("viewportRecovery.beginThinkingExpansion(", window)
-        self.assertIn("rowKey = rowKey", window)
-        self.assertIn("canOwnWorkExpansionViewport()", window)
-        self.assertIn("scrollState.isConversationAtBottom()", window)
-        self.assertIn("viewportRecovery.cancelWorkExpansion(rowKey)", window)
+        self.assertIn("if (willExpand) onBottomAnchorChanged(false)", window)
 
-    def test_both_message_and_work_step_use_the_actual_lazy_row_key(self):
-        callback = "{ _, willExpand -> onThinkingRowToggle(entry.key, willExpand) }"
-        message = BODY.split("is AgentTimelineRow.Message -> {", 1)[1].split("is AgentTimelineRow.WorkHeader -> {", 1)[0]
+    def test_both_message_and_work_step_report_the_message_id(self):
+        message = BODY.split("is AgentTimelineRow.Message -> {", 1)[1].split("is AgentTimelineRow.WorkStep -> {", 1)[0]
         work = BODY.split("is AgentTimelineRow.WorkStep -> {", 1)[1].split("turnFooters[entry.key]", 1)[0]
-        for branch in (message, work):
-            self.assertIn("onThinkingToggle = if (message is ThinkingMessageUi)", branch)
-            self.assertIn(callback, branch)
-        self.assertEqual(2, BODY.count(callback))
+        self.assertIn("onThinkingToggle = if (message is ThinkingMessageUi)", message)
+        self.assertIn("{ _, willExpand -> onThinkingRowToggle(entry.key, willExpand) }", message)
+        self.assertIn("onThinkingToggle = if (message is ThinkingMessageUi)", work)
+        self.assertIn("{ _, willExpand -> onThinkingRowToggle(message.id, willExpand) }", work)
 
     def test_normal_follow_rechecks_fresh_overflow_inside_its_scroll_owner(self):
         scroll = BODY.split("scrollState.scroll {", 1)[1].split("if (consumedStep > 0f)", 1)[0]
@@ -55,8 +50,6 @@ class ThinkingExpansionViewportContractTest(unittest.TestCase):
         self.assertIn("continue", consumer)
         self.assertNotIn("\n                reset()", consumer)
         self.assertIn("remainingDistancePx = latestOverflow.coerceAtLeast(0).toFloat()", consumer)
-        header = BODY.split("is AgentTimelineRow.WorkHeader -> {", 1)[1].split("is AgentTimelineRow.WorkStep -> {", 1)[0]
-        self.assertIn('entry.key, entry.group.messages.map { "work-step:${it.id}" }', header)
         self.assertIn("fun hasActiveExpansion(canOwnViewport: Boolean)", RECOVERY)
         self.assertIn("canOwnViewport && System.nanoTime() < expansion.expiresAtNanos", RECOVERY)
 

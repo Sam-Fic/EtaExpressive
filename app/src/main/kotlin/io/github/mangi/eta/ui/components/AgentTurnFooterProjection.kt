@@ -84,16 +84,15 @@ internal fun List<AgentTimelineRow>.turnFooters(
                 }
                 else -> afterRowKey = row.key
             }
-            is AgentTimelineRow.WorkHeader -> {
+            is AgentTimelineRow.WorkStep -> {
                 val notice = terminal
                 // A retry/continue run can start with work and no new user
-                // bubble. Do not place the previous run's footer in that work.
-                if (notice != null && row.group.messages.any { it.hasDifferentKnownOwner(notice) }) {
+                // bubble. Do not place the previous run's footer on that work.
+                if (notice != null && row.message.hasDifferentKnownOwner(notice)) {
                     flush(includeOpenTurn = true)
                 }
                 afterRowKey = row.key
             }
-            is AgentTimelineRow.WorkStep -> afterRowKey = row.key
         }
     }
     // A finished text block is not a finished turn while its run is active or paused.

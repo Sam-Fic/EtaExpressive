@@ -153,7 +153,7 @@ class AgentWorkProcessCardDrawTest {
             )
         }
         val groups = tools.toTimelineEntries()
-        val rows = groups.toLazyTimelineRows(groups.associate { it.key to true }, false)
+        val rows = groups.toLazyTimelineRows()
         val steps = rows.filterIsInstance<AgentTimelineRow.WorkStep>()
         var scrollToEnd: (() -> Unit)? = null
         compose.setContent {
@@ -168,7 +168,7 @@ class AgentWorkProcessCardDrawTest {
                             seen.add(row.key)
                             onDispose { active.remove(row.key) }
                         }
-                        val part = if (row.isLast) WorkProcessCardPart.Last else WorkProcessCardPart.Middle
+                        val part = WorkProcessCardPart.Middle
                         WorkProcessCardSlice(part) { Box(Modifier.height(32.dp)) }
                     }
                 }

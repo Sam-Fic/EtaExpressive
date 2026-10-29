@@ -17,7 +17,7 @@ class AgentTerminalSnapshotRegressionTest {
         )).incrementalSnapshot()
         val originalHash = input.hashCode()
         val oldEntries = input.toTimelineEntries()
-        val oldRows = oldEntries.toLazyTimelineRows(emptyMap(), true)
+        val oldRows = oldEntries.toLazyTimelineRows()
         val thinking = projector.finalizeThinking("live", input)
         val thinkingOracle = input.map { if (it is ThinkingMessageUi && it.id.startsWith("live-thinking-"))
             it.copy(isStreaming = false, collapsed = true) else it }
@@ -43,19 +43,19 @@ class AgentTerminalSnapshotRegressionTest {
         timeline.project(visibleBefore)
         val visible = filter.project(stamped, null)
         val entries = timeline.project(visible)
-        val lazyRows = rows.project(entries, emptyMap(), false)
+        val lazyRows = rows.project(entries)
         // The stamped assistant payload and the thinking step both patch in place: neither
         // feeds terminal ordering or grouping, so only the first projection rebuilds.
         assertEquals(1, fullBuilds)
         assertEquals(visible.toTimelineEntries(), entries)
-        assertEquals(entries.toLazyTimelineRows(emptyMap(), false), lazyRows)
+        assertEquals(entries.toLazyTimelineRows(), lazyRows)
         assertEquals("answer", (stamped.last() as AgentMessageUi).content)
         assertEquals(usage, (stamped.last() as AgentMessageUi).usage)
         assertSame(input[4097], stamped[4097])
         assertEquals("answer\n\n", (input.last() as AgentMessageUi).content)
         assertEquals(originalHash, input.hashCode())
         assertEquals(input.toTimelineEntries(), oldEntries)
-        assertEquals(oldEntries.toLazyTimelineRows(emptyMap(), true), oldRows)
+        assertEquals(oldEntries.toLazyTimelineRows(), oldRows)
     }
 
     @Test fun multipleFinalizedSlotsDoNotClaimSingleSlotAndOtherRunIsUntouched() {

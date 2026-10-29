@@ -771,6 +771,8 @@
   <string name="work_completed">Analysis complete</string>
   <string name="work_collapse">Collapse work details</string>
   <string name="work_expand">Expand work details</string>
+  <string name="work_state_expanded">Expanded</string>
+  <string name="work_state_collapsed">Collapsed</string>
   <string name="copy_copied">Copied</string>
   <string name="copy_answer">Copy answer</string>
   <string name="ui_branch_conversation">Branch</string>
@@ -1997,7 +1999,7 @@
   <string name="appearance_message_timestamps">Message timestamps</string>
   <string name="appearance_message_timestamps_summary">Show when each reply finished generating, on the right of its action bar.</string>
   <string name="appearance_fold_work_process">Collapse after the answer</string>
-  <string name="appearance_fold_work_process_summary">Aggressive keeps only your messages and the final reply; standard folds reasoning and tool steps into a card; off keeps everything expanded. Tap a card to expand it again.</string>
+  <string name="appearance_fold_work_process_summary">Reasoning and tool steps always show as their own expandable rows. Aggressive additionally folds intermediate replies into one-line rows; off keeps those replies fully expanded.</string>
   <string name="appearance_fold_level_aggressive">Aggressive</string>
   <string name="appearance_fold_level_normal">Standard</string>
   <string name="appearance_fold_level_off">Off</string>

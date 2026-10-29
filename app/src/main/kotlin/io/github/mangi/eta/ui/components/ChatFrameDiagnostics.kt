@@ -19,7 +19,6 @@ internal fun timelineDiagnosticRowType(row: AgentTimelineRow): String = when (ro
         is ToolActivityMessageUi -> "tool"
         else -> "message"
     }
-    is AgentTimelineRow.WorkHeader -> "work-header"
     is AgentTimelineRow.WorkStep -> when (row.message) {
         is ToolActivityMessageUi -> "work-tool"
         is ThinkingMessageUi -> "work-thinking"

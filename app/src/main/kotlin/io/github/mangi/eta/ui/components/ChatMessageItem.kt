@@ -5,7 +5,6 @@ import io.github.mangi.eta.ui.markdown.PreparedMarkdownBlock
 import io.github.mangi.eta.ui.markdown.PreparedMarkdownSpec
 import io.github.mangi.eta.ui.markdown.ChatSelectableText
 import android.graphics.BitmapFactory
-import android.icu.text.ListFormatter
 import android.util.Base64
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -453,7 +452,6 @@ internal fun ChatMessageItem(
     actions: ChatMessageActions,
     showBrowserShortcut: Boolean,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
     retainedStreamingState: StreamingMarkdownState? = null,
     showCopyAction: Boolean = true,
     showMessageActions: Boolean = false,
@@ -468,7 +466,7 @@ internal fun ChatMessageItem(
     onThinkingToggle: ((String, Boolean) -> Unit)? = null,
 ) {
     when (message) {
-        is io.github.mangi.eta.ui.model.AgentQuestionMessageUi -> AgentQuestionCard(message, modifier, compact = compact,
+        is io.github.mangi.eta.ui.model.AgentQuestionMessageUi -> AgentQuestionCard(message, modifier,
             onDraftChanged = { draft -> actions.onQuestionDraftChanged(message.request.conversationId, message.request.questionId, draft) },
             onSubmit = { actions.onSubmitQuestionAnswer(message.request.conversationId, message.request.questionId) })
         is UserMessageUi -> UserMessageBubble(
@@ -546,7 +544,6 @@ internal fun ChatMessageItem(
             message = message,
             retainedStreamingState = retainedStreamingState,
             modifier = modifier,
-            compact = compact,
             isPaused = isPaused,
             onToggle = onThinkingToggle,
         )
@@ -557,149 +554,12 @@ internal fun ChatMessageItem(
             showBrowserShortcut = showBrowserShortcut,
             enableLivePreview = enableLivePreview,
             modifier = modifier,
-            compact = compact,
         )
-        is ToolSummaryMessageUi -> ToolSummaryInline(message = message, modifier = modifier, compact = compact)
+        is ToolSummaryMessageUi -> ToolSummaryInline(message = message, modifier = modifier)
         is ContextCompactedMessageUi -> ContextCompactedDivider(message = message, modifier = modifier)
         is SuggestionChipsMessageUi -> SuggestionChipsRow(message = message, onSuggestionClick = actions.onSuggestionClick, modifier = modifier)
     }
 }
-
-/**
- * 把连续的思考与工具调用收束为一个可展开的工作过程，避免 Agent 事件退化为聊天气泡噪音。
- *
- * [folded] 表示这一组被「本轮回答已出现 ⇒ 回答之前的内容收起」策略收起（设置项
- * `answerFoldLevel`；激进档会把中间回复一并并进本组）。此时即使某个步骤的状态还停在
- * Running（断线重连、被中断的尾巴最常见），标题也按完成态读作「已完成 N 个步骤」，不再报
- * 「正在处理」，也不再有呼吸与震动。
- */
-@Composable
-internal fun AgentWorkProcessHeader(
-    messages: List<AgentChatMessageUi>,
-    modifier: Modifier = Modifier,
-    isPaused: Boolean = false,
-    expanded: Boolean,
-    hasVisibleSteps: Boolean = expanded,
-    folded: Boolean = false,
-    onToggle: () -> Unit,
-) {
-    val running = !folded && messages.any { message ->
-        (message is ThinkingMessageUi && message.isStreaming) ||
-            (message is ToolActivityMessageUi && message.status == ToolActivityStatusUi.Running)
-    }
-    val toolCount = messages.count { it is ToolActivityMessageUi }
-    // 激进档卡片可能没有工具调用、只有被并进来的中间回复，组头据此读作「N 条中间回复」。
-    val replyCount = messages.count { it is AgentMessageUi && it.content.isNotBlank() }
-    // 已作答的提问卡同样会被并进来：只有问答的组不该顶着工具锤子图标。
-    val questionCount = messages.count { it is io.github.mangi.eta.ui.model.AgentQuestionMessageUi }
-    val runningTool = if (running) {
-        messages.lastOrNull { message ->
-            message is ToolActivityMessageUi && message.status == ToolActivityStatusUi.Running
-        } as? ToolActivityMessageUi
-    } else null
-    val runningToolTitle = runningTool?.argumentsSummary?.takeIf { it.isNotBlank() }
-        ?: runningTool?.let { toolDisplayName(it.toolName) }
-    val view = LocalView.current
-    SideEffect {
-        if (isPaused || folded) return@SideEffect
-        messages.forEach { message ->
-            val liveId = when {
-                message is ToolActivityMessageUi &&
-                    message.status == ToolActivityStatusUi.Running -> message.id
-                message is ThinkingMessageUi && message.isStreaming -> message.id
-                else -> null
-            }
-            if (liveId != null) {
-                TouchHaptics.onLiveToolActivity(view, liveId)
-            }
-        }
-    }
-
-    val pulseAlpha = rememberActivePulse(active = running && !isPaused, label = "work_pulse")
-
-    WorkProcessCardSlice(
-        part = if (hasVisibleSteps && messages.isNotEmpty()) WorkProcessCardPart.First else WorkProcessCardPart.Whole,
-        modifier = modifier,
-    ) {
-        // 标题文案与配色先算出来，交给统一标题栏构件。
-        val headerLabel = when {
-            running && toolCount > 0 -> pluralStringResource(
-                R.plurals.work_processing_step,
-                toolCount,
-                toolCount,
-            ) + (runningToolTitle?.let { " · $it" } ?: "")
-            running -> stringResource(R.string.work_analyzing)
-            toolCount > 0 -> pluralStringResource(
-                R.plurals.work_completed_steps,
-                toolCount,
-                toolCount,
-            ) + if (replyCount > 0) {
-                " · " + pluralStringResource(R.plurals.work_intermediate_replies, replyCount, replyCount)
-            } else {
-                ""
-            }
-            replyCount > 0 -> pluralStringResource(
-                R.plurals.work_intermediate_replies,
-                replyCount,
-                replyCount,
-            )
-            else -> stringResource(R.string.work_completed)
-        }
-        val headerTitleColor = if (running && !isPaused) etaOnSurface() else etaOnSurfaceVariant()
-        val headerLeadingTint = if (running && !isPaused) etaPrimary() else etaOnSurfaceVariant()
-        // 收起态用一行列出本组实际跑过的工具名（去重、本地化列表连接）：
-        // 折叠时也能看清「干了什么」，不必先展开。展开态与运行中都不加这行——
-        // 前者步骤已可见，后者标题已经带着当前工具名，再加一行会互相重复。
-        val stepToolsLabel = if (running || expanded) {
-            null
-        } else {
-            val names = messages.mapNotNull { message ->
-                (message as? ToolActivityMessageUi)?.toolName
-            }
-                .distinct()
-                .map { toolDisplayName(view.context.resources, it) }
-            if (names.isEmpty()) {
-                null
-            } else {
-                ListFormatter.getInstance(view.context.resources.configuration.locales[0])
-                    .format(names)
-            }
-        }
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // 与提问/思考/工具卡片共用同一标题栏构件，组头与各行的标题行逐值一致。
-            WorkCardDisclosureHeader(
-                leadingIcon = when {
-                    runningTool != null -> ToolPresentation.icon(runningTool.toolName)
-                    running -> Icons.Rounded.AutoAwesome
-                    // 纯回复/纯问答卡片（一整轮只剩被收起的中间回复或问答）用对话图标，区别于工具堆叠。
-                    toolCount == 0 && (replyCount > 0 || questionCount > 0) -> Icons.Rounded.QuestionAnswer
-                    else -> Icons.Rounded.Build
-                },
-                leadingTint = headerLeadingTint,
-                title = headerLabel,
-                titleColor = headerTitleColor,
-                expanded = expanded,
-                onToggle = onToggle,
-                modifier = Modifier.fillMaxWidth(),
-                supporting = stepToolsLabel,
-                leadingModifier = Modifier.graphicsLayer {
-                    alpha = if (running && !isPaused) pulseAlpha() else 1f
-                },
-            )
-
-            if (hasVisibleSteps && messages.isNotEmpty()) {
-                // 与统一展开体的分隔线同缩进（对齐 ListItem 正文起始位置）。
-                ChatHairlineDivider(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                )
-            }
-        }
-    }
-}
-
 
 // ── 用户消息：轻盈美观气泡 ──────────────────────────────────────────────
 
@@ -3330,15 +3190,11 @@ private fun ThinkingRow(
     message: ThinkingMessageUi,
     retainedStreamingState: StreamingMarkdownState?,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
     isPaused: Boolean = false,
     onToggle: ((String, Boolean) -> Unit)? = null,
 ) {
     val bodyTraceMount = remember { nextChatBodyTraceMount() }
     SideEffect { traceChatBodyRun("thinking", bodyTraceMount) }
-    val expansionHoldsBottom = LocalExpansionHoldsBottom.current
-    // 这一次展开或收起朝哪边长；点击时定，动画期间不变。
-    var anchorBottom by remember(message.id) { mutableStateOf(false) }
     var expanded by rememberSaveable(message.id) { mutableStateOf(!message.collapsed) }
     var manuallyExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
     // 仅本次组合内由点击触发的展开才分帧组合正文；不跨配置变更保存。
@@ -3353,8 +3209,6 @@ private fun ThinkingRow(
     }
     LaunchedEffect(message.isStreaming) {
         if (manuallyExpanded) return@LaunchedEffect
-        // 输出结束时的自动收起沿用原来的上沿方向。
-        anchorBottom = false
         expanded = message.isStreaming
     }
 
@@ -3363,11 +3217,10 @@ private fun ThinkingRow(
         label = "thinking_pulse",
     )
 
-    // 跟工具行一样，整块都能点：点标题展开，展开后点正文也能收起。
-    // 正文里的链接和长按选择先拿到手势，不会被这里吃掉。
+    // 跟工具行一样，点标题展开/收起。展开前由宿主解除底部锚定（标题钉在原位，
+    // 面板向屏幕下方生长）；正文里的链接和长按选择先拿到手势，不会被这里吃掉。
     val toggle: () -> Unit = {
         onToggle?.invoke(message.id, !expanded)
-        anchorBottom = expansionHoldsBottom()
         manuallyExpanded = true
         expandedByTap = !expanded
         expanded = !expanded
@@ -3375,55 +3228,26 @@ private fun ThinkingRow(
         StreamPerformanceDiagnostics.probeEvent(
             toggleProbeRef.token,
             "item",
-            "chars=${message.content.length} streaming=${message.isStreaming} " +
-                "anchor=${if (anchorBottom) "bottom" else "top"}",
+            "chars=${message.content.length} streaming=${message.isStreaming}",
         )
     }
-    val thinkingBody: @Composable () -> Unit = {
-        // 外层宿主（compact 的 Box、独立态的 WorkProcessCardSlice）都是叠放容器，
-        // 标题行与展开内容必须显式包 Column 纵向排列，否则推理正文会画在标题上。
-        Column(modifier = Modifier.fillMaxWidth()) {
-        val thinkingTitle = if (message.isStreaming) {
-            stringResource(R.string.reasoning_in_progress)
+    val thinkingTitle = if (message.isStreaming) {
+        stringResource(R.string.reasoning_in_progress)
+    } else {
+        message.elapsedSeconds?.takeIf { it > 0 }?.let { seconds ->
+            pluralStringResource(R.plurals.reasoning_completed_seconds, seconds, seconds)
+        } ?: stringResource(R.string.reasoning_completed)
+    }
+    // 展开后的详情子条目：流式期间用增量 Markdown，结束后切稳定 Markdown。
+    val thinkingDetails: (@Composable AnimatedVisibilityScope.() -> Unit)? =
+        if (message.content.isBlank()) {
+            null
         } else {
-            message.elapsedSeconds?.takeIf { it > 0 }?.let { seconds ->
-                pluralStringResource(R.plurals.reasoning_completed_seconds, seconds, seconds)
-            } ?: stringResource(R.string.reasoning_completed)
-        }
-        // 与提问卡片共用同一标题栏构件——官方 ListItem 整行命中区与最小行高，
-        // 折叠只由标题行触发，标题独立成一行。
-        WorkCardDisclosureHeader(
-            leadingIcon = Icons.Rounded.AutoAwesome,
-            leadingTint = if (message.isStreaming && !isPaused) {
-                etaPrimary()
-            } else {
-                etaOnSurfaceVariant()
-            },
-            title = thinkingTitle,
-            titleColor = if (message.isStreaming && !isPaused) {
-                etaOnSurface()
-            } else {
-                etaOnSurfaceVariant()
-            },
-            expanded = expanded,
-            onToggle = toggle,
-            leadingModifier = Modifier.graphicsLayer {
-                alpha = if (message.isStreaming && !isPaused) pulseAlpha() else 1f
-            },
-        )
-
-        AnimatedVisibility(
-            visible = expanded && message.content.isNotBlank(),
-            enter = tailDetailsEnter(anchorBottom),
-            exit = tailDetailsExit(anchorBottom),
-            modifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
-        ) {
-            // 下半部分统一走提问卡片的展开体（发丝分隔线 + 16dp/12dp 内容列）。
-            HapticSelectionContainer(
-                modifier = retainDrawLayerWhenIdle(enabled = streamingState == null)
-                    .toggleProbe(toggleProbeRef, "content"),
-            ) {
-                WorkCardExpandedBody {
+            {
+                HapticSelectionContainer(
+                    modifier = retainDrawLayerWhenIdle(enabled = streamingState == null)
+                        .toggleProbe(toggleProbeRef, "content"),
+                ) {
                     if (streamingState != null) {
                         StreamingMarkdown(
                             state = streamingState,
@@ -3446,22 +3270,63 @@ private fun ThinkingRow(
                     }
                 }
             }
-            return@AnimatedVisibility
         }
-        }
-    }
-    // compact 模式渲染在工作过程卡片内部，不再携带自己的卡片外壳，避免卡中卡。
-    if (compact) {
-        // 行内不再自己加内边距与命中区——标题栏的官方 ListItem 自带正文内边距，
-        // 外层切片已提供卡片外沿留白，三者与提问卡片逐值对齐。
-        Box(modifier = modifier.fillMaxWidth()) { thinkingBody() }
-        return
-    }
-    // 独立行复用提问卡片的整卡外壳（surfaceContainer 色块、官方 shapes.large、无描边）。
-    WorkProcessCardSlice(
-        part = WorkProcessCardPart.Whole,
-        modifier = modifier.fillMaxWidth(),
-    ) { thinkingBody() }
+    AgentWorkSegmentedBubble(
+        leading = {
+            Icon(
+                imageVector = Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(EtaDimens.DenseIconSize)
+                    .graphicsLayer { alpha = if (message.isStreaming && !isPaused) pulseAlpha() else 1f },
+                tint = if (message.isStreaming && !isPaused) etaPrimary() else etaOnSurfaceVariant(),
+            )
+        },
+        title = thinkingTitle,
+        titleColor = if (message.isStreaming && !isPaused) etaOnSurface() else etaOnSurfaceVariant(),
+        modifier = modifier,
+        expanded = expanded,
+        onToggle = toggle,
+        details = thinkingDetails,
+        expandAnimationModifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
+    )
+}
+
+// ── 中间回复（激进档并入工作组的正文回复） ───────────────────────────
+
+/**
+ * 激进档并入工作组的中间回复：与思考/工具步骤一样扁平化为一条可展开的
+ * SegmentedListItem 气泡（标题取正文首行，展开后显示完整 Markdown），
+ * 不再整段平铺在对话流里，也不嵌套进组头卡片。
+ */
+@Composable
+internal fun IntermediateReplyStepRow(
+    message: AgentMessageUi,
+    modifier: Modifier = Modifier,
+) {
+    val title = message.content.lineSequence().firstOrNull { it.isNotBlank() }
+        ?.take(80)
+        ?: stringResource(R.string.system_notice_empty_result)
+    AgentWorkSegmentedBubble(
+        leading = {
+            Icon(
+                imageVector = Icons.Rounded.QuestionAnswer,
+                contentDescription = null,
+                modifier = Modifier.size(EtaDimens.DenseIconSize),
+                tint = etaOnSurfaceVariant(),
+            )
+        },
+        title = title,
+        titleColor = etaOnSurfaceVariant(),
+        modifier = modifier,
+        details = {
+            StableMarkdown(
+                content = message.content,
+                tone = ChatMarkdownTone.Answer,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+    )
 }
 
 // ── 工具调用：优雅极简时间线 ─────────────────────────────────────────
@@ -3529,8 +3394,7 @@ internal fun tailDetailsExit(toBottom: Boolean): androidx.compose.animation.Exit
  * 工具状态标记：四种状态统一为 16dp 图标语法，不再混用「圆点 + 文字」。
  *
  * - 运行中：M3E `LoadingIndicator`（形状变形）——与输入区、朗读按钮同一套 loading
- *   语言，比闪烁圆点更明确；文案由组头「正在执行 N 个步骤 · 当前工具」承担，
- *   行内不再重复「执行中」三个字；
+ *   语言，比闪烁圆点更明确；行内不再重复「执行中」三个字，
  * - 成功：低饱和度对勾。成功是常态，不抢注意力；
  * - 失败：error 色图标 + 「失败」小字。失败是唯一保留文字的状态——托管工具失败时
  *   没有原因文案，只靠图标读不出含义；
@@ -3607,12 +3471,9 @@ private fun ToolActivityInline(
     showBrowserShortcut: Boolean,
     enableLivePreview: Boolean = true,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
 ) {
     val bodyTraceMount = remember { nextChatBodyTraceMount() }
     SideEffect { traceChatBodyRun("tool", bodyTraceMount) }
-    val expansionHoldsBottom = LocalExpansionHoldsBottom.current
-    var anchorBottom by remember(message.id) { mutableStateOf(false) }
     var isExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
     // 仅本次组合内由点击触发的展开才把命令与结果推迟一帧；不跨配置变更保存。
     var expandedByTap by remember(message.id) { mutableStateOf(false) }
@@ -3662,10 +3523,9 @@ private fun ToolActivityInline(
     }
 
     val toolRowSettled = message.status != ToolActivityStatusUi.Running
-    // 展开前解除底部锚定，标题钉在原位、面板向下生长可见。
+    // 展开前解除底部锚定，标题钉在原位、面板向屏幕下方生长可见。
     val releaseAnchor = LocalChatAnchorRelease.current
     val toggle: () -> Unit = {
-        anchorBottom = expansionHoldsBottom()
         if (!isExpanded) releaseAnchor()
         expandedByTap = !isExpanded
         isExpanded = !isExpanded
@@ -3674,56 +3534,23 @@ private fun ToolActivityInline(
             toggleProbeRef.token,
             "item",
             "status=${message.status} commandChars=${message.command?.length ?: 0} " +
-                "resultChars=${message.resultSummary?.length ?: 0} " +
-                "browser=$showBrowserShortcut anchor=${if (anchorBottom) "bottom" else "top"}",
+                "resultChars=${message.resultSummary?.length ?: 0} browser=$showBrowserShortcut",
         )
     }
-    val toolCardBody: @Composable () -> Unit = {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // 与提问卡片共用同一标题栏构件。失败原因/浏览器状态走官方 ListItem 的
-            // supportingContent；状态标记与展开箭头放在 trailingContent。
-            WorkCardDisclosureHeader(
-                leadingIcon = ToolPresentation.icon(message.toolName),
-                leadingTint = when (message.status) {
-                    // 成功是常态，前导图标刻意降档弱化；其余状态走 L1 语义色映射。
-                    ToolActivityStatusUi.Success -> etaOnSurfaceVariant().copy(alpha = 0.8f)
-                    else -> message.status.etaStatus().foregroundColor()
-                },
-                title = title,
-                titleColor = if (message.status == ToolActivityStatusUi.Running) {
-                    etaOnSurface()
-                } else {
-                    etaOnSurfaceVariant()
-                },
-                expanded = isExpanded,
-                onToggle = if (hasDetails) toggle else null,
-                // 副标题优先级：失败原因 > 浏览器实时状态 > 图片张数。
-                supporting = failureSubtitle ?: browserSubtitle ?: imageCountLabel,
-                supportingColor = failureSubtitle?.let { EtaStatus.Failed.foregroundColor() },
-                trailingContent = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        ToolStatusIndicator(message.status)
-                        if (hasDetails) WorkCardChevron(isExpanded)
-                    }
-                },
-            )
-
-        AnimatedVisibility(
-            visible = isExpanded && hasDetails,
-            enter = tailDetailsEnter(anchorBottom),
-            exit = tailDetailsExit(anchorBottom),
-            modifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
-        ) {
-            // 下半部分统一走提问卡片的展开体（发丝分隔线 + 16dp/12dp 内容列）。
+    // 展开后的详情子条目：命令、参数、结果、工具读到的图片与浏览器入口。
+    val toolDetails: (@Composable AnimatedVisibilityScope.() -> Unit)? = if (!hasDetails) {
+        null
+    } else {
+        {
             // 命令块本身是 surfaceContainerHighest 的官方 Surface，无需再套面板底色，
-            // 层级依旧清晰：卡片 surfaceContainer → 命令井 surfaceContainerHighest。
-            WorkCardExpandedBody(modifier = Modifier.toggleProbe(toggleProbeRef, "content")) {
+            // 层级依旧清晰：气泡 surfaceContainer → 命令井 surfaceContainerHighest。
+            HapticSelectionContainer(modifier = Modifier.toggleProbe(toggleProbeRef, "content")) {
                 val bodyReady = rememberDeferredBody(deferOneFrame = expandedByTap)
                 if (bodyReady) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
                         // 敏感工具的原文不落库：重开会话后只剩一句「完成」时，说清楚为什么。
                         if (message.detailsWithheld &&
                             message.argumentsDetail.isNullOrBlank() &&
@@ -3820,15 +3647,36 @@ private fun ToolActivityInline(
                 }
             }
         }
-        }
     }
-    // 独立行复用提问卡片的整卡外壳（surfaceContainer 色块、官方 shapes.large、无描边）。
-    WorkProcessCardSlice(
-        part = WorkProcessCardPart.Whole,
-        modifier = modifier
-            .let { completedContentDrawLayer(it, toolRowSettled) }
-            .fillMaxWidth(),
-    ) { toolCardBody() }
+    AgentWorkSegmentedBubble(
+        leading = {
+            Icon(
+                imageVector = ToolPresentation.icon(message.toolName),
+                contentDescription = null,
+                modifier = Modifier.size(EtaDimens.DenseIconSize),
+                tint = when (message.status) {
+                    // 成功是常态，前导图标刻意降档弱化；其余状态走 L1 语义色映射。
+                    ToolActivityStatusUi.Success -> etaOnSurfaceVariant().copy(alpha = 0.8f)
+                    else -> message.status.etaStatus().foregroundColor()
+                },
+            )
+        },
+        title = title,
+        titleColor = if (message.status == ToolActivityStatusUi.Running) {
+            etaOnSurface()
+        } else {
+            etaOnSurfaceVariant()
+        },
+        modifier = modifier.let { completedContentDrawLayer(it, toolRowSettled) },
+        // 副标题优先级：失败原因 > 浏览器实时状态 > 图片张数。
+        supporting = failureSubtitle ?: browserSubtitle ?: imageCountLabel,
+        supportingColor = failureSubtitle?.let { EtaStatus.Failed.foregroundColor() },
+        trailingStatus = { ToolStatusIndicator(message.status) },
+        expanded = isExpanded,
+        onToggle = if (hasDetails) toggle else null,
+        details = toolDetails,
+        expandAnimationModifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
+    )
 }
 
 /**
@@ -4221,12 +4069,11 @@ private fun RunTraceRow(
 private fun ToolSummaryInline(
     message: ToolSummaryMessageUi,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
 ) {
     FlowRow(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = if (compact) 10.dp else 20.dp, vertical = 4.dp),
+            .padding(horizontal = 20.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

@@ -46,7 +46,7 @@ class AgentRunFinishedProductionRegressionTest {
             val before = current().messages
             val hash = before.hashCode()
             val originalEntries = before.toTimelineEntries()
-            val originalRows = originalEntries.toLazyTimelineRows(emptyMap(), true)
+            val originalRows = originalEntries.toLazyTimelineRows()
             val usage = requireNotNull((before.last() as AgentMessageUi).usage)
             assertEquals(5000, usage.inputTokens)
             assertEquals(22, usage.outputTokens)
@@ -62,7 +62,7 @@ class AgentRunFinishedProductionRegressionTest {
             assertEquals("hello🙂\n", (before.last() as AgentMessageUi).content)
             assertEquals(hash, before.hashCode())
             assertEquals(before.toTimelineEntries(), originalEntries)
-            assertEquals(originalEntries.toLazyTimelineRows(emptyMap(), true), originalRows)
+            assertEquals(originalEntries.toLazyTimelineRows(), originalRows)
             val filter = AgentVisibleMessagesCache()
             var fullBuilds = 0
             val timeline = AgentTimelineProjectionCache { fullBuilds++; it.toTimelineEntries() }
@@ -72,7 +72,7 @@ class AgentRunFinishedProductionRegressionTest {
             val entries = timeline.project(visible)
             assertEquals(1, fullBuilds) // pure terminal payload keeps the original scan-compatible route
             assertEquals(visible.toTimelineEntries(), entries)
-            assertEquals(entries.toLazyTimelineRows(emptyMap(), false), rows.project(entries, emptyMap(), false))
+            assertEquals(entries.toLazyTimelineRows(), rows.project(entries))
             send(AgentEvent.RunFinished(1, 8, generatedAtMillis = 99999L))
             assertEquals(after, current().messages)
             assertEquals(5000, current().livePromptTokens)

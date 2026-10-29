@@ -38,9 +38,9 @@ internal sealed interface AgentTimelineEntry {
 /**
  * 把消息流投影为时间线条目。
  *
- * [aggressive]（激进折叠档）改变的是**归组**而非收起时机：每一轮只保留最后一条非空正文回复，
- * 它之前的中间文字回复、提示/重连等、已作答/已取消的提问卡与思考/工具步骤并进同一张工作过程卡片
- * （一整轮合成一张卡），由 [toLazyTimelineRows] 的折叠策略统一收起 —— 最终展示只剩用户消息与最后一条回复。
+ * [aggressive]（激进折叠档）改变的是**归组**而非显隐：每一轮只保留最后一条非空正文回复，
+ * 它之前的中间文字回复、提示/重连等、已作答/已取消的提问卡与思考/工具步骤并进同一工作组，
+ * 由 [toLazyTimelineRows] 展开为逐条步骤行（每条一个可展开的 SegmentedListItem 气泡，无嵌套）。
  * 普通/不折叠两档传 false，条目结构与旧版逐条投影完全一致。
  */
 internal fun List<AgentChatMessageUi>.toTimelineEntries(aggressive: Boolean = false): List<AgentTimelineEntry> = buildList(size) {

@@ -23,8 +23,8 @@ class ChatDrawLayerDedupContractTest(unittest.TestCase):
     def test_thinking_selection_uses_one_jointly_gated_layer(self):
         self.assertIn(
             'HapticSelectionContainer(\n'
-            '                modifier = retainDrawLayerWhenIdle(enabled = streamingState == null)\n'
-            '                    .toggleProbe(toggleProbeRef, "content"),',
+            '                    modifier = retainDrawLayerWhenIdle(enabled = streamingState == null)\n'
+            '                        .toggleProbe(toggleProbeRef, "content"),',
             self.chat,
         )
         self.assertNotIn('completedContentDrawLayer(retainDrawLayerWhenIdle(', self.chat)
@@ -47,24 +47,20 @@ class ChatDrawLayerDedupContractTest(unittest.TestCase):
         self.assertNotIn('.then(', self.layer)
         self.assertNotIn('graphicsLayer {', self.layer)  # keep the stable parameter-form element
 
-    def test_tool_details_reuse_card_body_with_a_single_whole_card_layer(self):
-        details = self.tool.split('visible = isExpanded && hasDetails,', 1)[1]
+    def test_tool_details_render_inside_the_segmented_child_item(self):
+        details = self.tool.split('val toolDetails', 1)[1]
         self.assertNotIn('retainDrawLayerWhenIdle(', details)
-        # 展开体复用提问卡的 WorkCardExpandedBody（官方 shapes.large 外壳），不再自绘
-        # miuix 时代的 squircleSurface 面板，因此 MiuixTheme 也随之一并消失。
-        self.assertIn(
-            'WorkCardExpandedBody(modifier = Modifier.toggleProbe(toggleProbeRef, "content"))',
-            details,
-        )
+        # 详情子条目由 AgentWorkSegmentedBubble 提供（官方 segmentedShapes 外壳），
+        # 不再自绘 miuix 时代的 squircleSurface 面板，也不再有 WorkCardExpandedBody。
+        self.assertNotIn('WorkCardExpandedBody', details)
         self.assertNotIn('squircleSurface(', details)
         self.assertNotIn('MiuixTheme', self.chat)
-        # 留帧层只有一层，且包在整卡外壳（WorkProcessCardSlice）上。
-        self.assertEqual(1, details.count('completedContentDrawLayer('))
-        card = details.split('// 独立行复用提问卡片的整卡外壳', 1)[1]
-        self.assertIn('.let { completedContentDrawLayer(it, toolRowSettled) }', card)
+        self.assertNotIn('tailDetailsEnter', self.tool)
+        self.assertIn('HapticSelectionContainer(modifier = Modifier.toggleProbe(toggleProbeRef, "content"))', details)
         self.assertIn('HapticSelectionContainer {', details)
-        self.assertIn('enter = tailDetailsEnter(anchorBottom)', self.tool)
-        self.assertIn('exit = tailDetailsExit(anchorBottom)', self.tool)
+        # 留帧层只有一层，包在气泡本身上（完成后的工具行离屏缓存）。
+        self.assertEqual(1, details.count('completedContentDrawLayer('))
+        self.assertIn('.let { completedContentDrawLayer(it, toolRowSettled) }', details)
 
 
 if __name__ == '__main__':

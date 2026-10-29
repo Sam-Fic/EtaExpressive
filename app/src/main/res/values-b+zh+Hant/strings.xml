@@ -780,6 +780,8 @@
   <string name="work_completed">分析完成</string>
   <string name="work_collapse">收合工作過程</string>
   <string name="work_expand">展開工作過程</string>
+  <string name="work_state_expanded">已展開</string>
+  <string name="work_state_collapsed">已收合</string>
   <string name="copy_copied">已複製</string>
   <string name="copy_answer">複製回答</string>
   <string name="ui_branch_conversation">分支</string>
@@ -1976,7 +1978,7 @@
   <string name="appearance_message_timestamps">訊息時間戳</string>
   <string name="appearance_message_timestamps_summary">在回覆操作列右側顯示本輪回覆產生完成的時間。</string>
   <string name="appearance_fold_work_process">回覆後收起工作程序</string>
-  <string name="appearance_fold_work_process_summary">激進檔只保留你的訊息與本輪最終回覆，中間回覆與思考、工具步驟並成一張卡片；普通檔只收思考與工具步驟；不收合則始終攤開。點卡片即可重新展開。</string>
+  <string name="appearance_fold_work_process_summary">思考與工具步驟始終各自成行、點行展開；激進檔額外把中間回覆折成一行；不收合則中間回覆始終攤開。</string>
   <string name="appearance_fold_level_aggressive">激進收合</string>
   <string name="appearance_fold_level_normal">普通收合</string>
   <string name="appearance_fold_level_off">不收合</string>

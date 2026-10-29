@@ -21,7 +21,7 @@ class AgentIncrementalTimelineTest {
         val original = messages
         var visible = filter.project(messages, null)
         var entries = timeline.project(visible)
-        var projectedRows = rows.project(entries, emptyMap(), true)
+        var projectedRows = rows.project(entries)
         val originalRows = projectedRows
         repeat(50) { iteration ->
             val previousVisible = visible
@@ -37,10 +37,10 @@ class AgentIncrementalTimelineTest {
                 (visible as AgentIncrementalList<*>).singleReplacementFrom(previousVisible))
             entries = timeline.project(visible)
             assertNotNull((entries as AgentIncrementalList<*>).singleReplacementFrom(previousEntries))
-            projectedRows = rows.project(entries, emptyMap(), true)
+            projectedRows = rows.project(entries)
             assertNotNull((projectedRows as AgentIncrementalList<*>).singleReplacementFrom(previousRows))
             assertEquals(visible.toTimelineEntries(), entries)
-            assertEquals(entries.toLazyTimelineRows(emptyMap(), true), projectedRows)
+            assertEquals(entries.toLazyTimelineRows(), projectedRows)
         }
         assertEquals(1, fullBuilds)
         assertEquals(50, replayBatch.incrementalFastPathHits)

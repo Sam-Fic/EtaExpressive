@@ -3,7 +3,6 @@ package io.github.mangi.eta.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -53,8 +52,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
@@ -363,7 +360,7 @@ internal fun AgentChatBody(
     // Project once for both the initial tail anchor and the rendered rows below. In
     // particular, do not derive a second full timeline just to ask for its size: this
     // list can contain thousands of streaming/tool messages.
-    // 「回答后收起」的档位决定归组方式：激进档整轮合成一张卡片，普通/不折叠档与旧版一致。
+    // 「激进折叠」档位决定归组方式：激进档把中间回复并进工作组，普通/不折叠档与旧版一致。
     // 缓存只在「激进与否」翻转时重建，档位在两者间切换不重投影。
     val answerFoldLevel = LocalAppearanceSettings.current.answerFoldLevel
     val aggressiveFold = answerFoldLevel == AnswerFoldLevel.AGGRESSIVE
@@ -835,8 +832,8 @@ internal fun AgentConversationMessages(
     // AgentChatBody supplies this projection so the initial tail anchor and the
     // rendered rows share one remembered full-list derivation. The standalone voice
     // panel still computes it here when it calls this renderer directly.
-    // AgentChatBody 传入的 timelineEntries 与下面的独立投影必须同源：同样按「回答后收起」
-    // 档位决定归组（激进档整轮合成一张卡片），否则语音面板与主列表会呈现不同结构。
+    // AgentChatBody 传入的 timelineEntries 与下面的独立投影必须同源：同样按「激进档」
+    // 决定归组（激进档把中间回复并进工作组），否则语音面板与主列表会呈现不同结构。
     val answerFoldLevel = LocalAppearanceSettings.current.answerFoldLevel
     val aggressiveFold = answerFoldLevel == AnswerFoldLevel.AGGRESSIVE
     val projectedTimelineEntries = timelineEntries ?: run {
@@ -852,72 +849,10 @@ internal fun AgentConversationMessages(
             }
         }
     }
-    val expansionSaver = remember {
-        listSaver<Map<String, Boolean>, String>(
-            save = { value -> value.flatMap { (key, expanded) -> listOf(key, expanded.toString()) } },
-            restore = { value -> value.chunked(2).filter { it.size == 2 }.associate { it[0] to (it[1] == "true") } },
-        )
-    }
-    var workExpansionOverrides by rememberSaveable(stateSaver = expansionSaver) {
-        mutableStateOf<Map<String, Boolean>>(emptyMap())
-    }
-    val workAnimations = remember(scrollState) { mutableStateMapOf<String, WorkGroupAnimation>() }
-    val mountedWorkSteps = remember(scrollState) { HashMap<String, MutableSet<String>>() }
-    val workAnimationGeneration = remember(scrollState) { longArrayOf(0L) }
-    fun finishWorkExit(groupKey: String, rowKey: String, generation: Long) {
-        val current = workAnimations[groupKey] ?: return
-        val next = current.finishExit(rowKey, generation)
-        if (next == null) workAnimations.remove(groupKey)
-        else if (next !== current) workAnimations[groupKey] = next
-    }
-    LaunchedEffect(projectedTimelineEntries) {
-        val activeKeys = projectedTimelineEntries.filterIsInstance<AgentTimelineEntry.WorkProcess>().mapTo(mutableSetOf()) { it.key }
-        if (workExpansionOverrides.keys.any { it !in activeKeys }) {
-            workExpansionOverrides = workExpansionOverrides.filterKeys { it in activeKeys }
-        }
-        workAnimations.keys.toList().filter { it !in activeKeys }.forEach { workAnimations.remove(it) }
-        // A streaming update may remove a pending row without composing it again.
-        projectedTimelineEntries.filterIsInstance<AgentTimelineEntry.WorkProcess>().forEach { group ->
-            val animation = workAnimations[group.key] ?: return@forEach
-            val keys = group.messages.mapTo(HashSet()) { "work-step:${it.id}" }
-            (animation.pendingExitKeys - keys).forEach { finishWorkExit(group.key, it, animation.generation) }
-        }
-    }
-    workAnimations.forEach { (groupKey, animation) ->
-        androidx.compose.runtime.key(groupKey, animation.generation) {
-            LaunchedEffect(Unit) {
-                // Only the click's first lazy measurement cohort may enter. Later
-                // virtualization is settled, even while another row is animating.
-                withFrameNanos { }
-                animation.entrance.seal()
-            }
-        }
-    }
-    // Reading the snapshot map directly here re-ran mapValues on every recomposition and
-    // handed the row-projection `remember` a brand-new Map to compare. Deriving it keeps
-    // the projection key identity stable until a work group actually changes.
-    val retainedWorkSteps by remember {
-        derivedStateOf { workAnimations.mapValues { it.value.retainedStepKeys } }
-    }
     val timelineRowsProjection = remember { AgentTimelineRowsCache() }
-    // Run state still drives footers/reveal below. Row projection only reads it
-    // for the trailing work default; ordinary message rows do not depend on it.
-    val rowStreamingDefault = projectedTimelineEntries.streamingWorkDefault(workExpansionOverrides, isStreaming)
-    // 「本轮回答出来，就把回答之前的内容收起来」：只在整轮停下之后生效，
-    // 生成过程中一律沿用旧的「跑着的摊开、跑完的收起」，不打扰看进度。
-    // 收起范围由档位决定：激进=整轮一张卡；普通=只收思考/工具；不折叠=彻底不收。
-    val answerFoldEnabled = answerFoldLevel != AnswerFoldLevel.NONE
-    val isTurnSettled = !isStreaming && !isPaused && !isCompressingContext
-    val foldedWorkKeys = remember(projectedTimelineEntries, answerFoldEnabled, isTurnSettled) {
-        projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled && isTurnSettled)
-    }
-    val timelineRows = remember(
-        projectedTimelineEntries, workExpansionOverrides, rowStreamingDefault, retainedWorkSteps, foldedWorkKeys,
-    ) {
+    val timelineRows = remember(projectedTimelineEntries) {
         StreamPerformanceDiagnostics.measure("timeline.project", projectedTimelineEntries.size.toLong()) {
-            timelineRowsProjection.project(
-                projectedTimelineEntries, workExpansionOverrides, rowStreamingDefault, retainedWorkSteps, foldedWorkKeys,
-            )
+            timelineRowsProjection.project(projectedTimelineEntries)
         }
     }
     // 连续用户气泡的组内位置（Single / GroupFirst / GroupMid / GroupLast），按实际行相邻判定。
@@ -1055,7 +990,6 @@ internal fun AgentConversationMessages(
                         return Offset.Zero
                     }
                     messageNavigationJob?.cancel()
-                    workAnimations.values.forEach { it.entrance.seal() }
                     isUserScrolling = true
                     // Result intentionally discarded: the tracker keeps direction for the
                     // next navigation request. Assigning it to Compose state made every
@@ -1553,13 +1487,12 @@ internal fun AgentConversationMessages(
     // 上提自身的缓动：起步/收尾都比滚动更慢，避免每行一次“硬”上跳。
     val tailLiftMotion = remember { createTailLiftMotion() }
     // The callback reports message.id, but a work step's lazy key is work-step:<id>.
-    // Both row branches capture the actual entry key before ThinkingRow changes its height.
-    val onThinkingRowToggle: (String, Boolean) -> Unit = { rowKey, willExpand ->
+    // ThinkingRow reports the message id; only the anchor release matters here.
+    val onThinkingRowToggle: (String, Boolean) -> Unit = { _, willExpand ->
         // 展开/收起一律钉住标题。用户主动展开＝解除底部锚定，面板自上而下向
         // 屏幕下方生长（超出静止线的部分由用户滚动查看）；不再回收视口、不做底部
         // 快照——这两者都会把整列上提，正是标题位移的根源。
         if (willExpand) onBottomAnchorChanged(false)
-        viewportRecovery.cancelWorkExpansion(rowKey)
     }
     Box(
         modifier = modifier
@@ -1591,22 +1524,10 @@ internal fun AgentConversationMessages(
             },
     ) {
         val speechPrefaceProjection = remember { AgentSpeechPrefaceCache() }
-        // 朗读范围与界面展示一致：激进折叠收进工作卡片且未展开的中间回复不可见，
-        // 朗读 preface 同步剔除。展开卡片后这些回复重新可见，preface 随之恢复。
-        val foldedReplyIds = remember(timelineRows) {
-            buildSet {
-                timelineRows.forEach { row ->
-                    if (row is AgentTimelineRow.WorkHeader && !row.expanded) {
-                        row.group.messages.forEach { message ->
-                            if (message is AgentMessageUi) add(message.id)
-                        }
-                    }
-                }
-            }
-        }
-        val speechPrefaces = remember(visibleMessages, finalResultMessageIds, foldedReplyIds) {
+        // 工作过程不再折叠：所有步骤行都直接可见，朗读范围与可见行一致。
+        val speechPrefaces = remember(visibleMessages, finalResultMessageIds) {
             StreamPerformanceDiagnostics.measure("timeline.prefaces", visibleMessages.size.toLong()) {
-                speechPrefaceProjection.project(visibleMessages, finalResultMessageIds, foldedReplyIds)
+                speechPrefaceProjection.project(visibleMessages, finalResultMessageIds, emptySet())
             }
         }
         val messageActions = remember { ChatMessageActions() }
@@ -1724,7 +1645,6 @@ internal fun AgentConversationMessages(
                 contentType = { row ->
                     when (row) {
                         is AgentTimelineRow.Message -> "message"
-                        is AgentTimelineRow.WorkHeader -> "work-header"
                         is AgentTimelineRow.WorkStep -> when (row.message) {
                             is ToolActivityMessageUi -> "work-tool"
                             is ThinkingMessageUi -> "work-thinking"
@@ -1745,7 +1665,6 @@ internal fun AgentConversationMessages(
                             is ToolActivityMessageUi -> "tool"
                             else -> "message"
                         }
-                        is AgentTimelineRow.WorkHeader -> "work-header"
                         is AgentTimelineRow.WorkStep -> when (entry.message) {
                             is ToolActivityMessageUi -> "work-tool"
                             is ThinkingMessageUi -> "work-thinking"
@@ -1768,10 +1687,10 @@ internal fun AgentConversationMessages(
                 ) {
                 val diagnosticRow = LocalStreamDiagnosticRow.current
                 val firstMessageAppearance = if (entry is AgentTimelineRow.Message) {
-                    // Retire an existing root's appearance on an explicit work toggle even
+                    // Retire an existing root's appearance on an explicit toggle even
                     // if LazyColumn retains its composition while temporarily unmeasured.
-                    // New message keys still get the normal fade; work height animation is unchanged.
-                    remember(entry.key, workExpansionOverrides) { appearedMessageKeys.add(entry.key) }
+                    // New message keys still get the normal fade.
+                    remember(entry.key) { appearedMessageKeys.add(entry.key) }
                 } else false
                 // 刚发出的用户气泡：入场交给气泡自己演（轻上浮 + 淡入），列表层不再叠一遍淡入。
                 // 记在行内：入场作废后这行不重算，避免透明度被两段动画相乘。
@@ -1842,127 +1761,35 @@ internal fun AgentConversationMessages(
                         )
                     }
 
-                    is AgentTimelineRow.WorkHeader -> {
-                        AgentWorkProcessHeader(
-                            messages = entry.group.messages,
-                            isPaused = isPaused,
-                            expanded = entry.expanded,
-                            folded = entry.folded,
-                            // Deleted retained keys no longer own a card slice or its bottom gap.
-                            hasVisibleSteps = entry.expanded || entry.group.messages.any { message ->
-                                "work-step:${message.id}" in retainedWorkSteps[entry.key].orEmpty()
-                            },
-                            onToggle = {
-                                // Retire the root fade for every message that already exists
-                                // before this explicit toggle mutates the projection. LazyColumn
-                                // composes a row only once it enters the viewport, so a pre-click
-                                // answer that was never mounted would otherwise be mistaken for a
-                                // new one and replay the 180ms fade on collapse/expand. Messages
-                                // created after this click are absent here and keep their fade.
-                                markExistingMessages(appearedMessageKeys, timelineRows, visibleMessages)
-                                // 组头与行标题钉在原位。展开＝解除底部锚定，步骤切片
-                                // 自上而下向屏幕下方入场；收起照常退役捕获的内层思考行。
-                                // 不做视口回收与底部快照——两者都会把整列上提。
-                                if (!entry.expanded) {
-                                    onBottomAnchorChanged(false)
-                                } else {
-                                    viewportRecovery.cancelWorkExpansion(
-                                        entry.key, entry.group.messages.map { "work-step:${it.id}" },
-                                    )
-                                }
-                                workAnimations[entry.key]?.entrance?.seal()
-                                val animation = newWorkGroupAnimation(
-                                    generation = ++workAnimationGeneration[0],
-                                    expanded = !entry.expanded,
-                                    fromBottom = false,
-                                    stepKeys = entry.group.messages.map { "work-step:${it.id}" },
-                                    mountedStepKeys = mountedWorkSteps[entry.key].orEmpty(),
-                                )
-                                if (animation.expanded || animation.pendingExitKeys.isNotEmpty()) {
-                                    workAnimations[entry.key] = animation
-                                } else workAnimations.remove(entry.key)
-                                val token = StreamPerformanceDiagnostics.markToggle("work", !entry.expanded)
-                                StreamPerformanceDiagnostics.probeEvent(
-                                    token, "item",
-                                    "steps=${entry.group.messages.size} anchor=top",
-                                )
-                                workExpansionOverrides = workExpansionOverrides + (entry.key to !entry.expanded)
-                            },
-                        )
-                    }
                     is AgentTimelineRow.WorkStep -> {
                         val message = entry.message
+                        if (message is AgentMessageUi) {
+                            // 激进档并入工作组的中间回复：与思考/工具步骤同款气泡，
+                            // 折叠成一行（正文首行），可展开看全文。
+                            IntermediateReplyStepRow(
+                                message = message,
+                                modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
+                            )
+                        } else {
                         val retainedState = if (message is ThinkingMessageUi &&
                             (message.isStreaming || streamingMarkdownStates.containsKey(message.id))) {
                             streamingMarkdownStates.getOrPut(message.id) { StreamingMarkdownState() }
                         } else null
-                        val animation = workAnimations[entry.groupKey]
-                        // Do not key this state by generation/target: a rapid opposite
-                        // click reverses the same transition at its current height.
-                        val appear = remember(entry.key) {
-                            val animate = entry.expanded && animation?.expanded == true &&
-                                animation.entrance.claim(entry.key)
-                            MutableTransitionState(entry.expanded && !animate)
+                        ChatMessageItem(
+                            message = message,
+                            actions = messageActions,
+                            retainedStreamingState = retainedState,
+                            showBrowserShortcut = message is ToolActivityMessageUi &&
+                                message.id == currentBrowserMessageId,
+                            enableLivePreview = message is ToolActivityMessageUi && !isStreaming,
+                            isPaused = isPaused,
+                            onThinkingToggle = if (message is ThinkingMessageUi) {
+                                { _, willExpand -> onThinkingRowToggle(message.id, willExpand) }
+                            } else null,
+                            // 与官方 SegmentedGap 同拍：相邻步骤气泡之间留 2dp 缝。
+                            modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
+                        )
                         }
-                        SideEffect { appear.targetState = entry.expanded }
-                        DisposableEffect(entry.groupKey, entry.key) {
-                            mountedWorkSteps.getOrPut(entry.groupKey) { HashSet() }.add(entry.key)
-                            onDispose {
-                                mountedWorkSteps[entry.groupKey]?.let { keys ->
-                                    keys.remove(entry.key)
-                                    if (keys.isEmpty()) mountedWorkSteps.remove(entry.groupKey)
-                                }
-                                // An unmeasured exit must not keep the projection alive.
-                                workAnimations[entry.groupKey]?.let { current ->
-                                    finishWorkExit(entry.groupKey, entry.key, current.generation)
-                                }
-                            }
-                        }
-                        LaunchedEffect(entry.expanded, animation?.generation) {
-                            if (!entry.expanded && animation != null) {
-                                snapshotFlow { appear.isIdle && !appear.currentState && !appear.targetState }
-                                    .first { it }
-                                finishWorkExit(entry.groupKey, entry.key, animation.generation)
-                            }
-                        }
-                        val fromBottom = animation?.fromBottom ?: false
-                        AnimatedVisibility(
-                            visibleState = appear,
-                            enter = tailDetailsEnter(fromBottom = fromBottom),
-                            exit = tailDetailsExit(toBottom = fromBottom),
-                        ) {
-                        WorkProcessCardSlice(
-                            part = if (entry.isLast) WorkProcessCardPart.Last else WorkProcessCardPart.Middle,
-                            // The 4dp exterior card gap belongs outside visibility.
-                            // Transfer it to the Whole header only when all exits finish;
-                            // neither add a second gap at click nor jump at disposal.
-                            modifier = if (entry.isLast) Modifier.layout { measurable, constraints ->
-                                val placeable = measurable.measure(constraints)
-                                layout(placeable.width, (placeable.height - 4.dp.roundToPx()).coerceAtLeast(0)) {
-                                    placeable.placeRelative(0, 0)
-                                }
-                            } else Modifier,
-                        ) {
-                            ChatMessageItem(
-                                message = message,
-                                actions = messageActions,
-                                retainedStreamingState = retainedState,
-                                showBrowserShortcut = message is ToolActivityMessageUi &&
-                                    message.id == currentBrowserMessageId,
-                                enableLivePreview = message is ToolActivityMessageUi && !isStreaming,
-                                compact = true,
-                                isPaused = isPaused,
-                                onThinkingToggle = if (message is ThinkingMessageUi) {
-                                    { _, willExpand -> onThinkingRowToggle(entry.key, willExpand) }
-                                } else null,
-                                modifier = Modifier.padding(
-                                    top = if (entry.isFirst) 2.dp else 0.dp,
-                                    bottom = if (entry.isLast) 8.dp else 0.dp,
-                                ),
-                            )
-                        }
-                        }
-                        if (entry.isLast) Spacer(Modifier.height(4.dp))
                     }
                 }
                 turnFooters[entry.key]?.let { owner ->

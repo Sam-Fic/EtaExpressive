@@ -132,18 +132,15 @@ class AgentTurnFooterProjectionTest {
         assertEquals(updated, updatedRows.originalMessages())
     }
 
-    @Test fun expandingAllWorkBatchesPlacesExactlyOneFooterAfterTheLastStep() {
+    @Test fun workBatchesPlaceExactlyOneFooterAfterTheLastStep() {
         val answer = AgentMessageUi("answer", "answer")
         val messages = listOf(answer) + List(65) { tool("tool-$it") }
-        val collapsed = rows(messages)
-        val expanded = rows(messages, expanded = true)
-        assertEquals(3, collapsed.filterIsInstance<AgentTimelineRow.WorkHeader>().size)
-        assertEquals(65, expanded.filterIsInstance<AgentTimelineRow.WorkStep>().size)
-        assertEquals(collapsed.last().key, collapsed.turnFooters().keys.single())
-        assertEquals("work-step:tool-64", expanded.turnFooters().keys.single())
-        assertSame(answer, expanded.turnFooters().values.single())
-        assertEquals(messages, collapsed.originalMessages())
-        assertEquals(messages, expanded.originalMessages())
+        val rows = rows(messages)
+        assertEquals(65, rows.filterIsInstance<AgentTimelineRow.WorkStep>().size)
+        assertEquals(rows.last().key, rows.turnFooters().keys.single())
+        assertEquals("work-step:tool-64", rows.turnFooters().keys.single())
+        assertSame(answer, rows.turnFooters().values.single())
+        assertEquals(messages, rows.originalMessages())
     }
 
     @Test fun activeOrPausedTurnKeepsPreviousFooterButNeverExposesCurrentText() {
@@ -207,9 +204,11 @@ class AgentTurnFooterProjectionTest {
     @Test fun knownSameRunWorkIsNotMistakenForARetryWithoutNormalization() {
         for (id in listOf("assistant-run", "assistant-run-1", "assistant-run-round-usage", "virtual-completed-run")) {
             val notice = SystemNoticeMessageUi(id, SystemNoticeCode.Stopped)
-            val work = AgentTimelineEntry.WorkProcess("work", listOf(tool("run-tool-1-call")))
-            val rows = listOf(AgentTimelineRow.Message(notice), AgentTimelineRow.WorkHeader(work, false))
-            assertEquals(mapOf("work" to notice), rows.turnFooters())
+            val rows = listOf(
+                AgentTimelineRow.Message(notice),
+                AgentTimelineRow.WorkStep("work", tool("run-tool-1-call")),
+            )
+            assertEquals(mapOf("work-step:run-tool-1-call" to notice), rows.turnFooters())
         }
     }
 
@@ -268,15 +267,14 @@ class AgentTurnFooterProjectionTest {
 
     private fun rows(messages: List<AgentChatMessageUi>, expanded: Boolean = false): List<AgentTimelineRow> {
         val entries = messages.toTimelineEntries()
-        return entries.toLazyTimelineRows(entries.associate { it.key to expanded }, isStreaming = false)
+        return entries.toLazyTimelineRows()
     }
 
-    // Expanded steps duplicate their header's data; read each original exactly once.
+    // Flat step rows carry their original payloads; read each original exactly once.
     private fun List<AgentTimelineRow>.originalMessages(): List<AgentChatMessageUi> = flatMap { row ->
         when (row) {
             is AgentTimelineRow.Message -> listOf(row.message)
-            is AgentTimelineRow.WorkHeader -> row.group.messages
-            is AgentTimelineRow.WorkStep -> emptyList()
+            is AgentTimelineRow.WorkStep -> listOf(row.message)
         }
     }
 }

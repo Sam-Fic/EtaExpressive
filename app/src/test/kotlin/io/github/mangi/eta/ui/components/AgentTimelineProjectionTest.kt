@@ -198,7 +198,7 @@ class AgentTimelineProjectionTest {
             entries.filterIsInstance<AgentTimelineEntry.WorkProcess>().map { it.messages.size })
         assertEquals(work + notices, entries.flattenMessages())
         assertEquals(entries.size, entries.map { it.key }.toSet().size)
-        val rows = entries.toLazyTimelineRows(emptyMap(), isStreaming = false)
+        val rows = entries.toLazyTimelineRows()
         assertFalse(rows.any { it is AgentTimelineRow.Message && it.message == retry })
     }
 

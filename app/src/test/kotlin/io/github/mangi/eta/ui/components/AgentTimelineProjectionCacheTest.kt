@@ -43,7 +43,7 @@ class AgentTimelineProjectionCacheTest {
                 val groups = expected.filterIsInstance<AgentTimelineEntry.WorkProcess>()
                 val overrides: Map<String, Boolean> = if (expansion == null) emptyMap() else groups.associate { it.key to expansion }
                 val retained = groups.associate { it.key to it.messages.take(1).map { m -> "work-step:${m.id}" }.toSet() }
-                assertEquals(expected.toLazyTimelineRows(overrides, streaming, retained), actual.toLazyTimelineRows(overrides, streaming, retained))
+                assertEquals(expected.toLazyTimelineRows(), actual.toLazyTimelineRows())
             }
         }
         assertEquals(initialTimelineItemIndex(expected, false, false, false), initialTimelineItemIndex(actual, false, false, false))
