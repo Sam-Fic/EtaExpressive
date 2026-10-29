@@ -1,6 +1,7 @@
 package io.github.mangi.eta.agent.model
 
 import java.io.File
+import io.github.mangi.eta.ui.app.AgentConversationRevisionArchive
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*

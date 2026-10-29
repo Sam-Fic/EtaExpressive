@@ -107,9 +107,10 @@ class TexMathDelimitersTest {
         assertFalse(paragraph.text.spanStyles.any { it.item.fontFamily == FontFamily.Monospace })
     }
 
+    // 只有 DocumentGfmParserSession 会跑 TeX 预处理，流式那两例用它配 isComplete = false。
     @Test
     fun streamingUnclosedDisplayMathConvertsOnceClosed() {
-        val session = StreamingGfmParserSession()
+        val session = DocumentGfmParserSession()
         val partial = session.parse("\\[\n\\frac{a}{b}", isComplete = false).document.blocks
         assertFalse(partial.any { it is MarkdownCode && it.isMath })
         val complete = session.parse("\\[\n\\frac{a}{b}\n\\]", isComplete = true).document.blocks
@@ -119,7 +120,7 @@ class TexMathDelimitersTest {
     @Test(timeout = 5_000)
     fun streamingFencedBlankLinesKeepCodeAndResumeMathAfterClosing() {
         listOf("```", "~~~").forEach { fence ->
-            val session = StreamingGfmParserSession()
+            val session = DocumentGfmParserSession()
             val code = "\\(a_i\\)\n\n\n\\[\nb_j\n\\]"
             val openSource = "前 \\(before\\)\n\n${fence}latex\n$code"
             val source = "$openSource\n$fence\n\n\\[after\\]"
@@ -153,5 +154,5 @@ class TexMathDelimitersTest {
     }
 
     private fun blocks(source: String): List<MarkdownBlock> =
-        StreamingGfmParserSession().parse(source, isComplete = true).document.blocks
+        DocumentGfmParserSession().parse(source, isComplete = true).document.blocks
 }

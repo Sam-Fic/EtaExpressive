@@ -37,7 +37,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.material3.MaterialTheme
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36], qualifiers = "w480dp-h800dp-mdpi")
@@ -113,7 +113,7 @@ class MarkdownViewportDrawCullTest {
             resumeAnimationsWithoutCatchingUp()
         }
         compose.setContent {
-            MiuixTheme {
+            MaterialTheme {
                 SideEffect { viewport.updateEnabled(true) }
                 CompositionLocalProvider(LocalMarkdownDrawViewport provides viewport) {
                     Box(Modifier.size(300.dp, 60.dp).onGloballyPositioned(viewport::updateCoordinates)
