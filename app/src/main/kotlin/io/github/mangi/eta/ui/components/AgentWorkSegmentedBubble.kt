@@ -55,17 +55,17 @@ internal enum class SegmentedRowPosition { Whole, First, Middle, Last }
  *
  * 结构是 Material 3 Expressive 官方 `SegmentedListItemWithExpansionSample` 的标准写法：
  *
- * - 父项用官方 [SegmentedListItem]（`onClick` 切换展开/收起），形状取官方
- *   [ListItemDefaults.segmentedShapes] 并按官方 Sample 的方式动态计算
- *   `itemCount = 1 + 展开后出现的子条目数`；
+ * - 父项用官方 [SegmentedListItem]（`onClick` 切换展开/收起），分段形状按
+ *   官方令牌取值：外沿角 = `ListTokens.ContainerShape`（CornerLarge，16dp）、
+ *   相接角 = `ItemContainerExpressiveShape`（CornerExtraSmall，4dp），
+ *   与官方 [ListItemDefaults.segmentedShapes] 逐值一致；
  * - 子内容用官方 [AnimatedVisibility] + `expandVertically` / `shrinkVertically`
  *   配合无过冲的标准弹簧显隐；
  * - 展开后的详情是**普通子条目**（不再嵌套任何可展开组件）；
  * - 无障碍按官方 Sample 注入 `stateDescription`。
  *
  * 外观与「设置」页的分段列表同一套：容器色 `surfaceBright` 从页面背景浮出一档，
- * 单条目组整体 `MaterialTheme.shapes.large`，多条目（父项 + 展开子条目）按官方
- * `segmentedShapes(index, count)` 计算外圆内方，条目间 `SegmentedGap` 露出背景缝隙。
+ * 条目间 `SegmentedGap` 露出背景缝隙，行高与内边距走官方默认（动作行档）。
  * 内容按官方槽位安排——[leading] 放前导图标、[title] 是 Label text、
  * [supporting] 是 Supporting text、[trailingStatus] 与展开箭头放在行尾。
  * [onToggle] 或 [details] 为 null 时退化为不可展开的单条目（无展开箭头）。
@@ -109,8 +109,6 @@ internal fun AgentWorkSegmentedBubble(
     // 步骤是列表里的兄弟行）只有箭头与语义，没有详情子条目。
     val expandable = onToggle != null
     val detailsContent = details
-    // 官方 Sample 的 itemCount：父项 1 + 展开后出现的子条目数。
-    val itemCount = 1 + if (expandable && expanded && detailsContent != null) 1 else 0
     // 分段几何与设置页 EtaSegmentedList 同值：组首/末项外圆 16dp、相接处内圆 4dp。
     val outerCorner = 16.dp
     val innerCorner = 4.dp

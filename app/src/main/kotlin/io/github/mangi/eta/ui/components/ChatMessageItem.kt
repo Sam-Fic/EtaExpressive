@@ -3516,7 +3516,8 @@ private fun ToolStatusIndicator(status: ToolActivityStatusUi) {
                 )
                 Text(
                     text = stringResource(R.string.tool_status_failed),
-                    style = chatTertiaryStyle(),
+                    // 官方尾部辅助文字令牌：ItemTrailingSupportingTextFont = labelSmall。
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
