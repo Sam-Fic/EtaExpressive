@@ -11,6 +11,7 @@ import org.json.JSONObject
 internal object AnthropicMessagesProvider : AgentProviderClient {
     private const val DEFAULT_MAX_TOKENS = 4096
     private val JSON_MEDIA_TYPE = "application/json".toMediaType()
+    private val TOP_LEVEL_COMBINATORS = listOf("oneOf", "anyOf", "allOf")
 
     override val id: String = "anthropic_messages"
 
@@ -198,10 +199,20 @@ internal object AnthropicMessagesProvider : AgentProviderClient {
                 JSONObject()
                     .put("name", name)
                     .put("description", function.optString("description"))
-                    .put("input_schema", function.optJSONObject("parameters") ?: JSONObject().put("type", "object"))
+                    .put("input_schema", inputSchema(function.optJSONObject("parameters")))
             )
         }
         return converted.takeIf { it.length() > 0 }
+    }
+
+    /**
+     * input_schema 顶层不接受 oneOf/anyOf/allOf，否则整个请求 400。只在发送副本上移除；
+     * 本地校验仍按原始 schema 进行，组合约束失败时把错误返回给模型。
+     */
+    private fun inputSchema(parameters: JSONObject?): JSONObject {
+        parameters ?: return JSONObject().put("type", "object")
+        if (TOP_LEVEL_COMBINATORS.none(parameters::has)) return parameters
+        return JSONObject(parameters.toString()).apply { TOP_LEVEL_COMBINATORS.forEach(::remove) }
     }
 
     private fun convertImageBlock(item: JSONObject): JSONObject? {

@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -357,6 +358,45 @@ class AnthropicMessagesProviderTest {
         assertTrue(!bodies[0].contains("conv-restored"))
         assertEquals("1h", first.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
             .getJSONObject(0).getJSONObject("cache_control").getString("ttl"))
+    }
+
+    @Test
+    fun inputSchemaDropsTopLevelCombinatorsButKeepsNestedOnesAndLocalSchema() {
+        val tools = JSONArray().also { array ->
+            AgentWebToolCatalog.appendTo(array)
+            array.put(AgentToolSchema.function(
+                name = "nested",
+                description = "嵌套组合子",
+                parameters = JSONObject().put("type", "object").put("properties", JSONObject()
+                    .put("value", JSONObject().put("anyOf", JSONArray()
+                        .put(JSONObject().put("type", "string"))
+                        .put(JSONObject().put("type", "integer"))))),
+            ))
+        }
+        val original = tools.toString()
+        val requestBody = AtomicReference<String>()
+        withAnthropicServer(event("message_stop", JSONObject()), onRequest = requestBody::set) { baseUrl ->
+            AnthropicMessagesProvider.complete(
+                ProviderRequest(
+                    AgentModelClient.ModelConfig(providerType = ProviderTypes.ANTHROPIC,
+                        baseUrl = baseUrl, apiKey = "test", model = "claude-test", systemPrompt = ""),
+                    JSONArray().put(JSONObject().put("role", "user").put("content", "hello")),
+                    tools,
+                ), AgentRunController(),
+            )
+        }
+
+        val sent = JSONObject(requestBody.get()).getJSONArray("tools")
+        (0 until sent.length()).map { sent.getJSONObject(it).getJSONObject("input_schema") }.forEach { schema ->
+            listOf("oneOf", "anyOf", "allOf").forEach { assertFalse(schema.has(it)) }
+            assertEquals("object", schema.getString("type"))
+        }
+        val fetchUrl = (0 until sent.length()).map(sent::getJSONObject).single { it.getString("name") == "fetch_url" }
+        assertTrue(fetchUrl.getJSONObject("input_schema").getJSONObject("properties").has("document_id"))
+        val nested = (0 until sent.length()).map(sent::getJSONObject).single { it.getString("name") == "nested" }
+        assertTrue(nested.getJSONObject("input_schema").getJSONObject("properties")
+            .getJSONObject("value").has("anyOf"))
+        assertEquals(original, tools.toString())
     }
 
     private fun event(name: String, data: JSONObject): String =
