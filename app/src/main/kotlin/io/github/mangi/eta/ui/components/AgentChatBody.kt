@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,6 +21,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imeAnimationSource
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
@@ -60,6 +62,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -728,21 +731,25 @@ internal fun AgentChatScaffold(
         val bottomPadding = innerPadding.calculateBottomPadding()
         val topBarInset = LocalShellTopBarInset.current
         if (!hasMessages) {
-            // 键盘起落期间逐帧变化的只有两样：Scaffold 底栏高度（bottom padding）与 IME 可见性布尔。
-            // 把逐帧 padding 隔离进外层 Box（只触发测量/布局），IME 可见性走 rememberImeVisible
-            // 的离散布尔（snapshotFlow 在组合外观察，不在组合期读 inset）：空态本体参数逐帧稳定，
-            // 键盘动画期间不再逐帧重组整棵空态子树（含四块建议形状）。
-            val isKeyboardVisible = rememberImeVisible()
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = topBarInset, bottom = bottomPadding),
-            ) {
-                EmptyChatState(
-                    showSuggestions = !isKeyboardVisible,
-                    onSuggestionClick = onSuggestionClick,
-                    modifier = Modifier.fillMaxSize(),
-                )
+            // 键盘起落期间逐帧变化的只有一样：Scaffold 底栏高度（bottom padding）。把它隔离进
+            // 外层 Box（只触发测量/布局）；IME 的逐帧 inset 则全部推迟到 EmptyChatState 内部的
+            // layout / graphicsLayer lambda 里读（组合期不读），键盘动画期间空态子树不重组，
+            // 只逐帧重测量与重绘，四块建议形状不会被拖进逐帧重组。
+            // 形状放不放得下用「不带 bottom padding 的完整高度」判定：这个高度在键盘起落时
+            // 恒定，判定结果不会在键盘动画中途翻转，也不参与逐帧重组。
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val showShapes = maxHeight >= suggestionShapesMinHeight(maxWidth)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topBarInset, bottom = bottomPadding),
+                ) {
+                    EmptyChatState(
+                        showShapes = showShapes,
+                        onSuggestionClick = onSuggestionClick,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         } else {
             AgentConversationMessages(
@@ -2621,7 +2628,7 @@ private fun LazyListState.isConversationAtBottom(): Boolean {
 
 @Composable
 private fun EmptyChatState(
-    showSuggestions: Boolean,
+    showShapes: Boolean,
     onSuggestionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2661,16 +2668,28 @@ private fun EmptyChatState(
         // 标题最长的那条交给最大的那块形状，文字不会被挤掉。
         .sortedByDescending { it.title.length }
 
-    // 键盘起落时建议形状要收走，但「收走」不能只靠进出场：淡化 + 位移的进出场在播完之后
-    // 才把整块占位一次性从布局里拿掉，标题因此先随键盘被底栏顶上去、再瞬间跳回可视区中间。
-    // 这里把占位高度交给同一条弹簧曲线逐帧收放（与键盘动画同一拍开始），标题在整组里的位移
-    // 就只剩这一条连续曲线，不再有突变的那一帧。状态只创建、不在组合期读，.value 留到
-    // layout lambda 里读，逐帧变化只落到这一层测量，空态子树不会被拖进逐帧重组。
-    val suggestionSlotCollapse = animateFloatAsState(
-        targetValue = if (showSuggestions) 0f else 1f,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-        label = "chatEmptySuggestionSlot",
-    )
+    // 键盘起落时建议形状要收走/放回。可见性不能看「IME 是否已有高度」（rememberImeVisible
+    // 的 inset > 0 要等键盘完全落定才翻转，形状会错过整段落键动画、最后瞬间弹出），要看动画
+    // 目标态：目标在起落的第一帧就跳变，形状在整个键盘动画期间都留在组合树里，跟着 inset
+    // 曲线逐帧收放。目标值一整个动画只变一次，不会带来逐帧重组。
+    val density = LocalDensity.current
+    val showSuggestions = WindowInsets.imeAnimationTarget.getBottom(density) == 0
+
+    // 收放进度：0 = 全部放回，1 = 全部收走。逐帧取 IME inset 与本次动画幅度（起止两态中
+    // 较大者）之比——键盘升起多少、形状就收走多少，同一拍同一条曲线。标题在整组里的位移
+    // 因此只剩 inset 这一条连续曲线，既没有第二段弹簧叠加出方向回折，也不存在退场内容被
+    // 提前移除时的占位残段（旧实现：快速淡出播完就拆内容，慢速占位弹簧才收到一半，标题
+    // 被猛拽一下）。inset 只在下面的 layout / graphicsLayer lambda 里读（组合期不读），
+    // 逐帧变化只落到这一层测量与重绘，空态子树不会被拖进逐帧重组。
+    val ime = WindowInsets.ime
+    val imeSource = WindowInsets.imeAnimationSource
+    val imeTarget = WindowInsets.imeAnimationTarget
+    fun suggestionCollapse(): Float {
+        val extent = maxOf(imeSource.getBottom(density), imeTarget.getBottom(density)).toFloat()
+        if (extent <= 0f) return 0f
+        return (ime.getBottom(density) / extent).coerceIn(0f, 1f)
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -2684,45 +2703,65 @@ private fun EmptyChatState(
                 color = chatBodyLabelColor(),
             )
 
-            Spacer(modifier = Modifier.height(30.dp))
+            // 窗口矮（分屏 / 横屏小窗）放不下整组形状时整组不组合，只留欢迎语单独居中。
+            if (showShapes) {
+                Spacer(modifier = Modifier.height(30.dp))
 
-            AnimatedVisibility(
-                visible = showSuggestions,
-                // 进出场只做淡入淡出：位置与高度的变化全部交给下面的占位曲线（随键盘同一拍起落），
-                // 形状本身不再做垂直位移或裁切，键盘收回时是整组顺着占位长出来。
-                enter = fadeIn(
-                    animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()
-                ),
-                exit = fadeOut(
-                    animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()
-                ),
-            ) {
-                Box(
-                    modifier = Modifier
-                        // 宽屏下整组不再铺满窗口：形状尺寸按容器宽度的比例算，
-                        // 不封顶的话平板上会放出四块巨大的色块。
-                        .widthIn(max = MaxChatSuggestionWidth)
-                        .fillMaxWidth()
-                        // 形状整组始终按完整高度测量、只把占位高度交给动画：占位收起时形状本身不会
-                        // 被压扁，也不会被裁切，而是保持原样随整组上移 / 下移。
-                        .layout { measurable, constraints ->
-                            val placeable = measurable.measure(constraints)
-                            val slotHeight = (placeable.height * (1f - suggestionSlotCollapse.value))
-                                .toInt()
-                                .coerceIn(0, placeable.height)
-                            layout(placeable.width, slotHeight) { placeable.placeRelative(0, 0) }
-                        },
+                AnimatedVisibility(
+                    visible = showSuggestions,
+                    // 进出场只管组合生命周期：透明度与缩放由下面的 graphicsLayer 按 inset 曲线
+                    // 逐帧接管（落键进场的组合首帧没有进场动画，全靠这里的 alpha 从 0 长出来）。
+                    // 退场弹簧必须盖过整个键盘升起动画（约 300ms）：占位高度随 inset 在键盘到位
+                    // 时已归零，内容被移除时占位是 0，标题不会再被猛拽。
+                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                    exit = fadeOut(MaterialTheme.motionScheme.defaultSpatialSpec()),
                 ) {
-                    ExpressiveSuggestionBlobs(
-                        suggestions = suggestions,
-                        onSuggestionClick = onSuggestionClick,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
+                    Box(
+                        modifier = Modifier
+                            // 宽屏下整组不再铺满窗口：形状尺寸按容器宽度的比例算，
+                            // 不封顶的话平板上会放出四块巨大的色块。
+                            .widthIn(max = MaxChatSuggestionWidth)
+                            .fillMaxWidth()
+                            // 形状整组按 (1 - 进度) 等比缩放（顶边为原点），缩后高度与占位高度
+                            // 逐帧相等：内容永远落在占位边界内，超出部分不会再画到底栏渐变板
+                            // 底下被不透明段盖出硬裁边。
+                            .graphicsLayer {
+                                val shown = 1f - suggestionCollapse()
+                                alpha = shown
+                                scaleX = shown
+                                scaleY = shown
+                                transformOrigin = TransformOrigin(0.5f, 0f)
+                            }
+                            // 占位高度交给同一条 inset 曲线逐帧收放：形状本体始终按完整尺寸测量，
+                            // 不被压扁；占位收起时整组随标题一起上移，放回时一起下移。
+                            .layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints)
+                                val slotHeight = (placeable.height * (1f - suggestionCollapse()))
+                                    .toInt()
+                                    .coerceIn(0, placeable.height)
+                                layout(placeable.width, slotHeight) { placeable.placeRelative(0, 0) }
+                            },
+                    ) {
+                        ExpressiveSuggestionBlobs(
+                            suggestions = suggestions,
+                            onSuggestionClick = onSuggestionClick,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+/**
+ * 空态四块建议形状所需的最小窗口高度：形状整组是正方形容器（高 = min(容器宽 − 32dp 左右
+ * 留白, [MaxChatSuggestionWidth])），另需欢迎语一行（headlineSmall，32dp）+ 30dp 间隔 +
+ * 56dp 底部留白，再留约 32dp 呼吸空间。窗口低于此值（分屏 / 横屏矮窗）时整组形状
+ * 不组合，只留欢迎语居中。
+ */
+internal fun suggestionShapesMinHeight(containerWidth: Dp): Dp =
+    (containerWidth - 32.dp).coerceAtMost(MaxChatSuggestionWidth) + 150.dp
 
 /**
  * 建议词数量与形状数量不一致时的常规网格卡片：官方 Surface(onClick) 承担容器、
