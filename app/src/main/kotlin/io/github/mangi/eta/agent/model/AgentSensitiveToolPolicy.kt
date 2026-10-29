@@ -87,6 +87,8 @@ internal object AgentSensitiveToolPolicy {
         "memory_write",
         // 日程与闹钟写入：参数与结果包含用户的个人安排，原始内容不进入持久会话。
         "create_calendar_event",
+        // 批量创建与单条创建承载同样的个人安排（标题、时间），漏一个就会把内容写进持久会话。
+        "create_calendar_events",
         "update_calendar_event",
         "delete_calendar_event",
         "delete_alarm",

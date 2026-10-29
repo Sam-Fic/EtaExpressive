@@ -85,15 +85,35 @@ internal object AgentToolGroups {
     )
 
     /**
-     * 设备控制：直达操作（闹钟/计时器/音量/媒体）+ 写操作（设置/网络/电源/应用/日历写入）。
+     * 日程写入：四个工具的字面量描述很长（无 Root 降级、歧义候选、重复规则），
+     * 合在 device 里时组 schema 达 7.9k token，且每轮请求都要重发。
+     * 单独成组后，日历任务只付约 1.6k，其余设备能力不参与。
+     * 组开关沿用 [DEVICE_DIRECT_NAMES] 所在的设备写开关（开组仍受它门禁）。
+     */
+    val CALENDAR_WRITE_NAMES: Set<String> = setOf(
+        "create_calendar_event", "create_calendar_events",
+        "update_calendar_event", "delete_calendar_event",
+    )
+
+    /**
+     * 设备控制：直达操作（闹钟/计时器/音量/媒体）+ 写操作（设置/网络/电源/应用/便签）。
      * 旧版拆成 direct 与 sensitive_action 两个开关，用户难以会意；合并为一组后，
      * 细粒度控制交给单工具开关（迁移时把原关闭档位的工具注入禁用集，语义无损）。
      */
     val DEVICE_GROUP: AgentToolGroup = AgentToolGroup(
         id = "device",
         summary = "Alarms, timers, volume, media playback, app inspection, and device writes: " +
-            "settings, network, power, display, packages, users, calendar events, notes.",
-        toolNames = DEVICE_DIRECT_NAMES + AgentDeviceToolCatalog.sensitiveActionToolNames(),
+            "settings, network, power, display, packages, users, notes. Calendar events are a separate group.",
+        toolNames = DEVICE_DIRECT_NAMES +
+            (AgentDeviceToolCatalog.sensitiveActionToolNames() - CALENDAR_WRITE_NAMES),
+    )
+
+    /** 日程写入组；索引里单独一行，避免模型为了建一条日程把整组设备写工具载入。 */
+    val CALENDAR_GROUP: AgentToolGroup = AgentToolGroup(
+        id = "calendar",
+        summary = "Create, modify and delete system calendar events directly (time formats, " +
+            "reminders, recurrence, ambiguity handling).",
+        toolNames = CALENDAR_WRITE_NAMES,
     )
 
     /**
@@ -134,6 +154,7 @@ internal object AgentToolGroups {
         WEB_GROUP,
         TERMINAL_GROUP,
         DEVICE_GROUP,
+        CALENDAR_GROUP,
         PERSONAL_GROUP,
         EXTENSIONS_GROUP,
     )
@@ -154,6 +175,20 @@ internal object AgentToolGroups {
 
     fun isDeferredTool(name: String): Boolean =
         groups.any { it.deferredByDefault && name in it.toolNames }
+
+    /**
+     * 一组工具名里出现过的延迟组。
+     *
+     * 用于跨 run 恢复「已打开」状态：会话历史里已经出现过某个组内工具的调用时，
+     * 新的 run 必须让这些工具继续可见。否则用户每发一条新消息都要先花一轮
+     * tools_use_group 重新打开，而模型看到历史里刚成功调用过，只会直接再调一次并被拒。
+     */
+    fun deferredGroupsOf(toolNames: Collection<String>): Set<String> =
+        groups.asSequence()
+            .filter { it.deferredByDefault }
+            .filter { group -> group.toolNames.any { it in toolNames } }
+            .map { it.id }
+            .toSet()
 
     /**
      * 本轮应 withheld（从目录剔除）的工具：
@@ -205,6 +240,7 @@ internal object AgentToolGroups {
         WEB_GROUP.id -> switches.browserTools
         TERMINAL_GROUP.id -> switches.terminalTools
         DEVICE_GROUP.id -> switches.deviceTools
+        CALENDAR_GROUP.id -> switches.deviceTools
         PERSONAL_GROUP.id -> switches.personalTools
         EXTENSIONS_GROUP.id -> switches.extensionsTools
         else -> false
@@ -303,7 +339,8 @@ internal object AgentToolGroups {
 
     /** 旧组 id → 新组 id 的迁移映射（按助手配置里的历史值）。 */
     fun migrateLegacyGroupId(legacyId: String): Set<String> = when (legacyId) {
-        "device_direct", "device_sensitive" -> setOf(DEVICE_GROUP.id)
+        // 旧快照里 device 是含日程的合组，恢复时日程工具也要一并可见。
+        "device_direct", "device_sensitive" -> setOf(DEVICE_GROUP.id, CALENDAR_GROUP.id)
         "personal_data", "device_state" -> setOf(PERSONAL_GROUP.id)
         "self" -> setOf(EXTENSIONS_GROUP.id)
         "terminal", "screen", "web" -> setOf(legacyId)
@@ -355,15 +392,29 @@ internal object AgentToolGroupCatalog {
         )
     }
 
-    fun result(group: AgentToolGroup): String = JSONObject()
+    /**
+     * 打开成功的回执。
+     *
+     * [availableTools] 必须是**本设备此刻真的能下发**的子集，而不是整组声明名：
+     * 目录在组开关之外还要经过 AgentToolRequirements / AgentToolCapabilities / 单工具禁用集过滤。
+     * 若照抄整组名单，模型会照着清单去调用一批永远不会出现的工具，连续被拒后终止整轮。
+     */
+    fun result(group: AgentToolGroup, availableTools: List<String>): String = JSONObject()
         .put("ok", true)
         .put("group", group.id)
-        .put("tools", JSONArray(group.toolNames.sorted()))
+        .put("tools", JSONArray(availableTools))
         .put("available", "next_turn")
         .put(
             "message",
-            "Group opened. Its tools are available from the next round onward; they are not part of " +
-                "the request you are answering right now.",
+            if (availableTools.isEmpty()) {
+                "Group opened, but none of its tools can be used on this device right now " +
+                    "(missing permission/root or disabled in settings). Do not call them; use another " +
+                    "approach or tell the user what is missing."
+            } else {
+                "Group opened. Only the listed tools are usable on this device; they are available from " +
+                    "the next round onward and are not part of the request you are answering right now. " +
+                    "Call only these names — other tools of this group are unavailable here."
+            },
         )
         .toString()
 

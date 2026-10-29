@@ -16,8 +16,29 @@ import org.junit.Test
 class AgentDeviceToolCatalogTest {
     @Test fun deviceGroupIsExactlyDirectToolsPlusSensitiveActions() {
         assertEquals(
-            AgentToolGroups.DEVICE_GROUP.toolNames,
+            AgentToolGroups.DEVICE_GROUP.toolNames + AgentToolGroups.CALENDAR_GROUP.toolNames,
             names(deviceTools = true, personalTools = false),
+        )
+    }
+
+    @Test fun calendarWritesAreWithheldUntilTheirOwnGroupOpens() {
+        val deferred = AgentToolCatalog.build(
+            basicTools = false, terminalTools = false, browserTools = false, screenTools = false,
+            deviceTools = true, personalTools = false, extensionsTools = false,
+            capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
+            openedToolGroups = setOf(AgentToolGroups.DEVICE_GROUP.id),
+        ).toolNames()
+        assertEquals(AgentToolGroups.DEVICE_GROUP.toolNames, deferred)
+
+        val opened = AgentToolCatalog.build(
+            basicTools = false, terminalTools = false, browserTools = false, screenTools = false,
+            deviceTools = true, personalTools = false, extensionsTools = false,
+            capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
+            openedToolGroups = AgentToolGroups.allIds,
+        ).toolNames()
+        assertEquals(
+            AgentToolGroups.CALENDAR_GROUP.toolNames,
+            opened - AgentToolGroups.DEVICE_GROUP.toolNames,
         )
     }
 
@@ -58,7 +79,6 @@ class AgentDeviceToolCatalogTest {
             "set_do_not_disturb", "set_brightness", "screen_action", "manage_app", "package_control",
             "power_control", "system_property", "manage_file", "display_control", "deep_launch",
             "user_control", "appops_control", "connect_wifi", "set_timezone", "ime_control",
-            "create_calendar_event", "update_calendar_event", "delete_calendar_event",
             "update_alarm", "delete_alarm",
         ).forEach { assertTrue("$it 应属设备控制组", it in device) }
 

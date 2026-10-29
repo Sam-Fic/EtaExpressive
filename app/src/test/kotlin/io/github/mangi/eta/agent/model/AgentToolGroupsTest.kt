@@ -183,8 +183,14 @@ class AgentToolGroupsTest {
     }
 
     @Test fun legacyGroupIdsMapOntoTheNewTaxonomy() {
-        assertEquals(setOf(AgentToolGroups.DEVICE_GROUP.id), AgentToolGroups.migrateLegacyGroupId("device_direct"))
-        assertEquals(setOf(AgentToolGroups.DEVICE_GROUP.id), AgentToolGroups.migrateLegacyGroupId("device_sensitive"))
+        assertEquals(
+            setOf(AgentToolGroups.DEVICE_GROUP.id, AgentToolGroups.CALENDAR_GROUP.id),
+            AgentToolGroups.migrateLegacyGroupId("device_direct"),
+        )
+        assertEquals(
+            setOf(AgentToolGroups.DEVICE_GROUP.id, AgentToolGroups.CALENDAR_GROUP.id),
+            AgentToolGroups.migrateLegacyGroupId("device_sensitive"),
+        )
         assertEquals(setOf(AgentToolGroups.PERSONAL_GROUP.id), AgentToolGroups.migrateLegacyGroupId("personal_data"))
         assertEquals(setOf(AgentToolGroups.PERSONAL_GROUP.id), AgentToolGroups.migrateLegacyGroupId("device_state"))
         assertEquals(setOf(AgentToolGroups.EXTENSIONS_GROUP.id), AgentToolGroups.migrateLegacyGroupId("self"))

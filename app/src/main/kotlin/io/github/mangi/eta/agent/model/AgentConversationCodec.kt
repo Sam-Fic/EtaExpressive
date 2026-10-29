@@ -33,8 +33,13 @@ internal object AgentConversationCodec {
     private const val IMAGE_OMITTED_TEXT = "[图片观察已在当前回合使用，未写入持久会话]"
     internal const val IMAGE_FILE_TYPE = "image_file"
     internal const val VIDEO_FILE_TYPE = "video_file"
+    /**
+     * 敏感工具占位文本。必须明确「调用已经发生」，否则模型会把占位文本误读成
+     * 「参数没有送达 / 调用没生效」，转而重放同一个调用（真实会话里出现过这种误判）。
+     */
     private const val SENSITIVE_TOOL_OMITTED_TEXT =
-        "[敏感工具参数与原始结果仅供当前回合使用，未写入持久会话]"
+        "[敏感工具参数与原始结果只在执行它的回合内可见，未写入持久会话；这次调用确实已执行，" +
+            "不要据此判断参数未送达或需要重放。需要数据请重新调用对应工具读取。]"
     internal const val CHECKPOINT_TOO_LARGE_MESSAGE =
         "受保护会话超过持久化容量上限；未截断或丢弃原消息，请压缩历史后重试"
     private const val COMPACTION_NOTICE =
@@ -377,6 +382,40 @@ internal object AgentConversationCodec {
         )
     }
 
+    /**
+     * 敏感工具结果写入持久会话时保留的最小结构。
+     *
+     * 只放行 id / 状态码 / 计数：它们不含事件内容、便签正文等隐私，却是跨 run 后模型
+     * 唯一能直接复用的锚点（否则只能凭自己的总结文本重找，或误判调用没生效）。
+     */
+    private val SENSITIVE_KEEP_KEYS = setOf(
+        "ok", "code", "tool", "event_id", "event_ids", "note_id", "note_ids",
+        "alarm_id", "alarm_ids", "count", "created", "updated", "deleted",
+    )
+
+    private fun sensitiveToolContent(raw: String): String {
+        val source = runCatching { JSONObject(raw) }.getOrNull()
+            ?: return SENSITIVE_TOOL_OMITTED_TEXT
+        val kept = JSONObject()
+        for (key in SENSITIVE_KEEP_KEYS) {
+            if (!source.has(key)) continue
+            when (val value = source.opt(key)) {
+                is JSONObject -> Unit
+                is JSONArray -> {
+                    // 只放行标量数组（如 event_ids）；对象数组可能承载内容。
+                    val scalars = (0 until value.length()).all { index ->
+                        val item = value.opt(index)
+                        item !is JSONObject && item !is JSONArray
+                    }
+                    if (scalars) kept.put(key, value)
+                }
+                else -> kept.put(key, value)
+            }
+        }
+        if (kept.length() == 0) return SENSITIVE_TOOL_OMITTED_TEXT
+        return SENSITIVE_TOOL_OMITTED_TEXT + "\n结构化字段：" + kept.toString()
+    }
+
     private fun redactSensitiveToolData(
         source: JSONObject,
         sensitiveToolCallIds: Set<String>,
@@ -387,7 +426,7 @@ internal object AgentConversationCodec {
             copy.optString("role") == "tool" &&
             copy.optString("tool_call_id") in sensitiveToolCallIds
         ) {
-            copy.put("content", SENSITIVE_TOOL_OMITTED_TEXT)
+            copy.put("content", sensitiveToolContent(copy.optString("content")))
         }
         val calls = copy.optJSONArray("tool_calls") ?: return copy
         for (index in 0 until calls.length()) {

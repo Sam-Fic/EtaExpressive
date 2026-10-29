@@ -44,7 +44,8 @@
   <string name="search_history_role_tool">工具</string>
   <string name="search_history_role_title">标题</string>
   <string name="action_token_usage">Token 用量</string>
-  <string name="token_usage_total">总用量</string>
+  <string name="token_usage_context">当前上下文</string>
+  <string name="token_usage_total">累计请求（含重发）</string>
   <string name="token_usage_cache_percent">缓存占比</string>
   <string name="token_usage_empty">当前会话还没有用量数据</string>
   <string name="action_browse_workspace_files">浏览工作区文件</string>
@@ -697,7 +698,8 @@
   <string name="settings_terminal_tools">终端与文件</string>
   <string name="settings_terminal_tools_summary">在 Android 与 Linux 环境中执行命令，读取、写入、编辑和检索文件。</string>
   <string name="settings_device_tools">设备控制</string>
-  <string name="settings_device_tools_summary">闹钟、计时器、音量与媒体播放，以及修改设置、网络、显示、电源、应用、日程和便签。</string>
+  <string name="settings_calendar_tools">日程写入</string>
+  <string name="settings_device_tools_summary">闹钟、计时器、音量与媒体播放，以及修改设置、网络、显示、电源、应用和便签。</string>
   <string name="settings_personal_tools">个人数据</string>
   <string name="settings_personal_tools_summary">读取你的个人内容（通讯录、短信、通话、日历、便签、账单、行程、录音、文件）与设备状态（设置、闹钟、位置、应用使用）。</string>
   <string name="settings_extensions_tools">Eta 配置与扩展</string>

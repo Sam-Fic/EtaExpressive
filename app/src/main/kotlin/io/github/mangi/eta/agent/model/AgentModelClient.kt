@@ -154,7 +154,13 @@ internal object AgentModelClient {
         var systemCount = 0
         // 首轮的目录与提示必须同源：提示只点名目录里真实存在的工具，
         // 否则模型照着提示调用一个没下发的工具，会被校验器连续拒三次并终止整轮。
-        val initialOpenedGroups = openedToolGroupsProvider()
+        //
+        // 每个 run 的执行器状态都是新的，但会话历史是共享的：历史里已经出现过某个延迟组的
+        // 工具调用时，模型看得见它、也理应还能调用它。不把这一组并进来，用户每发一条新消息
+        // 都要先白付一轮 tools_use_group（真实会话里反复发生），模型也会因为「刚调过却报未声明」
+        // 而怀疑参数没有送达。
+        val initialOpenedGroups = openedToolGroupsProvider() +
+            AgentToolGroups.deferredGroupsOf(historyToolNames(outboundHistory))
         fun toolsFor(
             capabilities: AgentToolCapabilities,
             memoryEnabled: Boolean = memoryContext.enabled,
@@ -271,7 +277,10 @@ internal object AgentModelClient {
                     val nextMemoryContext = memoryContextProvider()
                     // 配方表每轮重读：模型可能在本 run 中途新建或停用配方。
                     val recipeTools = recipeToolsProvider()
-                    val nextOpenedGroups = openedToolGroupsProvider()
+                    // 必须并上 run 启动时恢复的组：执行器只累积本 run 内打开的组，
+                    // 若这里只读执行器，第二个 round 就会把「历史里恢复的组」重新摘掉——
+                    // 前缀缩短 7.9k、整组工具消失，随后模型调用即被拒（真实日志里出现过）。
+                    val nextOpenedGroups = openedToolGroupsProvider() + initialOpenedGroups
                     // 每轮都重建系统消息与工具目录要付约 50 KB JSON 构造 + 逐工具过滤。
                     // 只有「能力快照 + 技能索引 + 记忆修订」都变了才真正重建；否则复用上一轮
                     // 的目录与系统消息（两者都只由这三项决定）。
@@ -381,6 +390,26 @@ internal object AgentModelClient {
             messages.put(prefix.getJSONObject(index))
         }
         tail.forEach(messages::put)
+    }
+
+    /**
+     * 历史里出现过的工具名。
+     *
+     * 脱敏只替换 arguments，`function.name` 仍然保留，所以敏感工具的组也能被识别出来。
+     */
+    private fun historyToolNames(history: List<ConversationMessage>): Set<String> = buildSet {
+        history.forEach { message ->
+            val raw = message.toolCallsJson
+            if (raw.isBlank()) return@forEach
+            val calls = runCatching { JSONArray(raw) }.getOrNull() ?: return@forEach
+            for (index in 0 until calls.length()) {
+                calls.optJSONObject(index)
+                    ?.optJSONObject("function")
+                    ?.optString("name")
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::add)
+            }
+        }
     }
 
     private fun ModelConfig.validate() {

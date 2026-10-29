@@ -219,7 +219,28 @@ internal class AgentLoop(
         val filteredMessages: org.json.JSONArray,
         /** 本轮是否到了可以发布本地估算的显示边界。 */
         val publishLocalEstimate: Boolean,
+        /** 请求前缀指纹与上一轮的比较结果：first / same / changed。 */
+        val prefixState: String,
     )
+
+    private var lastPrefixDigest: String? = null
+
+    /**
+     * 请求前缀（工具目录 + 前 [systemCount] 条 system 消息）的短指纹。
+     *
+     * provider 的前缀缓存按块命中，前缀一变命中就归零。把比较结果写进 usage 日志后，
+     * 任何 `cache=0` 都能立刻判定是「组集合/开关翻转导致前缀变化」还是「provider 侧未命中」。
+     */
+    private fun requestPrefixDigest(roundTools: JSONArray): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        digest.update(roundTools.toString().toByteArray())
+        val count = systemCount.coerceIn(0, messages.length())
+        for (index in 0 until count) {
+            digest.update(messages.getJSONObject(index).toString().toByteArray())
+        }
+        digest.update("sys=$count".toByteArray())
+        return digest.digest().take(4).joinToString("") { "%02x".format(it) }
+    }
 
     private fun snapshotRound(roundTools: JSONArray): RoundContext {
         // Snapshot BEFORE callbacks can append this response to messages.
@@ -236,6 +257,13 @@ internal class AgentLoop(
         // 两个预算锚点都在同一个边界上前进，避免显示与静默口径互相污染。
         silentBudget.requestStarted(requestLocal)
         requestBudget.requestStarted()
+        val digest = requestPrefixDigest(roundTools)
+        val prefixState = when (lastPrefixDigest) {
+            null -> "first"
+            digest -> "same"
+            else -> "changed"
+        }
+        lastPrefixDigest = digest
         return RoundContext(
             requestLocal = requestLocal,
             requestMessageCount = requestMessageCount,
@@ -243,6 +271,7 @@ internal class AgentLoop(
             requestFixedTokens = requestFixedTokens,
             filteredMessages = filteredMessages,
             publishLocalEstimate = publishLocalEstimate,
+            prefixState = prefixState,
         )
     }
 
@@ -361,7 +390,8 @@ internal class AgentLoop(
                                 onEvent(AgentEvent.UsageReceived(attemptRound,
                                     AgentTokenUsage(inputTokens = providerEvent.tokens), projected = true,
                                     requestHistoryTokens = snapshot.requestHistoryTokens,
-                                    requestOverheadTokens = snapshot.requestFixedTokens))
+                                    requestOverheadTokens = snapshot.requestFixedTokens,
+                                    requestPrefixState = snapshot.prefixState))
                             }
                         }
                         if (providerEvent is ProviderEvent.Usage) {
@@ -395,7 +425,11 @@ internal class AgentLoop(
                                 rememberIncompleteText(textEvent)
                                 continuationBlocks.map(attemptRound, textEvent).toAgentEvent(attemptRound)?.let { event ->
                                     onEvent(if (event is AgentEvent.UsageReceived && !event.projected) {
-                                        event.copy(requestHistoryTokens = snapshot.requestHistoryTokens, requestOverheadTokens = snapshot.requestFixedTokens)
+                                        event.copy(
+                                            requestHistoryTokens = snapshot.requestHistoryTokens,
+                                            requestOverheadTokens = snapshot.requestFixedTokens,
+                                            requestPrefixState = snapshot.prefixState,
+                                        )
                                     } else event)
                                 }
                             }
@@ -1412,9 +1446,29 @@ internal class AgentLoop(
                 return rejectedToolOutcome(round, toolCall, "DELEGATION_ARGUMENT_REPAIR_EXHAUSTED",
                     "委派参数补全失败，本轮已停用新委派；未创建子任务，已有子任务不受影响。请主代理接手。")
             }
+            val declared = toolCallValidator.declares(toolCall.name)
+            // 延迟组内的工具尚未打开时被调用：属时序问题，用独立的按组预算纠正，
+            // 不占用 3 次参数校验硬停预算（否则连试两三个组就会整轮终止）。
+            if (!declared) {
+                val groupId = AgentToolGroups.groupOfTool(toolCall.name)
+                    ?.takeIf { AgentToolGroups.isDeferredTool(toolCall.name) }
+                if (groupId != null) {
+                    val hint = invalidToolArgumentsGuard.rejectGroupHint(
+                        toolName = toolCall.name,
+                        groupId = groupId,
+                        validationError = validationError,
+                    )
+                    return rejectedToolOutcome(
+                        round = round,
+                        toolCall = toolCall,
+                        code = hint.code,
+                        message = hint.message,
+                    )
+                }
+            }
             val rejection = invalidToolArgumentsGuard.reject(
                 toolName = toolCall.name,
-                declared = toolCallValidator.declares(toolCall.name),
+                declared = declared,
                 validationError = validationError,
             )
             invalidArgumentsInBatch++
@@ -1535,7 +1589,8 @@ internal class AgentLoop(
     ) {
         // Provider 要求同一 assistant 批次的全部 tool result 连续出现；图片观察统一放在批次之后。
         outcomes.forEach { outcome ->
-            val message = AgentConversationCodec.toolResultMessage(outcome.call, outcome.result).put(AgentTurnIdentity.JSON_KEY, turnId)
+            val bounded = boundedToolResult(outcome.result)
+            val message = AgentConversationCodec.toolResultMessage(outcome.call, bounded).put(AgentTurnIdentity.JSON_KEY, turnId)
             messages.put(message)
             toolDiagnosticAttempt?.historyResult(outcome.call, message)
         }
@@ -1567,6 +1622,25 @@ internal class AgentLoop(
                 )
             )
         }
+    }
+
+    /**
+     * 工具结果在写入历史前就限长。
+     *
+     * 压缩只在云端回执 ≥80% 时才裁剪超长结果；在那之前 shell / read_file / fetch_url 的正文
+     * 会原样整段进入后续每一轮请求，这是「工具一调用后每回合输入 token 都很大」的主因。
+     * 收成头 + 提示 + 尾后，模型仍能凭提示用更窄的范围重新取回缺的部分。
+     */
+    private fun boundedToolResult(result: AgentModelClient.ToolResult): AgentModelClient.ToolResult {
+        val content = result.content
+        if (content.length <= MAX_TOOL_RESULT_CHARS) return result
+        val head = content.take(HISTORY_HEAD_CHARS)
+        val tail = content.takeLast(HISTORY_TAIL_CHARS)
+        val omitted = content.length - head.length - tail.length
+        return result.copy(
+            content = head + "\n\n…[省略 $omitted 字符：工具结果入历史时只保留头 $HISTORY_HEAD_CHARS / " +
+                "尾 $HISTORY_TAIL_CHARS 字符。需要后续内容请用更窄的范围重新调用该工具。]…\n\n" + tail,
+        )
     }
 
     private fun discardPendingToolImageMessage() {
@@ -1648,5 +1722,11 @@ internal class AgentLoop(
 
         /** 一个只读批次里同时执行的工具数上限。 */
         private const val MAX_PARALLEL_READ_TOOLS = 4
+
+        /** 单条工具结果写入历史时的字符上限（约 3–4k token）；超出部分收成头尾摘要。 */
+        private const val MAX_TOOL_RESULT_CHARS = 8192
+
+        private const val HISTORY_HEAD_CHARS = 4608
+        private const val HISTORY_TAIL_CHARS = 1536
     }
 }

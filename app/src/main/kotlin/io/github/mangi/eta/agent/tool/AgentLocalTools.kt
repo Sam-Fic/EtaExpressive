@@ -300,6 +300,8 @@ internal class AgentLocalTools(
         AgentToolGroups.WEB_GROUP.id -> browserToolsEnabled()
         AgentToolGroups.TERMINAL_GROUP.id -> terminalToolsEnabled()
         AgentToolGroups.DEVICE_GROUP.id -> deviceToolsEnabled()
+        // 日程写入组没有独立开关：沿用「设备控制」开关门禁，避免新增键与迁移。
+        AgentToolGroups.CALENDAR_GROUP.id -> deviceToolsEnabled()
         AgentToolGroups.PERSONAL_GROUP.id -> personalToolsEnabled()
         AgentToolGroups.EXTENSIONS_GROUP.id -> extensionsToolsEnabled()
         else -> false
@@ -325,7 +327,27 @@ internal class AgentLocalTools(
             )
         }
         openedToolGroups += group.id
-        return AgentToolGroupCatalog.result(group)
+        return AgentToolGroupCatalog.result(group, usableToolsOf(group))
+    }
+
+    /**
+     * 组内**本设备此刻真能下发**的工具子集。
+     *
+     * 目录在下发前还要经过 `AgentToolRequirements`（Root/LSPosed/ColorOS）、
+     * `AgentToolCapabilities`（无障碍、通知、用量、定位、日历）与单工具禁用集；
+     * 回执若照抄整组声明名，模型就会调用一批永远不会出现的工具。
+     * 这里用同一套静态判定预先收窄，宁可少报也不多报。
+     */
+    private fun usableToolsOf(group: AgentToolGroup): List<String> {
+        val capabilities = runCatching {
+            AgentToolCapabilities.capture(context).copy(
+                virtualDisplay = runSurface == io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.BACKGROUND,
+            )
+        }.getOrNull() ?: return emptyList()
+        val disabled = runCatching { Prefs.disabledTools() }.getOrDefault(emptySet())
+        return group.toolNames
+            .filter { name -> name !in disabled && capabilities.canDeliver(name) }
+            .sorted()
     }
 
     override fun execute(toolCall: AgentModelClient.ToolCall): AgentModelClient.ToolResult {
@@ -699,6 +721,9 @@ internal class AgentLocalTools(
                 if (basicToolsEnabled()) null else
                     "BASIC_TOOLS_DISABLED" to "基础交互工具已在设置中关闭，本次未执行"
             AgentToolGroups.DEVICE_GROUP.id ->
+                if (deviceToolsEnabled()) null else
+                    "DEVICE_TOOLS_DISABLED" to "设备控制工具已在设置中关闭，本次未执行"
+            AgentToolGroups.CALENDAR_GROUP.id ->
                 if (deviceToolsEnabled()) null else
                     "DEVICE_TOOLS_DISABLED" to "设备控制工具已在设置中关闭，本次未执行"
             AgentToolGroups.PERSONAL_GROUP.id ->
@@ -2167,6 +2192,7 @@ internal class AgentLocalTools(
         // semantic_search_media 有自己的门禁与执行路径，不参与结构化设备派发。
         val DEVICE_TOOL_NAMES =
             io.github.mangi.eta.agent.model.AgentToolGroups.DEVICE_GROUP.toolNames +
+                io.github.mangi.eta.agent.model.AgentToolGroups.CALENDAR_GROUP.toolNames +
                 (
                     io.github.mangi.eta.agent.model.AgentToolGroups.PERSONAL_GROUP.toolNames -
                         io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog.SEARCH_MEDIA

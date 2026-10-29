@@ -155,9 +155,15 @@ internal sealed interface AgentEvent {
         // Local request-shape snapshots for silent next-request budgeting, not billing.
         val requestHistoryTokens: Int? = null,
         val requestOverheadTokens: Int? = null,
+        /**
+         * 请求前缀（工具目录 + system 消息）与上一轮相比是否相同：first / same / changed。
+         * provider 的前缀缓存按块命中，前缀变了就必然掉命中；把它写进日志即可区分
+         * 「我们的前缀变了」与「provider 没有回报缓存」，不需要再猜。
+         */
+        val requestPrefixState: String? = null,
     ) : AgentEvent {
         override fun toLogLine(): String =
-            "usage_received round=$round, projected=$projected, ctx=${usage.contextTokens}, in=${usage.inputTokens}, out=${usage.outputTokens}, reasoning=${usage.reasoningTokens}, cache=${usage.cachedTokens}"
+            "usage_received round=$round, projected=$projected, ctx=${usage.contextTokens}, in=${usage.inputTokens}, out=${usage.outputTokens}, reasoning=${usage.reasoningTokens}, cache=${usage.cachedTokens}, prefix=${requestPrefixState ?: "-"}"
     }
 
     data class UserSupplementReceived(

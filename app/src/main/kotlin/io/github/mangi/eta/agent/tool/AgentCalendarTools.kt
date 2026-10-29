@@ -849,8 +849,13 @@ internal class AgentCalendarTools(
         const val ACCESS_OWNER = 700L
         const val QUERY_TIMEOUT_MS = 15_000L
         const val MAX_OUTPUT_BYTES = 256 * 1024
+        /**
+         * 回读校验比对的每一列都必须出现在这里，否则 [verifyEvent] 永远读到 null，
+         * 把「写入其实成功」判成 CALENDAR_UPDATE_NOT_APPLIED（eventTimezone / hasAlarm 曾因此必失败）。
+         */
         val EVENT_PROJECTION = listOf(
             "_id", "title", "dtstart", "dtend", "allDay", "deleted", "rrule", "description", "eventLocation",
+            "eventTimezone", "hasAlarm",
         )
     }
 }

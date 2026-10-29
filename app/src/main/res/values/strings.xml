@@ -45,7 +45,8 @@
   <string name="search_history_role_tool">Tool</string>
   <string name="search_history_role_title">Title</string>
   <string name="action_token_usage">Token usage</string>
-  <string name="token_usage_total">Total</string>
+  <string name="token_usage_context">Current context</string>
+  <string name="token_usage_total">Cumulative (incl. resends)</string>
   <string name="token_usage_cache_percent">Cache rate</string>
   <string name="token_usage_empty">No token usage in this conversation yet</string>
   <string name="action_browse_workspace_files">Browse workspace files</string>
@@ -693,7 +694,8 @@
   <string name="settings_terminal_tools">Terminal and files</string>
   <string name="settings_terminal_tools_summary">Run commands and read, write, edit and search files on Android and in the Linux environment.</string>
   <string name="settings_device_tools">Device control</string>
-  <string name="settings_device_tools_summary">Alarms, timers, volume and media, plus changing settings, network, display, power, apps, calendar events and notes.</string>
+  <string name="settings_calendar_tools">Calendar events</string>
+  <string name="settings_device_tools_summary">Alarms, timers, volume and media, plus changing settings, network, display, power, apps and notes.</string>
   <string name="settings_personal_tools">Personal data</string>
   <string name="settings_personal_tools_summary">Read your own content (contacts, messages, calls, calendars, notes, bills, trips, recordings, files) and device state (settings, alarms, location, app usage).</string>
   <string name="settings_extensions_tools">Eta configuration and extensions</string>

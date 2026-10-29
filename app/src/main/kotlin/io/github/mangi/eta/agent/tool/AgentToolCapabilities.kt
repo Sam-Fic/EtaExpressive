@@ -49,14 +49,24 @@ internal data class AgentToolCapabilities(
         }
     }
 
+    /**
+     * 单个工具此刻能否真的出现在下发的目录里。
+     *
+     * 目录投影与 tools_use_group 的打开回执必须用同一判定，否则回执会承诺一批
+     * 永远不会出现的工具名，模型照着调用只会连续被拒。
+     */
+    fun canDeliver(name: String): Boolean {
+        if (!virtualDisplay && name in VIRTUAL_DISPLAY_TOOLS) return false
+        return unavailableCode(name) == null
+    }
+
     fun project(tools: JSONArray): JSONArray {
         val rootProjected = AgentToolRequirements.project(tools, rootAvailable)
         return JSONArray().also { visible ->
             for (index in 0 until rootProjected.length()) {
                 val tool = rootProjected.getJSONObject(index)
                 val name = tool.getJSONObject("function").getString("name")
-                if (!virtualDisplay && name in VIRTUAL_DISPLAY_TOOLS) continue
-                if (unavailableCode(name) == null) visible.put(tool)
+                if (canDeliver(name)) visible.put(tool)
             }
         }
     }

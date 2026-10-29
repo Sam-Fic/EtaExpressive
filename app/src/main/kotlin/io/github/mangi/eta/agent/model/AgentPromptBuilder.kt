@@ -148,6 +148,7 @@ internal object AgentPromptBuilder {
                 AgentToolGroups.WEB_GROUP.id -> config.browserTools
                 AgentToolGroups.TERMINAL_GROUP.id -> config.terminalTools
                 AgentToolGroups.DEVICE_GROUP.id -> config.deviceTools
+                AgentToolGroups.CALENDAR_GROUP.id -> config.deviceTools
                 AgentToolGroups.PERSONAL_GROUP.id -> config.personalTools
                 AgentToolGroups.EXTENSIONS_GROUP.id ->
                     Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
@@ -165,7 +166,9 @@ internal object AgentPromptBuilder {
         val screenActive = active(AgentToolGroups.SCREEN_GROUP.id)
         val webActive = active(AgentToolGroups.WEB_GROUP.id)
         val terminalActive = active(AgentToolGroups.TERMINAL_GROUP.id)
-        val deviceActive = active(AgentToolGroups.DEVICE_GROUP.id)
+        // 日程写入独立成组，但指引与设备块共用一份文案：只开日程组时也要看到写入规则。
+        val deviceActive = active(AgentToolGroups.DEVICE_GROUP.id) ||
+            active(AgentToolGroups.CALENDAR_GROUP.id)
         val personalActive = active(AgentToolGroups.PERSONAL_GROUP.id)
         // 提示点名的工具必须真的在本轮目录里。目录会因为 Root、运行时权限、无障碍、
         // 延迟组未打开等原因缺掉一部分工具；提示若照旧点名，模型调用它就会被校验器拒掉，
