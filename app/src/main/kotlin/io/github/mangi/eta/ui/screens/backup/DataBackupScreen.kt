@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Handyman
+import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,12 +68,14 @@ internal fun DataBackupScreen(
     onExport: suspend (OutputStream, EtaBackupExportOptions) -> EtaBackupSummary,
     onImport: suspend (InputStream) -> EtaBackupSummary,
     onImportModels: suspend (InputStream) -> EtaModelBackupSummary,
+    onImportAnalysis: suspend (String) -> String,
 ) {
     val scope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
     var detecting by remember { mutableStateOf(false) }
-    val busy = exporting || importing || detecting
+    var importingAnalysis by remember { mutableStateOf(false) }
+    val busy = exporting || importing || detecting || importingAnalysis
     // 类别勾选：应用数据默认带上，Linux 环境 / 模型这类大件默认不带。
     var includeAppData by remember { mutableStateOf(true) }
     var includeLinuxEnvironment by remember { mutableStateOf(false) }
@@ -201,6 +204,32 @@ internal fun DataBackupScreen(
                 showFailure(throwable)
             } finally {
                 detecting = false
+            }
+        }
+    }
+
+    val analysisImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            importingAnalysis = true
+            try {
+                val raw = withContext(Dispatchers.IO) {
+                    val input = context.contentResolver.openInputStream(uri)
+                        ?: error(context.getString(R.string.data_backup_file_open_failed))
+                    input.use { it.readBytes().toString(Charsets.UTF_8) }
+                }
+                onImportAnalysis(raw)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.conversation_analysis_imported),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } catch (throwable: Throwable) {
+                showFailure(throwable)
+            } finally {
+                importingAnalysis = false
             }
         }
     }
@@ -359,6 +388,22 @@ internal fun DataBackupScreen(
                         enabled = !busy,
                         onClick = {
                             importLauncher.launch(arrayOf("application/zip", "application/json", "text/plain", "*/*"))
+                        },
+                    )
+                }
+                item {
+                    BackupActionRow(
+                        title = stringResource(R.string.conversation_analysis_import),
+                        summary = if (importingAnalysis) {
+                            stringResource(R.string.data_backup_working)
+                        } else {
+                            stringResource(R.string.conversation_analysis_import_summary)
+                        },
+                        icon = Icons.Rounded.QueryStats,
+                        loading = importingAnalysis,
+                        enabled = !busy,
+                        onClick = {
+                            analysisImportLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
                         },
                     )
                 }

@@ -76,6 +76,7 @@ import io.github.mangi.eta.ui.AgentTaskSurfacePrompt
 import io.github.mangi.eta.ui.AppearanceSettingsScreen
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.components.LocalShellTopBarInset
 import io.github.mangi.eta.ui.HapticsSettingsScreen
@@ -283,6 +284,13 @@ fun AgentAppRoot(
     var conversationExportBusy by remember { mutableStateOf(false) }
     var conversationExportConfirmation by rememberSaveable { mutableStateOf(false) }
 
+    var conversationAnalysisExportId by rememberSaveable { mutableStateOf<String?>(null) }
+    var conversationAnalysisExportTitle by rememberSaveable { mutableStateOf("") }
+    var conversationAnalysisIncludeRawIo by rememberSaveable { mutableStateOf(false) }
+    var conversationAnalysisIncludeImages by rememberSaveable { mutableStateOf(false) }
+    var conversationAnalysisExportBusy by remember { mutableStateOf(false) }
+    var conversationAnalysisExportOptions by rememberSaveable { mutableStateOf(false) }
+
     val conversationExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
@@ -336,6 +344,64 @@ fun AgentAppRoot(
                     validation.deleteRecursively()
                 }
                 conversationExportBusy = false
+            }
+        }
+    }
+
+    val conversationAnalysisExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        val id = conversationAnalysisExportId
+        val title = conversationAnalysisExportTitle
+        val includeRawIo = conversationAnalysisIncludeRawIo
+        val includeImages = conversationAnalysisIncludeImages
+        conversationAnalysisExportId = null
+        if (uri == null) return@rememberLauncherForActivityResult
+        if (id == null) {
+            Toast.makeText(context, context.getString(R.string.appst_export_target_lost), Toast.LENGTH_LONG).show()
+            return@rememberLauncherForActivityResult
+        }
+        uiScope.launch {
+            conversationAnalysisExportBusy = true
+            var touchedDestination = false
+            try {
+                val payload = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    agentState.exportConversationAnalysis(
+                        id,
+                        io.github.mangi.eta.data.repository.EtaConversationAnalysisOptions(
+                            includeRawRuntimeIo = includeRawIo,
+                            includeImages = includeImages,
+                        ),
+                    )
+                }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                touchedDestination = true
+                val output = context.contentResolver.openOutputStream(uri, "wt")
+                    ?: error(context.getString(R.string.data_backup_file_open_failed))
+                output.use { sink -> sink.write(payload.toByteArray(Charsets.UTF_8)) }
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.conversation_analysis_exported, title),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } catch (failure: Throwable) {
+                val cleaned = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                    runCatching { android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri) }.getOrDefault(false)
+                }
+                if (failure is kotlinx.coroutines.CancellationException) {
+                    if (!cleaned && touchedDestination) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.appst_export_cancelled_partial),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                    throw failure
+                }
+                val detail = failure.message ?: context.getString(R.string.conversation_export_failed)
+                Toast.makeText(context, detail, Toast.LENGTH_LONG).show()
+            } finally {
+                conversationAnalysisExportBusy = false
             }
         }
     }
@@ -526,6 +592,15 @@ fun AgentAppRoot(
                     conversationExportId = conversation.id
                     conversationExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
                     conversationExportConfirmation = true
+                }
+            },
+            onConversationAnalysisExport = { conversation ->
+                if (conversationAnalysisExportBusy || conversationAnalysisExportId != null) {
+                    Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
+                } else {
+                    conversationAnalysisExportId = conversation.id
+                    conversationAnalysisExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
+                    conversationAnalysisExportOptions = true
                 }
             },
             onOpenManageChats = { pushFromDrawer(AppRoute.ManageChats) },
@@ -1201,6 +1276,7 @@ fun AgentAppRoot(
                         summary
                     },
                     onImportModels = agentState::importModels,
+                    onImportAnalysis = agentState::importConversationAnalysis,
                 )
             }
             composable<AppRoute.Memory> {
@@ -1428,6 +1504,46 @@ fun AgentAppRoot(
                 )
             },
         ) {
+        }
+    }
+
+    if (conversationAnalysisExportOptions) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.conversation_analysis_export_title),
+            summary = stringResource(R.string.conversation_analysis_export_summary),
+            onDismissRequest = {
+                conversationAnalysisExportOptions = false
+                conversationAnalysisExportId = null
+            },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.conversation_export_choose_location),
+                    onCancel = {
+                        conversationAnalysisExportOptions = false
+                        conversationAnalysisExportId = null
+                    },
+                    onConfirm = {
+                        conversationAnalysisExportOptions = false
+                        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+                        val title = conversationAnalysisExportTitle.replace(Regex("""[\\/:*?"<>|]"""), "_").take(40)
+                        conversationAnalysisExportLauncher.launch("Eta-$title-$stamp.json")
+                    },
+                )
+            },
+        ) {
+            EtaSegmentedCheckboxRow(
+                title = stringResource(R.string.conversation_analysis_include_raw_io),
+                summary = stringResource(R.string.conversation_analysis_include_raw_io_summary),
+                checked = conversationAnalysisIncludeRawIo,
+                onCheckedChange = { conversationAnalysisIncludeRawIo = it },
+            )
+            EtaSegmentedCheckboxRow(
+                title = stringResource(R.string.conversation_analysis_include_images),
+                summary = stringResource(R.string.conversation_analysis_include_images_summary),
+                checked = conversationAnalysisIncludeImages,
+                onCheckedChange = { conversationAnalysisIncludeImages = it },
+            )
         }
     }
 

@@ -1821,6 +1821,17 @@
   <string name="conversation_export_choose_location">選擇儲存位置</string>
   <string name="conversation_exported">已匯出「%1$s」</string>
   <string name="conversation_export_failed">匯出對話失敗</string>
+  <string name="conversation_export_analysis">匯出分析 JSON</string>
+  <string name="conversation_analysis_export_title">匯出對話分析</string>
+  <string name="conversation_analysis_export_summary">把此對話匯成一個 JSON 檔案，含訊息、每回合的 token 用量與全部工具呼叫。用來復盤這次對話，或直接分享給別人。匯入時會建立一則對話。</string>
+  <string name="conversation_analysis_include_raw_io">含原始模型 I/O 與事件記錄</string>
+  <string name="conversation_analysis_include_raw_io_summary">額外帶上模型請求與回應的原文，以及執行階段的事件軌跡。檔案會大很多，而且原始記錄只保留 7 天。</string>
+  <string name="conversation_analysis_include_images">含圖片</string>
+  <string name="conversation_analysis_include_images_summary">額外帶上你傳送的圖片與工具讀到的圖片預覽。檔案會大很多。</string>
+  <string name="conversation_analysis_exported">已匯出分析「%1$s」</string>
+  <string name="conversation_analysis_import">匯入分析檔案</string>
+  <string name="conversation_analysis_import_summary">讀取對話分析 JSON 檔案，還原成一則可以繼續聊的對話。</string>
+  <string name="conversation_analysis_imported">已匯入為新對話</string>
   <string name="data_backup_file_open_failed">無法開啟所選檔案</string>
   <string name="ui_balance_info_title">餘額</string>
   <string name="ui_balance_info_summary">從供應商取得帳戶餘額</string>

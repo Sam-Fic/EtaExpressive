@@ -90,6 +90,9 @@ import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.EtaBackupExportOptions
 import io.github.mangi.eta.data.repository.EtaBackupRepository
 import io.github.mangi.eta.data.repository.EtaBackupSummary
+import io.github.mangi.eta.data.repository.EtaConversationAnalysisCodec
+import io.github.mangi.eta.data.repository.EtaConversationAnalysisOptions
+import io.github.mangi.eta.data.repository.EtaConversationAnalysisRepository
 import io.github.mangi.eta.data.repository.EtaModelBackupSummary
 import io.github.mangi.eta.data.repository.ProviderBalanceStore
 import io.github.mangi.eta.data.repository.ProviderRepository
@@ -1369,6 +1372,28 @@ internal class AgentAppState(
         withConversationArchive(requireIdleRuns = false) {
             EtaBackupRepository.exportConversation(appContext, conversationId, output)
         }
+
+    /**
+     * 导出会话分析 JSON：消息、每回合 token 账单与工具调用明细。
+     *
+     * 可选带上原始模型 I/O 与运行时事件日志，以及图片。
+     */
+    suspend fun exportConversationAnalysis(
+        conversationId: String,
+        options: EtaConversationAnalysisOptions = EtaConversationAnalysisOptions(),
+    ): String = withConversationArchive(requireIdleRuns = false) {
+        EtaConversationAnalysisCodec.encode(
+            EtaConversationAnalysisRepository.export(appContext, conversationId, options),
+        )
+    }
+
+    /** 导入会话分析 JSON，还原成一条普通新会话，返回新会话 id。 */
+    suspend fun importConversationAnalysis(raw: String): String = withConversationArchive {
+        val document = EtaConversationAnalysisCodec.decode(raw)
+        val id = EtaConversationAnalysisRepository.import(appContext, document)
+        reloadConversationsAfterBackup()
+        id
+    }
 
     /** 只恢复模型文件，不改动对话、设置与附件。 */
     suspend fun importModels(input: InputStream): EtaModelBackupSummary =

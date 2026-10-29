@@ -77,6 +77,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Close
@@ -267,6 +268,7 @@ fun ConversationSidePaneScaffold(
     onMoveConversationToFolder: (ConversationSummaryUi) -> Unit = {},
     onConversationTogglePin: (ConversationSummaryUi) -> Unit = {},
     onConversationExport: (ConversationSummaryUi) -> Unit = {},
+    onConversationAnalysisExport: (ConversationSummaryUi) -> Unit = {},
     onOpenManageChats: () -> Unit = {},
     onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
@@ -452,6 +454,7 @@ fun ConversationSidePaneScaffold(
                     onMoveConversationToFolder = onMoveConversationToFolder,
                     onConversationTogglePin = onConversationTogglePin,
                     onConversationExport = onConversationExport,
+                    onConversationAnalysisExport = onConversationAnalysisExport,
                     onOpenManageChats = onOpenManageChats,
                     onOpenManageFolders = onOpenManageFolders,
                     onSelectFolder = onSelectFolder,
@@ -660,6 +663,7 @@ private fun ConversationPanePanel(
     onMoveConversationToFolder: (ConversationSummaryUi) -> Unit = {},
     onConversationTogglePin: (ConversationSummaryUi) -> Unit = {},
     onConversationExport: (ConversationSummaryUi) -> Unit = {},
+    onConversationAnalysisExport: (ConversationSummaryUi) -> Unit = {},
     onOpenManageChats: () -> Unit = {},
     onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
@@ -703,6 +707,7 @@ private fun ConversationPanePanel(
         onMoveConversationToFolder = onMoveConversationToFolder,
         onConversationTogglePin = onConversationTogglePin,
         onConversationExport = onConversationExport,
+        onConversationAnalysisExport = onConversationAnalysisExport,
         onOpenManageChats = onOpenManageChats,
         onOpenManageFolders = onOpenManageFolders,
         onSelectFolder = onSelectFolder,
@@ -786,6 +791,7 @@ private fun Material3ConversationPane(
     onMoveConversationToFolder: (ConversationSummaryUi) -> Unit,
     onConversationTogglePin: (ConversationSummaryUi) -> Unit,
     onConversationExport: (ConversationSummaryUi) -> Unit,
+    onConversationAnalysisExport: (ConversationSummaryUi) -> Unit,
     onOpenManageChats: () -> Unit,
     onOpenManageFolders: () -> Unit,
     onSelectFolder: (String?) -> Unit,
@@ -1021,6 +1027,7 @@ private fun Material3ConversationPane(
                                     onMoveToFolder = { onMoveConversationToFolder(conversation) },
                                     onTogglePin = { onConversationTogglePin(conversation) },
                                     onExport = { onConversationExport(conversation) },
+                                    onExportAnalysis = { onConversationAnalysisExport(conversation) },
                                 )
                             }
                         }
@@ -1659,6 +1666,7 @@ private fun Material3ConversationRow(
     onMoveToFolder: () -> Unit,
     onTogglePin: () -> Unit,
     onExport: () -> Unit,
+    onExportAnalysis: () -> Unit,
 ) {
     var showActionMenu by remember { mutableStateOf(false) }
     EtaSegmentedItem(index = index, count = count) {
@@ -1735,7 +1743,7 @@ private fun Material3ConversationRow(
                     EtaMenuGroup(index = 0, count = 1) {
                         DrawerActionMenuItem(
                             index = 0,
-                            count = 5,
+                            count = 6,
                             text = stringResource(R.string.action_rename),
                             icon = Icons.Rounded.Edit,
                             onClick = {
@@ -1745,7 +1753,7 @@ private fun Material3ConversationRow(
                         )
                         DrawerActionMenuItem(
                             index = 1,
-                            count = 5,
+                            count = 6,
                             text = stringResource(
                                 if (conversation.isPinned) R.string.conversation_unpin
                                 else R.string.conversation_pin,
@@ -1758,7 +1766,7 @@ private fun Material3ConversationRow(
                         )
                         DrawerActionMenuItem(
                             index = 2,
-                            count = 5,
+                            count = 6,
                             text = stringResource(R.string.conversation_export),
                             icon = Icons.Rounded.Download,
                             onClick = {
@@ -1768,7 +1776,17 @@ private fun Material3ConversationRow(
                         )
                         DrawerActionMenuItem(
                             index = 3,
-                            count = 5,
+                            count = 6,
+                            text = stringResource(R.string.conversation_export_analysis),
+                            icon = Icons.Rounded.QueryStats,
+                            onClick = {
+                                showActionMenu = false
+                                onExportAnalysis()
+                            },
+                        )
+                        DrawerActionMenuItem(
+                            index = 4,
+                            count = 6,
                             text = stringResource(R.string.drawer_move_to_folder),
                             icon = Icons.Rounded.Folder,
                             onClick = {
@@ -1777,8 +1795,8 @@ private fun Material3ConversationRow(
                             },
                         )
                         DrawerActionMenuItem(
-                            index = 4,
-                            count = 5,
+                            index = 5,
+                            count = 6,
                             text = stringResource(R.string.conversation_move_to_trash),
                             icon = Icons.Rounded.Delete,
                             onClick = {

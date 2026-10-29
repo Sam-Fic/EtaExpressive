@@ -22,6 +22,7 @@ import io.github.mangi.eta.data.db.ConversationMessageEntity
 import io.github.mangi.eta.data.db.ConversationStateEntity
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.model.ReasoningEffort
+import io.github.mangi.eta.data.repository.AgentConversationHistoryFiles
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.ConversationFolderUi
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
@@ -190,7 +191,7 @@ internal object AgentConversationStore {
                     }
                     existing.keys.filterNot { it in storedIds }.forEach { id ->
                         dao.deleteConversation(id)
-                        conversationHistoryFile(appContext, id).delete()
+                        AgentConversationHistoryFiles.file(appContext, id).delete()
                     }
                     val metadata = conversations.map { row ->
                         row.copy(createdAt = existing[row.id]?.createdAt ?: row.createdAt)
@@ -287,10 +288,8 @@ internal object AgentConversationStore {
     }
 
 
-    private fun conversationHistoryFile(context: Context, id: String): File {
-        val safe = id.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
-        return File(File(context.filesDir, "conversation-history"), "$safe.json")
-    }
+    private fun conversationHistoryFile(context: Context, id: String): File =
+        AgentConversationHistoryFiles.file(context, id)
 
     /** Room 列仍受游标窗口限制。模型下一次要发的历史写在文件里，避免重新打开后又被截短。 */
     private fun writeConversationHistory(

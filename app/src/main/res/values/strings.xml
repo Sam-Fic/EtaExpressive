@@ -1804,6 +1804,17 @@
   <string name="conversation_export_choose_location">Choose location</string>
   <string name="conversation_exported">Exported “%1$s”</string>
   <string name="conversation_export_failed">Couldn\'t export this conversation</string>
+  <string name="conversation_export_analysis">Export analysis JSON</string>
+  <string name="conversation_analysis_export_title">Export conversation analysis</string>
+  <string name="conversation_analysis_export_summary">Exports this chat as one JSON file with the messages, each round\'s token usage, and every tool call. Use it to review how a run went or to share the chat. Importing it creates a new chat.</string>
+  <string name="conversation_analysis_include_raw_io">Include raw model I/O and event log</string>
+  <string name="conversation_analysis_include_raw_io_summary">Adds the exact requests and responses plus the runtime event trail. Much larger, and kept for 7 days only.</string>
+  <string name="conversation_analysis_include_images">Include images</string>
+  <string name="conversation_analysis_include_images_summary">Adds the images you sent and the previews tools read. Makes the file much larger.</string>
+  <string name="conversation_analysis_exported">Exported analysis “%1$s”</string>
+  <string name="conversation_analysis_import">Import analysis file</string>
+  <string name="conversation_analysis_import_summary">Reads a conversation analysis JSON file and restores it as a new chat you can keep talking in.</string>
+  <string name="conversation_analysis_imported">Imported as a new chat</string>
   <string name="data_backup_file_open_failed">Unable to open the selected file</string>
   <string name="ui_balance_info_title">Balance</string>
   <string name="ui_balance_info_summary">Fetch account balance from provider</string>
