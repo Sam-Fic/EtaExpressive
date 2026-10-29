@@ -196,7 +196,6 @@ internal fun rememberImeVisible(): Boolean {
 internal fun Material3ComposerBody(
     textFieldState: TextFieldState,
     focusRequester: FocusRequester,
-    interactionBlocked: Boolean,
     /**
      * 键盘（IME）是否可见。由调用方通过 [rememberImeVisible] 提供；键盘收起（未进入输入焦点）
      * 时左侧动作组必须保持可见，即便已有输入内容。
@@ -524,7 +523,6 @@ internal fun Material3ComposerBody(
                         M3ComposerTextField(
                             textFieldState = textFieldState,
                             focusRequester = focusRequester,
-                            interactionBlocked = interactionBlocked,
                             isStreaming = isStreaming,
                             showMorphLoading = showMorphLoading,
                         )
@@ -589,7 +587,6 @@ internal fun Material3ComposerBody(
                                 onBlocked = blockedNotice,
                             )
                             ComposerTrailing.VOICE_ENTRY -> VoiceEntryButton(
-                                interactionBlocked = interactionBlocked,
                                 resetKey = isStreaming to isEditingMessage,
                                 voiceState = voiceState,
                                 onStartVoiceMode = onStartVoiceMode,
@@ -692,7 +689,6 @@ private val ComposerOuterCornerRadius = 36.dp
 private fun M3ComposerTextField(
     textFieldState: TextFieldState,
     focusRequester: FocusRequester,
-    interactionBlocked: Boolean,
     isStreaming: Boolean,
     showMorphLoading: Boolean,
 ) {
@@ -700,8 +696,7 @@ private fun M3ComposerTextField(
         state = textFieldState,
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester)
-            .focusProperties { canFocus = !interactionBlocked },
+            .focusRequester(focusRequester),
         textStyle = etaTextStyle(EtaType.Body),
         placeholder = {
             Text(

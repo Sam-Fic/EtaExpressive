@@ -935,9 +935,6 @@ private fun AssistantComposer(
         Material3ComposerBody(
             textFieldState = textFieldState,
             focusRequester = focusRequester,
-            // 生成中输入框保持可编辑（与应用内一致）：此时尾部按钮回到「发送」，
-            // 提交的内容作为追加指令送进当前 run（见 EtaAssistantOverlayService.steerInput）。
-            interactionBlocked = false,
             imeVisible = rememberImeVisible(),
             // 入口浮层没有「编辑消息」与「暂停运行」，这些槽位按不适用处理。
             isEditingMessage = false,

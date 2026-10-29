@@ -97,7 +97,6 @@ class AgentChatComposerAttachMenuTest {
                 Material3ComposerBody(
                     textFieldState = field,
                     focusRequester = remember { FocusRequester() },
-                    interactionBlocked = false,
                     imeVisible = false,
                     isEditingMessage = false,
                     isStreaming = false,

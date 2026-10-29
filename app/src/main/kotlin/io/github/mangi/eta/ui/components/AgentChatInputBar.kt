@@ -468,7 +468,6 @@ internal fun AgentChatInputBar(
         Material3ComposerBody(
             textFieldState = textFieldState,
             focusRequester = focusRequester,
-            interactionBlocked = drawerBlocksIme,
             imeVisible = imeVisible,
             isEditingMessage = isEditingMessage,
             isStreaming = isStreaming,
@@ -1046,7 +1045,6 @@ internal fun resolveChatComposerSendMode(
 
 @Composable
 internal fun VoiceEntryButton(
-    interactionBlocked: Boolean,
     resetKey: Any?,
     voiceState: VoiceModeState,
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
@@ -1112,7 +1110,7 @@ internal fun VoiceEntryButton(
         if (pendingMode !in modes) pendingMode = null
         if (voiceState.mode != null && voiceState.mode !in modes) onStopVoiceMode()
     }
-    LaunchedEffect(resetKey, interactionBlocked) {
+    LaunchedEffect(resetKey) {
         pendingMode = null
         picker = false
     }
@@ -1149,7 +1147,7 @@ internal fun VoiceEntryButton(
         } else {
             {
                 ChatInputLongPressSlot(
-                    enabled = !interactionBlocked && !active,
+                    enabled = !active,
                     onLongPress = choose,
                     longClickLabel = context.getString(directLabel),
                     content = voiceIcon,
@@ -1161,14 +1159,12 @@ internal fun VoiceEntryButton(
             FilledIconButton(
                 onClick = onVoiceClick,
                 modifier = voiceModifier,
-                enabled = !interactionBlocked,
                 content = voiceContent,
             )
         } else {
             FilledTonalIconButton(
                 onClick = onVoiceClick,
                 modifier = voiceModifier,
-                enabled = !interactionBlocked,
                 content = voiceContent,
             )
         }
@@ -1216,7 +1212,7 @@ internal fun VoiceEntryButton(
         val content: @Composable () -> Unit = if (longPress != null) {
             {
                 ChatInputLongPressSlot(
-                    enabled = !interactionBlocked,
+                    enabled = true,
                     onLongPress = longPress,
                     longClickLabel = context.getString(directLabel),
                     content = indicatorSlot,
@@ -1229,14 +1225,12 @@ internal fun VoiceEntryButton(
             FilledIconButton(
                 onClick = onVoiceClick,
                 modifier = voiceModifier,
-                enabled = !interactionBlocked,
                 content = content,
             )
         } else {
             FilledTonalIconButton(
                 onClick = onVoiceClick,
                 modifier = voiceModifier,
-                enabled = !interactionBlocked,
                 content = content,
             )
         }
@@ -1248,7 +1242,7 @@ internal fun VoiceEntryButton(
         onSelect = { mode ->
             picker = false
             pendingMode = null
-            if (!interactionBlocked && io.github.mangi.eta.agent.voice.VoiceEntryPolicy.enabled(
+            if (io.github.mangi.eta.agent.voice.VoiceEntryPolicy.enabled(
                     io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig.state.value, mode)) {
                 TouchHaptics.click(view)
                 // 选中即开始：听写已并入语音对话，这里只剩会话 / 实时通话两种入口。

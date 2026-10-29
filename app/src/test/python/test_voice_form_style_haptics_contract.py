@@ -41,7 +41,6 @@ class VoiceFormStyleHapticsContractTest(unittest.TestCase):
         self.assertIn('maxHeightInLines = 6', shell)
         self.assertIn('shape = MaterialTheme.shapes.extraLarge', shell)
         self.assertIn('focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer', shell)
-        self.assertIn('.focusProperties { canFocus = !interactionBlocked }', shell)
         self.assertNotIn('BasicTextField(', shell)
         self.assertNotIn('.dropShadow(', shell)
         for gone in ('InputContainerShape', 'etaInputContainerColor', 'width = 0.5.dp', 'outline.copy(alpha = 0.30f)'):

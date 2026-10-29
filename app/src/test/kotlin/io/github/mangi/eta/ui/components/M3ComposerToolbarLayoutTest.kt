@@ -519,7 +519,6 @@ class M3ComposerToolbarLayoutTest {
                 Material3ComposerBody(
                     textFieldState = field,
                     focusRequester = remember { FocusRequester() },
-                    interactionBlocked = false,
                     imeVisible = imeVisible.value,
                     isEditingMessage = false,
                     isStreaming = false,
