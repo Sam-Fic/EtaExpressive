@@ -65,6 +65,7 @@ import io.github.mangi.eta.agent.terminal.TerminalScreenBuffer
 import io.github.mangi.eta.ui.app.ConsoleStore
 import io.github.mangi.eta.ui.app.ConsoleUiState
 import io.github.mangi.eta.ui.app.UserTerminalStore
+import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.components.toSpanStyle
 import androidx.compose.material3.Button as M3Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
@@ -200,17 +201,20 @@ internal fun TerminalIconButton(
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
-    EtaIconButton(
-        icon = icon,
-        contentDescription = contentDescription,
-        onClick = {
-            TouchHaptics.click(view)
-            onClick()
-        },
-        modifier = modifier,
-        size = EtaIconSize.XS,
-        style = EtaButtonStyle.Standard,
-    )
+    // 会话切换 / 守护任务等图标动作不自明，长按补官方 TooltipBox 提示。
+    FooterTooltipBox(text = contentDescription, enabled = true) {
+        EtaIconButton(
+            icon = icon,
+            contentDescription = contentDescription,
+            onClick = {
+                TouchHaptics.click(view)
+                onClick()
+            },
+            modifier = modifier,
+            size = EtaIconSize.XS,
+            style = EtaButtonStyle.Standard,
+        )
+    }
 }
 
 /**

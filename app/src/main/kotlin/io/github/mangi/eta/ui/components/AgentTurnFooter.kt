@@ -3,7 +3,6 @@ package io.github.mangi.eta.ui.components
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.CallSplit
@@ -27,6 +26,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
+import io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction
 import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.app.LocalAppearanceSettings
@@ -51,11 +52,6 @@ import androidx.compose.material3.rememberTooltipState
 /**
  * 官方 M3 Expressive 提示气泡：`TooltipBox` + `PlainTooltip` + `rememberTooltipState`，
  * 位置与配色全部取官方 `TooltipDefaults`，不自定义尺寸或颜色。
- *
- * 注意：官方 `TooltipBox` 会把外部传入的 modifier 落在内部 WrappedAnchor（根 Box 无
- * modifier），因此它不能承担「ButtonGroup 直接子项」的角色——标准组里要挂
- * `Modifier.animateWidth(...)` 时，应把本组件放进按钮内容里（见
- * `MessageActionButtonGroup`）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,9 +71,8 @@ internal fun FooterTooltipBox(
 }
 
 /**
- * 连体按钮组统一配色与图标动作收编进 `ui/adaptive/EtaExpressiveKit`
+ * 连体按钮组统一配色与图标动作已收编进 `ui/adaptive/EtaExpressiveKit`
  * （[io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction] / `etaConnectedGroupColors`），
- * 消息操作条本体走官方标准 `ButtonGroup`（见 `MessageActionButtonGroup`），
  * 本文件只保留消息操作条的组装。
  */
 
@@ -178,9 +173,9 @@ internal fun AgentMessageActionRow(
         modifier = modifier.fillMaxWidth().padding(top = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // M3 Expressive：官方标准按钮组 —— MessageActionButtonGroup（ButtonGroup +
-        // customItem + 官方 animateWidth），按压扩展自身宽度、压缩相邻按钮；
-        // 尺寸/形状/内边距全走官方 ToggleButton 默认（ExtraSmall 32dp 胶囊，按下变方角）。
+        // M3 Expressive：KernelSU 同款官方连体按钮组 —— EtaConnectedGroupRow
+        // （ConnectedSpaceBetween）+ 每个动作一个官方 ToggleButton（连体形状按
+        // 首位/中间/末位分配），尺寸统一 ToggleButtonSize.Small，配色 secondaryContainer。
         val copyDescription = stringResource(if (copied) R.string.copy_copied else R.string.copy_answer)
         val copyTooltip = stringResource(R.string.ui_copy_4edd1d)
         val branchLabel = stringResource(R.string.ui_branch_conversation)
@@ -188,59 +183,64 @@ internal fun AgentMessageActionRow(
         val regenerateDescription = stringResource(R.string.ui_regenerate_reply_84a7d9)
         val deleteTooltip = stringResource(R.string.ui_delete_3755f5)
         val deleteDescription = stringResource(R.string.ui_delete_this_conversation_3f351b)
-        val groupActions = buildList {
+        val groupActions: List<@Composable (Int, Int) -> Unit> = buildList {
             if (showCopyAction) {
-                add(MessageActionItem(
-                    tooltip = copyTooltip,
-                    onClick = onCopyClick,
-                ) {
-                    Icon(
-                        imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                        contentDescription = copyDescription,
-                        modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                    )
-                })
+                add { index, count ->
+                    FooterTooltipBox(copyTooltip, true) {
+                        EtaConnectedIconAction(onClick = onCopyClick, enabled = true, index = index, count = count) {
+                            Icon(
+                                imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                                contentDescription = copyDescription,
+                                modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                            )
+                        }
+                    }
+                }
             }
             if (allowSpeech) {
-                add(speechMessageAction(messageId, speechContent))
+                add { index, count ->
+                    SpeechPlaybackButton(messageId, speechContent, index = index, count = count)
+                }
             }
             if (showMessageActions) {
-                add(MessageActionItem(
-                    tooltip = branchLabel,
-                    enabled = branchEnabled,
-                    onClick = onBranchClick,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.CallSplit,
-                        contentDescription = branchLabel,
-                        modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                    )
-                })
-                add(MessageActionItem(
-                    tooltip = regenerateTooltip,
-                    enabled = messageActionsEnabled,
-                    onClick = onRegenerateClick,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Refresh,
-                        contentDescription = regenerateDescription,
-                        modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                    )
-                })
-                add(MessageActionItem(
-                    tooltip = deleteTooltip,
-                    enabled = messageActionsEnabled,
-                    onClick = onDeleteClick,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Delete,
-                        contentDescription = deleteDescription,
-                        modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                    )
-                })
+                add { index, count ->
+                    FooterTooltipBox(branchLabel, branchEnabled) {
+                        EtaConnectedIconAction(onClick = onBranchClick, enabled = branchEnabled, index = index, count = count) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.CallSplit,
+                                contentDescription = branchLabel,
+                                modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                            )
+                        }
+                    }
+                }
+                add { index, count ->
+                    FooterTooltipBox(regenerateTooltip, messageActionsEnabled) {
+                        EtaConnectedIconAction(onClick = onRegenerateClick, enabled = messageActionsEnabled, index = index, count = count) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = regenerateDescription,
+                                modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                            )
+                        }
+                    }
+                }
+                add { index, count ->
+                    FooterTooltipBox(deleteTooltip, messageActionsEnabled) {
+                        EtaConnectedIconAction(onClick = onDeleteClick, enabled = messageActionsEnabled, index = index, count = count) {
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = deleteDescription,
+                                modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                            )
+                        }
+                    }
+                }
             }
         }
-        MessageActionButtonGroup(actions = groupActions)
+        EtaConnectedGroupRow {
+            groupActions.forEachIndexed { index, action -> action(index, groupActions.size) }
+        }
         if (LocalAppearanceSettings.current.messageTimestampsEnabled) {
             val timestamp = generatedAtMillis?.takeIf { it > 0L }
             if (timestamp != null) {

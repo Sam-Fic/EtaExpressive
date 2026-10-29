@@ -27,6 +27,7 @@ import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButtonShapes
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
@@ -116,8 +117,11 @@ enum class EtaButtonStyle { Filled, Tonal, TonalEmphasis, SurfaceHighest, Outlin
  *   强调档（官方 `FilledTonalIconButton` + 官方 `filledTonalIconButtonColors` 覆盖，
  *   形状/尺寸/涟漪仍走官方默认）；`SurfaceHighest` 用中性表面档
  *   `surfaceContainerHighest` / `onSurface`（会话侧栏顶部胶囊未选中态同款配色 token）。
+ * @param shapes 官方 [IconButtonShapes] 形状对；传官方 `IconButtonDefaults.shapes()` 即
+ *   开启 M3E 按压 morph（圆 → 方圆角），不传保持官方默认的固定形状。
  * @param stretch 为 true 时横向拉伸占满剩余宽度（用于“最后的按钮向右拉伸”的行布局）。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun EtaIconButton(
     icon: ImageVector,
@@ -128,6 +132,7 @@ fun EtaIconButton(
     style: EtaButtonStyle = EtaButtonStyle.Tonal,
     enabled: Boolean = true,
     fillWidth: Boolean = false,
+    shapes: IconButtonShapes? = null,
 ) {
     val containerSize = size.containerSize()
     val iconSize = size.iconSize()
@@ -144,18 +149,30 @@ fun EtaIconButton(
         )
     }
     when (style) {
-        EtaButtonStyle.Filled -> FilledIconButton(
-            onClick = onClick,
-            modifier = sizedModifier,
-            enabled = enabled,
-            content = content,
-        )
-        EtaButtonStyle.Tonal -> FilledTonalIconButton(
-            onClick = onClick,
-            modifier = sizedModifier,
-            enabled = enabled,
-            content = content,
-        )
+        EtaButtonStyle.Filled ->
+            if (shapes == null) {
+                FilledIconButton(onClick = onClick, modifier = sizedModifier, enabled = enabled, content = content)
+            } else {
+                FilledIconButton(
+                    onClick = onClick,
+                    shapes = shapes,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    content = content,
+                )
+            }
+        EtaButtonStyle.Tonal ->
+            if (shapes == null) {
+                FilledTonalIconButton(onClick = onClick, modifier = sizedModifier, enabled = enabled, content = content)
+            } else {
+                FilledTonalIconButton(
+                    onClick = onClick,
+                    shapes = shapes,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    content = content,
+                )
+            }
         EtaButtonStyle.TonalEmphasis -> FilledTonalIconButton(
             onClick = onClick,
             modifier = sizedModifier,
@@ -166,28 +183,80 @@ fun EtaIconButton(
             ),
             content = content,
         )
-        EtaButtonStyle.SurfaceHighest -> FilledTonalIconButton(
-            onClick = onClick,
-            modifier = sizedModifier,
-            enabled = enabled,
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-            content = content,
-        )
-        EtaButtonStyle.Outlined -> OutlinedIconButton(
-            onClick = onClick,
-            modifier = sizedModifier,
-            enabled = enabled,
-            content = content,
-        )
-        EtaButtonStyle.Standard -> IconButton(
-            onClick = onClick,
-            modifier = sizedModifier,
-            enabled = enabled,
-            content = content,
-        )
+        EtaButtonStyle.TonalEmphasis ->
+            if (shapes == null) {
+                FilledTonalIconButton(
+                    onClick = onClick,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    ),
+                    content = content,
+                )
+            } else {
+                FilledTonalIconButton(
+                    onClick = onClick,
+                    shapes = shapes,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    ),
+                    content = content,
+                )
+            }
+        EtaButtonStyle.SurfaceHighest ->
+            if (shapes == null) {
+                FilledTonalIconButton(
+                    onClick = onClick,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    content = content,
+                )
+            } else {
+                FilledTonalIconButton(
+                    onClick = onClick,
+                    shapes = shapes,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    content = content,
+                )
+            }
+        EtaButtonStyle.Outlined ->
+            if (shapes == null) {
+                OutlinedIconButton(onClick = onClick, modifier = sizedModifier, enabled = enabled, content = content)
+            } else {
+                OutlinedIconButton(
+                    onClick = onClick,
+                    shapes = shapes,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    content = content,
+                )
+            }
+        EtaButtonStyle.Standard ->
+            if (shapes == null) {
+                IconButton(onClick = onClick, modifier = sizedModifier, enabled = enabled, content = content)
+            } else {
+                IconButton(
+                    onClick = onClick,
+                    shapes = shapes,
+                    modifier = sizedModifier,
+                    enabled = enabled,
+                    content = content,
+                )
+            }
     }
 }
 

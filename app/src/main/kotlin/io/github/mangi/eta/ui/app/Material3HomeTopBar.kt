@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
@@ -41,6 +42,7 @@ import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
+import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 
 /**
@@ -89,17 +91,23 @@ internal fun Material3HomeTopBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        EtaIconButton(
-            icon = Icons.Rounded.Menu,
-            contentDescription = stringResource(R.string.action_conversation_history),
-            onClick = {
-                TouchHaptics.click(view)
-                onOpenConversationPane()
-            },
-            size = EtaIconSize.S,
-            // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
-            style = EtaButtonStyle.SurfaceHighest,
-        )
+        // 顶栏圆钮属「单个但重要的操作」：按官方 M3E 建议开启按压 morph（IconButtonDefaults.shapes()），
+        // 并包官方 TooltipBox（长按出提示气泡，复用消息操作条的 FooterTooltipBox 同款封装）。
+        val historyDescription = stringResource(R.string.action_conversation_history)
+        FooterTooltipBox(text = historyDescription, enabled = true) {
+            EtaIconButton(
+                icon = Icons.Rounded.Menu,
+                contentDescription = historyDescription,
+                onClick = {
+                    TouchHaptics.click(view)
+                    onOpenConversationPane()
+                },
+                size = EtaIconSize.S,
+                // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+                style = EtaButtonStyle.SurfaceHighest,
+                shapes = IconButtonDefaults.shapes(),
+            )
+        }
         // 会话名按钮在两侧图标之间的剩余空间里居中（与官方 CenterAlignedTopAppBar 的标题布局一致）。
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
             // 官方 M3 Expressive 拆分按钮：左段主操作（重命名会话）+ 右段菜单箭头。
@@ -140,24 +148,27 @@ internal fun Material3HomeTopBar(
                     // 官方 DropdownMenu 的对齐策略是 start-to-start 优先、放不下自动退到
                     // end-to-end，锚在尾段按钮上时右缘自然与按钮右缘对齐。
                     Box {
-                    SplitButtonDefaults.TonalTrailingButton(
-                        checked = menuExpanded,
-                        onCheckedChange = { expanded ->
-                            TouchHaptics.click(view)
-                            menuExpanded = expanded
-                        },
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    ) {
-                            Icon(
-                                imageVector = Icons.Rounded.KeyboardArrowDown,
-                                contentDescription = stringResource(R.string.action_more),
-                                modifier = Modifier
-                                    .size(SplitButtonDefaults.TrailingIconSize)
-                                    .graphicsLayer { rotationZ = arrowRotation },
-                            )
+                        // 箭头段是纯图标按钮，同样包 TooltipBox；菜单锚点仍由外层 Box 承担。
+                        FooterTooltipBox(text = stringResource(R.string.action_more), enabled = true) {
+                            SplitButtonDefaults.TonalTrailingButton(
+                                checked = menuExpanded,
+                                onCheckedChange = { expanded ->
+                                    TouchHaptics.click(view)
+                                    menuExpanded = expanded
+                                },
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = stringResource(R.string.action_more),
+                                    modifier = Modifier
+                                        .size(SplitButtonDefaults.TrailingIconSize)
+                                        .graphicsLayer { rotationZ = arrowRotation },
+                                )
+                            }
                         }
                         EtaMenuPopup(
                             expanded = menuExpanded,
@@ -190,16 +201,20 @@ internal fun Material3HomeTopBar(
                 },
             )
         }
-        EtaIconButton(
-            icon = Icons.Rounded.AddComment,
-            contentDescription = stringResource(R.string.action_new_conversation),
-            onClick = {
-                TouchHaptics.click(view)
-                onNewConversation()
-            },
-            size = EtaIconSize.S,
-            // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
-            style = EtaButtonStyle.SurfaceHighest,
-        )
+        val newConversationDescription = stringResource(R.string.action_new_conversation)
+        FooterTooltipBox(text = newConversationDescription, enabled = true) {
+            EtaIconButton(
+                icon = Icons.Rounded.AddComment,
+                contentDescription = newConversationDescription,
+                onClick = {
+                    TouchHaptics.click(view)
+                    onNewConversation()
+                },
+                size = EtaIconSize.S,
+                // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+                style = EtaButtonStyle.SurfaceHighest,
+                shapes = IconButtonDefaults.shapes(),
+            )
+        }
     }
 }

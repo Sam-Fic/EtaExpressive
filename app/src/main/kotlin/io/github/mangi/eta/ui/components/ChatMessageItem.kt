@@ -54,7 +54,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -184,6 +183,8 @@ import com.mikepenz.markdown.model.markdownPadding
 import com.mikepenz.markdown.utils.getUnescapedTextInNode
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.haptics.TouchHaptics
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
+import io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction
 import io.github.mangi.eta.ui.adaptive.etaOnSurface
 import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
 import io.github.mangi.eta.ui.adaptive.etaPrimary
@@ -1281,77 +1282,97 @@ private fun UserMessageBubble(
                     modifier = Modifier.padding(top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Expressive：与 AI 消息操作条同款的官方标准按钮组（ButtonGroup +
-                    // customItem + 官方 animateWidth），按压扩展自身宽度、压缩相邻按钮；
-                    // 尺寸/形状/内边距全走官方 ToggleButton 默认（ExtraSmall 32dp 胶囊，按下变方角）。
+                    // Expressive：与 AI 消息操作行同款的官方连体按钮组（KernelSU 模式），
+                    // 尺寸统一 ToggleButtonSize.Small，配色 secondaryContainer/onSecondaryContainer。
                     val copyTooltip = stringResource(R.string.ui_copy_4edd1d)
                     val editTooltip = stringResource(R.string.ui_edit_a7f814)
                     val branchTooltip = stringResource(R.string.ui_branch_conversation)
                     val deleteTooltip = stringResource(R.string.ui_delete_3755f5)
-                    val groupActions = buildList {
-                        add(MessageActionItem(
-                            tooltip = copyTooltip,
-                            onClick = {
-                                TouchHaptics.click(view)
-                                @Suppress("DEPRECATION")
-                                clipboardManager.setText(AnnotatedString(copyText))
-                                copied = true
-                            },
-                        ) {
-                            Icon(
-                                imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                                contentDescription = stringResource(
-                                    if (copied) R.string.copy_copied else R.string.ui_copy_4edd1d,
-                                ),
-                                modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                            )
-                        })
-                        add(MessageActionItem(
-                            tooltip = editTooltip,
-                            // 官方双状态：本条消息正在编辑 → 按钮保持选中态。
-                            checked = isEditing,
-                            enabled = actionsEnabled,
-                            onClick = {
-                                TouchHaptics.click(view)
-                                onEdit()
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Edit,
-                                contentDescription = editTooltip,
-                                modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                            )
-                        })
-                        add(MessageActionItem(
-                            tooltip = branchTooltip,
-                            enabled = branchEnabled,
-                            onClick = {
-                                TouchHaptics.click(view)
-                                onBranch()
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.CallSplit,
-                                contentDescription = branchTooltip,
-                                modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                            )
-                        })
-                        add(MessageActionItem(
-                            tooltip = deleteTooltip,
-                            enabled = actionsEnabled,
-                            onClick = {
-                                TouchHaptics.click(view)
-                                onDelete()
-                            },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Delete,
-                                contentDescription = deleteTooltip,
-                                modifier = Modifier.requiredSize(IconButtonDefaults.extraSmallIconSize),
-                            )
-                        })
+                    val groupActions: List<@Composable (Int, Int) -> Unit> = buildList {
+                        add { index, count ->
+                            FooterTooltipBox(copyTooltip, true) {
+                                EtaConnectedIconAction(
+                                    onClick = {
+                                        TouchHaptics.click(view)
+                                        @Suppress("DEPRECATION")
+                                        clipboardManager.setText(AnnotatedString(copyText))
+                                        copied = true
+                                    },
+                                    enabled = true,
+                                    index = index,
+                                    count = count,
+                                ) {
+                                    Icon(
+                                        imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                                        contentDescription = stringResource(
+                                            if (copied) R.string.copy_copied else R.string.ui_copy_4edd1d,
+                                        ),
+                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                    )
+                                }
+                            }
+                        }
+                        add { index, count ->
+                            FooterTooltipBox(editTooltip, actionsEnabled) {
+                                EtaConnectedIconAction(
+                                    onClick = {
+                                        TouchHaptics.click(view)
+                                        onEdit()
+                                    },
+                                    enabled = actionsEnabled,
+                                    index = index,
+                                    count = count,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Edit,
+                                        contentDescription = editTooltip,
+                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                    )
+                                }
+                            }
+                        }
+                        add { index, count ->
+                            FooterTooltipBox(branchTooltip, branchEnabled) {
+                                EtaConnectedIconAction(
+                                    onClick = {
+                                        TouchHaptics.click(view)
+                                        onBranch()
+                                    },
+                                    enabled = branchEnabled,
+                                    index = index,
+                                    count = count,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.CallSplit,
+                                        contentDescription = branchTooltip,
+                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                    )
+                                }
+                            }
+                        }
+                        add { index, count ->
+                            FooterTooltipBox(deleteTooltip, actionsEnabled) {
+                                EtaConnectedIconAction(
+                                    onClick = {
+                                        TouchHaptics.click(view)
+                                        onDelete()
+                                    },
+                                    enabled = actionsEnabled,
+                                    index = index,
+                                    count = count,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Delete,
+                                        contentDescription = deleteTooltip,
+                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                    )
+                                }
+                            }
+                        }
                     }
-                    MessageActionButtonGroup(actions = groupActions)
+                    EtaConnectedGroupRow {
+                        groupActions.forEachIndexed { index, action -> action(index, groupActions.size) }
+                    }
                 }
             }
         }
