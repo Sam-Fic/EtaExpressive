@@ -222,6 +222,13 @@ data class ConversationTokenUsageUi(
     val outputTokens: Long = 0,
     val cachedTokens: Long = 0,
     val cacheCreationTokens: Long = 0,
+    /**
+     * 最近一轮请求的输入量，约等于当前上下文占用。
+     *
+     * [inputTokens] 是各轮请求的累加（同一段前缀每轮重发），拿它当「上下文」会放大数倍；
+     * 界面上的上下文必须取最后一个真实回执，而不是累计值。
+     */
+    val lastInputTokens: Long = 0,
 ) {
     val totalTokens: Long get() = inputTokens + outputTokens
     /** Uncached prefix: full prompt minus cache reads and cache writes. */
@@ -248,6 +255,7 @@ fun conversationTokenUsage(messages: List<AgentChatMessageUi>): ConversationToke
     var input = 0L
     var output = 0L
     var cached = 0L
+    var lastInput = 0L
     messages.forEach { message ->
         when (message) {
             is AgentMessageUi -> {
@@ -255,6 +263,8 @@ fun conversationTokenUsage(messages: List<AgentChatMessageUi>): ConversationToke
                 input += usage.inputTokens ?: 0
                 output += usage.outputTokens ?: 0
                 cached += usage.cachedTokens ?: 0
+                // 消息流按时间顺序，最后一次真实输入即最近一轮的上下文占用。
+                usage.inputTokens?.let { lastInput = it.toLong() }
             }
             is ContextCompactedMessageUi -> {
                 input += message.preservedUsage.inputTokens
@@ -268,6 +278,7 @@ fun conversationTokenUsage(messages: List<AgentChatMessageUi>): ConversationToke
         inputTokens = input,
         outputTokens = output,
         cachedTokens = cached,
+        lastInputTokens = lastInput,
     )
 }
 

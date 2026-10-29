@@ -45,10 +45,11 @@ internal fun ConversationTokenUsageScreen(
                 EtaSegmentedColumn(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
                 ) {
-                    item(key = "total") {
+                    item(key = "context") {
+                        // 上下文是「最近一轮请求的输入」，不是各轮累加；后者会被前缀重发放大多倍。
                         TokenUsageRow(
-                            label = stringResource(R.string.token_usage_total),
-                            value = formatTokenCount(usage.totalTokens),
+                            label = stringResource(R.string.token_usage_context),
+                            value = formatTokenCount(usage.lastInputTokens),
                         )
                     }
                     item(key = "fresh-input") {
@@ -69,16 +70,26 @@ internal fun ConversationTokenUsageScreen(
                             value = formatTokenCount(usage.cachedTokens),
                         )
                     }
-                    item(key = "cache-writes") {
-                        TokenUsageRow(
-                            label = stringResource(R.string.stats_page_cache_creation_tokens),
-                            value = formatTokenCount(usage.cacheCreationTokens),
-                        )
+                    // 缓存写入只有 Anthropic 一类 provider 会回报；OpenAI 兼容接口永远是 0，
+                    // 一行恒为 0 的指标只是噪音，没有该项时就整行不显示。
+                    if (usage.cacheCreationTokens > 0) {
+                        item(key = "cache-writes") {
+                            TokenUsageRow(
+                                label = stringResource(R.string.stats_page_cache_creation_tokens),
+                                value = formatTokenCount(usage.cacheCreationTokens),
+                            )
+                        }
                     }
                     item(key = "cache-rate") {
                         TokenUsageRow(
                             label = stringResource(R.string.stats_model_cache_hit_rate),
                             value = formatCacheHitRate(usage.cachedTokens, usage.inputTokens),
+                        )
+                    }
+                    item(key = "total") {
+                        TokenUsageRow(
+                            label = stringResource(R.string.token_usage_total),
+                            value = formatTokenCount(usage.totalTokens),
                         )
                     }
                 }

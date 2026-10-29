@@ -200,7 +200,15 @@ fun AgentAppRoot(
         }
     }
     val cumulativeUsage = recordedUsage?.let {
-        io.github.mangi.eta.ui.model.ConversationTokenUsageUi(it.input, it.output, it.cached, it.cacheCreation)
+        // 账单累计来自持久账本（只有四项），当前上下文只能取实时投影的最后一轮回执。
+        // 位置参数构造的话后加的字段会静默落回 0，界面上就会显示「当前上下文 0」。
+        io.github.mangi.eta.ui.model.ConversationTokenUsageUi(
+            inputTokens = it.input,
+            outputTokens = it.output,
+            cachedTokens = it.cached,
+            cacheCreationTokens = it.cacheCreation,
+            lastInputTokens = shellHomeState.tokenUsage.lastInputTokens,
+        )
     } ?: shellHomeState.tokenUsage
 
     DisposableEffect(currentRoute, agentState.conversationPaneState.selectedConversationId) {
