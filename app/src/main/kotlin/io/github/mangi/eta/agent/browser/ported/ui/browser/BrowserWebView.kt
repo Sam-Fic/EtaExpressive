@@ -8,6 +8,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -26,6 +27,10 @@ import androidx.compose.ui.viewinterop.AndroidView
  * `.id(pool.selectedTabId)` remounting; the container+update pattern is the
  * Android equivalent.
  *
+ * [onScrollChangeListener] is attached to the WebView on every mount so the
+ * caller can observe page scrolling (used to drive the floating toolbar's
+ * exit-always scroll behavior; WebView doesn't dispatch nested scrolls).
+ *
  * Ask all ancestor views to stop intercepting touches as soon as the user puts
  * a finger down on the WebView, so page scroll gestures stay inside the page.
  */
@@ -34,6 +39,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 fun BrowserWebView(
     webView: WebView,
     modifier: Modifier = Modifier,
+    onScrollChangeListener: View.OnScrollChangeListener? = null,
 ) {
     AndroidView(
         factory = { context -> FrameLayout(context) },
@@ -65,6 +71,7 @@ fun BrowserWebView(
                     ),
                 )
             }
+            webView.setOnScrollChangeListener(onScrollChangeListener)
         },
         onRelease = { container ->
             // Free the WebView so a later mount (same or different page)

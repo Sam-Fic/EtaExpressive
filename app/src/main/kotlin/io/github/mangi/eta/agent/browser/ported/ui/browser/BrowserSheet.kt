@@ -3,6 +3,11 @@
 // Local/private integration; see third_party/openminis-browser/NOTICE.md.
 package io.github.mangi.eta.agent.browser.ported.ui.browser
 
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.View
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -34,10 +39,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -60,6 +67,9 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.FloatingToolbarExitDirection
+import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -89,9 +99,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -104,12 +116,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.browser.ported.browser.BrowserHistoryStore
 import io.github.mangi.eta.agent.browser.ported.browser.BrowserTabPool
 import io.github.mangi.eta.agent.browser.ported.browser.UserAgentProfile
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
+import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
@@ -118,6 +132,8 @@ import io.github.mangi.eta.ui.adaptive.etaConnectedButtonShapes
 import io.github.mangi.eta.ui.adaptive.etaConnectedPosition
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.haptics.TouchHaptics
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** 与 [BrowserTabPool] 的最大标签数一致（页面里「+」的禁用条件）。 */
@@ -258,6 +274,22 @@ fun BrowserPage(
     val isAgentBusy = tabPool.isAgentBusy
     val userAgentProfile = tabPool.currentUserAgentProfile.collectAsState().value
 
+    // 「Floating toolbars can animate off screen」（官方 exitAlwaysScrollBehavior）：
+    // 向上滚（内容上移）时工具栏立即滑出屏幕、向下滚立即滑回。滚动内容是 WebView——
+    // 经典 View,不向 Compose 的 nested scroll 链分发滚动——所以文档里
+    // `Modifier.nestedScroll(scrollBehavior)` 的角色由 [WebViewToolbarScrollBridge] 承担：
+    // 监听 WebView 的 onScrollChanged,把滚动差量直接喂给 behavior。
+    val toolbarScrollBehavior = FloatingToolbarDefaults.exitAlwaysScrollBehavior(
+        exitDirection = FloatingToolbarExitDirection.Bottom,
+    )
+    val toolbarScrollBridge = remember(toolbarScrollBehavior) {
+        WebViewToolbarScrollBridge(toolbarScrollBehavior, scope)
+    }
+    // 换标签 / 新导航都从页顶开始：工具栏复位到屏幕内,不带上一页的收起状态。
+    LaunchedEffect(selectedTabId, currentURL) {
+        toolbarScrollBehavior.state.offset = 0f
+    }
+
     var urlInput by remember(currentURL) { mutableStateOf(currentURL) }
     var showHistory by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -314,22 +346,33 @@ fun BrowserPage(
                 navigationIcon = Icons.AutoMirrored.Rounded.ArrowBack,
                 navigationContentDescription = stringResource(R.string.action_back),
                 actions = {
-                    IconButton(onClick = { showHistory = true }, enabled = !isAgentBusy) {
-                        Icon(
-                            imageVector = Icons.Rounded.History,
-                            contentDescription = stringResource(R.string.om_browser_history_action),
-                        )
+                    // 历史与 UA/设置入口都是纯图标且含义不自明，长按补官方 TooltipBox 提示。
+                    FooterTooltipBox(
+                        text = stringResource(R.string.om_browser_history_action),
+                        enabled = !isAgentBusy,
+                    ) {
+                        IconButton(onClick = { showHistory = true }, enabled = !isAgentBusy) {
+                            Icon(
+                                imageVector = Icons.Rounded.History,
+                                contentDescription = stringResource(R.string.om_browser_history_action),
+                            )
+                        }
                     }
                     // UA-profile icon doubles as the entry point to settings.
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(
-                            imageVector = when (userAgentProfile) {
-                                UserAgentProfile.MOBILE_CHROME -> Icons.Rounded.PhoneAndroid
-                                UserAgentProfile.DESKTOP_CHROME -> Icons.Rounded.Computer
-                                UserAgentProfile.CUSTOM -> Icons.Rounded.Edit
-                            },
-                            contentDescription = stringResource(R.string.om_browser_settings_title),
-                        )
+                    FooterTooltipBox(
+                        text = stringResource(R.string.om_browser_settings_title),
+                        enabled = true,
+                    ) {
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(
+                                imageVector = when (userAgentProfile) {
+                                    UserAgentProfile.MOBILE_CHROME -> Icons.Rounded.PhoneAndroid
+                                    UserAgentProfile.DESKTOP_CHROME -> Icons.Rounded.Computer
+                                    UserAgentProfile.CUSTOM -> Icons.Rounded.Edit
+                                },
+                                contentDescription = stringResource(R.string.om_browser_settings_title),
+                            )
+                        }
                     }
                 },
             )
@@ -344,8 +387,9 @@ fun BrowserPage(
                     )
                 }
 
-                // ── Bottom toolbar（官方 M3E 浮动工具栏）──
+                // ── Bottom toolbar（官方 M3E 浮动工具栏 + 滚动滑出）──
                 BrowserNavToolbar(
+                    scrollBehavior = toolbarScrollBehavior,
                     canGoBack = canGoBack,
                     canGoForward = canGoForward,
                     isLoading = isLoading,
@@ -542,6 +586,7 @@ fun BrowserPage(
                     // navigates somewhere.
                     BrowserWebView(
                         webView = selectedTab.manager.webView,
+                        onScrollChangeListener = toolbarScrollBridge,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -894,10 +939,14 @@ private fun BrowserDownloadBanner(
  * 取代贴边的裸按钮行与其上方分隔线；`expanded = true` 常驻展开，内容为居中的图标按钮组，
  * 工具栏整体浮在页面底部（左右 12dp、下方 8dp + 系统导航条留白）。
  *
+ * [scrollBehavior]（官方 `FloatingToolbarDefaults.exitAlwaysScrollBehavior`）驱动
+ * 「animate off screen」：向上滚滑出屏幕、向下滚滑回。
+ *
  * 下载入口用官方 [BadgedBox] 承载角标；有下载记录时才出现。
  */
 @Composable
 private fun BrowserNavToolbar(
+    scrollBehavior: FloatingToolbarScrollBehavior,
     canGoBack: Boolean,
     canGoForward: Boolean,
     isLoading: Boolean,
@@ -912,20 +961,28 @@ private fun BrowserNavToolbar(
 ) {
     val view = LocalView.current
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp)
-            .padding(bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
         HorizontalFloatingToolbar(
             expanded = true,
+            // 内外距全部合成进单个 padding 节点、直接挂在工具栏自己的 modifier 上（外层 Box
+            // 不再垫）：exitAlwaysScrollBehavior 的滑出行程按「工具栏顶边 → 最近包裹节点
+            // 底边」计算,这个 padding 节点必须一路贴到屏幕底缘,工具栏才能滑出整块屏幕;
+            // 若沿用旧的「Box 垫 navigationBarsPadding + 工具栏裸露」结构,行程只有工具栏
+            // 自身高度,滑完仍整个留在系统导航条留白里。
+            modifier = Modifier.padding(
+                start = 12.dp,
+                end = 12.dp,
+                bottom = 8.dp + WindowInsets.navigationBars.asPaddingValues()
+                    .calculateBottomPadding(),
+            ),
             // 官方 minimumInteractiveBalancedPadding 只在两侧都没有 leading/trailing 内容时才生效：
             // 它会把内容里的 MinimumInteractive*AlignmentLine（含位置偏移的大值）当成补偿内边距，
             // 把整条工具栏撑高。本行内容布局完全显式（固定间距，整体居中），显式传空的 leadingContent
             // 让这组补偿归零（官方参数语义，非 hack）。
             leadingContent = {},
+            scrollBehavior = scrollBehavior,
             // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
             contentPadding = EtaFloatingToolbarConcentricPadding(
                 IconButtonDefaults.smallContainerSize().width,
@@ -1005,6 +1062,74 @@ private fun BrowserNavToolbar(
                 }
             }
         }
+    }
+}
+
+/**
+ * WebView → [FloatingToolbarScrollBehavior] 的滚动桥，扮演官方文档里
+ * `Modifier.nestedScroll(scrollBehavior)` 的角色：WebView 是经典 View，不会向 Compose 的
+ * nested scroll 链分发滚动，所以直接监听 [View.setOnScrollChangeListener]，把每次 scrollY
+ * 差量按 Compose 手势约定（内容上移为负）喂给 behavior 的 onPostScroll；滚动事件静默后
+ * 补一发 onPostFling，让官方的 settle 逻辑按最后估得的速度把工具栏吸附到「全出屏幕」或
+ * 「全回屏幕」（与 Compose 滚动容器 fling 结束时的行为一致）。
+ *
+ * 触摸探索服务（TalkBack）开启时不喂事件——组件内部此时也会忽略 scrollBehavior——
+ * 保证滚动隐藏对无障碍完全透明（官方文档注明的行为）。
+ */
+private class WebViewToolbarScrollBridge(
+    private val behavior: FloatingToolbarScrollBehavior,
+    private val scope: CoroutineScope,
+) : View.OnScrollChangeListener {
+    private val handler = Handler(Looper.getMainLooper())
+    private var settleJob: Job? = null
+    private var lastEventUptimeMs = 0L
+    private var lastVelocity = 0f
+
+    private val settle = Runnable {
+        val velocity = lastVelocity
+        lastVelocity = 0f
+        settleJob?.cancel()
+        settleJob = scope.launch {
+            behavior.onPostFling(Velocity.Zero, Velocity(0f, velocity))
+        }
+    }
+
+    override fun onScrollChange(
+        view: View,
+        scrollX: Int,
+        scrollY: Int,
+        oldScrollX: Int,
+        oldScrollY: Int,
+    ) {
+        val accessibility = view.context.getSystemService(AccessibilityManager::class.java)
+        if (accessibility?.isTouchExplorationEnabled == true) return
+
+        // 换页等造成的 scrollY 跳变按一屏封顶，避免工具栏瞬移。
+        val delta = (oldScrollY - scrollY).toFloat()
+            .coerceIn(-view.height.toFloat(), view.height.toFloat())
+        // 新的滚动事件到来时取消在飞的 settle 动画，手势直接接管 offset。
+        settleJob?.cancel()
+        if (delta != 0f) {
+            behavior.onPostScroll(Offset.Zero, Offset(0f, delta), NestedScrollSource.UserInput)
+        }
+
+        val now = SystemClock.uptimeMillis()
+        val elapsed = now - lastEventUptimeMs
+        // 事件间隔仍在手势窗口内才外推速度；间隔过大（新手势 / 单次跳变）按零速处理，
+        // settle 时走「吸附到较近一端」。
+        lastVelocity = if (elapsed in 1..EVENT_GAP_WINDOW_MS) delta * 1000f / elapsed else 0f
+        lastEventUptimeMs = now
+
+        handler.removeCallbacks(settle)
+        handler.postDelayed(settle, SETTLE_DELAY_MS)
+    }
+
+    private companion object {
+        /** 两次滚动事件间隔超过该窗口就视为手势已停，速度不再外推。 */
+        const val EVENT_GAP_WINDOW_MS = 100L
+
+        /** 滚动事件静默该时长后调用 onPostFling，让工具栏吸附到屏幕边缘。 */
+        const val SETTLE_DELAY_MS = 100L
     }
 }
 
