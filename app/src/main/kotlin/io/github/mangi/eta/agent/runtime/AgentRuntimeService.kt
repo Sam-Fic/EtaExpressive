@@ -63,6 +63,8 @@ import io.github.mangi.eta.core.ModuleConfig
 import io.github.mangi.eta.core.safeLogType
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import java.util.concurrent.ConcurrentHashMap
@@ -205,6 +207,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         // Losing the presentation/service is not consent to stop children. Keep their snapshots
         // and pending choices; a replacement service must not receive a deferred global stop.
         destroyed = true
+        setKeepScreenOn(false)
         resultWorker.close()
         val retiring = sessions.snapshot()
         retiring.forEach { it.signalStop() }
@@ -621,6 +624,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         AgentChildRunControl.begin(session)
         sessions.put(session)
+        // 常亮只跟随 run 的存活与暂停：取消、暂停、结束都要立刻交还系统息屏。
+        val screenOnBindings = listOf(
+            session.controller.register { postKeepScreenOnUpdate() },
+            session.controller.observePause { postKeepScreenOnUpdate() },
+        )
+        updateKeepScreenOn()
         if (overlayRunId == request.runId) {
             // ASK 选前台后才会用悬浮窗，先按前台保留入口；选后台时后续事件不会再显示。
             if (AgentOverlayVisibilityPolicy.mayUseOverlay(session.taskSurfaceMode)) {
@@ -672,9 +681,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     AgentExecutionService.updateRunStatus(this, null)
                     AgentChildRunControl.finish(session)
                     AgentExecutionService.release(runLease.id)
+                    screenOnBindings.forEach { it.close() }
+                    postKeepScreenOnUpdate()
                 }
             }
         } catch (failure: Throwable) {
+            screenOnBindings.forEach { it.close() }
             AgentChildRunControl.finish(session)
             AgentExecutionService.release(runLease.id)
             val result = AgentRuntimeWire.RunResult(
@@ -791,6 +803,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             // Removal is identity-based: a late callback cannot consume a replacement
             // session's supplements or reveal its windows just because run IDs match.
             if (!sessions.remove(session)) return@post
+            updateKeepScreenOn()
             synchronized(supplementsLock) { supplementsByRunId.remove(session.runId) }
             if (
                 !AgentOverlayVisibilityPolicy.allowsOverlay(session.taskSurfaceMode) ||
@@ -1229,6 +1242,25 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         showOverlay()
     }
 
+    /** 控制器回调可能来自工作线程；窗口标志只能在 Main 上改。 */
+    private fun postKeepScreenOnUpdate() {
+        mainHandler.post { updateKeepScreenOn() }
+    }
+
+    private fun updateKeepScreenOn() {
+        setKeepScreenOn(
+            !destroyed && sessions.snapshot().any {
+                !it.isTerminal && !it.controller.isCancelled && !it.controller.isPaused
+            },
+        )
+    }
+
+    private fun setKeepScreenOn(enabled: Boolean) {
+        keepScreenOnState.value = enabled
+        orbView?.keepScreenOn = enabled
+        bubbleView?.keepScreenOn = enabled
+    }
+
     private fun showOverlay() {
         val session = overlaySession ?: return
         if (!AgentOverlayVisibilityPolicy.allowsOverlay(session.taskSurfaceMode)) return
@@ -1250,6 +1282,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             )
         }
         val orbLp = orbLayoutParams()
+        orb.keepScreenOn = keepScreenOnState.value
         runCatching { wm.addView(orb, orbLp) }.onFailure { throwable ->
             AndroidAgentLogger.warnThrottled("runtime_orb_add_view_failed") {
                 "Agent runtime orb addView failed: type=${throwable.safeLogType()}"
@@ -1298,6 +1331,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             )
         }
         val lp = bubbleLayoutParams()
+        bubble.keepScreenOn = keepScreenOnState.value
         runCatching { wm.addView(bubble, lp) }.onFailure { throwable ->
             AndroidAgentLogger.warnThrottled("runtime_bubble_add_view_failed") {
                 "Agent runtime bubble addView failed: type=${throwable.safeLogType()}"
@@ -1629,16 +1663,20 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         return true
     }
 
-    private companion object {
+    companion object {
+        /** 只投影到 App 与 GUI 浮层的现有窗口；窗口不可见时由系统自行恢复息屏。 */
+        private val keepScreenOnState = MutableStateFlow(false)
+        internal val keepScreenOn = keepScreenOnState.asStateFlow()
+
         // Independent of this service's lifecycle: onDestroy must not cancel its own cleanup.
-        val childCleanup = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        private val childCleanup = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "agent-child-cleanup").apply { isDaemon = true }
         }
-        const val ACTION_KEEP_ALIVE = "io.github.mangi.eta.agent.runtime.KEEP_ALIVE"
-        const val HIDE_DELAY_MS = 2_500L
-        const val RESULT_REVIEW_DELAY_MS = 120_000L
-        const val RESULT_CARD_HEIGHT_RATIO = 0.5f
-        const val MAX_ARCHIVED_USER_IMAGE_PREVIEWS = 4
+        private const val ACTION_KEEP_ALIVE = "io.github.mangi.eta.agent.runtime.KEEP_ALIVE"
+        private const val HIDE_DELAY_MS = 2_500L
+        private const val RESULT_REVIEW_DELAY_MS = 120_000L
+        private const val RESULT_CARD_HEIGHT_RATIO = 0.5f
+        private const val MAX_ARCHIVED_USER_IMAGE_PREVIEWS = 4
     }
 
     private data class CompletedRunContext(

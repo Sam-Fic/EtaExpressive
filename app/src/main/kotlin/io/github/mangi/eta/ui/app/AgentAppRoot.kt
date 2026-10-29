@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -67,6 +68,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.BoundedRootCommandExecutor
 import io.github.mangi.eta.agent.device.DeviceLocationProvider
 import io.github.mangi.eta.agent.device.RootAccess
+import io.github.mangi.eta.agent.runtime.AgentRuntimeService
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.repository.AppUpdateCoordinator
 import io.github.mangi.eta.data.repository.AppUpdateRepository
@@ -165,6 +167,16 @@ fun AgentAppRoot(
     val currentRoute = navRoutes.lastOrNull()
     val appViewModel = viewModel<AgentAppViewModel>()
     val agentState = appViewModel.state
+    // 常亮只在「对话页可见 + 正在流式回复 + Runtime 还有活着的 run」三者同时成立时挂上；
+    // 设置页、空闲会话与纯后台任务不额外保持常亮，GUI 浮层由 Runtime 服务自己维护。
+    val runtimeActive by AgentRuntimeService.keepScreenOn.collectAsState()
+    val keepScreenOnView = LocalView.current
+    val keepScreenOn = (currentRoute is AppRoute.Home || currentRoute is AppRoute.Chat) &&
+        agentState.homeState.isStreaming && runtimeActive
+    DisposableEffect(keepScreenOnView, keepScreenOn) {
+        keepScreenOnView.keepScreenOn = keepScreenOn
+        onDispose { keepScreenOnView.keepScreenOn = false }
+    }
     val subAgentOwner = agentState.subAgentConfigOwner
     val subAgentEditor = remember(agentState, subAgentOwner) { agentState.subAgentEditor(subAgentOwner) }
     fun stopMainReply() {
