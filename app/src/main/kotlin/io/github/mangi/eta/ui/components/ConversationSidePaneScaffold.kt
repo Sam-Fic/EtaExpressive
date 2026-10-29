@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.size
@@ -89,6 +90,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text as M3Text
@@ -797,26 +799,34 @@ private fun Material3ConversationPane(
         // 滚动时内容从导航栏下方透出，而不是整块留白。
         val navigationBarBottom =
             WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        // 顶部只按 statusBars 留白，与主页顶栏（Material3HomeTopBar）同口径：顶栏就是按
+        // statusBars 留白的，这里若并入 displayCutout，部分设备上刘海顶部 inset 高于状态栏，
+        // 整排胶囊会比主页顶栏按钮低几 dp，中线对不齐。横向仍按 systemBars ∪ displayCutout
+        // 避开刘海与系统栏。键盘动画期间这些 inset 恒定（ime 只影响 bottom），
+        // 抽屉不会逐帧重测量/重组。
+        val paneTopInsets = WindowInsets.statusBars.only(WindowInsetsSides.Top)
+        val paneHorizontalInsets = WindowInsets.systemBars
+            .union(WindowInsets.displayCutout)
+            .only(WindowInsetsSides.Horizontal)
+        val paneInsets = paneTopInsets.union(paneHorizontalInsets)
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                // 顶部与横向按 systemBars ∪ displayCutout 留白；底部不垫，让列表延伸到屏幕底缘。
-                // 键盘动画期间该并集恒定（ime 只影响 bottom），抽屉不会逐帧重测量/重组。
-                .windowInsetsPadding(
-                    WindowInsets.systemBars.union(WindowInsets.displayCutout)
-                        .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-                )
-                .consumeWindowInsets(
-                    WindowInsets.systemBars.union(WindowInsets.displayCutout)
-                        .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-                )
+                .windowInsetsPadding(paneInsets)
+                .consumeWindowInsets(paneInsets)
                 .padding(horizontal = DrawerMetrics.PaneHorizontalPadding),
         ) {
             Spacer(modifier = Modifier.height(DrawerMetrics.TopInset))
 
             // 胶囊行：左侧可横向滚动的「聊天 / 未分类 / [文件夹…]」，右侧固定「管理文件夹」。
+            // 行内混着两类高度：官方 ToggleButton 是纯 40dp 布局；走官方 Surface 的按钮
+            // （FilledTonalButton、文件夹胶囊的 Surface）自带 48dp 最小触摸目标——布局被撑到
+            // 48dp、40dp 可视区在内部居中，整行随之变 48dp，全部胶囊的可视中线整体下移 4dp，
+            // 比首页顶栏（状态栏下 32dp）低一截。这里把行内的最小触摸目标统一到 40dp
+            // （= 官方 ToggleButton 的布局高度），整行恢复 40dp，中线回到 12 + 20 = 32dp。
             val chipCount = 2 + folders.size
             val chipScrollState = rememberScrollState()
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 40.dp) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -907,6 +917,7 @@ private fun Material3ConversationPane(
                     leadingIcon = Icons.Rounded.Folder,
                     onClick = onOpenManageFolders,
                 )
+            }
             }
             Spacer(modifier = Modifier.height(12.dp))
 
