@@ -72,7 +72,6 @@ import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.Badge
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.DismissibleNavigationDrawer
@@ -1247,36 +1246,22 @@ private fun DrawerActionMenuItem(
 }
 
 /**
- * M3 抽屉的日期分组标题：左标题、右数量（官方 `Badge`）。
+ * M3 抽屉的日期分组标题：「标题 · 数量」一行内联展示，不再右侧单独放计数。
  *
- * 节奏与对齐都照搬设置页的 [EtaSegmentedColumn]：
+ * 款式照搬设置页 `settingsGroup` 的分类标题：官方 `titleSmallEmphasized` + primary 色。
+ * 节奏沿用分段列表令牌：
  * - 上一组末行已补 [EtaSegmentedGroupSpacing]（13dp）组间距，标题自身不再加上边距；
  * - 标题到本组首行的间距用 [EtaSegmentedTitleSpacing]（8dp）；
- * - 标题左边缘贴分段卡片左边缘（与设置页组标题一致，抽屉外层已有 16dp 页边距）；
- *   右侧计数留 16dp，与本组行的尾部图标列对齐，避免顶到卡片圆角。
+ * - 标题左边缘贴分段卡片左边缘（与设置页组标题一致，抽屉外层已有 16dp 页边距）。
  */
 @Composable
 private fun Material3DrawerSectionHeader(label: String, count: Int) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(end = 16.dp, bottom = EtaSegmentedTitleSpacing),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        M3Text(
-            text = label,
-            style = etaTextStyle(EtaType.Caption, emphasized = true),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        // 计数只是辅助信息：用官方 surfaceVariant / onSurfaceVariant 中性色，不用 Badge 默认的强调色。
-        Badge(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ) {
-            M3Text(text = count.toString())
-        }
-    }
+    M3Text(
+        text = "$label · $count",
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(bottom = EtaSegmentedTitleSpacing),
+    )
 }
 
 /** M3 抽屉空态：官方 Text + 官方排版 / 颜色角色。 */
