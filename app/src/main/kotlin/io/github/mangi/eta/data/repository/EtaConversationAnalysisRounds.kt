@@ -23,6 +23,7 @@ internal object EtaConversationAnalysisRounds {
         var key: RoundKey? = null
         val messageIds = mutableListOf<String>()
         val toolCalls = mutableListOf<EtaConversationAnalysisToolCall>()
+        val openedGroups = mutableListOf<String>()
         var usage = EtaConversationAnalysisUsage()
         var thinkingSeconds: Int = 0
         var assistantText: String = ""
@@ -35,6 +36,7 @@ internal object EtaConversationAnalysisRounds {
             toolCalls = toolCalls.toList(),
             usage = usage,
             thinkingSeconds = thinkingSeconds,
+            openedGroups = openedGroups.toList(),
             assistantText = assistantText,
         )
     }
@@ -57,7 +59,11 @@ internal object EtaConversationAnalysisRounds {
             if (target.key == null && key != null) target.key = key
             target.messageIds += message.id
             when (message.type) {
-                TYPE_TOOL -> target.toolCalls += toolCallOf(message)
+                TYPE_TOOL -> {
+                    val call = toolCallOf(message)
+                    target.toolCalls += call
+                    openedGroupOf(call)?.let { target.openedGroups += it }
+                }
                 TYPE_ASSISTANT -> {
                     target.usage = target.usage + usageOf(message)
                     if (message.content.isNotBlank()) target.assistantText = message.content
@@ -96,12 +102,33 @@ internal object EtaConversationAnalysisRounds {
                 )
             }
             .sortedWith(compareByDescending<EtaConversationAnalysisToolAggregate> { it.count }.thenBy { it.name })
+        // 延迟工具组的真实使用频次：成功打开与「想开但被挡掉」分开计数，
+        // 前者决定还该不该拆，后者说明门禁或索引文案有问题。
+        val groupAggregates = rounds
+            .flatMap { it.toolCalls }
+            .mapNotNull { call ->
+                groupNameOf(call)?.let { group -> group to (call.status == STATUS_FAILED) }
+            }
+            .groupBy({ it.first }, { it.second })
+            .map { (name, rejectedFlags) ->
+                EtaConversationAnalysisToolGroupAggregate(
+                    name = name,
+                    opens = rejectedFlags.count { !it },
+                    rejected = rejectedFlags.count { it },
+                )
+            }
+            .sortedWith(
+                compareByDescending<EtaConversationAnalysisToolGroupAggregate> { it.opens }
+                    .thenByDescending { it.rejected }
+                    .thenBy { it.name },
+            )
         return EtaConversationAnalysisSummary(
             messageCount = messages.size,
             roundCount = rounds.size,
             toolCallCount = rounds.sumOf { it.toolCalls.size },
             failedToolCallCount = rounds.sumOf { round -> round.toolCalls.count { it.status == STATUS_FAILED } },
             tools = aggregates,
+            toolGroups = groupAggregates,
             usage = usage,
             thinkingSeconds = thinkingSeconds,
         )
@@ -119,6 +146,18 @@ internal object EtaConversationAnalysisRounds {
             mediaCount = message.imageCount,
             media = message.media,
         )
+
+    /** 成功打开的那个组；被开关或能力挡掉的调用返回 null，单独计入 rejected。 */
+    private fun openedGroupOf(call: EtaConversationAnalysisToolCall): String? =
+        groupNameOf(call)?.takeIf { call.status != STATUS_FAILED }
+
+    private fun groupNameOf(call: EtaConversationAnalysisToolCall): String? {
+        if (call.name != USE_GROUP_TOOL) return null
+        val source = call.argumentsDetail?.takeIf { it.isNotBlank() }
+            ?: call.argumentsSummary?.takeIf { it.isNotBlank() }
+            ?: return null
+        return GROUP_NAME_PATTERN.find(source)?.groupValues?.get(1)
+    }
 
     private fun usageOf(message: EtaConversationAnalysisMessage): EtaConversationAnalysisUsage =
         EtaConversationAnalysisUsage(
@@ -152,4 +191,10 @@ internal object EtaConversationAnalysisRounds {
     }
 
     private const val SUPPLEMENT_MARKER = "-supplement-"
+
+    /** 延迟工具组的打开入口；组名是它唯一的参数。 */
+    private const val USE_GROUP_TOOL = "tools_use_group"
+
+    /** 兼容 `{"group":"calendar"}` 与 `group=calendar` 两种参数呈现。 */
+    private val GROUP_NAME_PATTERN = Regex("group\"?\\s*[:=]\\s*\"?([A-Za-z0-9_]+)")
 }

@@ -61,6 +61,13 @@ internal data class EtaConversationAnalysisSummary(
     val toolCallCount: Int = 0,
     val failedToolCallCount: Int = 0,
     val tools: List<EtaConversationAnalysisToolAggregate> = emptyList(),
+    /**
+     * `tools_use_group` 的打开次数，按组名聚合。
+     *
+     * 用来判断「哪些延迟工具组真的会被打开」：打开次数长期为 0 的组是拆组或合并的候选，
+     * 次数高的组则值得继续拆分，减少一次任务要背的 schema 量。
+     */
+    val toolGroups: List<EtaConversationAnalysisToolGroupAggregate> = emptyList(),
     val usage: EtaConversationAnalysisUsage = EtaConversationAnalysisUsage(),
     /** 全部 thinking 行累计的思考秒数。 */
     val thinkingSeconds: Int = 0,
@@ -72,6 +79,14 @@ internal data class EtaConversationAnalysisToolAggregate(
     val name: String,
     val count: Int,
     val failedCount: Int,
+)
+
+/** 单个延迟工具组的打开次数；[rejected] 是被开关或能力挡掉的尝试。 */
+@Serializable
+internal data class EtaConversationAnalysisToolGroupAggregate(
+    val name: String,
+    val opens: Int,
+    val rejected: Int,
 )
 
 /** 一回合的 token 账单。 */
@@ -113,6 +128,11 @@ internal data class EtaConversationAnalysisRound(
     val usage: EtaConversationAnalysisUsage = EtaConversationAnalysisUsage(),
     /** 该回合 thinking 行累计的思考秒数。 */
     val thinkingSeconds: Int = 0,
+    /**
+     * 该回合里成功打开的延迟工具组。组在下一回合才进入工具目录，
+     * 所以「本回合 openedGroups 非空」正好对应「下一回合 prefix 必然变化」。
+     */
+    val openedGroups: List<String> = emptyList(),
     val assistantText: String = "",
 )
 
