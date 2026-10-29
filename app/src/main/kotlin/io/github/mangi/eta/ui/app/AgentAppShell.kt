@@ -242,6 +242,7 @@ internal fun AgentAppShell(
                 onConversationTogglePin = onConversationTogglePin,
                 onConversationExport = onConversationExport,
                 onConversationAnalysisExport = onConversationAnalysisExport,
+                onNewConversation = onNewConversation,
                 onOpenSearchHistory = onOpenDrawerSearch,
                 onOpenManageChats = onOpenManageChats,
                 onOpenManageFolders = onOpenManageFolders,

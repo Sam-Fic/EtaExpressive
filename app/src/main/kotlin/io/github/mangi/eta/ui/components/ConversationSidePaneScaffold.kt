@@ -61,8 +61,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.ManageHistory
 import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -79,6 +81,8 @@ import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.IconButton
@@ -212,12 +216,16 @@ private object DrawerMetrics {
     // 胶囊行横向滚动的两端淡出带宽度。与底色同色，滚动到中间时把视口切开的胶囊边缘擦掉。
     val ChipRowEdgeFadeWidth = 24.dp
     val AfterChips = 10.dp
-    // 底部浮动工具栏（M3E HorizontalFloatingToolbar）：高度与离底间距取官方
-    // FloatingToolbarDefaults.ContainerSize / ScreenOffset（64dp / 16dp），
-    // 列表底部再留 12dp，让最后一条会话能完整滚到工具栏上方而不被药丸压住。
+    // 底部浮动工具栏（M3E HorizontalFloatingToolbar with FAB）：可视药丸高 64dp（官方
+    // ContainerSize），但官方布局以 FAB 的最大尺寸 80dp（FabSizeRange 上限）作 minHeight、
+    // 药丸在其内垂直居中，组合总高 80dp、药丸中线落在总高一半（40dp）处。离底间距取 8dp
+    // （官方 ScreenOffset 16dp 减去药丸下方 8dp 的 FAB 预留空隙）：药丸底缘仍在导航栏上
+    // 8 + 8 = 16dp（与官方 ScreenOffset 下无 FAB 时的可视位置一致），中线落在导航栏上
+    // 8 + 40 = 48dp，与主页输入框单行胶囊（72dp 高、底部留白 12dp，中线 12 + 36 = 48dp）
+    // 同一条水平线。列表底部再留 12dp，让最后一条会话能完整滚到药丸上方而不被压住。
     // 这里不含导航栏 inset：列表铺到屏幕底缘，导航栏高度在 Material3ConversationPane 里另加。
     val ToolbarHeight = 64.dp
-    val ToolbarBottomOffset = 16.dp
+    val ToolbarBottomOffset = 8.dp
     val ToolbarListGap = 12.dp
     val ToolbarListBottomPadding = ToolbarHeight + ToolbarBottomOffset + ToolbarListGap
     val ActionIconSize = 20.dp
@@ -250,6 +258,7 @@ fun ConversationSidePaneScaffold(
     onConversationTogglePin: (ConversationSummaryUi) -> Unit = {},
     onConversationExport: (ConversationSummaryUi) -> Unit = {},
     onConversationAnalysisExport: (ConversationSummaryUi) -> Unit = {},
+    onNewConversation: () -> Unit = {},
     onOpenSearchHistory: () -> Unit = {},
     onOpenManageChats: () -> Unit = {},
     onOpenManageFolders: () -> Unit = {},
@@ -423,6 +432,7 @@ fun ConversationSidePaneScaffold(
                     state = state,
                     width = panelWidth,
                     drawerShape = shape,
+                    onNewConversation = onNewConversation,
                     onOpenSearchHistory = onOpenSearchHistory,
                     onConversationSelected = selectConversation,
                     onConversationRename = onConversationRename,
@@ -623,6 +633,7 @@ private fun ConversationPanePanel(
     state: ConversationPaneUiState,
     width: androidx.compose.ui.unit.Dp,
     drawerShape: AbsoluteRoundedCornerShape,
+    onNewConversation: () -> Unit = {},
     onOpenSearchHistory: () -> Unit = {},
     onConversationSelected: (String) -> Unit,
     onConversationRename: (ConversationSummaryUi) -> Unit,
@@ -656,6 +667,7 @@ private fun ConversationPanePanel(
         state = state,
         width = width,
         drawerShape = drawerShape,
+        onNewConversation = onNewConversation,
         onOpenSearchHistory = onOpenSearchHistory,
         onConversationSelected = onConversationSelected,
         onConversationRename = onConversationRename,
@@ -734,6 +746,7 @@ private fun Material3ConversationPane(
     state: ConversationPaneUiState,
     width: androidx.compose.ui.unit.Dp,
     drawerShape: AbsoluteRoundedCornerShape,
+    onNewConversation: () -> Unit,
     onOpenSearchHistory: () -> Unit,
     onConversationSelected: (String) -> Unit,
     onConversationRename: (ConversationSummaryUi) -> Unit,
@@ -862,11 +875,12 @@ private fun Material3ConversationPane(
                 Spacer(modifier = Modifier.width(ButtonGroupDefaults.ConnectedSpaceBetween))
                 // 独立胶囊按钮（DrawerGroupPosition.Single）：始终贴右，不随文件夹列表滚动。
                 // 文件夹的新建 / 重命名 / 删除都在独立管理页完成，这里只负责入口。
+                // 图标用 FolderOpen 与左侧文件夹胶囊的 Folder 区分：这是「进入管理」的动作。
                 Material3DrawerChip(
                     text = stringResource(R.string.drawer_manage_folders),
                     position = DrawerGroupPosition.Single,
                     selected = false,
-                    leadingIcon = Icons.Rounded.Folder,
+                    leadingIcon = Icons.Rounded.FolderOpen,
                     onClick = onOpenManageFolders,
                 )
             }
@@ -928,8 +942,9 @@ private fun Material3ConversationPane(
                         }
                     }
                 }
-                // 底部入口：搜索 / 管理聊天 / 用量 / 回收站 / 设置，同一颗居中药丸。
+                // 底部入口：新建对话 FAB + 搜索 / 管理聊天 / 用量 / 回收站 / 设置，同一颗居中药丸。
                 Material3DrawerToolbar(
+                    onNewConversation = onNewConversation,
                     onOpenSearchHistory = onOpenSearchHistory,
                     onOpenManageChats = onOpenManageChats,
                     onOpenUsageStats = onOpenUsageStats,
@@ -937,7 +952,8 @@ private fun Material3ConversationPane(
                     onOpenSettings = onOpenSettings,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        // 与列表同一口径：工具栏整体抬到导航栏上方，保持官方 16dp 离底间距。
+                        // 与列表同一口径：工具栏整体抬到导航栏上方；组合总高 80dp、可视药丸
+                        // 底缘在导航栏上 16dp，中线对齐主页输入框单行胶囊（见 ToolbarBottomOffset）。
                         .padding(
                             bottom = DrawerMetrics.ToolbarBottomOffset + navigationBarBottom,
                         ),
@@ -1133,9 +1149,17 @@ private fun Material3DrawerChip(
  * 药丸整体居中、悬浮在会话列表上方；容器与内容色取官方 vibrant 档，
  * 高度、圆角、海拔全部走官方令牌，内边距按 [EtaFloatingToolbarConcentricPadding]
  * 把水平方向收到与端盖同心，`expanded = true` 常驻展开。
+ *
+ * 行尾挂官方 Floating toolbar with FAB 结构的「新建对话」FAB，与药丸之间是官方 8dp
+ * [FloatingToolbarDefaults.ToolbarToFabGap]。配色仍取 vibrant 档，但不用
+ * [FloatingToolbarDefaults.VibrantFloatingActionButton]——它把海拔写死在 Level 2 档，
+ * 与无阴影的工具栏放一起会浮出一圈投影；这里改用官方 [FloatingActionButton] 显式归零海拔，
+ * 容器 / 内容色仍取 [FloatingToolbarColors] 的 vibrant FAB 档。药丸自己的阴影也一并归零
+ * （[HorizontalFloatingToolbar] 的两个阴影海拔参数），整条工具栏与 FAB 均无投影。
  */
 @Composable
 private fun Material3DrawerToolbar(
+    onNewConversation: () -> Unit,
     onOpenSearchHistory: () -> Unit,
     onOpenManageChats: () -> Unit,
     onOpenUsageStats: () -> Unit,
@@ -1143,20 +1167,37 @@ private fun Material3DrawerToolbar(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 官方 minimumInteractiveBalancedPadding 只在两侧都没有 leading/trailing 内容时生效：
-    // 它会把内容里的 MinimumInteractive…AlignmentLine 当成补偿内边距，把整条工具栏撑高。
-    // 本行布局完全显式（固定尺寸 + 固定间距），显式传空的 leadingContent 让这组补偿归零
-    // （官方参数语义，非 hack，与输入区 / 浏览器工具栏同款处理）。
+    // 带 FAB 的官方 overload 没有 leading/trailingContent 槽位，也没有无 FAB 版那组
+    // minimumInteractiveBalancedPadding 补偿，内边距完全由 contentPadding 决定。
     val toolbarColors = FloatingToolbarDefaults.vibrantFloatingToolbarColors()
     HorizontalFloatingToolbar(
         expanded = true,
+        // 行尾 FAB：新建对话。位置取官方默认的 End，与药丸之间是官方 ToolbarToFabGap。
+        // 纯图标按钮，长按补官方 TooltipBox 提示（复用 FooterTooltipBox 封装）。
+        floatingActionButton = {
+            FooterTooltipBox(text = stringResource(R.string.action_new_conversation), enabled = true) {
+                FloatingActionButton(
+                    onClick = onNewConversation,
+                    containerColor = toolbarColors.fabContainerColor,
+                    contentColor = toolbarColors.fabContentColor,
+                    elevation = FloatingActionButtonDefaults.elevation(0.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AddComment,
+                        contentDescription = stringResource(R.string.action_new_conversation),
+                    )
+                }
+            }
+        },
         colors = toolbarColors,
         // 端盖同心：官方 8dp 内边距会让 40dp 圆钮贴住药丸端头（圆心距端盖弧心差 4dp），
         // 沿弧的留白中段窄、上下宽。水平改取 (64 − 40)/2 = 12dp，圆钮四周留白等宽、与端盖同心。
         contentPadding = EtaFloatingToolbarConcentricPadding(
             IconButtonDefaults.smallContainerSize().width,
         ),
-        leadingContent = {},
+        // 无阴影：药丸的展开 / 收起两档海拔都归零。
+        expandedShadowElevation = 0.dp,
+        collapsedShadowElevation = 0.dp,
         modifier = modifier,
     ) {
         Row(
@@ -1177,16 +1218,16 @@ private fun Material3DrawerToolbar(
                 onClick = onOpenManageChats,
             )
             Material3DrawerToolbarButton(
-                icon = Icons.Rounded.BarChart,
-                contentDescription = stringResource(R.string.stats_page_title),
-                contentColor = toolbarColors.toolbarContentColor,
-                onClick = onOpenUsageStats,
-            )
-            Material3DrawerToolbarButton(
                 icon = Icons.Rounded.DeleteSweep,
                 contentDescription = stringResource(R.string.drawer_trash_title),
                 contentColor = toolbarColors.toolbarContentColor,
                 onClick = onOpenTrash,
+            )
+            Material3DrawerToolbarButton(
+                icon = Icons.Rounded.BarChart,
+                contentDescription = stringResource(R.string.stats_page_title),
+                contentColor = toolbarColors.toolbarContentColor,
+                onClick = onOpenUsageStats,
             )
             Material3DrawerToolbarButton(
                 icon = Icons.Rounded.Settings,
@@ -1201,6 +1242,9 @@ private fun Material3DrawerToolbar(
 /**
  * 浮动工具栏里的图标按钮：官方标准 [IconButton] 的 Small 档（40dp 容器 / 24dp 图标），
  * 内容色直接取工具栏自己的内容色，容器透明，视觉上就是药丸里的一枚裸图标。
+ *
+ * 回收站 / 用量等图标动作不自明，长按补官方 TooltipBox 提示；文案直接复用
+ * [contentDescription]，无描述时不包。
  */
 @Composable
 private fun Material3DrawerToolbarButton(
@@ -1209,16 +1253,23 @@ private fun Material3DrawerToolbarButton(
     contentColor: Color,
     onClick: () -> Unit,
 ) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-        colors = IconButtonDefaults.iconButtonColors(contentColor = contentColor),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-        )
+    val button: @Composable () -> Unit = {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+            colors = IconButtonDefaults.iconButtonColors(contentColor = contentColor),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            )
+        }
+    }
+    if (contentDescription == null) {
+        button()
+    } else {
+        FooterTooltipBox(text = contentDescription, enabled = true) { button() }
     }
 }
 
