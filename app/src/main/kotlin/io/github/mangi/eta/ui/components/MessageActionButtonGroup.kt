@@ -88,10 +88,10 @@ internal fun MessageActionButtonGroup(
             val source = interactionSources[index]
             customItem(
                 buttonGroupContent = {
-                    // 用户指定偏离官方档：内容内边距收到 8dp（官方 ExtraSmall 档为
+                    // 用户指定偏离官方档：内容内边距收到 4dp（官方 ExtraSmall 档为
                     // 12dp），纯图标按钮更窄；垂直仍取官方 6dp 档。按压压缩上限沿用
                     // 官方语义 = 该内容内边距（邻钮压进这段留白）。
-                    val contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    val contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
                     val layoutDirection = LocalLayoutDirection.current
                     // 官方约束：animateWidth 的 parentData 必须挂在 ButtonGroup 的直接子项
                     // 上（组测量策略只读直接子项）；而官方 TooltipBox 会把外部传入的
