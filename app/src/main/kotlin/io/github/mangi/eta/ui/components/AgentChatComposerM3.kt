@@ -99,6 +99,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -218,6 +219,8 @@ internal fun Material3ComposerBody(
      */
     popupMaxHeight: () -> Dp,
     onPositionedTopPx: (Int) -> Unit,
+    /** 输入工具栏（渐变板的锚点胶囊）每次尺寸变化上报自身高度，供底栏渐变板定位顶盖圆心。 */
+    onToolbarHeightPx: (Int) -> Unit = {},
     conversationId: String?,
     assistantId: String,
     modelPickerState: AgentModelPickerUiState,
@@ -383,7 +386,9 @@ internal fun Material3ComposerBody(
             // 官方本意是给 IconButton 组成的内容补平衡留白，本输入区布局完全显式（间距 + weight），
             // 因此显式传一个空的 leadingContent，让这组补偿归零（官方参数语义，非 hack）。
             leadingContent = {},
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { onToolbarHeightPx(it.height) },
         ) {
             // 左侧动作组：编辑态由取消按钮占据；其余情况在“有输入内容”或“语音进行中”时整组收起。
             // 关键：语音态不能像编辑态那样硬切换分支——否则开始 / 结束语音时动作组会瞬间消失 / 出现，

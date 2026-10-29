@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
@@ -1966,7 +1968,7 @@ internal fun AgentConversationMessages(
             onEdge = { direction -> navigateUserMessage(direction, toEdge = true) },
             modifier = Modifier
                 // 右下角默认落位：只用 Box 的 BottomEnd 对齐，不再为「与通话圆钮同心」手算水平偏移。
-                // 底栏渐变板向上溢出 ChatInputScrimOverhang（32dp）且整体压在内容层之上，
+                // 底栏渐变板向上越过胶囊顶盖圆心（40dp 渐变条）且整体压在内容层之上，
                 // 按钮组整体贴在右下方。
                 // 垂直：让按钮组中线与「滚到底时最后一轮页脚动作组（复制/朗读/fork…）」的中线
                 // 同高——两组都贴着右下角，同高后读作一行并列的控件。
@@ -2190,27 +2192,41 @@ private fun AgentChatBottomBar(
     val drawerBlocksIme = LocalConversationDrawerBlocksIme.current
     // 底部渐变板取页面背景同色：官方 surfaceContainer（壳层 Scaffold 同色）。
     val scrimColor = MaterialTheme.colorScheme.surfaceContainer
+    val navigationBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // 输入工具栏高度：渐变板终点的锚定输入。普通 int 数组 + 布局期回调（与
+    // AgentChatInputBar 的 inputContainerTopPx 同款），避免键盘动画逐帧重组。
+    val inputToolbarHeightPx = remember { intArrayOf(0) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (drawerBlocksIme) Modifier else Modifier.imePadding())
             .drawBehind {
                 // 底部渐变背景板：颜色与页面背景一致。
-                // 渐变向上溢出栏顶一段，完全透明的位置落在底栏之上，消息更早开始淡出；
-                // 下半段保持完全不透明，输入栏附近不会露出消息残影。
-                val top = -ChatInputScrimOverhang.toPx()
+                // 终点锚在输入胶囊「顶盖圆弧圆心」的 y（胶囊顶边 + 外圆角 36dp）：单行时胶囊
+                // 就是整圆胶囊，圆心即按钮中线；多行长高后顶边上移，终点随之整体上移。
+                // 渐变条总高与底栏按钮同高（40dp），从圆心向上完全透明——消息从那里开始淡出、
+                // 到圆心处完全消失；圆心以下（按钮下半段 + 底部留白 + 导航栏）保持完全不透明，
+                // 输入栏附近不会露出消息残影。
+                val toolbarHeightPx = inputToolbarHeightPx[0]
+                    .takeIf { it > 0 }?.toFloat() ?: ChatInputToolbarDefaultHeight.toPx()
+                val arcCenterY = size.height -
+                    (navigationBarBottom + ChatInputBarBottomGap).toPx() -
+                    toolbarHeightPx +
+                    ChatInputScrimAnchorRadius.toPx()
+                val stripHeight = ChatInputScrimHeight.toPx()
                 drawRect(
                     brush = Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0f to scrimColor.copy(alpha = 0f),
-                            0.5f to scrimColor,
-                            1f to scrimColor,
-                        ),
-                        startY = top,
-                        endY = size.height,
+                        colors = listOf(scrimColor.copy(alpha = 0f), scrimColor),
+                        startY = arcCenterY - stripHeight,
+                        endY = arcCenterY,
                     ),
-                    topLeft = Offset(0f, top),
-                    size = Size(size.width, size.height - top),
+                    topLeft = Offset(0f, arcCenterY - stripHeight),
+                    size = Size(size.width, stripHeight),
+                )
+                drawRect(
+                    color = scrimColor,
+                    topLeft = Offset(0f, arcCenterY),
+                    size = Size(size.width, size.height - arcCenterY),
                 )
             },
     ) {
@@ -2226,6 +2242,7 @@ private fun AgentChatBottomBar(
                 ),
         ) {
             AgentChatInputBar(
+                onToolbarHeightPx = { inputToolbarHeightPx[0] = it },
                 collaborationConversationId = collaborationConversationId,
                 input = input,
                 draftField = draftField,
@@ -2323,8 +2340,17 @@ private fun isModelOutputMessage(message: AgentChatMessageUi): Boolean = when (m
 
 private val ChatBackToBottomButtonSlot = 52.dp
 
-// 底栏渐变板向上溢出栏顶的高度：完全透明的位置随之抬高，消息提前进入淡出区。
-private val ChatInputScrimOverhang = 32.dp
+// 底栏渐变条总高：与底栏按钮同高（官方 Small 图标按钮 40dp）。
+private val ChatInputScrimHeight = 40.dp
+
+// 渐变条终点锚点半径：输入胶囊外层圆角（与 ComposerOuterCornerRadius 同值 36dp）。
+private val ChatInputScrimAnchorRadius = 36.dp
+
+// 工具栏高度未上报（首帧测量前）时的兜底：官方 HorizontalFloatingToolbar ContainerSize。
+private val ChatInputToolbarDefaultHeight = 64.dp
+
+// 输入胶囊与导航栏之间的底部留白（渐变板内 Column 的 bottom padding）。
+private val ChatInputBarBottomGap = 12.dp
 
 /**
  * 跳转轮次按钮组「中线」距列表底部的距离。滚到底时，最后一轮页脚动作组

@@ -235,6 +235,8 @@ internal fun AgentChatInputBar(
     gptSpeedMode: GptSpeedMode = GptSpeedMode.NORMAL,
     /** 长按速度图标时派发给 owner 的循环切换事件。 */
     onCycleGptSpeedMode: () -> Unit = {},
+    /** 输入工具栏每次尺寸变化上报自身高度，供底栏渐变板锚定顶盖圆心（见 Material3ComposerBody）。 */
+    onToolbarHeightPx: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Commit count only: no snapshot writes, no callbacks retained, no CPU-time claim.
@@ -479,6 +481,7 @@ internal fun AgentChatInputBar(
             usage = liveUsage,
             popupMaxHeight = popupMaxHeight,
             onPositionedTopPx = { inputContainerTopPx[0] = it },
+            onToolbarHeightPx = onToolbarHeightPx,
             conversationId = collaborationConversationId,
             assistantId = assistantId,
             modelPickerState = modelPickerState,
