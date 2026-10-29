@@ -152,28 +152,14 @@ internal object AgentModelClient {
         // 因此不会因为最小配置而误报「用户关闭了终端」。
         val capabilitySwitches = ToolCapabilitySwitches.capture()
         var systemCount = 0
-        val messages = AgentPromptBuilder.buildInitialMessages(
-            config,
-            prompt,
-            outboundImages,
-            outboundHistory,
-            skillContext,
-            memoryContext,
-            rootAvailable = initialCapabilities.rootAvailable,
-            delegationAvailable = delegationAvailable,
-            shellTools = initialCapabilities.shellTools,
-            interactiveModeEnabled = interactiveModeEnabled,
-            disabledCapabilities = capabilitySwitches.toDisabledState(),
-            // 首轮通常还没有打开任何延迟组；仍走同一个 provider，保证提示与目录同源。
-            openedToolGroups = openedToolGroupsProvider(),
-            delegationEngaged = delegationEngaged.get(),
-            onSystemCount = { systemCount = it },
-        )
-        var transcriptStartIndex = messages.length()
+        // 首轮的目录与提示必须同源：提示只点名目录里真实存在的工具，
+        // 否则模型照着提示调用一个没下发的工具，会被校验器连续拒三次并终止整轮。
+        val initialOpenedGroups = openedToolGroupsProvider()
         fun toolsFor(
             capabilities: AgentToolCapabilities,
             memoryEnabled: Boolean = memoryContext.enabled,
             recipeTools: JSONArray = JSONArray(),
+            openedToolGroups: Set<String> = initialOpenedGroups,
         ): JSONArray {
             val tools = AgentToolCatalog.build(
                 basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
@@ -189,7 +175,7 @@ internal object AgentModelClient {
                 mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
                 capabilities = capabilities,
                 localWebSearch = !config.usesHostedWebSearch,
-                openedToolGroups = openedToolGroupsProvider(),
+                openedToolGroups = openedToolGroups,
                 // 单工具禁用集：每轮重读，用户在两轮之间改工具清单页也能生效。
                 disabledTools = Prefs.disabledTools(),
                 // 命令执行是独立开关：关掉它仍可读写文件，但不能跑 shell。
@@ -209,6 +195,26 @@ internal object AgentModelClient {
             return tools
         }
         val tools = toolsFor(initialCapabilities, recipeTools = recipeToolsProvider())
+        val messages = AgentPromptBuilder.buildInitialMessages(
+            config,
+            prompt,
+            outboundImages,
+            outboundHistory,
+            skillContext,
+            memoryContext,
+            rootAvailable = initialCapabilities.rootAvailable,
+            delegationAvailable = delegationAvailable,
+            shellTools = initialCapabilities.shellTools,
+            interactiveModeEnabled = interactiveModeEnabled,
+            disabledCapabilities = capabilitySwitches.toDisabledState(),
+            // 首轮通常还没有打开任何延迟组；仍走同一个 provider，保证提示与目录同源。
+            openedToolGroups = initialOpenedGroups,
+            delegationEngaged = delegationEngaged.get(),
+            // 提示点名的工具必须真的在目录里：缺席的工具连名字都不出现在提示里。
+            callableTools = AgentToolCatalog.toolNames(tools),
+            onSystemCount = { systemCount = it },
+        )
+        var transcriptStartIndex = messages.length()
         val traceFormatter = AgentTraceFormatter(
             linuxEnvironmentLabelProvider = linuxEnvironmentLabelProvider,
             terminalSessionEnvironmentProvider = terminalSessionEnvironmentProvider,
@@ -265,6 +271,7 @@ internal object AgentModelClient {
                     val nextMemoryContext = memoryContextProvider()
                     // 配方表每轮重读：模型可能在本 run 中途新建或停用配方。
                     val recipeTools = recipeToolsProvider()
+                    val nextOpenedGroups = openedToolGroupsProvider()
                     // 每轮都重建系统消息与工具目录要付约 50 KB JSON 构造 + 逐工具过滤。
                     // 只有「能力快照 + 技能索引 + 记忆修订」都变了才真正重建；否则复用上一轮
                     // 的目录与系统消息（两者都只由这三项决定）。
@@ -276,7 +283,7 @@ internal object AgentModelClient {
                         delegationAvailable = delegationAvailable,
                         delegationEngaged = delegationEngaged.get(),
                         interactiveModeEnabled = interactiveModeEnabled,
-                        openedToolGroups = openedToolGroupsProvider(),
+                        openedToolGroups = nextOpenedGroups,
                         // 配方集合变了必须重建目录，否则新建的配方在这一轮仍然缺席。
                         recipeRevision = recipeTools.toString().hashCode().toString(),
                         // 用户可能在两轮之间改开关：签名必须覆盖它，否则目录与系统提示不会刷新。
@@ -285,16 +292,25 @@ internal object AgentModelClient {
                         capabilitySwitches = ToolCapabilitySwitches.capture(),
                     )
                     if (signature != lastRoundSignature) {
+                        // 目录先算：提示只允许点名目录里真实存在的工具。
+                        val nextTools = toolsFor(
+                            capabilities = capabilities,
+                            memoryEnabled = nextMemoryContext.enabled,
+                            recipeTools = recipeTools,
+                            openedToolGroups = nextOpenedGroups,
+                        )
                         val systemMessages = AgentPromptBuilder.buildSystemMessages(
                             config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
                             capabilities.shellTools,
                             interactiveModeEnabled = interactiveModeEnabled,
-                            openedToolGroups = openedToolGroupsProvider(),
+                            openedToolGroups = nextOpenedGroups,
                             // 本轮之前是否已经派发过子任务：决定结果解读规则是否进前缀。
                             delegationEngaged = delegationEngaged.get(),
                             // 每轮重新捕获：用户可能在两轮之间改了开关。
                             disabledCapabilities = ToolCapabilitySwitches
                                 .capture().toDisabledState(),
+                            // 缺席的工具连名字都不出现在提示里，避免模型调一个必然被拒的工具。
+                            callableTools = AgentToolCatalog.toolNames(nextTools),
                         )
                         // 系统前缀的条数会随「本轮打开了哪些工具组」变化（指引块与组索引都是条件消息）。
                         // JSONArray.put(index, …) 是替换不是插入，按索引覆写会在前缀变长时盖掉历史与用户消息，
@@ -304,7 +320,7 @@ internal object AgentModelClient {
                         systemCount = systemMessages.length()
                         transcriptStartIndex += systemCount - previousSystemCount
                         promptRootAvailable = capabilities.rootAvailable
-                        lastRoundTools = toolsFor(capabilities, nextMemoryContext.enabled, recipeTools = recipeTools)
+                        lastRoundTools = nextTools
                         lastRoundSignature = signature
                     }
                     requireNotNull(lastRoundTools)

@@ -95,6 +95,23 @@ internal object AgentToolCatalog {
         return capabilities.project(filterWithheld(emitted, withheld))
     }
 
+    /**
+     * 目录里真实存在的工具名。
+     *
+     * 提示只能点名这里的工具：模型照着提示去调一个没下发的工具，会被
+     * [AgentToolCallValidator] 以「工具未在本次运行的能力目录中声明」拒掉，
+     * 连续三次直接终止整轮。
+     */
+    fun toolNames(tools: JSONArray): Set<String> = buildSet {
+        for (index in 0 until tools.length()) {
+            tools.optJSONObject(index)
+                ?.optJSONObject("function")
+                ?.optString("name")
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::add)
+        }
+    }
+
     private fun filterWithheld(emitted: JSONArray, withheld: Set<String>): JSONArray {
         if (withheld.isEmpty()) return emitted
         val kept = JSONArray()

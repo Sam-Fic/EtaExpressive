@@ -128,8 +128,9 @@ class InteractiveModePromptContractTest(unittest.TestCase):
             for _, arguments in calls:
                 self.assertNotIn('interactiveModeEnabled', arguments)
                 self.assertNotIn('InteractiveModePreference', arguments)
-        client_tools = self.client.split('fun toolsFor(', 1)[1].split('val tools = toolsFor(initialCapabilities)', 1)[0]
-        overhead_tools = self.overhead.split('val tools = AgentToolCatalog.build(', 1)[1].split('onProtocolPreview?.let', 1)[0]
+        client_tools = self.client.split('fun toolsFor(', 1)[1].split('val tools = toolsFor(initialCapabilities', 1)[0]
+        overhead_tools = self.overhead.split('val tools = AgentToolCatalog.build(', 1)[1].split(
+            'AgentPromptBuilder.buildSystemMessages', 1)[0]
         for tool_assembly in (client_tools, overhead_tools):
             self.assertNotIn('interactiveModeEnabled', code_mask(tool_assembly))
             self.assertNotIn('InteractiveModePreference', code_mask(tool_assembly))
@@ -148,10 +149,10 @@ class InteractiveModePromptContractTest(unittest.TestCase):
         for text in (self.builder, self.client, self.overhead):
             self.assertNotIn('AgentTaskSurface.save', text)
             self.assertNotIn('Prefs.putBoolean', text)
-        self.assertEqual(1, self.builder.count('interactiveModePromptClause(interactiveModeEnabled)'))
+        self.assertEqual(1, self.builder.count('interactiveModePromptClause(interactiveModeEnabled, ::named)'))
         # The clause closes the base guidance message: screen/terminal guidance now lives in
         # group-conditional blocks, so the tail before it is the conditional's `else ""`.
-        self.assertIn('} else "") +\n                    interactiveModePromptClause(interactiveModeEnabled)', self.builder)
+        self.assertIn('} else "") +\n                    interactiveModePromptClause(interactiveModeEnabled, ::named)', self.builder)
 
 
 if __name__ == '__main__':

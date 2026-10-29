@@ -27,24 +27,7 @@ internal object AgentRequestOverhead {
         // 否则会高估或低估固定开销。
         val disabledCapabilities =
             AgentModelClient.ToolCapabilitySwitches.capture().toDisabledState()
-        val systemMessages = AgentPromptBuilder.buildSystemMessages(
-            config = config,
-            skillContext = skillContext,
-            memoryContext = memoryContext,
-            rootAvailable = capabilities.rootAvailable,
-            delegationAvailable = AgentPromptBuilder.delegationToolsAvailable(additionalTools),
-            shellTools = capabilities.shellTools,
-            interactiveModeEnabled = interactiveModeEnabled,
-            disabledCapabilities = disabledCapabilities,
-        )
-        var tokens = 0
-        for (index in 0 until systemMessages.length()) {
-            val content = systemMessages.optJSONObject(index)?.optString("content").orEmpty()
-            if (content.isBlank()) continue
-            tokens += AgentContextBudget.countMessage(
-                AgentModelClient.ConversationMessage(role = "system", content = content),
-            )
-        }
+        // 目录先算：提示只点名目录里真实存在的工具，两边必须同源。
         val tools = AgentToolCatalog.build(
             basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
             terminalTools = config.terminalTools,
@@ -67,6 +50,25 @@ internal object AgentRequestOverhead {
         )
         for (index in 0 until additionalTools.length()) {
             additionalTools.opt(index)?.let(tools::put)
+        }
+        val systemMessages = AgentPromptBuilder.buildSystemMessages(
+            config = config,
+            skillContext = skillContext,
+            memoryContext = memoryContext,
+            rootAvailable = capabilities.rootAvailable,
+            delegationAvailable = AgentPromptBuilder.delegationToolsAvailable(additionalTools),
+            shellTools = capabilities.shellTools,
+            interactiveModeEnabled = interactiveModeEnabled,
+            disabledCapabilities = disabledCapabilities,
+            callableTools = AgentToolCatalog.toolNames(tools),
+        )
+        var tokens = 0
+        for (index in 0 until systemMessages.length()) {
+            val content = systemMessages.optJSONObject(index)?.optString("content").orEmpty()
+            if (content.isBlank()) continue
+            tokens += AgentContextBudget.countMessage(
+                AgentModelClient.ConversationMessage(role = "system", content = content),
+            )
         }
         if (tools.length() > 0) {
             tokens += AgentContextBudget.countTokens(tools.toString())
