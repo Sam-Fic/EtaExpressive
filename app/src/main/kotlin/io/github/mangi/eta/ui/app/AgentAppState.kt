@@ -7875,6 +7875,7 @@ private fun toolGroupTitleRes(groupId: String): Int = when (groupId) {
     AgentToolGroups.DEVICE_GROUP.id -> R.string.settings_device_tools
     AgentToolGroups.CALENDAR_GROUP.id -> R.string.settings_calendar_tools
     AgentToolGroups.PERSONAL_GROUP.id -> R.string.settings_personal_tools
+    AgentToolGroups.DEVICE_STATE_GROUP.id -> R.string.settings_device_state_tools
     AgentToolGroups.EXTENSIONS_GROUP.id -> R.string.settings_extensions_tools
     else -> R.string.settings_tools_list
 }

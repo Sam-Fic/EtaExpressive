@@ -709,6 +709,7 @@
   <string name="settings_calendar_tools">行事曆寫入</string>
   <string name="settings_device_tools_summary">鬧鐘、計時器、音量與媒體播放，以及修改設定、網路、顯示、電源、應用與便條。</string>
   <string name="settings_personal_tools">個人資料</string>
+  <string name="settings_device_state_tools">裝置狀態</string>
   <string name="settings_personal_tools_summary">讀取你的個人內容（聯絡人、簡訊、通話、日曆、便條、帳單、行程、錄音、檔案）與裝置狀態（設定、鬧鐘、位置、應用使用）。</string>
   <string name="settings_extensions_tools">Eta 設定與擴充</string>
   <string name="settings_extensions_tools_summary">允許模型管理 Eta 自身（模型、子代理、歷史、MCP、設定）、撰寫自己的配方工具、安裝 Skills 並寫入長期記憶。</string>

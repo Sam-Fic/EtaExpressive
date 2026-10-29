@@ -192,7 +192,10 @@ class AgentToolGroupsTest {
             AgentToolGroups.migrateLegacyGroupId("device_sensitive"),
         )
         assertEquals(setOf(AgentToolGroups.PERSONAL_GROUP.id), AgentToolGroups.migrateLegacyGroupId("personal_data"))
-        assertEquals(setOf(AgentToolGroups.PERSONAL_GROUP.id), AgentToolGroups.migrateLegacyGroupId("device_state"))
+        assertEquals(
+            setOf(AgentToolGroups.DEVICE_STATE_GROUP.id),
+            AgentToolGroups.migrateLegacyGroupId("device_state"),
+        )
         assertEquals(setOf(AgentToolGroups.EXTENSIONS_GROUP.id), AgentToolGroups.migrateLegacyGroupId("self"))
         assertEquals(setOf("terminal"), AgentToolGroups.migrateLegacyGroupId("terminal"))
         assertEquals(emptySet<String>(), AgentToolGroups.migrateLegacyGroupId("media_search"))

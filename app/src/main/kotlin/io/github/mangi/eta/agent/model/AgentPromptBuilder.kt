@@ -150,6 +150,7 @@ internal object AgentPromptBuilder {
                 AgentToolGroups.DEVICE_GROUP.id -> config.deviceTools
                 AgentToolGroups.CALENDAR_GROUP.id -> config.deviceTools
                 AgentToolGroups.PERSONAL_GROUP.id -> config.personalTools
+                AgentToolGroups.DEVICE_STATE_GROUP.id -> config.personalTools
                 AgentToolGroups.EXTENSIONS_GROUP.id ->
                     Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
                 else -> Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS)
@@ -170,6 +171,8 @@ internal object AgentPromptBuilder {
         val deviceActive = active(AgentToolGroups.DEVICE_GROUP.id) ||
             active(AgentToolGroups.CALENDAR_GROUP.id)
         val personalActive = active(AgentToolGroups.PERSONAL_GROUP.id)
+        val deviceStateActive = active(AgentToolGroups.DEVICE_STATE_GROUP.id)
+        val extensionsActive = active(AgentToolGroups.EXTENSIONS_GROUP.id)
         // 提示点名的工具必须真的在本轮目录里。目录会因为 Root、运行时权限、无障碍、
         // 延迟组未打开等原因缺掉一部分工具；提示若照旧点名，模型调用它就会被校验器拒掉，
         // 连续三次直接终止整轮——表现就是「第一次调用成功，后面全都调不了」。
@@ -239,16 +242,22 @@ internal object AgentPromptBuilder {
                     "子代理不能直接向你提问，缺少必要信息时由你在主代理这里向用户询问；" +
                     "不依赖中间界面变化的连续操作可以在同一轮一并调用，不要为了展示思考而拆成多个回合；" +
                     "工具已向你公开表示对应能力已由用户开启。" +
-                    (if (terminalActive || personalActive) {
+                    (if (terminalActive || personalActive || deviceStateActive) {
                     "用户要求‘了解我’、分析最近状态或活动、总结习惯与偏好、判断工作生活情况，" +
                     "或请求个性化建议时，应主动选择相册、日历、联系人、通话、短信、便签、录音、系统记忆、文件、通知和聊天图片等当前可用来源。" +
                     "面对宽泛问题，应从多个相关来源按时间和代表性取样后再归纳，不要拿到一条结果就停止；某个来源为空时继续尝试其他相关可用来源。"
                     } else "") +
                     (if (!rootAvailable) {
                         "当前没有设备 Root 权限，只能使用本轮公开的工具与已授权的数据来源；不要尝试 su、特权 Shell 或其他应用私有数据。"
+                    } else if (extensionsActive) {
+                        // 自建配方能把「定位→有界提取」固化进一次调用；缺少专用工具时应先走它，
+                        // 而不是用 shell 一轮轮试探格式（曾观测到 23 轮 run_command 才被用户点醒）。
+                        "没有专用工具能读取的数据，优先用 eta_author_tool 写一个配方，把定位与提取步骤固定下来；" +
+                        "不要用 Shell 逐轮试探文件格式或数据库 schema。"
                     } else if (terminalActive) {
                         // 只有终端/文件工具在场时这条才可执行；否则它只是白付 token 的空承诺。
-                        "专用读取工具不存在或数据不足时，只要 Root Shell、文件或终端工具当前已公开，可以主动使用它们定位并只读检查相关应用私有文件与数据库；先识别路径、格式和 schema，再执行有界查询，不修改源数据。"
+                        "专用读取工具不存在或数据不足时，只要 Root Shell、文件或终端工具当前已公开，可以主动使用它们定位并只读检查相关应用私有文件与数据库；先识别路径、格式和 schema，再执行有界查询，不修改源数据。" +
+                        "连续几次探测仍拿不到结构化数据时停止，改向用户说明限制，不要无限尝试。"
                     } else "") +
                     "结论必须说明实际证据与不确定性，不得编造未取得的数据。" +
                     (if (personalActive) {

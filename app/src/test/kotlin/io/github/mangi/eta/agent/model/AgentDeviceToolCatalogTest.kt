@@ -42,11 +42,30 @@ class AgentDeviceToolCatalogTest {
         )
     }
 
-    @Test fun personalGroupIsExactlyTheTwoReadTiers() {
+    @Test fun personalGroupIsExactlyThePersonalContentTier() {
         assertEquals(
-            AgentDeviceToolCatalog.personalReadToolNames() + AgentDeviceToolCatalog.deviceStateReadToolNames(),
+            AgentDeviceToolCatalog.personalReadToolNames(),
             names(deviceTools = false, personalTools = true),
         )
+    }
+
+    /** 设备状态读取独立成组：旧版与个人内容合并成 33 个工具，一次查联系人要多背 18 个 schema。 */
+    @Test fun deviceStateReadsAreWithheldUntilTheirOwnGroupOpens() {
+        val withheld = AgentToolCatalog.build(
+            basicTools = false, terminalTools = false, browserTools = false, screenTools = false,
+            deviceTools = false, personalTools = true, extensionsTools = false,
+            capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
+            openedToolGroups = setOf(AgentToolGroups.PERSONAL_GROUP.id),
+        ).toolNames()
+        assertEquals(AgentDeviceToolCatalog.personalReadToolNames(), withheld)
+
+        val both = AgentToolCatalog.build(
+            basicTools = false, terminalTools = false, browserTools = false, screenTools = false,
+            deviceTools = false, personalTools = true, extensionsTools = false,
+            capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
+            openedToolGroups = setOf(AgentToolGroups.PERSONAL_GROUP.id, AgentToolGroups.DEVICE_STATE_GROUP.id),
+        ).toolNames()
+        assertEquals(AgentDeviceToolCatalog.deviceStateReadToolNames(), both - withheld)
     }
 
     @Test fun bothGroupsOffPublishesNothingOnTheDeviceSide() {
@@ -66,7 +85,10 @@ class AgentDeviceToolCatalogTest {
             capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
             openedToolGroups = AgentToolGroups.allIds,
         ).toolNames()
-        assertEquals(AgentToolGroups.PERSONAL_GROUP.toolNames, withMedia)
+        assertEquals(
+            AgentToolGroups.PERSONAL_GROUP.toolNames + AgentToolGroups.DEVICE_STATE_GROUP.toolNames,
+            withMedia,
+        )
     }
 
     @Test fun representativeToolsLandInTheGroupUsersWouldExpect() {
@@ -82,7 +104,7 @@ class AgentDeviceToolCatalogTest {
             "update_alarm", "delete_alarm",
         ).forEach { assertTrue("$it 应属设备控制组", it in device) }
 
-        // 个人内容读与设备状态读同属一组。
+        // 个人内容读与设备状态读分别成组，但同受个人数据开关门禁。此处两组都已打开。
         listOf(
             "read_sms_code", "search_messages", "search_contacts", "get_health_summary",
             "search_coloros_notes", "search_coloros_recordings", "search_recording_summaries",

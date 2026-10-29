@@ -117,28 +117,47 @@ internal object AgentToolGroups {
     )
 
     /**
-     * 个人数据：个人内容读取 + 设备状态读取 + 媒体语义搜索。
-     * 旧版是「敏感读总闸 + 两档细分」三个开关；合并为一组，档位差异由单工具开关承接。
-     * semantic_search_media 额外受媒体搜索开关门禁。
+     * 个人内容读取 + 媒体语义搜索。semantic_search_media 额外受媒体搜索开关门禁。
+     *
+     * 设备状态读取曾与此组合并（两档旧开关退役时并为一组），但两者的数据来源与使用场景
+     * 没有交集：查联系人和看 logcat 是两件事。33 个工具的合组会让一次「找联系人」
+     * 多背 18 个与本任务无关的 schema，因此重新拆开，开关仍共用个人数据总开关。
      */
     val PERSONAL_GROUP: AgentToolGroup = AgentToolGroup(
         id = "personal",
-        summary = "Personal content (contacts, messages, calls, calendars, notes, bills, trips, " +
-            "recordings, files), device state (settings, alarms, location, app usage), " +
-            "semantic media search.",
+        summary = "Personal content: contacts, call log, SMS, personal notes and recordings, " +
+            "files and downloads, bills/todos/trips, chat images, semantic media search.",
         toolNames = AgentDeviceToolCatalog.personalReadToolNames() +
-            AgentDeviceToolCatalog.deviceStateReadToolNames() +
             setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA),
     )
 
     /**
-     * Eta 自身与扩展：自设置管理、自写配方工具、Skills 的 GitHub 发现/安装、记忆写入。
+     * 设备状态读取：设置项、闹钟与计时器、通知、位置、日志、网络与显示状态。
+     *
+     * 与 [PERSONAL_GROUP] 同受个人数据总开关门禁：它们读的都是本机实时状态，
+     * 旧版也归在同一档「敏感读取」里，拆组只是为了缩小一次任务要载入的 schema。
+     */
+    val DEVICE_STATE_GROUP: AgentToolGroup = AgentToolGroup(
+        id = "device_state",
+        summary = "Read-only device state: settings, alarms/timers, notifications, location, " +
+            "logcat/dumpsys, network, display and sound, installed apps.",
+        toolNames = AgentDeviceToolCatalog.deviceStateReadToolNames(),
+    )
+
+    /**
+     * Eta 自身与扩展：自写配方（排在最前）、自设置管理、Skills 的 GitHub 发现/安装、记忆写入。
      * 组开关沿用「模型不能自己关掉自己配置能力」的原则：不出现在 eta_set_settings 可改列表。
+     *
+     * 自写配方放在摘要首位是刻意的：没有专用工具能读的数据（各厂商便签、私有数据库），
+     * 正确做法是 author 一个配方，而不是用 root shell 一轮轮挖。曾观测到模型把
+     * recipe 功能排到第 5 位才看见，先花了 23 次 run_command 去做字符串提取。
      */
     val EXTENSIONS_GROUP: AgentToolGroup = AgentToolGroup(
         id = "extensions",
-        summary = "Manage Eta itself (models, sub-agents, history, MCP, settings), author recipe " +
-            "tools, discover/install Skills from GitHub or local packages, write long-term memory.",
+        summary = "Author your own reusable tool as a recipe (eta_author_tool, eta_list_recipes) " +
+            "when no built-in tool can read the data; manage Eta itself (models, sub-agents, " +
+            "history, MCP, settings); discover/install Skills from GitHub or local packages; " +
+            "write long-term memory.",
         toolNames = AgentSelfSettingsToolCatalog.manageTools() + setOf(
             AgentSelfSettingsToolCatalog.GET_SETTINGS,
             AgentSelfSettingsToolCatalog.SET_SETTINGS,
@@ -156,6 +175,7 @@ internal object AgentToolGroups {
         DEVICE_GROUP,
         CALENDAR_GROUP,
         PERSONAL_GROUP,
+        DEVICE_STATE_GROUP,
         EXTENSIONS_GROUP,
     )
 
@@ -242,6 +262,7 @@ internal object AgentToolGroups {
         DEVICE_GROUP.id -> switches.deviceTools
         CALENDAR_GROUP.id -> switches.deviceTools
         PERSONAL_GROUP.id -> switches.personalTools
+        DEVICE_STATE_GROUP.id -> switches.personalTools
         EXTENSIONS_GROUP.id -> switches.extensionsTools
         else -> false
     }
@@ -341,10 +362,12 @@ internal object AgentToolGroups {
     fun migrateLegacyGroupId(legacyId: String): Set<String> = when (legacyId) {
         // 旧快照里 device 是含日程的合组，恢复时日程工具也要一并可见。
         "device_direct", "device_sensitive" -> setOf(DEVICE_GROUP.id, CALENDAR_GROUP.id)
-        "personal_data", "device_state" -> setOf(PERSONAL_GROUP.id)
+        // 旧两档敏感读取；拆组后各归其位（两者都不再对应合并后的 personal）。
+        "personal_data" -> setOf(PERSONAL_GROUP.id)
+        "device_state" -> setOf(DEVICE_STATE_GROUP.id)
         "self" -> setOf(EXTENSIONS_GROUP.id)
         "terminal", "screen", "web" -> setOf(legacyId)
-        "basic", "device", "personal", "extensions" -> setOf(legacyId)
+        "basic", "device", "personal", "extensions", "calendar" -> setOf(legacyId)
         // media_search 等旧展示分组不再是开关组；无对应新组。
         else -> emptySet()
     }

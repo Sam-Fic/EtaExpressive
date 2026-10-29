@@ -697,6 +697,7 @@
   <string name="settings_calendar_tools">Calendar events</string>
   <string name="settings_device_tools_summary">Alarms, timers, volume and media, plus changing settings, network, display, power, apps and notes.</string>
   <string name="settings_personal_tools">Personal data</string>
+  <string name="settings_device_state_tools">Device state</string>
   <string name="settings_personal_tools_summary">Read your own content (contacts, messages, calls, calendars, notes, bills, trips, recordings, files) and device state (settings, alarms, location, app usage).</string>
   <string name="settings_extensions_tools">Eta configuration and extensions</string>
   <string name="settings_extensions_tools_summary">Let the model manage Eta itself (models, sub-agents, history, MCP, settings), write its own recipe tools, install Skills and write long-term memory.</string>

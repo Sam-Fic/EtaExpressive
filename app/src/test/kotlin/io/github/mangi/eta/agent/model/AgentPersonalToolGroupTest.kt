@@ -84,14 +84,15 @@ class AgentPersonalToolGroupTest {
         assertFalse("set_alarm" in opened)
     }
 
-    @Test fun readTiersStayDisjointInsideOneGroup() {
-        // 两档合并成一组后，成员划分仍然要互斥：迁移把它们写进单工具禁用集时才不会互相误伤。
+    @Test fun readTiersAreSplitIntoTheirOwnGroups() {
+        // 两档共用个人数据总开关，但各自成组：查联系人时不必载入 logcat 与设置项的 schema。
         val personal = AgentDeviceToolCatalog.personalReadToolNames()
         val deviceState = AgentDeviceToolCatalog.deviceStateReadToolNames()
         assertEquals(emptySet<String>(), personal.intersect(deviceState))
         assertEquals(
-            personal + deviceState,
-            (personal + deviceState).intersect(AgentToolGroups.PERSONAL_GROUP.toolNames),
+            personal + AgentMediaSearchToolCatalog.SEARCH_MEDIA,
+            AgentToolGroups.PERSONAL_GROUP.toolNames,
         )
+        assertEquals(deviceState, AgentToolGroups.DEVICE_STATE_GROUP.toolNames)
     }
 }

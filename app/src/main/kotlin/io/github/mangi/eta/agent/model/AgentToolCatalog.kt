@@ -46,6 +46,7 @@ internal object AgentToolCatalog {
                 AgentToolGroups.DEVICE_GROUP.id -> deviceTools
                 AgentToolGroups.CALENDAR_GROUP.id -> deviceTools
                 AgentToolGroups.PERSONAL_GROUP.id -> personalTools
+                AgentToolGroups.DEVICE_STATE_GROUP.id -> personalTools
                 AgentToolGroups.EXTENSIONS_GROUP.id -> extensionsTools
                 else -> false
             }
