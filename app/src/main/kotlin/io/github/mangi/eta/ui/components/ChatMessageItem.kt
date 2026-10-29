@@ -5,6 +5,7 @@ import io.github.mangi.eta.ui.markdown.PreparedMarkdownBlock
 import io.github.mangi.eta.ui.markdown.PreparedMarkdownSpec
 import io.github.mangi.eta.ui.markdown.ChatSelectableText
 import android.graphics.BitmapFactory
+import android.icu.text.ListFormatter
 import android.util.Base64
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -183,7 +184,6 @@ import com.mikepenz.markdown.model.markdownPadding
 import com.mikepenz.markdown.utils.getUnescapedTextInNode
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.haptics.TouchHaptics
-import io.github.mangi.eta.ui.adaptive.EtaStatus
 import io.github.mangi.eta.ui.adaptive.etaOnSurface
 import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
 import io.github.mangi.eta.ui.adaptive.etaPrimary
@@ -464,6 +464,8 @@ internal fun ChatMessageItem(
     speechPreface: String = "",
     userBubblePosition: UserBubblePosition = UserBubblePosition.Single,
     onThinkingToggle: ((String, Boolean) -> Unit)? = null,
+    /** 本行在连续分段列表（同组步骤）里的位置，传给思考 / 工具气泡。 */
+    segmentedPosition: SegmentedRowPosition = SegmentedRowPosition.Whole,
 ) {
     when (message) {
         is io.github.mangi.eta.ui.model.AgentQuestionMessageUi -> AgentQuestionCard(message, modifier,
@@ -546,6 +548,7 @@ internal fun ChatMessageItem(
             modifier = modifier,
             isPaused = isPaused,
             onToggle = onThinkingToggle,
+            position = segmentedPosition,
         )
         is RunTraceMessageUi -> RunTraceRow(message = message, onClick = actions.onRunTraceClick, modifier = modifier)
         is ToolActivityMessageUi -> ToolActivityInline(
@@ -554,6 +557,7 @@ internal fun ChatMessageItem(
             showBrowserShortcut = showBrowserShortcut,
             enableLivePreview = enableLivePreview,
             modifier = modifier,
+            position = segmentedPosition,
         )
         is ToolSummaryMessageUi -> ToolSummaryInline(message = message, modifier = modifier)
         is ContextCompactedMessageUi -> ContextCompactedDivider(message = message, modifier = modifier)
@@ -3192,6 +3196,7 @@ private fun ThinkingRow(
     modifier: Modifier = Modifier,
     isPaused: Boolean = false,
     onToggle: ((String, Boolean) -> Unit)? = null,
+    position: SegmentedRowPosition = SegmentedRowPosition.Whole,
 ) {
     val bodyTraceMount = remember { nextChatBodyTraceMount() }
     SideEffect { traceChatBodyRun("thinking", bodyTraceMount) }
@@ -3273,59 +3278,119 @@ private fun ThinkingRow(
         }
     AgentWorkSegmentedBubble(
         leading = {
+            // 严格官方默认：裸 Icon（24dp + 官方 ItemBetweenSpace 12dp）；
+            // 流式进行中是特殊情况，用 primary 单独着色（呼吸透明度是动效反馈）。
             Icon(
                 imageVector = Icons.Rounded.AutoAwesome,
                 contentDescription = null,
-                modifier = Modifier
-                    .size(EtaDimens.DenseIconSize)
-                    .graphicsLayer { alpha = if (message.isStreaming && !isPaused) pulseAlpha() else 1f },
-                tint = if (message.isStreaming && !isPaused) etaPrimary() else etaOnSurfaceVariant(),
+                tint = if (message.isStreaming && !isPaused) etaPrimary() else Color.Unspecified,
+                modifier = Modifier.graphicsLayer { alpha = if (message.isStreaming && !isPaused) pulseAlpha() else 1f },
             )
         },
         title = thinkingTitle,
-        titleColor = if (message.isStreaming && !isPaused) etaOnSurface() else etaOnSurfaceVariant(),
+        titleColor = if (message.isStreaming && !isPaused) etaPrimary() else null,
         modifier = modifier,
         expanded = expanded,
         onToggle = toggle,
         details = thinkingDetails,
         expandAnimationModifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
+        position = position,
     )
 }
 
-// ── 中间回复（激进档并入工作组的正文回复） ───────────────────────────
+// ── 工作组摘要（激进折叠档） ─────────────────────────────────────────
 
 /**
- * 激进档并入工作组的中间回复：与思考/工具步骤一样扁平化为一条可展开的
- * SegmentedListItem 气泡（标题取正文首行，展开后显示完整 Markdown），
- * 不再整段平铺在对话流里，也不嵌套进组头卡片。
+ * 激进折叠档收起的工作组摘要：一条「已完成 N 个步骤」的 SegmentedListItem 气泡。
+ * 收起时整组只留这一行（本轮只剩用户消息与最后一条回复）；点开后步骤行以兄弟行
+ * 出现在列表里（由 AgentChatBody 的投影切换），不再是卡中卡。
  */
 @Composable
-internal fun IntermediateReplyStepRow(
-    message: AgentMessageUi,
+internal fun AgentWorkProcessSummary(
+    group: AgentTimelineEntry.WorkProcess,
+    expanded: Boolean,
     modifier: Modifier = Modifier,
+    isPaused: Boolean = false,
+    onToggle: () -> Unit,
 ) {
-    val title = message.content.lineSequence().firstOrNull { it.isNotBlank() }
-        ?.take(80)
-        ?: stringResource(R.string.system_notice_empty_result)
+    val messages = group.messages
+    val running = messages.any { message ->
+        (message is ThinkingMessageUi && message.isStreaming) ||
+            (message is ToolActivityMessageUi && message.status == ToolActivityStatusUi.Running)
+    }
+    val toolCount = messages.count { it is ToolActivityMessageUi }
+    // 激进档摘要可能没有工具调用、只有被并进来的中间回复，摘要据此读作「N 条中间回复」。
+    val replyCount = messages.count { it is AgentMessageUi && it.content.isNotBlank() }
+    // 已作答的提问卡同样会被并进来：只有问答的组不该顶着工具锤子图标。
+    val questionCount = messages.count { it is io.github.mangi.eta.ui.model.AgentQuestionMessageUi }
+    val runningTool = if (running) {
+        messages.lastOrNull { message ->
+            message is ToolActivityMessageUi && message.status == ToolActivityStatusUi.Running
+        } as? ToolActivityMessageUi
+    } else null
+    val runningToolTitle = runningTool?.argumentsSummary?.takeIf { it.isNotBlank() }
+        ?: runningTool?.let { toolDisplayName(it.toolName) }
+    val view = LocalView.current
+    // 收起态用一行列出本组实际跑过的工具名（去重、本地化列表连接）：
+    // 折叠时也能看清「干了什么」，不必先展开。展开态与运行中都不加这行。
+    val stepToolsLabel = if (running || expanded) {
+        null
+    } else {
+        val names = messages.mapNotNull { message ->
+            (message as? ToolActivityMessageUi)?.toolName
+        }
+            .distinct()
+            .map { toolDisplayName(view.context.resources, it) }
+        if (names.isEmpty()) {
+            null
+        } else {
+            ListFormatter.getInstance(view.context.resources.configuration.locales[0])
+                .format(names)
+        }
+    }
+    val headerLabel = when {
+        running && toolCount > 0 -> pluralStringResource(
+            R.plurals.work_processing_step,
+            toolCount,
+            toolCount,
+        ) + (runningToolTitle?.let { " · $it" } ?: "")
+        running -> stringResource(R.string.work_analyzing)
+        toolCount > 0 -> pluralStringResource(
+            R.plurals.work_completed_steps,
+            toolCount,
+            toolCount,
+        ) + if (replyCount > 0) {
+            " · " + pluralStringResource(R.plurals.work_intermediate_replies, replyCount, replyCount)
+        } else {
+            ""
+        }
+        replyCount > 0 -> pluralStringResource(
+            R.plurals.work_intermediate_replies,
+            replyCount,
+            replyCount,
+        )
+        else -> stringResource(R.string.work_completed)
+    }
     AgentWorkSegmentedBubble(
         leading = {
-            Icon(
-                imageVector = Icons.Rounded.QuestionAnswer,
-                contentDescription = null,
-                modifier = Modifier.size(EtaDimens.DenseIconSize),
-                tint = etaOnSurfaceVariant(),
+            PreferenceIcon(
+                icon = when {
+                    runningTool != null -> ToolPresentation.icon(runningTool.toolName)
+                    running -> Icons.Rounded.AutoAwesome
+                    toolCount == 0 && (replyCount > 0 || questionCount > 0) -> Icons.Rounded.QuestionAnswer
+                    else -> Icons.Rounded.Build
+                },
+                tint = if (running && !isPaused) etaPrimary() else null,
             )
         },
-        title = title,
-        titleColor = etaOnSurfaceVariant(),
+        title = headerLabel,
+        titleColor = if (running && !isPaused) etaPrimary() else null,
+        supporting = stepToolsLabel,
         modifier = modifier,
-        details = {
-            StableMarkdown(
-                content = message.content,
-                tone = ChatMarkdownTone.Answer,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
+        expanded = expanded,
+        onToggle = onToggle,
+        // 折叠态是单独一条（外圆）；展开后步骤行接在下面，摘要行成为组首（下沿内圆）。
+        position = if (expanded) SegmentedRowPosition.First else SegmentedRowPosition.Whole,
     )
 }
 
@@ -3429,36 +3494,37 @@ private fun ToolStatusIndicator(status: ToolActivityStatusUi) {
                     .semantics(mergeDescendants = true) {
                         contentDescription = runningLabel
                     },
-                color = current.etaStatus().foregroundColor(),
+                color = MaterialTheme.colorScheme.primary,
             )
+            // 成功是常态：用设置页 PreferenceIcon 同款 onSurfaceVariant，不抢注意力。
             ToolActivityStatusUi.Success -> Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = stringResource(R.string.tool_status_success),
                 modifier = Modifier.size(EtaDimens.StatusIconSize),
-                tint = etaOnSurfaceVariant().copy(alpha = 0.7f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             ToolActivityStatusUi.Failed -> Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // 文字已承载标签，图标不再重复播报。
+                // 文字已承载标签，图标不再重复播报。错误用官方 error 角色。
                 Icon(
                     imageVector = Icons.Rounded.ErrorOutline,
                     contentDescription = null,
                     modifier = Modifier.size(EtaDimens.StatusIconSize),
-                    tint = current.etaStatus().foregroundColor(),
+                    tint = MaterialTheme.colorScheme.error,
                 )
                 Text(
                     text = stringResource(R.string.tool_status_failed),
                     style = chatTertiaryStyle(),
-                    color = current.etaStatus().foregroundColor(),
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
             ToolActivityStatusUi.Unknown -> Icon(
                 imageVector = Icons.Rounded.Remove,
                 contentDescription = stringResource(R.string.tool_status_unknown),
                 modifier = Modifier.size(EtaDimens.StatusIconSize),
-                tint = current.etaStatus().foregroundColor(),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -3471,6 +3537,7 @@ private fun ToolActivityInline(
     showBrowserShortcut: Boolean,
     enableLivePreview: Boolean = true,
     modifier: Modifier = Modifier,
+    position: SegmentedRowPosition = SegmentedRowPosition.Whole,
 ) {
     val bodyTraceMount = remember { nextChatBodyTraceMount() }
     SideEffect { traceChatBodyRun("tool", bodyTraceMount) }
@@ -3650,32 +3717,31 @@ private fun ToolActivityInline(
     }
     AgentWorkSegmentedBubble(
         leading = {
+            // 严格官方默认：裸 Icon；成功是常态走默认色调，运行中用 primary、
+            // 失败用官方 error 角色单独着色。
             Icon(
                 imageVector = ToolPresentation.icon(message.toolName),
                 contentDescription = null,
-                modifier = Modifier.size(EtaDimens.DenseIconSize),
                 tint = when (message.status) {
-                    // 成功是常态，前导图标刻意降档弱化；其余状态走 L1 语义色映射。
-                    ToolActivityStatusUi.Success -> etaOnSurfaceVariant().copy(alpha = 0.8f)
-                    else -> message.status.etaStatus().foregroundColor()
+                    ToolActivityStatusUi.Success -> Color.Unspecified
+                    ToolActivityStatusUi.Running -> etaPrimary()
+                    ToolActivityStatusUi.Failed -> MaterialTheme.colorScheme.error
+                    ToolActivityStatusUi.Unknown -> Color.Unspecified
                 },
             )
         },
         title = title,
-        titleColor = if (message.status == ToolActivityStatusUi.Running) {
-            etaOnSurface()
-        } else {
-            etaOnSurfaceVariant()
-        },
+        titleColor = if (message.status == ToolActivityStatusUi.Running) etaPrimary() else null,
         modifier = modifier.let { completedContentDrawLayer(it, toolRowSettled) },
-        // 副标题优先级：失败原因 > 浏览器实时状态 > 图片张数。
+        // 副标题优先级：失败原因 > 浏览器实时状态 > 图片张数；失败原因用官方 error 角色着色。
         supporting = failureSubtitle ?: browserSubtitle ?: imageCountLabel,
-        supportingColor = failureSubtitle?.let { EtaStatus.Failed.foregroundColor() },
+        supportingColor = failureSubtitle?.let { MaterialTheme.colorScheme.error },
         trailingStatus = { ToolStatusIndicator(message.status) },
         expanded = isExpanded,
         onToggle = if (hasDetails) toggle else null,
         details = toolDetails,
         expandAnimationModifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
+        position = position,
     )
 }
 
@@ -4218,11 +4284,3 @@ private fun SuggestionChipsRow(
 }
 
 // ── 辅助 ──────────────────────────────────────────────────────────────
-
-/** 工具状态 → L1 语义档位。到官方角色的映射见 [EtaStatus.foregroundColor]。 */
-private fun ToolActivityStatusUi.etaStatus(): EtaStatus = when (this) {
-    ToolActivityStatusUi.Running -> EtaStatus.Running
-    ToolActivityStatusUi.Success -> EtaStatus.Success
-    ToolActivityStatusUi.Failed -> EtaStatus.Failed
-    ToolActivityStatusUi.Unknown -> EtaStatus.Unknown
-}

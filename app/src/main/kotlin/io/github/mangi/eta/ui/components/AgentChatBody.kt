@@ -48,6 +48,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.produceState
@@ -856,10 +858,35 @@ internal fun AgentConversationMessages(
             }
         }
     }
+    // 激进折叠档：整轮停下且已给出正文回复后，回答之前的工作组折叠成一条摘要行。
+    // 用户手动展开过的组用 overrides 记住（组消失时清理）；生成过程中一律摊开。
+    val expansionSaver = remember {
+        listSaver<Map<String, Boolean>, String>(
+            save = { value -> value.flatMap { (key, expanded) -> listOf(key, expanded.toString()) } },
+            restore = { value -> value.chunked(2).filter { it.size == 2 }.associate { it[0] to (it[1] == "true") } },
+        )
+    }
+    var workExpansionOverrides by rememberSaveable(stateSaver = expansionSaver) {
+        mutableStateOf<Map<String, Boolean>>(emptyMap())
+    }
+    val isTurnSettled = !isStreaming && !isPaused && !isCompressingContext
+    val foldedWorkKeys = remember(projectedTimelineEntries, aggressiveFold, isTurnSettled) {
+        projectedTimelineEntries.aggressiveFoldedWorkKeys(aggressiveFold && isTurnSettled)
+    }
+    LaunchedEffect(projectedTimelineEntries) {
+        val activeKeys = projectedTimelineEntries.filterIsInstance<AgentTimelineEntry.WorkProcess>().mapTo(mutableSetOf()) { it.key }
+        if (workExpansionOverrides.keys.any { it !in activeKeys }) {
+            workExpansionOverrides = workExpansionOverrides.filterKeys { it in activeKeys }
+        }
+    }
     val timelineRowsProjection = remember { AgentTimelineRowsCache() }
-    val timelineRows = remember(projectedTimelineEntries) {
+    val timelineRows = remember(projectedTimelineEntries, foldedWorkKeys, workExpansionOverrides) {
         StreamPerformanceDiagnostics.measure("timeline.project", projectedTimelineEntries.size.toLong()) {
-            timelineRowsProjection.project(projectedTimelineEntries)
+            timelineRowsProjection.project(
+                projectedTimelineEntries,
+                foldedWorkKeys,
+                workExpansionOverrides.filterValues { it }.keys,
+            )
         }
     }
     // 连续用户气泡的组内位置（Single / GroupFirst / GroupMid / GroupLast），按实际行相邻判定。
@@ -1531,10 +1558,22 @@ internal fun AgentConversationMessages(
             },
     ) {
         val speechPrefaceProjection = remember { AgentSpeechPrefaceCache() }
-        // 工作过程不再折叠：所有步骤行都直接可见，朗读范围与可见行一致。
-        val speechPrefaces = remember(visibleMessages, finalResultMessageIds) {
+        // 朗读范围与界面展示一致：激进折叠收起且未展开的工作组里，中间回复不可见，
+        // 朗读 preface 同步剔除。展开摘要后这些回复重新可见，preface 随之恢复。
+        val foldedReplyIds = remember(timelineRows) {
+            buildSet {
+                timelineRows.forEach { row ->
+                    if (row is AgentTimelineRow.WorkSummary && !row.expanded) {
+                        row.group.messages.forEach { message ->
+                            if (message is AgentMessageUi) add(message.id)
+                        }
+                    }
+                }
+            }
+        }
+        val speechPrefaces = remember(visibleMessages, finalResultMessageIds, foldedReplyIds) {
             StreamPerformanceDiagnostics.measure("timeline.prefaces", visibleMessages.size.toLong()) {
-                speechPrefaceProjection.project(visibleMessages, finalResultMessageIds, emptySet())
+                speechPrefaceProjection.project(visibleMessages, finalResultMessageIds, foldedReplyIds)
             }
         }
         val messageActions = remember { ChatMessageActions() }
@@ -1652,6 +1691,7 @@ internal fun AgentConversationMessages(
                 contentType = { row ->
                     when (row) {
                         is AgentTimelineRow.Message -> "message"
+                        is AgentTimelineRow.WorkSummary -> "work-header"
                         is AgentTimelineRow.WorkStep -> when (row.message) {
                             is ToolActivityMessageUi -> "work-tool"
                             is ThinkingMessageUi -> "work-thinking"
@@ -1672,6 +1712,7 @@ internal fun AgentConversationMessages(
                             is ToolActivityMessageUi -> "tool"
                             else -> "message"
                         }
+                        is AgentTimelineRow.WorkSummary -> "work-header"
                         is AgentTimelineRow.WorkStep -> when (entry.message) {
                             is ToolActivityMessageUi -> "work-tool"
                             is ThinkingMessageUi -> "work-thinking"
@@ -1768,16 +1809,28 @@ internal fun AgentConversationMessages(
                         )
                     }
 
+                    is AgentTimelineRow.WorkSummary -> {
+                        AgentWorkProcessSummary(
+                            group = entry.group,
+                            expanded = entry.expanded,
+                            isPaused = isPaused,
+                            onToggle = {
+                                // 手动展开的组在投影里恢复为「摘要行 + 步骤行」；再点收起。
+                                workExpansionOverrides = if (entry.expanded) {
+                                    workExpansionOverrides - entry.key
+                                } else {
+                                    workExpansionOverrides + (entry.key to true)
+                                }
+                            },
+                            // 组首与列表内容的间距 2dp；展开后与步骤行之间是 2dp 露缝（1+1）。
+                            modifier = Modifier.padding(
+                                top = 2.dp,
+                                bottom = if (entry.expanded) 1.dp else 2.dp,
+                            ),
+                        )
+                    }
                     is AgentTimelineRow.WorkStep -> {
                         val message = entry.message
-                        if (message is AgentMessageUi) {
-                            // 激进档并入工作组的中间回复：与思考/工具步骤同款气泡，
-                            // 折叠成一行（正文首行），可展开看全文。
-                            IntermediateReplyStepRow(
-                                message = message,
-                                modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
-                            )
-                        } else {
                         val retainedState = if (message is ThinkingMessageUi &&
                             (message.isStreaming || streamingMarkdownStates.containsKey(message.id))) {
                             streamingMarkdownStates.getOrPut(message.id) { StreamingMarkdownState() }
@@ -1793,10 +1846,19 @@ internal fun AgentConversationMessages(
                             onThinkingToggle = if (message is ThinkingMessageUi) {
                                 { _, willExpand -> onThinkingRowToggle(message.id, willExpand) }
                             } else null,
-                            // 与官方 SegmentedGap 同拍：相邻步骤气泡之间留 2dp 缝。
-                            modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
+                            // 连续步骤是设置页「同组项」式的连续分段列表：组内露缝 2dp（1+1），
+                            // 组首/组末与相邻内容保持 2dp 间距。
+                            segmentedPosition = when {
+                                entry.isFirst && entry.isLast -> SegmentedRowPosition.Whole
+                                entry.isFirst -> SegmentedRowPosition.First
+                                entry.isLast -> SegmentedRowPosition.Last
+                                else -> SegmentedRowPosition.Middle
+                            },
+                            modifier = Modifier.padding(
+                                top = if (entry.isFirst) 2.dp else 1.dp,
+                                bottom = if (entry.isLast) 2.dp else 1.dp,
+                            ),
                         )
-                        }
                     }
                 }
                 turnFooters[entry.key]?.let { owner ->
