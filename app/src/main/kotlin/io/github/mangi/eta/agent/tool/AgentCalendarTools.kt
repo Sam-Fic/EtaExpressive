@@ -201,9 +201,16 @@ internal class AgentCalendarTools(
             ?: return error("CALENDAR_PROVIDER_UNAVAILABLE", "系统日历暂时不可访问")
         val eventId = row.firstOrNull()?.let { it.optLongValue("_id") }
         if (eventId == null || eventId <= watermark) {
+            // 写入命令「成功」但读不回来：多数是目标日历拒绝落库（如厂商同步日历只读），
+            // 而不是校验缺陷。必须给出可执行的下一步，否则模型只会原样重试。
+            // 附上 provider 回显，否则下一次仍然只能靠猜。
+            val providerEcho = (insert.stdout.trim() + " " + insert.stderr.trim()).trim().take(200)
             return error(
                 "CALENDAR_INSERT_UNVERIFIED",
-                "写入命令已执行但未校验到新日程；请先用 search_calendar_events 确认，不要原样重试",
+                "写入命令已执行但回读不到新日程，目标日历「${calendar.name}」可能拒绝了写入。" +
+                    "先用 search_calendar_events 确认是否已存在；确认不存在时用 list_calendars 换一个" +
+                    "可写日历（calendar_id）再试一次，不要原样重试" +
+                    if (providerEcho.isNotEmpty()) "；provider=$providerEcho" else "",
             )
         }
         val warnings = mutableListOf<String>()

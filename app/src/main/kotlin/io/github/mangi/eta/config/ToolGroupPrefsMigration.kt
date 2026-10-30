@@ -45,7 +45,11 @@ internal object ToolGroupPrefsMigration {
             .orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
         if (direct && !action) disabled += AgentDeviceToolCatalog.sensitiveActionToolNames()
         if (action && !direct) disabled += AgentToolGroups.DEVICE_DIRECT_NAMES
-        if (sensitiveRead && !personalReads) disabled += AgentDeviceToolCatalog.personalReadToolNames()
+        // 日程读已并入日历组（跟随设备开关），旧档位关闭时仍要保住「读不到日程」的语义。
+        if (sensitiveRead && !personalReads) {
+            disabled += AgentDeviceToolCatalog.personalReadToolNames()
+            disabled += AgentDeviceToolCatalog.calendarReadToolNames()
+        }
         if (sensitiveRead && !stateReads) disabled += AgentDeviceToolCatalog.deviceStateReadToolNames()
         if (disabled.isNotEmpty()) {
             editor.putString(Prefs.Keys.AGENT_DISABLED_TOOLS, disabled.sorted().joinToString(","))

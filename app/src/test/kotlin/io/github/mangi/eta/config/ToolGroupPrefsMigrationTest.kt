@@ -103,7 +103,9 @@ class ToolGroupPrefsMigrationTest {
         assertTrue(readsOff.group(Prefs.Keys.AGENT_PERSONAL_TOOLS))
         assertEquals(
             AgentDeviceToolCatalog.personalReadToolNames() +
-                AgentDeviceToolCatalog.deviceStateReadToolNames(),
+                AgentDeviceToolCatalog.deviceStateReadToolNames() +
+                // 日程读已并入日历组（跟随设备开关），关掉旧档位时仍要一并禁用。
+                AgentDeviceToolCatalog.calendarReadToolNames(),
             readsOff.disabled(),
         )
     }

@@ -111,9 +111,9 @@ internal object AgentToolGroups {
     /** 日程写入组；索引里单独一行，避免模型为了建一条日程把整组设备写工具载入。 */
     val CALENDAR_GROUP: AgentToolGroup = AgentToolGroup(
         id = "calendar",
-        summary = "Create, modify and delete system calendar events directly (time formats, " +
-            "reminders, recurrence, ambiguity handling).",
-        toolNames = CALENDAR_WRITE_NAMES,
+        summary = "Read, create, modify and delete system calendar events directly (search/read by " +
+            "event_id, list writable calendars, time formats, reminders, recurrence, ambiguity handling).",
+        toolNames = CALENDAR_WRITE_NAMES + AgentDeviceToolCatalog.calendarReadToolNames(),
     )
 
     /**

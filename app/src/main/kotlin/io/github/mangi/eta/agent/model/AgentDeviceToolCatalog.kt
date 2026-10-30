@@ -17,17 +17,18 @@ internal object AgentDeviceToolCatalog {
         "user_control",
     )
 
+    private val CALENDAR_READ_NAMES: Set<String> = setOf(
+        "list_calendars", "read_calendar_event", "search_calendar_events",
+    )
+
     private val PERSONAL_READ_NAMES: Set<String> = setOf(
         "get_health_summary",
-        "list_calendars",
-        "read_calendar_event",
         "read_note",
         "read_personal_item",
         "read_sms_code",
         "recent_notifications",
         "search_audio",
         "search_bills",
-        "search_calendar_events",
         "search_calendar_todos",
         "search_call_history",
         "search_clipboard_history",
@@ -76,6 +77,15 @@ internal object AgentDeviceToolCatalog {
         "wifi_credentials",
     )
 
+    /**
+     * 日程读工具：与日程写同属日历组。
+     *
+     * 写入失败时工具会要求「先用 search_calendar_events 确认」，组内若没有读工具，
+     * 模型只会原样重试（曾观测到连续两次 CALENDAR_INSERT_UNVERIFIED 后改去开日历 App）。
+     * 门禁跟随日历组本身，不再挂在个人数据开关上。
+     */
+    fun calendarReadToolNames(): Set<String> = CALENDAR_READ_NAMES
+
     /** 敏感动作组的全部工具名；统一分组与单工具迁移使用。 */
     fun sensitiveActionToolNames(): Set<String> = ACTION_NAMES
     /** 个人内容读取档的全部工具名；统一分组与单工具迁移使用。 */
@@ -95,10 +105,35 @@ internal object AgentDeviceToolCatalog {
         directTools: Boolean,
         sensitiveReadTools: Boolean,
         sensitiveActionTools: Boolean,
+        /** 日程读工具跟随日历组：只在设备/日历开关开启时参与下发。 */
+        calendarReadTools: Boolean = directTools,
     ) {
         if (directTools) appendDirectTools(tools)
         if (sensitiveReadTools) appendSensitiveReadTools(tools)
+        if (calendarReadTools) appendCalendarReadTools(tools)
         if (sensitiveActionTools) appendSensitiveActionTools(tools)
+    }
+
+    private fun appendCalendarReadTools(tools: JSONArray) {
+        tools
+            .put(searchFunction("search_calendar_events", "Search system calendar events, filtered by title, location or description."))
+            .put(
+                function(
+                    "list_calendars",
+                    "List system calendars writable by the current user (calendar_id, name, account, read-only flag)." +
+                        "Call this first when unsure which calendar to write to before creating an event; an empty result means a calendar must be created in the calendar app first.",
+                    properties(),
+                ),
+            )
+            .put(
+                function(
+                    "read_calendar_event",
+                    "Read the full fields, reminders and recurrence rule of one system calendar event by raw event_id." +
+                        "event_id must come from search_calendar_events; do not pass document ids from system memory.",
+                    properties("event_id" to integer("Event id", 1, 2_147_483_647)),
+                    "event_id",
+                ),
+            )
     }
 
     private fun appendDirectTools(tools: JSONArray) {
@@ -313,7 +348,6 @@ internal object AgentDeviceToolCatalog {
             .put(searchFunction("search_audio", "Search local music and audio files, filtered by title or file name."))
             .put(searchFunction("search_recordings", "Search local recordings. Results come from the system media library; transcripts and audio contents are not read."))
             .put(searchFunction("search_files", "Search documents and downloads in shared storage, filtered by file name. Private directories of other apps are not traversed."))
-            .put(searchFunction("search_calendar_events", "Search system calendar events, filtered by title, location or description."))
             .put(searchFunction("search_contacts", "Search system contacts; returns names and lookup URIs."))
             .put(searchFunction("search_call_history", "Search call logs, filtered by number or cached contact name."))
             .put(searchFunction("search_messages", "Search SMS, filtered by sender or body keyword. Results are sensitive personal content."))
@@ -337,23 +371,6 @@ internal object AgentDeviceToolCatalog {
                     "Read the title, body and update time of one ColorOS note by note_id. Requires Root to reach the notes provider directly.",
                     properties("note_id" to string("Raw UUID returned for the note", 36)),
                     "note_id",
-                ),
-            )
-            .put(
-                function(
-                    "list_calendars",
-                    "List system calendars writable by the current user (calendar_id, name, account, read-only flag)." +
-                        "Call this first when unsure which calendar to write to before creating an event; an empty result means a calendar must be created in the calendar app first.",
-                    properties(),
-                ),
-            )
-            .put(
-                function(
-                    "read_calendar_event",
-                    "Read the full fields, reminders and recurrence rule of one system calendar event by raw event_id." +
-                        "event_id must come from search_calendar_events; do not pass document ids from system memory.",
-                    properties("event_id" to integer("Event id", 1, 2_147_483_647)),
-                    "event_id",
                 ),
             )
             .put(emptyFunction("get_flashlight", "Read flashlight on/off state. The state comes from a CameraManager torch connection; reading does not turn the light on."))
