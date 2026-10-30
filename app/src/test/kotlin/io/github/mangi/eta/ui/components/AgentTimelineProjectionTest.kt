@@ -247,6 +247,32 @@ class AgentTimelineProjectionTest {
         assertEquals(listOf(false, false, false, true), headSteps.map { it.isLast })
     }
 
+    @Test
+    fun foldedBatchedWorkGroupsRenderOneSummary() {
+        // 超过单批上限的一轮会被切成多个相邻工作组；折叠后它们是同一张卡片，
+        // 只应留一条「已完成 N 个步骤」摘要，而不是每批一条。
+        val messages = List(65, ::workMessage)
+        val entries = messages.toTimelineEntries()
+        assertEquals(listOf(32, 32, 1),
+            entries.filterIsInstance<AgentTimelineEntry.WorkProcess>().map { it.messages.size })
+        val foldedKeys = entries.filterIsInstance<AgentTimelineEntry.WorkProcess>()
+            .mapTo(linkedSetOf()) { it.key }
+
+        val rows = entries.toLazyTimelineRows(foldedGroups = foldedKeys)
+        assertEquals(1, rows.count { it is AgentTimelineRow.WorkSummary })
+        val summary = rows.single() as AgentTimelineRow.WorkSummary
+        assertEquals(65, summary.group.messages.size)
+        assertFalse(summary.expanded)
+
+        // 展开仍是同一张摘要 + 整轮全部步骤。
+        val expandedRows = entries.toLazyTimelineRows(
+            foldedGroups = foldedKeys,
+            expandedGroups = setOf(summary.key),
+        )
+        assertEquals(1, expandedRows.count { it is AgentTimelineRow.WorkSummary })
+        assertEquals(65, expandedRows.count { it is AgentTimelineRow.WorkStep })
+    }
+
     private fun workMessage(index: Int): AgentChatMessageUi = when (index % 3) {
         0 -> ThinkingMessageUi(
             id = "step-$index",
