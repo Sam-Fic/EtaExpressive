@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Assignment
@@ -10,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
@@ -180,48 +180,48 @@ internal fun SubAgentProfileRow(profile: SubAgentProfile, providers: List<Provid
                 addParallelLimitItem(profile, config, usable)
             }
         } else {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                // 官方可交互 ListItem：点击、长按、涟漪、Role.Button 语义、按压形变、禁用态与内边距
-                // 全部由组件提供（onLongClick 是 ListItem 独有的官方槽位，IconButton/Card/Surface 都没有）。
-                // 只把这块文本包成 ListItem：GPT 速度 Chip 与「配置」IconButton 是外层 Row 的兄弟节点，
-                // 天然落在点击区之外，不会被吞进同一次点按，所以不需要 combinedClickable 兜手势。
-                ListItem(
-                    onClick = { if (currentUsable) { TouchHaptics.click(view); modelPicker = true } },
-                    onLongClick = { if (currentUsable && canThink) { thinkingPicker = true } },
-                    onLongClickLabel = stringResource(R.string.spr_adjust_thinking_for, profile.name),
-                    // 不再手写 semantics contentDescription：ListItem 内部已是
-                    // semantics(mergeDescendants = true)，headline(代理名) + supportingContent(模型/接口·思考)
-                    // 会自动合并成该可点节点的播报文本；再叠 contentDescription 只会造成重复朗读。
-                    modifier = Modifier.weight(1f),
-                    enabled = usable,
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    content = {
-                        Text(profile.name, style = MaterialTheme.typography.titleMedium,
+            // 与技能、预设详情页的兄弟行同一套写法：外层 EtaSegmentedRow 只负责分段卡片
+            // 形状/底色与官方行内边距（choiceRow 保持官方 ContentPadding），行本身不挂 onClick，
+            // 语义不合并；正文块单独可点，GPT 速度 Chip 与「配置」IconButton 保持 Row 的
+            // 兄弟节点，各自独立寻址、互不吞进同一次点按。
+            EtaSegmentedRow(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = usable,
+                choiceRow = true,
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .combinedClickable(
+                                enabled = usable,
+                                onLongClickLabel = stringResource(R.string.spr_adjust_thinking_for, profile.name),
+                                onLongClick = { if (currentUsable && canThink) { thinkingPicker = true } },
+                                onClick = { if (currentUsable) { TouchHaptics.click(view); modelPicker = true } },
+                            ),
+                    ) {
+                        Text(profile.name, style = MaterialTheme.typography.bodyLarge,
                             maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    },
-                    supportingContent = {
-                        Column {
-                            Text(config?.let { it.modelDisplayName.ifBlank { it.model } } ?: if (profile.modelId.isBlank()) stringResource(R.string.sap_none) else stringResource(R.string.sap_model_unavailable),
-                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (config != null) Text(config.providerName + stringResource(R.string.spr_thinking_suffix, thinkingLabel),
-                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    },
-                )
-                SubAgentGptSpeedButton(profile, providers, usable)
-                // 官方 IconButton：容器尺寸取 IconButtonDefaults 默认值（内部已 minimumInteractiveComponentSize()），
-                // 图标尺寸取 Icon 默认值，不再手写 48.dp / 20.dp。
-                IconButton(enabled = usable, onClick = {
-                    if (currentUsable && editor != null) {
-                        SubAgentProfileDraftSession.open(editor, profile)?.let {
-                            TouchHaptics.click(view)
-                            profileDraft = it
-                        }
+                        Text(config?.let { it.modelDisplayName.ifBlank { it.model } } ?: if (profile.modelId.isBlank()) stringResource(R.string.sap_none) else stringResource(R.string.sap_model_unavailable),
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (config != null) Text(config.providerName + stringResource(R.string.spr_thinking_suffix, thinkingLabel),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                }) {
-                    Icon(Icons.Rounded.MoreVert, stringResource(R.string.spr_config_for, profile.name))
+                    SubAgentGptSpeedButton(profile, providers, usable)
+                    // 官方 IconButton：容器尺寸取 IconButtonDefaults 默认值（内部已 minimumInteractiveComponentSize()），
+                    // 图标尺寸取 Icon 默认值，不再手写 48.dp / 20.dp。
+                    IconButton(enabled = usable, onClick = {
+                        if (currentUsable && editor != null) {
+                            SubAgentProfileDraftSession.open(editor, profile)?.let {
+                                TouchHaptics.click(view)
+                                profileDraft = it
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Rounded.MoreVert, stringResource(R.string.spr_config_for, profile.name))
+                    }
                 }
             }
         }

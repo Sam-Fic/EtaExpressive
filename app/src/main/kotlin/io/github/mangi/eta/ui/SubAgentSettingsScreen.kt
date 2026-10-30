@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountTree
@@ -21,11 +20,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,11 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -60,10 +54,12 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.LocalConversationSubAgentEditor
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.SubAgentDropdownMenu
 import io.github.mangi.eta.ui.components.SubAgentEditorState
 import io.github.mangi.eta.ui.components.SubAgentPresetDirectoryStatus
@@ -419,39 +415,26 @@ private fun SubAgentConversationSection(
                         }
                     }
                     item(key = "auto-delegation") {
-                        EtaSegmentedItemContainer {
-                            val autoDelegation = panelConfig?.enabled == true
-                            ListItem(
-                                // ListItem 默认底色是 surface（深色主题下几乎纯黑），
-                                // 会盖掉外层卡片容器的 surfaceBright；这里统一交给容器绘制。
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                leadingContent = { Icon(Icons.Rounded.Hub, contentDescription = null) },
-                                supportingContent = { Text(stringResource(R.string.sas_auto_delegation_desc)) },
-                                trailingContent = {
-                                    Switch(checked = autoDelegation, enabled = panelEnabled, onCheckedChange = null)
-                                },
-                                modifier = Modifier.toggleable(
-                                    value = autoDelegation,
-                                    enabled = panelEnabled,
-                                    role = Role.Switch,
-                                    onValueChange = { if (panelEnabled) panelEditor?.setEnabled(it) },
-                                ),
-                            ) {
-                                Text(stringResource(R.string.sas_auto_delegation))
-                            }
-                        }
+                        EtaSwitchRow(
+                            title = stringResource(R.string.sas_auto_delegation),
+                            summary = stringResource(R.string.sas_auto_delegation_desc),
+                            checked = panelConfig?.enabled == true,
+                            enabled = panelEnabled,
+                            onCheckedChange = { if (panelEnabled) panelEditor?.setEnabled(it) },
+                            leading = {
+                                PreferenceIcon(icon = Icons.Rounded.Hub, enabled = panelEnabled)
+                            },
+                        )
                     }
                     panelConfig?.profiles.orEmpty().forEach { profile ->
                         item(key = profile.id) {
-                            EtaSegmentedItemContainer {
-                                SubAgentProfileRow(
-                                    profile = profile,
-                                    providers = providers,
-                                    enabled = panelEnabled,
-                                    draftAllowed = panelEnabled,
-                                    draftRetry = onRetry,
-                                )
-                            }
+                            SubAgentProfileRow(
+                                profile = profile,
+                                providers = providers,
+                                enabled = panelEnabled,
+                                draftAllowed = panelEnabled,
+                                draftRetry = onRetry,
+                            )
                         }
                     }
                     item(key = "add", surface = false) {
