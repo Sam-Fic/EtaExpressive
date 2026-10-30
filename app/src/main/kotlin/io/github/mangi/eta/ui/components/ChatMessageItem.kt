@@ -2343,11 +2343,8 @@ private fun chatMarkdownBodyStyle(tone: ChatMarkdownTone) =
             color = chatMarkdownTextColor(tone),
         )
     } else {
-        chatSecondaryStyle().copy(
-            fontSize = 14.sp,
-            lineHeight = 22.sp,
-            color = chatMarkdownTextColor(tone),
-        )
+        // 与工具展开详情共用同一档位（chatExpandedBodyStyle 为唯一出处）。
+        chatExpandedBodyStyle()
     }
 
 @Composable
@@ -3656,8 +3653,7 @@ private fun ToolActivityInline(
                         ) {
                             Text(
                                 text = stringResource(R.string.tool_detail_sensitive),
-                                style = chatQuaternaryStyle(),
-                                color = etaOnSurfaceVariant(),
+                                style = chatExpandedBodyStyle(),
                             )
                         }
                         if (!message.command.isNullOrBlank()) {
@@ -3697,8 +3693,7 @@ private fun ToolActivityInline(
                                         HapticSelectionContainer {
                                             Text(
                                                 text = summaryLine,
-                                                style = chatTertiaryStyle(),
-                                                color = etaOnSurface(),
+                                                style = chatExpandedBodyStyle(),
                                             )
                                         }
                                     }
@@ -3860,8 +3855,7 @@ private fun BrowserPagePreview(
             if (snapshot.title.isNotBlank()) {
                 Text(
                     text = snapshot.title,
-                    style = chatSecondaryStyle(),
-                    color = etaOnSurface(),
+                    style = chatExpandedBodyStyle(),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -3946,8 +3940,7 @@ private fun ToolCommandBlock(
         HapticSelectionContainer {
             Text(
                 text = command,
-                style = chatTertiaryStyle().copy(fontFamily = FontFamily.Monospace),
-                color = etaOnSurface(),
+                style = chatExpandedBodyStyle(monospace = true),
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
@@ -4029,8 +4022,7 @@ private fun ToolDetailBlock(
         HapticSelectionContainer {
             Text(
                 text = text,
-                style = chatTertiaryStyle().copy(fontFamily = FontFamily.Monospace),
-                color = etaOnSurface(),
+                style = chatExpandedBodyStyle(monospace = true),
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = ToolDetailMaxHeight)
