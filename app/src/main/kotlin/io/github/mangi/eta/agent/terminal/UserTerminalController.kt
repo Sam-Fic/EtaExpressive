@@ -306,31 +306,43 @@ internal class UserTerminalController(
             }
 
             val deadline = timeoutMs?.let { System.currentTimeMillis() + it }
-            var stdoutOffset = 0
-            var stderrOffset = 0
+            val markerNeedle = "$marker:"
+            // 增量读取：每轮只看新到的字节。原来每 50ms 把整段（上限 1MB）缓冲拷一遍再全量
+            // 扫 marker，大输出命令下等于每秒上百 MB 的垃圾分配与扫描，主线程直接被 GC 拖死。
+            // 从当前水位起算：上一条命令超时留下的残余输出不能混进这一条。
+            var stdoutOffset = session.stdout.sizeBytes()
+            var stderrOffset = session.stderr.sizeBytes()
+            // 尚未冲出的 stdout 文本。状态行残片可能跨轮到达（50ms 轮询会随机截断），扣在这里。
+            val pending = StringBuilder()
             while (true) {
-                val stdoutNow = session.stdout.text()
-                val stderrNow = session.stderr.text()
+                val stdoutDelta = session.stdout.newTextSince(stdoutOffset)
+                if (stdoutDelta.second.isNotEmpty()) {
+                    stdoutOffset = stdoutDelta.first
+                    pending.append(stdoutDelta.second)
+                }
+                val stderrDelta = session.stderr.newTextSince(stderrOffset)
+                if (stderrDelta.second.isNotEmpty()) {
+                    stderrOffset = stderrDelta.first
+                    onDelta?.invoke(stderrDelta.second, true)
+                }
                 // 先判状态行再发增量：状态行完整到达后（含结尾换行）不再是"尾部未完成行"，
                 // 若先发出增量会把 marker 整行推给 UI。同时要求状态行以换行结束，
                 // 避免按半行解析出截断的 cwd。
-                val markerStart = stdoutNow.indexOf("\n$marker:")
-                val markerLineEnd = if (markerStart >= 0) stdoutNow.indexOf('\n', markerStart + 1) else -1
+                val markerStart = findMarkerLineStart(pending, markerNeedle)
+                val markerLineEnd = if (markerStart >= 0) pending.indexOf("\n", markerStart) else -1
                 val status = if (markerLineEnd >= 0) {
                     SessionStatusProtocol.parseStatusLine(
-                        stdoutNow.substring(markerStart + 1, markerLineEnd),
+                        pending.substring(markerStart, markerLineEnd),
                         marker,
                     )
                 } else {
                     null
                 }
                 if (status != null) {
-                    if (onDelta != null) {
-                        flushFinalStdout(stdoutNow, stdoutOffset, marker, onDelta)
-                        if (stderrNow.length > stderrOffset) {
-                            onDelta(stderrNow.substring(stderrOffset), true)
-                        }
-                    }
+                    // 状态行已到达：只冲出 marker 之前的正文，末尾空白裁掉。
+                    val content = pending.substring(0, markerStart).trimEnd()
+                    if (content.isNotEmpty()) onDelta?.invoke(content, false)
+                    pending.setLength(0)
                     session.stdout.clear()
                     session.stderr.clear()
                     val newCwd = status.cwd ?: session.cwd
@@ -339,66 +351,58 @@ internal class UserTerminalController(
                 }
                 if (session.closed || !session.process.isAlive) {
                     // 会话已结束：残余输出原样冲出，不做状态行过滤。
-                    if (onDelta != null) {
-                        if (stdoutNow.length > stdoutOffset) onDelta(stdoutNow.substring(stdoutOffset), false)
-                        if (stderrNow.length > stderrOffset) onDelta(stderrNow.substring(stderrOffset), true)
+                    if (pending.isNotEmpty()) {
+                        onDelta?.invoke(pending.toString(), false)
+                        pending.setLength(0)
                     }
                     return InternalResult(null, session.cwd, timedOut = false, sessionClosed = true)
                 }
                 if (deadline != null && System.currentTimeMillis() >= deadline) {
                     return InternalResult(null, session.cwd, timedOut = true, sessionClosed = false)
                 }
-                if (onDelta != null) {
-                    stdoutOffset = emitStdoutDelta(stdoutNow, stdoutOffset, marker, onDelta)
-                    if (stderrNow.length > stderrOffset) {
-                        onDelta(stderrNow.substring(stderrOffset), true)
-                        stderrOffset = stderrNow.length
-                    }
-                }
+                flushStdoutPending(pending, markerNeedle, onDelta)
                 Thread.sleep(POLL_INTERVAL_MS)
             }
         }
     }
 
     /**
-     * 尾部未完成行可能是状态行残片（marker 按 50ms 轮询随机截断到达），
-     * 先扣住等完整，避免把 marker 闪现给用户。
+     * marker 行在 [pending] 中的起始下标（指向 marker 本身，不含行首换行）；未出现返回 -1。
+     * 行首可以是缓冲区起点，也可以是换行符之后——状态行的前导换行可能已经被上一轮冲出去。
      */
-    private fun emitStdoutDelta(
-        text: String,
-        offset: Int,
-        marker: String,
-        onDelta: (String, Boolean) -> Unit,
-    ): Int {
-        if (text.length <= offset) return offset
-        var end = text.length
-        val tailStart = text.lastIndexOf('\n') + 1
-        if (tailStart < end) {
-            val tail = text.substring(tailStart)
-            if ("$marker:".startsWith(tail) || tail.startsWith("$marker:")) {
-                end = tailStart
-            }
+    private fun findMarkerLineStart(pending: CharSequence, markerNeedle: String): Int {
+        var index = pending.indexOf(markerNeedle)
+        while (index > 0 && pending[index - 1] != '\n') {
+            val next = pending.indexOf(markerNeedle, index + 1)
+            if (next <= index) return -1
+            index = next
         }
-        if (end > offset) {
-            onDelta(text.substring(offset, end), false)
-            return end
-        }
-        return offset
+        return index
     }
 
-    /** 状态行已到达：只冲出 marker 行之前的正文，末尾空白裁掉。 */
-    private fun flushFinalStdout(
-        text: String,
-        offset: Int,
-        marker: String,
-        onDelta: (String, Boolean) -> Unit,
+    /**
+     * 把 [pending] 中已确定不是状态行的部分冲给调用方。
+     * 尾部未完成行若是 marker 前缀（50ms 轮询随机截断），连同它前面的换行一起扣住，
+     * 否则下一轮就找不到 marker 行的行首了。
+     */
+    private fun flushStdoutPending(
+        pending: StringBuilder,
+        markerNeedle: String,
+        onDelta: ((String, Boolean) -> Unit)?,
     ) {
-        val markerIndex = text.indexOf("\n$marker:")
-        val content = if (markerIndex >= 0) text.substring(0, markerIndex) else text
-        val trimmed = content.trimEnd()
-        if (trimmed.length > offset) {
-            onDelta(trimmed.substring(offset), false)
+        if (pending.isEmpty()) return
+        var end = pending.length
+        val tailStart = pending.lastIndexOf("\n") + 1
+        if (tailStart < end) {
+            val tail = pending.substring(tailStart)
+            if (markerNeedle.startsWith(tail) || tail.startsWith(markerNeedle)) {
+                // 换行本身也留着：marker 行首必须是换行后的位置或缓冲区起点。
+                end = if (tailStart > 0) tailStart - 1 else 0
+            }
         }
+        if (end <= 0) return
+        if (onDelta != null) onDelta(pending.substring(0, end), false)
+        pending.delete(0, end)
     }
 
     private class Session(

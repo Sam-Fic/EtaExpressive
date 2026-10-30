@@ -97,10 +97,19 @@ internal object LinuxFileExplorer {
         if (!LinuxEnvironmentPaths.rootfsReady(rootfsDir.absolutePath)) return ListResult.NotInstalled
         val guestPath = normalizeLinuxPath(linuxPath) ?: return ListResult.NotDirectory
         val quoted = shellQuote(guestPath)
+        // 一次 stat 批量出全部条目：原来每个条目 fork 两次 stat（大小 + mtime），
+        // proot 下每次 fork 都是 syscall 级拦截，几百个文件的目录要十几秒，还会撞上 15s 超时。
+        // find -L 保证符号链接按目标类型判定（/lib -> usr/lib 仍可进入）。
+        // 老 busybox 的 find 不支持 -exec ... {} + 时回退到逐条读取。
         val script = """
             if [ ! -d $quoted ]; then exit $EXIT_NOT_DIRECTORY; fi
             if [ ! -r $quoted ] || [ ! -x $quoted ]; then exit $EXIT_UNREADABLE; fi
             cd $quoted || exit $EXIT_UNREADABLE
+            eta_batch=${'$'}(find -L . -mindepth 1 -maxdepth 1 -exec stat -c '%F|%s|%Y|%n' {} + 2>/dev/null)
+            if [ -n "${'$'}eta_batch" ]; then
+              printf '%s\n' "${'$'}eta_batch"
+              exit 0
+            fi
             find . -mindepth 1 -maxdepth 1 2>/dev/null | while IFS= read -r rel; do
               name=${'$'}{rel#./}
               [ -n "${'$'}name" ] || continue

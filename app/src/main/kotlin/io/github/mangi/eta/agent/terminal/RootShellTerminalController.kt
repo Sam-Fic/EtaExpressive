@@ -654,8 +654,43 @@ internal class RootShellTerminalController(
                 )
             }
             val marker = SessionStatusProtocol.newMarker()
-            val stdoutStart = session.stdout.text().length
-            val stderrStart = session.stderr.text().length
+            val markerLine = "$marker:"
+            // 增量读取：原来每 50ms 把整段缓冲 text().drop(start) 一遍（全量拷贝 + 全量解码），
+            // 输出越大越慢，长命令（apt / npm）几乎全耗在 GC 上。
+            val stdoutText = StringBuilder()
+            val stderrText = StringBuilder()
+            // 从当前水位起算：上一条命令超时留下的残余输出不能混进这一条。
+            var stdoutOffset = session.stdout.sizeBytes()
+            var stderrOffset = session.stderr.sizeBytes()
+            fun drainOutput() {
+                val (nextStdout, stdoutChunk) = session.stdout.newTextSince(stdoutOffset)
+                if (stdoutChunk.isNotEmpty()) {
+                    stdoutOffset = nextStdout
+                    stdoutText.append(stdoutChunk)
+                }
+                val (nextStderr, stderrChunk) = session.stderr.newTextSince(stderrOffset)
+                if (stderrChunk.isNotEmpty()) {
+                    stderrOffset = nextStderr
+                    stderrText.append(stderrChunk)
+                }
+            }
+            /** 只认以换行结束的完整状态行；半行留到下一轮。 */
+            fun findStatus(): SessionStatusProtocol.Status? {
+                var from = 0
+                while (true) {
+                    val index = stdoutText.indexOf(markerLine, from)
+                    if (index < 0) return null
+                    if (index == 0 || stdoutText[index - 1] == '\n') {
+                        val lineEnd = stdoutText.indexOf("\n", index)
+                        if (lineEnd < 0) return null
+                        return SessionStatusProtocol.parseStatusLine(
+                            stdoutText.substring(index, lineEnd),
+                            marker,
+                        )
+                    }
+                    from = index + markerLine.length
+                }
+            }
             val commandBlock = buildString {
                 append(command)
                 append('\n')
@@ -669,7 +704,7 @@ internal class RootShellTerminalController(
                 session.closed = true
                 return SessionCommandResult(
                     exitCode = -1,
-                    stdout = session.stdout.text().drop(stdoutStart).trimEnd(),
+                    stdout = stdoutText.toString().trimEnd(),
                     stderr = it.message ?: it.javaClass.simpleName,
                     cwd = session.cwd,
                     timedOut = false
@@ -678,28 +713,26 @@ internal class RootShellTerminalController(
 
             val deadline = System.currentTimeMillis() + timeoutMs.coerceIn(1_000, MAX_TIMEOUT_SECONDS * 1000)
             while (System.currentTimeMillis() < deadline) {
-                val stdoutDelta = session.stdout.text().drop(stdoutStart)
+                drainOutput()
                 if (session.closed || !session.process.isAlive) {
                     return SessionCommandResult(
                         exitCode = -1,
-                        stdout = stdoutDelta.trimEnd(),
-                        stderr = session.stderr.text().drop(stderrStart).ifBlank { "terminal session 已关闭" }.trimEnd(),
+                        stdout = stdoutText.toString().trimEnd(),
+                        stderr = stderrText.toString().ifBlank { "terminal session 已关闭" }.trimEnd(),
                         cwd = session.cwd,
                         timedOut = false
                     )
                 }
-                val status = stdoutDelta.lineSequence()
-                    .firstOrNull { SessionStatusProtocol.isStatusLine(it, marker) }
-                    ?.let { SessionStatusProtocol.parseStatusLine(it, marker) }
+                val status = findStatus()
                 if (status != null) {
                     val exitCode = status.exitCode
                     val cwd = status.cwd ?: session.cwd
-                    val cleanedStdout = stdoutDelta
+                    val cleanedStdout = stdoutText
                         .lineSequence()
                         .filterNot { SessionStatusProtocol.isStatusLine(it, marker) }
                         .joinToString("\n")
                         .trimEnd()
-                    val stderrDelta = session.stderr.text().drop(stderrStart).trimEnd()
+                    val stderrDelta = stderrText.toString().trimEnd()
                     session.stdout.clear()
                     session.stderr.clear()
                     return SessionCommandResult(
@@ -713,12 +746,13 @@ internal class RootShellTerminalController(
                 Thread.sleep(50)
             }
 
+            drainOutput()
             session.closed = true
             processSupervisor.terminateProcessTree(session.process)
             return SessionCommandResult(
                 exitCode = -2,
-                stdout = session.stdout.text().drop(stdoutStart).trimEnd(),
-                stderr = session.stderr.text().drop(stderrStart).ifBlank { "命令执行超时" }.trimEnd(),
+                stdout = stdoutText.toString().trimEnd(),
+                stderr = stderrText.toString().ifBlank { "命令执行超时" }.trimEnd(),
                 cwd = session.cwd,
                 timedOut = true
             )
