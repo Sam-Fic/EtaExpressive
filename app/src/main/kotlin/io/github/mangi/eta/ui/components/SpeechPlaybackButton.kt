@@ -56,6 +56,8 @@ internal fun SpeechPlaybackButton(
             enabled = !state.recording,
             index = index,
             count = count,
+            // 朗读中 / 自动朗读中保持官方 ToggleButton 选中态（胶囊 + primary 容器）。
+            checked = active,
         ) {
             if (active && state.preparing) {
                 // M3E Loading Indicator：官方 `LoadingIndicator` 的 indeterminate 重载——
