@@ -1313,15 +1313,17 @@ private fun UserMessageBubble(
                             }
                         }
                         add { index, count ->
-                            FooterTooltipBox(editTooltip, actionsEnabled) {
+                            FooterTooltipBox(editTooltip, actionsEnabled || isEditing) {
                                 EtaConnectedIconAction(
                                     onClick = {
                                         TouchHaptics.click(view)
                                         onEdit()
                                     },
-                                    enabled = actionsEnabled,
+                                    // 编辑态时按钮必须可交互（点击退出编辑）；平时跟随 actionsEnabled。
+                                    enabled = actionsEnabled || isEditing,
                                     index = index,
                                     count = count,
+                                    checked = isEditing,
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Edit,
@@ -3402,11 +3404,17 @@ internal fun AgentWorkProcessSummary(
                     else -> Icons.Rounded.Build
                 },
                 contentDescription = null,
-                tint = if (running && !isPaused) etaPrimary() else etaOnSurfaceVariant(),
+                tint = when {
+                    running && !isPaused -> etaPrimary()
+                    expanded -> MaterialTheme.colorScheme.onTertiaryContainer
+                    else -> etaOnSurfaceVariant()
+                },
             )
         },
         title = headerLabel,
         titleColor = if (running && !isPaused) etaPrimary() else null,
+        // 展开态用 tertiaryContainer 标出「这一组正被展开」，与其后的步骤行区分。
+        containerColor = if (expanded) MaterialTheme.colorScheme.tertiaryContainer else null,
         supporting = stepToolsLabel,
         modifier = modifier,
         expanded = expanded,
