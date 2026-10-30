@@ -305,15 +305,23 @@ fun EtaConnectedGroupRow(
 }
 
 /**
- * 相连按钮组统一配色（用户指定）：官方默认 secondaryContainer 档，选中态同色，
- * 与页面其他 FilledTonal 系组件同色阶。
+ * 相连按钮组统一配色：未选中态取官方默认 secondaryContainer 档，与页面其他
+ * FilledTonal 系组件同色阶；选中态（`checked = true`，如朗读中 / 编辑中）取官方
+ * `FilledButtonTokens.SelectedContainerColor` / `SelectedPressedLabelTextColor`
+ * 的 primary / onPrimary，配合官方 `connectedButtonCheckedShape`（全圆角胶囊）
+ * 形成「保持按下」的双状态。
  */
 @Composable
 fun etaConnectedGroupColors() = ToggleButtonDefaults.colors(
     containerColor = MaterialTheme.colorScheme.secondaryContainer,
     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-    checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    // 选中态用 primaryContainer（Tonal 风格的淡主色），比 primary 更轻盈，
+    // 视觉上更接近官方 FilledTonal 的选中态；内容色取 onPrimaryContainer。
+    checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+    checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    // 禁用态显式配色，避免落到默认的深灰。
+    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.38f),
+    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
 )
 
 /**
@@ -322,6 +330,11 @@ fun etaConnectedGroupColors() = ToggleButtonDefaults.colors(
  * `extraSmallContainerSize` 强制成等宽等高的方形容器（顶栏组用 Small/40dp，消息操作条
  * 再小一号用 XS/32dp），`contentPadding(0.dp)` 置零官方文字按钮的水平内边距。
  * 单按钮（`count <= 1`）时退回官方默认全圆角形状。
+ *
+ * [checked] 交给官方 `ToggleButton` 的双状态：`true` 时按钮保持官方选中态——形状
+ * morph 到 `connectedButtonCheckedShape`（全圆角胶囊），容器色切到
+ * [etaConnectedGroupColors] 的选中档（primary）。朗读中 / 编辑中这类「保持按下」
+ * 的动作由调用方把自己的状态传进来，点击仍走 [onClick]（选中态由调用方持有）。
  *
  * 此前实现私藏在 `AgentTurnFooter.kt`（M3ConnectedIconAction / M3ConnectedGroupColors），
  * 现收编进本套件作为唯一出处。
@@ -332,6 +345,7 @@ fun EtaConnectedIconAction(
     enabled: Boolean,
     index: Int,
     count: Int,
+    checked: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
     val shapes: ToggleButtonShapes? = when {
@@ -343,7 +357,7 @@ fun EtaConnectedIconAction(
     val colors = etaConnectedGroupColors()
     if (shapes == null) {
         ToggleButton(
-            checked = false,
+            checked = checked,
             onCheckedChange = { onClick() },
             enabled = enabled,
             modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
@@ -354,7 +368,7 @@ fun EtaConnectedIconAction(
         )
     } else {
         ToggleButton(
-            checked = false,
+            checked = checked,
             onCheckedChange = { onClick() },
             enabled = enabled,
             modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),

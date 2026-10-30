@@ -28,6 +28,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -116,7 +117,11 @@ val LocalEtaSegmentedRowContainerColor = compositionLocalOf<Color?> { null }
 
 /** 分段行的容器色：位于容器内时透明，否则用 surfaceBright 从页面背景浮出一档。 */
 @Composable
-internal fun etaSegmentedRowColors(selectedContainerColor: Color? = null): ListItemColors {
+internal fun etaSegmentedRowColors(
+    selectedContainerColor: Color? = null,
+    /** 调用方指定容器色（如展开态的高亮底色）；null 时走默认 surfaceBright。 */
+    containerColorOverride: Color? = null,
+): ListItemColors {
     if (LocalEtaSegmentedRowBare.current) {
         // 禁用态同样交出底色：容器在启用/禁用两种状态下都要保持表面连续，
         // 否则禁用行会用令牌色在容器上叠出一块异色。
@@ -125,12 +130,17 @@ internal fun etaSegmentedRowColors(selectedContainerColor: Color? = null): ListI
             disabledContainerColor = Color.Transparent,
         )
     }
-    val containerColor = LocalEtaSegmentedRowContainerColor.current
+    val containerColor = containerColorOverride
+        ?: LocalEtaSegmentedRowContainerColor.current
         ?: MaterialTheme.colorScheme.surfaceBright
+    // 指定底色时，标题/图标/箭头一并取该底色配套的内容色（tertiaryContainer → onTertiaryContainer），
+    // 文字与底色始终成对；不指定时保持原有默认。
+    val contentColor = containerColorOverride?.let { contentColorFor(it) }
     return ListItemDefaults.segmentedColors(
         containerColor = containerColor,
         disabledContainerColor = containerColor,
-        supportingContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        contentColor = contentColor ?: contentColorFor(containerColor),
+        supportingContentColor = contentColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
         selectedContainerColor = selectedContainerColor ?: Color.Unspecified,
         selectedContentColor = if (selectedContainerColor != null) {
             MaterialTheme.colorScheme.onTertiaryContainer
