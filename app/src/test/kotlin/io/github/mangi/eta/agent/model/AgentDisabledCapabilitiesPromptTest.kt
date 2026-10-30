@@ -70,7 +70,7 @@ class AgentDisabledCapabilitiesPromptTest {
     }
 
     private fun disabledNotice(state: AgentToolGroups.ToolSwitchState?): String? =
-        prompt(state).firstOrNull { it.contains("已在设置里关闭以下能力") }
+        prompt(state).firstOrNull { it.contains("已在设置里关闭以下") }
 
     /** 索引里一行的前缀；直接用组 id 做子串匹配会撞上别的组摘要里的 "device"。 */
     private fun indexEntry(groupId: String): String = "id=$groupId |"
@@ -88,6 +88,31 @@ class AgentDisabledCapabilitiesPromptTest {
         // 必须堵住绕过：不许改用其它工具或建议装第三方应用。
         assertTrue(notice.contains("不要改用其它工具"))
         assertTrue(notice.contains("建议安装第三方应用"))
+    }
+
+    @Test fun closedGroupsAreDeclaredUnusableNotMerelyOff() {
+        // 只说「已关闭」不够：模型仍会尝试 tools_use_group 打开、重试同一个调用，
+        // 或用终端/广播变相执行（「关了 GUI 仍尝试点屏」就是这样发生的）。
+        val notice = requireNotNull(disabledNotice(switches(screen = false)))
+        assertTrue(notice.contains("不可用"))
+        assertTrue("必须说明组打不开", notice.contains("tools_use_group"))
+        assertTrue(notice.contains("无法打开"))
+        assertTrue("必须说明调用会被拒", notice.contains("会被拒绝"))
+        assertTrue(notice.contains("重试"))
+    }
+
+    @Test fun closingDeviceAlsoWithholdsCalendarEvents() {
+        // 日程组与设备组共用设备开关：只列「设备控制」会让模型以为日历事件仍可创建。
+        val notice = requireNotNull(disabledNotice(switches(device = false)))
+        assertTrue(notice.contains("设备控制"))
+        assertTrue(notice.contains("日程读写"))
+        // 个人数据与日程无关，不该被顺手列进设备开关的说明里。
+        assertTrue(!notice.contains("个人数据读取"))
+        // 日历事件也不属于个人数据：个人开关关闭时不能误列「日历」。
+        val personalOff = requireNotNull(disabledNotice(switches(personal = false)))
+        assertTrue(personalOff.contains("个人数据读取"))
+        assertTrue(personalOff.contains("设备状态读取"))
+        assertTrue("日历事件属日程组，不该列进个人数据", !personalOff.contains("日历"))
     }
 
     @Test fun subSwitchesAreReportedAsTheNarrowerLoss() {

@@ -99,11 +99,14 @@ class ContextOverheadBudgetTest {
 
     @Test
     fun screenOffKeepsTheDisabledPrefixUnderBudget() {
-        // 当前实测 4800（system 3182 + tools 1618 / 9 个工具）。
-        // 系统提示里只剩通用策略与关闭说明：委派结果规则、Root 只读检查、副屏交接、
-        // 习惯分析都已跟随各自组，此配置下全部不在场。上界只做回归护栏，留约 100 余量。
+        // 当前实测约 5111（system 3491 + tools 1618 / 9 个工具），上界留 240 余量。
+        // 系统提示里只剩通用策略、关闭说明与「没有屏幕能力」的禁止条款：委派结果规则、
+        // Root 只读检查、副屏交接、习惯分析都已跟随各自组，此配置下全部不在场。
+        // 禁止条款约 120 token，换来的是不再出现「关了 GUI 仍尝试点击」的失败轮次。
+        // 关闭说明多花的 171 token 说明组内工具不在目录、tools_use_group 打不开、调用会被拒：
+        // 只说「已关闭」时模型仍会重试或变相执行，这部分是必要成本。
         val screenOff = measure(allOff, withDisabledNotice = true)
-        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 4_900)
+        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 5_350)
     }
 
     @Test
@@ -149,7 +152,8 @@ class ContextOverheadBudgetTest {
     @Test
     fun allCapabilitiesStayWithinTheDocumentedCeiling() {
         // 上界：所有开关打开、所有组都被模型打开、并带上关闭说明——最坏的一轮。
-        // 上一次实测 38998（system 8837 + tools 30161 / 150 个工具）。
+        // 上一次实测 39169（system 9008 + tools 30161 / 150 个工具）：关闭说明改为按组
+        // 声明「不可用」后多了约 171 token（见 screenOffKeepsTheDisabledPrefixUnderBudget）。
         // 这一轮所有组都在场，所以按组门禁的三条指引照旧付费，省下的只有委派结果规则
         // （本 run 尚未派发，−750）、重复的一句细节处理、以及 personalTools=false 时的习惯分析句。
         // 换句话说：最坏一轮的天花板几乎没动，压的是**第一轮**和**用不到的组**。
@@ -160,7 +164,7 @@ class ContextOverheadBudgetTest {
             withDisabledNotice = true,
             openedToolGroups = AgentToolGroups.allIds,
         )
-        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 39_200)
+        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 39_500)
     }
 
     @Test

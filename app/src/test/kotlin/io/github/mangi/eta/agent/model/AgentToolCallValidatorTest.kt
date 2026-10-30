@@ -2,8 +2,10 @@ package io.github.mangi.eta.agent.model
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentToolCallValidatorTest {
@@ -102,6 +104,22 @@ class AgentToolCallValidatorTest {
 
         assertNull(validator.validate(call("""{"allowed":{"anything":true}}""")))
         assertNotNull(validator.validate(call("""{"blocked":1}""")))
+    }
+
+    @Test
+    fun disabledGroupToolSaysCapabilityIsOffAndNeverSuggestsOpeningIt() {
+        // 用户关掉屏幕组后再调 GUI 工具：必须直接说明能力未启用，
+        // 不能提示「先去 tools_use_group 打开」——那个组已经打不开了。
+        val validator = AgentToolCallValidator(
+            JSONArray(),
+            unavailableGroups = setOf(AgentToolGroups.SCREEN_GROUP.id),
+        )
+        val reason = requireNotNull(
+            validator.validate(AgentModelClient.ToolCall("call-1", "tap", "{}")),
+        )
+        assertTrue(reason.contains("屏幕观察与 GUI 操作"))
+        assertTrue(reason.contains("未启用"))
+        assertFalse(reason.contains("tools_use_group"))
     }
 
     private fun validator(parameters: JSONObject): AgentToolCallValidator =

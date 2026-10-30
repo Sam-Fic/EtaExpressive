@@ -87,7 +87,27 @@ internal class AgentLoop(
         onEvent(it.copy(round = auxiliaryRound))
     }
 
-    private var toolCallValidator = AgentToolCallValidator(tools)
+    /**
+     * 本次运行中被开关或入口收窄的组。
+     *
+     * 组内工具缺席必须与「延迟组尚未打开」区分：后者用 tools_use_group 补救，
+     * 前者打开也会失败。混用会让模型反复尝试打开一个已关闭的组（用户已关 GUI，
+     * 却仍看到模型尝试点击/操作屏幕）。
+     */
+    private val unavailableToolGroups: Set<String> = buildSet {
+        if (!config.screenTools) add(AgentToolGroups.SCREEN_GROUP.id)
+        if (!config.browserTools) add(AgentToolGroups.WEB_GROUP.id)
+        if (!config.terminalTools) add(AgentToolGroups.TERMINAL_GROUP.id)
+        if (!config.deviceTools) {
+            add(AgentToolGroups.DEVICE_GROUP.id)
+            add(AgentToolGroups.CALENDAR_GROUP.id)
+        }
+        if (!config.personalTools) {
+            add(AgentToolGroups.PERSONAL_GROUP.id)
+            add(AgentToolGroups.DEVICE_STATE_GROUP.id)
+        }
+    }
+    private var toolCallValidator = AgentToolCallValidator(tools, unavailableToolGroups)
     private val delegationArgumentRepair = AgentDelegationArgumentRepair()
     private val invalidToolArgumentsGuard = AgentInvalidToolArgumentsGuard()
     private var shellFailureState = AgentShellFailureGuard.State()
@@ -339,7 +359,7 @@ internal class AgentLoop(
             budgetKeepRecent = compactPolicy.keepRecentMessages
             budgetCompressModelConfig = compactPolicy.compressModelConfig
             val roundTools = currentRoundTools
-            toolCallValidator = AgentToolCallValidator(roundTools)
+            toolCallValidator = AgentToolCallValidator(roundTools, unavailableToolGroups)
             incompleteText.clear()
             responseStored = false
             val reasoningLengthBeforeRound = accumulatedReasoning.length
@@ -1453,6 +1473,16 @@ internal class AgentLoop(
                 val groupId = AgentToolGroups.groupOfTool(toolCall.name)
                     ?.takeIf { AgentToolGroups.isDeferredTool(toolCall.name) }
                 if (groupId != null) {
+                    // 组已被开关关闭或入口收窄时，tools_use_group 也打不开它；
+                    // 直接回确定原因，避免复用「尚未打开」文案把模型带进重试循环。
+                    if (groupId in unavailableToolGroups) {
+                        return rejectedToolOutcome(
+                            round = round,
+                            toolCall = toolCall,
+                            code = "TOOL_GROUP_DISABLED",
+                            message = validationError,
+                        )
+                    }
                     val hint = invalidToolArgumentsGuard.rejectGroupHint(
                         toolName = toolCall.name,
                         groupId = groupId,

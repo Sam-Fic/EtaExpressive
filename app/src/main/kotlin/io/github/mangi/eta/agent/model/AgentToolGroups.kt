@@ -193,6 +193,20 @@ internal object AgentToolGroups {
     /** 工具所属的组 id；未收录（配方工具、压缩档案等动态工具）返回 null。 */
     fun groupOfTool(name: String): String? = groups.firstOrNull { name in it.toolNames }?.id
 
+    /** 面向模型的组短名；关闭说明与「工具缺席」的原因共用一份措辞，避免两处漂移。 */
+    fun label(groupId: String): String = when (groupId) {
+        BASIC_GROUP.id -> "基础交互"
+        SCREEN_GROUP.id -> "屏幕观察与 GUI 操作"
+        WEB_GROUP.id -> "网页读取与浏览器"
+        TERMINAL_GROUP.id -> "终端与文件读写"
+        DEVICE_GROUP.id -> "设备控制"
+        CALENDAR_GROUP.id -> "日程读写"
+        PERSONAL_GROUP.id -> "个人数据读取"
+        DEVICE_STATE_GROUP.id -> "设备状态读取"
+        EXTENSIONS_GROUP.id -> "Eta 自身配置与扩展管理"
+        else -> groupId
+    }
+
     fun isDeferredTool(name: String): Boolean =
         groups.any { it.deferredByDefault && name in it.toolNames }
 
@@ -268,11 +282,15 @@ internal object AgentToolGroups {
     }
 
     /**
-     * 本轮被用户关闭的能力，按面向模型的说法列出。
+     * 本轮被用户关闭的**工具组**，按面向模型的说法列出。
      *
-     * 为什么要告诉模型而不是静默省略：能力本来存在、只是开关被关掉。若什么都不说，
+     * 为什么要告诉模型而不是静默省略：组本来存在、只是开关被关掉。若什么都不说，
      * 模型面对「执行一下 ls」只能回答「我没有这个能力」——那是错的，用户会以为 Eta
      * 不支持；也可能转而尝试绕过（建议装 Termux、改用别的工具）。
+     *
+     * 列的是组而不是单个工具：被关闭组的工具整组不在目录里，模型既不能调用，
+     * `tools_use_group` 也无法把它打开（该枚举只含开关允许的组）。因此按组列名
+     * 才能和「组打不开」这件事对上，避免模型反复尝试打开或重试。
      *
      * 与目录、组索引共用同一份开关判定，避免出现「提示说关了、目录里却有」的自相矛盾。
      * 措辞刻意克制：只在用户明确要求时说明，不主动推荐去开开关。
@@ -302,37 +320,58 @@ internal object AgentToolGroups {
         val delegationTools: Boolean,
     )
 
-    /** 关闭说明；只有真正会导致工具缺席的项才列出。全开时零成本。 */
+    /**
+     * 关闭说明；只有真正会导致工具缺席的组才列出。全开时零成本。
+     *
+     * 按**组**列：开关关闭时整组缺席，`tools_use_group` 也打不开（见 [disabledCapabilitiesMessage]）。
+     * 组名统一取 [label]，避免这里与组索引、校验器各写一套措辞后漂移。
+     * 组内子开关（命令执行、媒体搜索）不是组，按更窄的损失单独说明。
+     */
     fun disabledCapabilities(switches: ToolSwitchState): DisabledCapabilities {
         val labels = mutableListOf<String>()
-        if (!switches.basicTools) labels += "基础交互（向用户提问、查看上下文、打开应用、语音）"
-        if (!switches.screenTools) labels += "屏幕观察与 GUI 操作"
-        if (!switches.browserTools) labels += "网页读取与浏览器"
+        if (!switches.basicTools) labels += label(BASIC_GROUP.id) + "（向用户提问、查看上下文、打开应用、语音）"
+        if (!switches.screenTools) labels += label(SCREEN_GROUP.id)
+        if (!switches.browserTools) labels += label(WEB_GROUP.id)
         if (!switches.terminalTools) {
-            labels += "终端与文件读写"
+            labels += label(TERMINAL_GROUP.id)
         } else if (!switches.shellTools) {
             labels += "命令执行（文件读写仍可用）"
         }
-        if (!switches.deviceTools) labels += "设备控制（闹钟、计时器、音量、媒体、修改设置、应用与网络管理等）"
+        if (!switches.deviceTools) {
+            // 日程组与设备组同受设备开关门禁：只列「设备控制」会让模型以为仍能建日程。
+            labels += label(DEVICE_GROUP.id) + "（闹钟、计时器、音量、媒体、修改设置、应用与网络管理等）"
+            labels += label(CALENDAR_GROUP.id)
+        }
         if (!switches.personalTools) {
-            labels += "个人数据读取（通讯录、短信、通话、日历、账单、便签、位置、设备状态等）"
+            // 日历事件属日程组（受设备开关），不在个人数据里；这里不再把它列进来。
+            labels += label(PERSONAL_GROUP.id) + "（通讯录、短信、通话、账单、便签等）"
+            labels += label(DEVICE_STATE_GROUP.id) + "（设置项、通知、位置、日志、网络与显示状态等）"
         } else if (!switches.mediaSearchTools) {
             labels += "媒体语义搜索"
         }
-        if (!switches.extensionsTools) labels += "Eta 自身配置与扩展管理"
+        if (!switches.extensionsTools) labels += label(EXTENSIONS_GROUP.id)
         if (!switches.delegationTools) labels += "子代理委派"
         // 记忆与 Skills 已有各自的负面门禁（buildMemorySystemMessage / buildSkillSystemMessage），
         // 这里不再重复列出，避免同一件事被说两遍。
         return DisabledCapabilities(labels)
     }
 
-    /** 关闭说明文案。刻意不写「主动提醒用户去开」：那会让模型在无关回复里推销设置项。 */
+    /**
+     * 关闭说明文案。刻意不写「主动提醒用户去开」：那会让模型在无关回复里推销设置项。
+     *
+     * 必须把「不能用」说到位：被关闭组的工具不在目录里，`tools_use_group` 的枚举也不含它，
+     * 直接调用会被 [AgentToolCallValidator] 拒绝。只说「已被关闭」时，模型仍可能去打开、
+     * 重试，或用终端/广播变相执行——这正是「关了 GUI 还在点屏幕」的成因。
+     */
     fun disabledCapabilitiesMessage(disabled: DisabledCapabilities): String? {
         if (disabled.isEmpty) return null
-        return "本次运行中，用户已在设置里关闭以下能力（这是正常配置，不是故障或设备限制）：" +
+        return "本次运行中，用户已在设置里关闭以下工具组，它们在本轮不可用（这是正常配置，不是故障或设备限制）：" +
             disabled.labels.joinToString("、") + "。" +
-            "用户要求其中某项操作时，如实说明该能力已被关闭、可在设置中开启，不要声称自己不具备这项能力，" +
-            "也不要改用其它工具或建议安装第三方应用绕开。"
+            "被关闭工具组里的工具不在本次的工具目录中，tools_use_group 也无法打开它们；" +
+            "直接调用会被拒绝，重试或换参数都不会生效。" +
+            "不要改用其它工具、终端命令、广播变相执行，也不要建议安装第三方应用绕开。" +
+            "用户要求其中某项操作时，如实说明该能力已在设置里关闭、可在设置中开启，" +
+            "不要声称自己不具备这项能力，也不要假装已经完成。"
     }
 
     /**

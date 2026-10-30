@@ -5,7 +5,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** 在工具执行前校验模型参数；这里只检查调用合同，不承担权限审批或安全策略。 */
-internal class AgentToolCallValidator(tools: JSONArray) {
+internal class AgentToolCallValidator(
+    tools: JSONArray,
+    /**
+     * 本次运行中被开关或入口收窄的组 id。
+     *
+     * 这些组的工具缺席原因是「不可用」，不是「尚未打开」：若仍按延迟组文案提示
+     * `tools_use_group`，模型会反复尝试打开一个用户已经关闭的组（屏幕上表现为
+     * 「关了 GUI 还在尝试点击/操作界面」）。这里给出确定原因并明确不可补救。
+     */
+    private val unavailableGroups: Set<String> = emptySet(),
+) {
     private data class ToolSchema(
         val parameters: JSONObject,
         val root: JSONObject,
@@ -47,6 +57,12 @@ internal class AgentToolCallValidator(tools: JSONArray) {
     private fun undeclaredReason(name: String): String {
         val base = "工具未在本次运行的能力目录中声明"
         val group = AgentToolGroups.groupOfTool(name.trim()) ?: return base
+        if (group in unavailableGroups) {
+            return "$base；${AgentToolGroups.label(group)}在本次运行中未启用" +
+                "（用户在设置中关闭，或当前入口/子代理未授予），没有可打开它的工具组；" +
+                "重试同一个调用不会生效，也不要用其它工具、终端命令或按键变相执行；" +
+                "请向用户说明该能力不可用，并给出可手动完成的步骤。"
+        }
         if (group == AgentToolGroups.BASIC_GROUP.id) return base
         return "$base；它属于延迟工具组 $group：" +
             "若该组尚未打开，先调用 tools_use_group(group=$group)，下一轮再调用它；" +
