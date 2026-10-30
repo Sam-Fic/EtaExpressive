@@ -3299,12 +3299,13 @@ private fun ThinkingRow(
         }
     AgentWorkSegmentedBubble(
         leading = {
-            // 严格官方默认：裸 Icon（24dp + 官方 ItemBetweenSpace 12dp）；
-            // 流式进行中是特殊情况，用 primary 单独着色（呼吸透明度是动效反馈）。
+            // 裸 Icon（24dp + 官方 ItemBetweenSpace 12dp），常态着色与设置页统一
+            // onSurfaceVariant；流式进行中是特殊情况，用 primary 单独着色
+            // （呼吸透明度是动效反馈）。
             Icon(
                 imageVector = Icons.Rounded.AutoAwesome,
                 contentDescription = null,
-                tint = if (message.isStreaming && !isPaused) etaPrimary() else Color.Unspecified,
+                tint = if (message.isStreaming && !isPaused) etaPrimary() else etaOnSurfaceVariant(),
                 modifier = Modifier.graphicsLayer { alpha = if (message.isStreaming && !isPaused) pulseAlpha() else 1f },
             )
         },
@@ -3394,14 +3395,17 @@ internal fun AgentWorkProcessSummary(
     }
     AgentWorkSegmentedBubble(
         leading = {
-            PreferenceIcon(
-                icon = when {
+            // 裸 Icon（24dp + 官方 ItemBetweenSpace 12dp），常态着色与设置页统一
+            // onSurfaceVariant；运行中是特殊情况，用 primary 单独着色。
+            Icon(
+                imageVector = when {
                     runningTool != null -> ToolPresentation.icon(runningTool.toolName)
                     running -> Icons.Rounded.AutoAwesome
                     toolCount == 0 && (replyCount > 0 || questionCount > 0) -> Icons.Rounded.QuestionAnswer
                     else -> Icons.Rounded.Build
                 },
-                tint = if (running && !isPaused) etaPrimary() else null,
+                contentDescription = null,
+                tint = if (running && !isPaused) etaPrimary() else etaOnSurfaceVariant(),
             )
         },
         title = headerLabel,
@@ -3517,7 +3521,7 @@ private fun ToolStatusIndicator(status: ToolActivityStatusUi) {
                     },
                 color = MaterialTheme.colorScheme.primary,
             )
-            // 成功是常态：用设置页 PreferenceIcon 同款 onSurfaceVariant，不抢注意力。
+            // 成功是常态：低饱和的 onSurfaceVariant，不抢注意力。
             ToolActivityStatusUi.Success -> Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = stringResource(R.string.tool_status_success),
@@ -3739,16 +3743,17 @@ private fun ToolActivityInline(
     }
     AgentWorkSegmentedBubble(
         leading = {
-            // 严格官方默认：裸 Icon；成功是常态走默认色调，运行中用 primary、
-            // 失败用官方 error 角色单独着色。
+            // 裸 Icon（官方默认几何）；成功/未知常态统一 onSurfaceVariant——
+            // 与设置页行首图标同色，不抢注意力；运行中用 primary、失败用
+            // 官方 error 角色单独着色。
             Icon(
                 imageVector = ToolPresentation.icon(message.toolName),
                 contentDescription = null,
                 tint = when (message.status) {
-                    ToolActivityStatusUi.Success -> Color.Unspecified
+                    ToolActivityStatusUi.Success -> etaOnSurfaceVariant()
                     ToolActivityStatusUi.Running -> etaPrimary()
                     ToolActivityStatusUi.Failed -> MaterialTheme.colorScheme.error
-                    ToolActivityStatusUi.Unknown -> Color.Unspecified
+                    ToolActivityStatusUi.Unknown -> etaOnSurfaceVariant()
                 },
             )
         },
