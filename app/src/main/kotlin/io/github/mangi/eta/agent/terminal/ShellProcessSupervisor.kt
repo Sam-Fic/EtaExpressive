@@ -606,6 +606,7 @@ internal fun runOneShotShell(
     /** 调用方要求的输出上限；文件工具用它精确判断流是否被截断。 */
     maxOutputBytes: Int = ONE_SHOT_OUTPUT_MAX_BYTES,
 ): OneShotShellResult {
+    var startFailure: String? = null
     val process = processSupervisor.startShellProcess(
         identity = identity,
         command = command,
@@ -613,10 +614,14 @@ internal fun runOneShotShell(
         environment = environment,
         linuxRootfsPath = linuxRootfsPath,
         linuxSharedMounts = linuxSharedMounts,
+        // 启动失败必须把受控的阶段摘要带回给调用方：只含 stage/type/elapsedMs，
+        // 不含命令、路径或异常消息，但足够区分「是哪一步没起来」。
+        onStartFailure = { startFailure = it },
     ) ?: return OneShotShellResult(
         if (processSupervisor.isClosing) -3 else -1,
         ByteArray(0),
-        if (processSupervisor.isClosing) "操作已取消".toByteArray() else "无法启动进程".toByteArray(),
+        ((if (processSupervisor.isClosing) "操作已取消" else "无法启动进程") +
+            (startFailure?.let { " ($it)" } ?: "")).toByteArray(),
     )
 
     try {
