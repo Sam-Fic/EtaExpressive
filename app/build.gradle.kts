@@ -172,6 +172,12 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.markdown.renderer)
     implementation(libs.markdown.renderer.m3)
+    // renderer 锁定的 org.jetbrains:markdown 0.7.5 把「价格 $4 和 $20」里的货币符号配对成
+    // 行内公式，渲染成等宽公式样式；0.7.16 起 $ 的货币规则已修正（紧跟数字不开启公式）。
+    constraints {
+        implementation("org.jetbrains:markdown:0.7.16")
+        implementation("org.jetbrains:markdown-jvm:0.7.16")
+    }
     // markdown-renderer-m3 将 material3 作为 compileOnly，需显式引入以满足运行时依赖
     implementation(libs.material3)
     // 取色引擎：由强调色种子 + 配色风格生成 9 套 DynamicScheme（Spec2025）
