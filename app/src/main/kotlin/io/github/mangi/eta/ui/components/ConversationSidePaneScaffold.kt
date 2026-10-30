@@ -301,15 +301,16 @@ fun ConversationSidePaneScaffold(
     val currentOnDismiss by rememberUpdatedState(onDismiss)
     var drawerBlocksIme by remember { mutableStateOf(visible) }
 
-    // 窄屏的侧栏是全屏覆盖形态，选中会话 / 新建会话后必须收起才能看到对话，
-    // 走后缀动画而不是瞬时合上：和手滑关闭同一条缓动，观感一致。
+    // 窄屏的侧栏是全屏覆盖形态，选中会话 / 新建会话 / 系统返回键都要先收起才能看到对话，
+    // 走同一条收拢缓动而不是瞬时合上（返回键底下就是主页，直接跳变等于硬切）。
+    // 这里只驱动抽屉本身，不动 visible：收拢动画停稳后由下面的「回写」effect 复位展开态，
+    // 动画期间首页看到的仍是「侧栏开着」，不会中途先重组成收起态。
     // 宽屏是并排布局，侧栏留在原地，切换到哪条、新建几条都不影响它开着。
-    val closePaneIfCovering: () -> Unit = {
+    val closePaneWithMotion: () -> Unit = {
         if (!isWide) {
             drawerScope.launch {
-                if (drawerState.targetValue != DrawerValue.Closed ||
-                    drawerState.currentValue != DrawerValue.Closed
-                ) {
+                // 已经在收 / 已收好就不再重启：连续按返回键不会把动画从头再播一遍。
+                if (drawerState.targetValue != DrawerValue.Closed) {
                     @Suppress("DEPRECATION")
                     drawerState.animateTo(
                         targetValue = DrawerValue.Closed,
@@ -322,7 +323,7 @@ fun ConversationSidePaneScaffold(
 
     val selectConversation: (String) -> Unit = { conversationId ->
         onConversationSelected(conversationId)
-        closePaneIfCovering()
+        closePaneWithMotion()
     }
 
     LaunchedEffect(visible, isWide) {
@@ -332,7 +333,9 @@ fun ConversationSidePaneScaffold(
         val target = if (visible) DrawerValue.Open else DrawerValue.Closed
         if (drawerState.targetValue == target) return@LaunchedEffect
         if (!visible && drawerState.currentValue == DrawerValue.Open) {
-            // 程序化收起（新建对话、返回键等）：抽屉是完全打开的，瞬时合上。
+            // 程序化收起且侧栏随页面一起退场（切页入栈、命中跳转）：瞬时合上，
+            // 否则打开的侧栏会跟着新页做转场。
+            // 返回键 / 点选会话不走这里——它们先播收拢动画，动画结束才把 visible 复位。
             drawerState.snapTo(target)
             return@LaunchedEffect
         }
@@ -388,7 +391,22 @@ fun ConversationSidePaneScaffold(
         isBackEnabled = visible &&
             backHandlerEnabled &&
             sceneLifecycleState == Lifecycle.State.RESUMED,
-        onBackCompleted = { currentOnDismiss() },
+        onBackCompleted = {
+            // 窄屏：先播收拢动画，停稳后再把展开态复位（回写 effect 负责），避免瞬时合上的硬切。
+            // 宽屏侧栏是并排停靠，WideSidePaneLayout 会自己按展开态播放收拢，直接复位即可。
+            if (isWide) {
+                currentOnDismiss()
+            } else if (drawerState.targetValue == DrawerValue.Closed) {
+                // 已经在合（或刚合上）：连按返回不重播动画，直接落定并复位，
+                // 否则这次返回会被吞掉，展开态卡在 true 就不再响应返回键。
+                drawerScope.launch {
+                    drawerState.snapTo(DrawerValue.Closed)
+                    currentOnDismiss()
+                }
+            } else {
+                closePaneWithMotion()
+            }
+        },
     )
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
