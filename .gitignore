@@ -52,5 +52,8 @@ google-services.json
 /.codebuddy/
 /.workbuddy/
 
+# AI 助手约定文档（本地维护，不入库）
+/AGENTS.md
+
 # Python bytecode caches
 __pycache__/
