@@ -13,6 +13,9 @@ import io.github.mangi.eta.ui.model.isSteerSupplement
  * 气泡行（无嵌套）。激进档被折叠的工作组只出一条 [WorkSummary] 摘要行，
  * 手动展开后摘要行 + 步骤行一起出现（兄弟行，不是卡中卡）。
  */
+/** 步骤行的 lazy key：折叠退场登记与投影行共用这一份出处。 */
+internal fun workStepRowKey(messageId: String): String = "work-step:$messageId"
+
 internal sealed interface AgentTimelineRow {
     val key: String
     data class Message(val message: AgentChatMessageUi) : AgentTimelineRow {
@@ -22,6 +25,9 @@ internal sealed interface AgentTimelineRow {
     /**
      * 被激进折叠档收起的工作组摘要（「已完成 N 个步骤」）。[expanded] 为 true 时
      * 表示用户手动展开——摘要行保留，步骤行紧随其后。
+     *
+     * [group] 可能是相邻多个批次的合并组（见 [toLazyTimelineRows]）：同一轮超过
+     * 单个批次上限的步骤在折叠后仍只出一张摘要，计数也按整轮合并。
      */
     data class WorkSummary(
         val group: AgentTimelineEntry.WorkProcess,
@@ -41,7 +47,7 @@ internal sealed interface AgentTimelineRow {
         val isFirst: Boolean,
         val isLast: Boolean,
     ) : AgentTimelineRow {
-        override val key: String get() = "work-step:${message.id}"
+        override val key: String get() = workStepRowKey(message.id)
     }
 }
 
@@ -60,44 +66,56 @@ internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
     foldedGroups: Set<String> = emptySet(),
     expandedGroups: Set<String> = emptySet(),
 ): List<AgentTimelineRow> = buildList {
-    // 显式接收者：buildList 的 lambda 会把 forEach 解析到内层 MutableList 上。
-    this@toLazyTimelineRows.forEach { entry ->
-        when (entry) {
-            is AgentTimelineEntry.Message -> add(AgentTimelineRow.Message(entry.message))
+    val entries = this@toLazyTimelineRows
+    var index = 0
+    while (index < entries.size) {
+        when (val entry = entries[index]) {
+            is AgentTimelineEntry.Message -> {
+                add(AgentTimelineRow.Message(entry.message))
+                index++
+            }
             is AgentTimelineEntry.WorkProcess -> {
-                val folded = entry.key in foldedGroups
-                if (folded) {
-                    // 折叠组永远有摘要行；用户手动展开后步骤行跟在摘要行后面。
-                    // 摘要行是组首（上沿外圆），首步骤行不再承担组首圆角——除非它紧跟
-                    // 组内的纯文本回复（文本把列表断开，其后步骤自己重新起段）。
-                    val expanded = entry.key in expandedGroups
-                    add(AgentTimelineRow.WorkSummary(entry, expanded = expanded))
-                    if (expanded) {
-                        val size = entry.messages.size
-                        entry.messages.forEachIndexed { index, message ->
-                            add(
-                                AgentTimelineRow.WorkStep(
-                                    entry.key, message,
-                                    isFirst = index > 0 && entry.messages[index - 1].isSegmentTextBreak(),
-                                    isLast = index == size - 1 || entry.messages.getOrNull(index + 1).isSegmentTextBreak(),
-                                ),
-                            )
-                        }
-                    }
+                if (entry.key !in foldedGroups) {
+                    addWorkSteps(entry)
+                    index++
                 } else {
-                    val size = entry.messages.size
-                    entry.messages.forEachIndexed { index, message ->
-                        add(
-                            AgentTimelineRow.WorkStep(
-                                entry.key, message,
-                                isFirst = index == 0 || entry.messages[index - 1].isSegmentTextBreak(),
-                                isLast = index == size - 1 || entry.messages.getOrNull(index + 1).isSegmentTextBreak(),
-                            ),
-                        )
+                    // 同一轮的工作过程会按批次上限切成多个相邻组。折叠后它们是同一张卡片，
+                    // 只应出一条摘要（点开再一起展开）；其它位置的分组不算同轮，不合并。
+                    var end = index + 1
+                    while (end < entries.size) {
+                        val next = entries[end] as? AgentTimelineEntry.WorkProcess ?: break
+                        if (next.key !in foldedGroups) break
+                        end++
                     }
+                    val group = if (end == index + 1) entry else AgentTimelineEntry.WorkProcess(
+                        key = entry.key,
+                        messages = entries.subList(index, end)
+                            .flatMap { (it as AgentTimelineEntry.WorkProcess).messages },
+                    )
+                    val expanded = group.key in expandedGroups
+                    add(AgentTimelineRow.WorkSummary(group, expanded = expanded))
+                    if (expanded) addWorkSteps(group, afterSummary = true)
+                    index = end
                 }
             }
         }
+    }
+}
+
+private fun MutableList<AgentTimelineRow>.addWorkSteps(
+    group: AgentTimelineEntry.WorkProcess,
+    afterSummary: Boolean = false,
+) {
+    val size = group.messages.size
+    group.messages.forEachIndexed { index, message ->
+        add(
+            AgentTimelineRow.WorkStep(
+                group.key, message,
+                // 展开后的首步与摘要行同段（摘要承担组首圆角），除非它紧跟纯文本回复。
+                isFirst = if (index == 0) !afterSummary else group.messages[index - 1].isSegmentTextBreak(),
+                isLast = index == size - 1 || group.messages.getOrNull(index + 1).isSegmentTextBreak(),
+            ),
+        )
     }
 }
 

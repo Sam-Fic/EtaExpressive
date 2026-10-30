@@ -2,6 +2,8 @@ package io.github.mangi.eta.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDpAsState
@@ -22,11 +24,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -39,6 +45,28 @@ import io.github.mangi.eta.ui.adaptive.etaSegmentedRowColors
 
 /** 展开 / 收起的标准动效：无过冲的标准弹簧（expressive spatial 弹簧带轻微回弹）。 */
 private val StandardExpandSpec = spring<IntSize>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+    visibilityThreshold = IntSize.VisibilityThreshold,
+)
+
+/**
+ * 折叠组展开 / 收起时步骤行进出的淡入淡出规格：弹簧与 [StandardExpandSpec] 同参数
+ * （无过冲、MediumLow）。行内 clip 揭示（WorkStepReveal）与摘要行列表层的兑底淡出
+ * 共用它，与气泡详情子条目的 clip-expand 同节奏，观感归为同一族。
+ */
+internal val StandardWorkRowFadeSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
+/**
+ * 行高 morph 规格：Supporting text 出现/消失（如摘要行「跑了哪些工具」一行）会让
+ * ListItem 在 OneLine/TwoLine 档间切换、整行高度跳变，用官方 animateContentSize
+ * 以同族无过冲弹簧把高度差平滑掉。不能改成常驻槽位 + AnimatedVisibility：官方
+ * ListItem 只看槽位存在就按 TwoLine 钉住最小高（72dp），收起后行反而降不回去。
+ */
+private val StandardContentSizeSpec: androidx.compose.animation.core.FiniteAnimationSpec<IntSize> = spring(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = Spring.StiffnessMediumLow,
     visibilityThreshold = IntSize.VisibilityThreshold,
@@ -88,6 +116,11 @@ internal fun AgentWorkSegmentedBubble(
     supportingColor: Color? = null,
     /** 展开箭头之外的状态标记（如工具的 LoadingIndicator / 对勾），由调用方提供。 */
     trailingStatus: (@Composable () -> Unit)? = null,
+    /**
+     * 本行容器底色覆盖（如「已完成 N 个步骤」行展开时用 tertiaryContainer 标示当前展开组）；
+     * null 走默认 surfaceBright。
+     */
+    containerColor: Color? = null,
     expanded: Boolean = false,
     onToggle: (() -> Unit)? = null,
     /**
@@ -104,7 +137,10 @@ internal fun AgentWorkSegmentedBubble(
     val collapsedStateDescription = stringResource(R.string.work_state_collapsed)
     // 与设置页同款配色：surfaceBright 容器从 surfaceContainer 背景浮出一档，
     // 禁用态同样交出底色，保证分段条目在任何状态下表面连续。
-    val colors = etaSegmentedRowColors()
+    val colors = etaSegmentedRowColors(containerColorOverride = containerColor)
+    // 指定底色时展开箭头也取下底色的配套内容色（与标题/前导图标成对）；
+    // Color.Unspecified 时 Icon 自动回落到行的 LocalContentColor。
+    val overriddenContentColor = containerColor?.let { contentColorFor(it) } ?: Color.Unspecified
     // 可展开只要求 onToggle；details 为 null 时（如「已完成 N 个步骤」折叠摘要，
     // 步骤是列表里的兄弟行）只有箭头与语义，没有详情子条目。
     val expandable = onToggle != null
@@ -157,21 +193,41 @@ internal fun AgentWorkSegmentedBubble(
                     Icon(
                         imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                         contentDescription = null,
+                        tint = overriddenContentColor,
                     )
                 }
             }
         }
         val supportingSlot: (@Composable () -> Unit)? = supporting?.let { text ->
-            { Text(text = text, color = supportingColor ?: Color.Unspecified) }
+            {
+                // 出现时子树是新组合的：alpha 与行高 morph 同步淡入；消失方向由
+                // animateContentSize 的行压缩承接（文字随行高收拢离开组合树）。
+                val appearAlpha = remember(text) { Animatable(0f) }
+                LaunchedEffect(text) { appearAlpha.animateTo(1f, StandardWorkRowFadeSpec) }
+                Text(
+                    text = text,
+                    color = supportingColor ?: Color.Unspecified,
+                    modifier = Modifier.graphicsLayer { alpha = appearAlpha.value },
+                )
+            }
         }
         val parentModifier = if (expandable) {
             Modifier
                 .fillMaxWidth()
+                .animateContentSize(
+                    alignment = Alignment.Center,
+                    animationSpec = StandardContentSizeSpec,
+                )
                 .semantics {
                     stateDescription = if (expanded) expandedStateDescription else collapsedStateDescription
                 }
         } else {
-            Modifier.fillMaxWidth()
+            Modifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    alignment = Alignment.Center,
+                    animationSpec = StandardContentSizeSpec,
+                )
         }
         if (onToggle != null && expandable) {
             SegmentedListItem(
