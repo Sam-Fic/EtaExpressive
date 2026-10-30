@@ -20,7 +20,8 @@ import java.util.TimeZone
  * 日程（系统日历）写入工具：创建 / 修改 / 删除，直接调用系统日历 Provider。
  *
  * 设计约束（与 [AgentPersonalDataTools] 的读取侧一致）：
- * - 优先走 Root `content insert/update/delete`；无 Root 时改用 CalendarContract + READ/WRITE_CALENDAR
+ * - 创建日程优先用应用自身 ContentResolver（持有 WRITE_CALENDAR 时），失败再退回 Root `content insert`；
+ *   修改/删除优先走 Root `content update/delete`，无 Root 时改用 CalendarContract + READ/WRITE_CALENDAR
  *   运行时权限直接读写，二者都不可用才降级为预填日历界面；
  * - 修改/删除按 event_id 或标题定位；匹配多个时返回候选列表而不是猜一个，避免模型反复重试；
  * - 每次写人后都回读校验（read-after-write），不把"命令已发出"当成"已生效"；
@@ -170,6 +171,7 @@ internal class AgentCalendarTools(
             description = description,
             location = location,
             rrule = rrule,
+            note = "未获得日历读写权限",
         )
 
         val requestedCalendarId = args.optLongValue("calendar_id")
@@ -181,7 +183,7 @@ internal class AgentCalendarTools(
             }
         val watermark = maxEventId()
             ?: return error("CALENDAR_PROVIDER_UNAVAILABLE", "系统日历暂时不可访问")
-        val binds = buildList {
+        val requiredBinds = buildList {
             add(Bind("calendar_id", 'l', calendar.id.toString()))
             add(Bind("title", 's', title))
             add(Bind("dtstart", 'l', startMillis.toString()))
@@ -189,31 +191,78 @@ internal class AgentCalendarTools(
             add(Bind("eventTimezone", 's', if (allDay) UTC_ZONE else TimeZone.getDefault().id))
             add(Bind("allDay", 'i', if (allDay) "1" else "0"))
             add(Bind("hasAlarm", 'i', if (reminderMinutes > 0) "1" else "0"))
+        }
+        // 描述/地点/重复规则是可选字段：它们最长，也最容易带换行、URL 等厂家 Provider 不接受的内容。
+        // 所以完整参数写不进去时退一步只写必填字段，至少让日程本身落库，并如实说明缺了什么。
+        val optionalBinds = buildList {
             if (description.isNotEmpty()) add(Bind("description", 's', description))
             if (location.isNotEmpty()) add(Bind("eventLocation", 's', location))
             rrule?.let { add(Bind("rrule", 's', it)) }
         }
-        val insert = contentInsert(EVENTS_URI, binds)
-        if (!insert.ok || PersonalDataContentParser.hasProviderFailure(insert.stdout, insert.stderr)) {
-            return error("CALENDAR_INSERT_FAILED", "系统日历拒绝了这次写入；请稍后重试或改用日历应用手动创建")
+        val payloads = buildList {
+            add(requiredBinds + optionalBinds)
+            if (optionalBinds.isNotEmpty()) add(requiredBinds)
         }
-        val row = queryEvents(where = "deleted=0 AND title='${CalendarEventFormats.escapeSqlString(title)}'", sort = "_id DESC", limit = 1)
-            ?: return error("CALENDAR_PROVIDER_UNAVAILABLE", "系统日历暂时不可访问")
-        val eventId = row.firstOrNull()?.let { it.optLongValue("_id") }
-        if (eventId == null || eventId <= watermark) {
-            // 写入命令「成功」但读不回来：多数是目标日历拒绝落库（如厂商同步日历只读），
-            // 而不是校验缺陷。必须给出可执行的下一步，否则模型只会原样重试。
-            // 附上 provider 回显，否则下一次仍然只能靠猜。
-            val providerEcho = (insert.stdout.trim() + " " + insert.stderr.trim()).trim().take(200)
-            return error(
-                "CALENDAR_INSERT_UNVERIFIED",
-                "写入命令已执行但回读不到新日程，目标日历「${calendar.name}」可能拒绝了写入。" +
-                    "先用 search_calendar_events 确认是否已存在；确认不存在时用 list_calendars 换一个" +
-                    "可写日历（calendar_id）再试一次，不要原样重试" +
-                    if (providerEcho.isNotEmpty()) "；provider=$providerEcho" else "",
-            )
+        // 写入身份依次尝试：应用自身优先（受支持的第三方写入路径），Root 兜底。
+        // 同一轮里两种身份都写不进去时，再降级为只写必填字段重试一次。
+        val attempts = mutableListOf<ProviderResult>()
+        var eventId: Long? = null
+        var degraded = false
+        payloadLoop@ for ((payloadIndex, payload) in payloads.withIndex()) {
+            for (identity in insertIdentities()) {
+                val insert = if (identity == IDENTITY_APP) insertViaApp(EVENTS_URI, payload) else insertViaRoot(EVENTS_URI, payload)
+                attempts += insert
+                if (!insert.ok || PersonalDataContentParser.hasProviderFailure(insert.stdout, insert.stderr)) continue
+                // 命令成功不代表已落库：按 title 精确回读，并用写入前的最大 id 作为水位。
+                val row = queryEvents(
+                    where = "deleted=0 AND title='${CalendarEventFormats.escapeSqlString(title)}'",
+                    sort = "_id DESC",
+                    limit = 1,
+                ) ?: return error("CALENDAR_PROVIDER_UNAVAILABLE", "系统日历暂时不可访问")
+                val id = row.firstOrNull()?.let { it.optLongValue("_id") }
+                if (id != null && id > watermark) {
+                    eventId = id
+                    degraded = payloadIndex > 0
+                    break@payloadLoop
+                }
+            }
+        }
+        if (eventId == null) {
+            val paths = attempts.joinToString("→") { it.path }
+            val echo = providerEchoSuffix(attempts.last())
+            return if (attempts.none { it.ok }) {
+                // Provider 直接返回 null（写入未被接受，且 `content insert` 仍以退出码 0 结束）。
+                // 这种情况下只有日历应用自己的同步身份能落库，改走预填界面让用户一键保存。
+                uiFallback(
+                    title = title,
+                    startMillis = startMillis,
+                    endMillis = endMillis,
+                    allDay = allDay,
+                    description = description,
+                    location = location,
+                    rrule = rrule,
+                    note = "系统日历拒绝了直接写入（写入身份=$paths$echo）",
+                )
+            } else {
+                // 写入命令「成功」但读不回来：目标日历可能拒绝了落库（如厂商同步日历只读），
+                // 而不是校验缺陷。必须给出可执行的下一步，否则模型只会原样重试。
+                // 附上写入身份与 provider 回显，否则下一次仍然只能靠猜。
+                error(
+                    "CALENDAR_INSERT_UNVERIFIED",
+                    "写入命令已执行（写入身份=$paths）但回读不到新日程，目标日历「${calendar.name}」可能拒绝了写入。" +
+                        insertUnverifiedAdvice() +
+                        echo,
+                )
+            }
         }
         val warnings = mutableListOf<String>()
+        if (degraded) {
+            // 降级写入成功后，再把描述/地点/重复规则补回去：Provider 有时拒绝「带描述的新建」，
+            // 却能接受对已存在日程的更新。补写失败时如实告知，不假装完整。
+            if (!supplementEvent(eventId, optionalBinds)) {
+                warnings += "描述/地点/重复规则未能写入：日程已按标题与时间创建，请让用户核对并手动补充这些信息"
+            }
+        }
         if (reminderMinutes > 0 && !insertReminder(eventId, reminderMinutes)) {
             warnings += "提前提醒写入失败：日程已创建，但可能不会弹出通知"
         }
@@ -330,7 +379,10 @@ internal class AgentCalendarTools(
         return null
     }
 
-    /** 未获得 Root 时退化为打开日历预填界面；返回 ok=false，让模型如实告知用户去确认保存。 */
+    /**
+     * 写入被 Provider 拒绝（返回 null）时退化为打开日历预填界面；
+     * 返回 ok=false，让模型如实告知用户去确认保存，而不是谎称已创建。
+     */
     private fun uiFallback(
         title: String,
         startMillis: Long,
@@ -339,6 +391,7 @@ internal class AgentCalendarTools(
         description: String,
         location: String,
         rrule: String?,
+        note: String,
     ): AgentModelClient.ToolResult {
         val intent = Intent(Intent.ACTION_INSERT).apply {
             data = CalendarContract.Events.CONTENT_URI
@@ -355,11 +408,11 @@ internal class AgentCalendarTools(
         return if (launched) {
             error(
                 "CALENDAR_UI_FALLBACK",
-                "未获得 Root 权限，已打开日历并预填事件信息；请在日历应用中确认保存。" +
-                    "提前提醒需要 Root 直达写入，本次未设置。不要重复调用本工具。",
+                "$note；已打开日历并预填事件信息，请在日历应用中确认保存" +
+                    "（提前提醒需在应用里手动设置）。不要重复调用本工具。",
             )
         } else {
-            error("CALENDAR_UNAVAILABLE", "没有可处理日历写入的应用，且未获得 Root 权限，本次未创建日程")
+            error("CALENDAR_UNAVAILABLE", "$note；且没有可处理日历写入的应用，本次未创建日程")
         }
     }
 
@@ -647,6 +700,35 @@ internal class AgentCalendarTools(
         )
     }
 
+    /**
+     * 回读失败后的下一步。
+     *
+     * 只有一个可写日历时，「换一个日历重试」根本不存在，模型照旧提示只会原样重试
+     * （职业规划大赛会话就多烧了一轮）。此时直接收敛到手动路径。
+     */
+    private fun insertUnverifiedAdvice(): String =
+        if (writableCalendarCount() <= 1) {
+            "系统里只有这一个可写日历，换日历重试没有意义；请先用 search_calendar_events 确认不存在，" +
+                "然后不要再调用本工具，直接告知用户系统日历拒绝了写入，并建议在日历应用中手动新建" +
+                "（可以帮用户打开日历应用）"
+        } else {
+            "先用 search_calendar_events 确认是否已存在；确认不存在时用 list_calendars 换一个" +
+                "可写日历（calendar_id）再试一次，不要原样重试"
+        }
+
+    private fun writableCalendarCount(): Int {
+        val rows = query(
+            uri = CALENDARS_URI,
+            projection = listOf("_id", "calendar_access_level"),
+            where = "visible=1",
+            sort = null,
+        ) ?: return 0
+        return rows.count {
+            (it.optLongValue("_id") ?: 0L) > 0L &&
+                (it.optLongValue("calendar_access_level") ?: 0L) >= ACCESS_CONTRIBUTOR
+        }
+    }
+
     // ---------------------------------------------------------------- Provider 命令
 
     private fun queryEvents(where: String?, sort: String?, limit: Int): List<JSONObject>? =
@@ -661,7 +743,13 @@ internal class AgentCalendarTools(
             ?.firstOrNull()
             ?.optLongValue("_id")
 
-    private data class ProviderResult(val ok: Boolean, val stdout: String = "", val stderr: String = "")
+    private data class ProviderResult(
+        val ok: Boolean,
+        val stdout: String = "",
+        val stderr: String = "",
+        /** 实际执行的写入身份：app=应用自身 ContentResolver，root=Root content CLI，none=不可用。 */
+        val path: String = "",
+    )
 
     private fun query(
         uri: String,
@@ -710,31 +798,75 @@ internal class AgentCalendarTools(
         return limit?.let { rows.take(it) } ?: rows
     }
 
-    private fun contentInsert(uri: String, binds: List<Bind>): ProviderResult {
-        if (!rootAvailable()) {
-            if (!CalendarPermissions.granted(context, write = true)) {
-                return ProviderResult(false, stderr = "CALENDAR_PERMISSION_REQUIRED")
-            }
-            return runCatching {
-                ProviderResult(context.contentResolver.insert(Uri.parse(uri), binds.toContentValues()) != null)
-            }.getOrElse { ProviderResult(false, stderr = it.message.orEmpty()) }
-        }
+    /**
+     * 创建日程可用的写入身份，按优先级排列：应用自身（持有 WRITE_CALENDAR 时）、Root。
+     * 厂商同步日历上 Root `content insert` 可能被 Provider 静默丢弃（退出码 0、也回显 URI，
+     * 但库里没有这条记录），应用身份才是受支持的第三方写入路径；两者都不可用时为空。
+     */
+    private fun insertIdentities(): List<String> = buildList {
+        if (CalendarPermissions.granted(context, write = true)) add(IDENTITY_APP)
+        if (rootAvailable()) add(IDENTITY_ROOT)
+    }
+
+    private fun insertViaApp(uri: String, binds: List<Bind>): ProviderResult = runCatching {
+        context.contentResolver.insert(Uri.parse(uri), binds.toContentValues())
+    }.fold(
+        onSuccess = { inserted ->
+            if (inserted != null) ProviderResult(true, stdout = inserted.toString(), path = IDENTITY_APP)
+            else ProviderResult(false, stderr = "ContentResolver.insert 返回 null（Provider 未接受）", path = IDENTITY_APP)
+        },
+        onFailure = { ProviderResult(false, stderr = it.message.orEmpty(), path = IDENTITY_APP) },
+    )
+
+    private fun insertViaRoot(uri: String, binds: List<Bind>): ProviderResult {
         val command = buildString {
             append("content insert --uri ").append(shellQuote(uri))
             binds.forEach { append(" --bind ").append(shellQuote("${it.name}:${it.type}:${it.value}")) }
         }
-        return root.execute(command, timeoutMillis = QUERY_TIMEOUT_MS, maxOutputBytes = MAX_OUTPUT_BYTES).toProviderResult()
+        val result = root.execute(command, timeoutMillis = QUERY_TIMEOUT_MS, maxOutputBytes = MAX_OUTPUT_BYTES)
+        // `content insert` 在 Provider 返回 null 时仍打印 "null" 并以退出码 0 结束，
+        // 只看退出码会把「被拒绝」误当成「已执行、只是回读不到」。只有拿到 content:// URI 才算被接受。
+        if (result.ok && !result.stdout.contains("content://")) {
+            return ProviderResult(
+                ok = false,
+                stdout = result.stdout,
+                stderr = result.stderr.ifBlank { "content insert 未返回 URI，Provider 拒绝了写入" },
+                path = IDENTITY_ROOT,
+            )
+        }
+        return result.toProviderResult()
+    }
+
+    /** 写入失败时附上 provider 回显（截断），否则下一次仍然只能靠猜。 */
+    private fun providerEchoSuffix(result: ProviderResult): String {
+        val echo = (result.stdout.trim() + " " + result.stderr.trim()).trim().take(200)
+        return if (echo.isNotEmpty()) "；provider=$echo" else ""
+    }
+
+    /** 提醒等附属写入：应用身份优先，不可用或直接被拒时退回 Root。 */
+    private fun contentInsert(uri: String, binds: List<Bind>): ProviderResult {
+        if (CalendarPermissions.granted(context, write = true)) {
+            val viaApp = insertViaApp(uri, binds)
+            if (viaApp.ok || !rootAvailable()) return viaApp
+        }
+        if (!rootAvailable()) {
+            return ProviderResult(false, stderr = "CALENDAR_PERMISSION_REQUIRED", path = IDENTITY_NONE)
+        }
+        return insertViaRoot(uri, binds)
     }
 
     private fun contentUpdate(uri: String, binds: List<Bind>): ProviderResult {
-        if (!rootAvailable()) {
-            if (!CalendarPermissions.granted(context, write = true)) {
-                return ProviderResult(false, stderr = "CALENDAR_PERMISSION_REQUIRED")
-            }
-            return runCatching {
+        if (CalendarPermissions.granted(context, write = true)) {
+            val viaApp = try {
                 context.contentResolver.update(Uri.parse(uri), binds.toContentValues(), null, null)
-                ProviderResult(true)
-            }.getOrElse { ProviderResult(false, stderr = it.message.orEmpty()) }
+                ProviderResult(true, path = IDENTITY_APP)
+            } catch (e: Exception) {
+                ProviderResult(false, stderr = e.message.orEmpty(), path = IDENTITY_APP)
+            }
+            if (viaApp.ok || !rootAvailable()) return viaApp
+        }
+        if (!rootAvailable()) {
+            return ProviderResult(false, stderr = "CALENDAR_PERMISSION_REQUIRED", path = IDENTITY_NONE)
         }
         val command = buildString {
             append("content update --uri ").append(shellQuote(uri))
@@ -761,7 +893,7 @@ internal class AgentCalendarTools(
     }
 
     private fun BoundedRootCommandExecutor.Result.toProviderResult(): ProviderResult =
-        ProviderResult(ok, stdout, stderr)
+        ProviderResult(ok, stdout, stderr, path = "root")
 
     private fun List<Bind>.toContentValues(): ContentValues = ContentValues().also { values ->
         for (bind in this) {
@@ -775,6 +907,13 @@ internal class AgentCalendarTools(
                 else -> values.put(bind.name, bind.value)
             }
         }
+    }
+
+    /** 降级写入后补齐可选字段；没有要补的字段视为成功。 */
+    private fun supplementEvent(eventId: Long, optionalBinds: List<Bind>): Boolean {
+        if (optionalBinds.isEmpty()) return true
+        val result = contentUpdate("$EVENTS_URI/$eventId", optionalBinds)
+        return result.ok && !PersonalDataContentParser.hasProviderFailure(result.stdout, result.stderr)
     }
 
     private fun insertReminder(eventId: Long, minutes: Int): Boolean {
@@ -856,6 +995,9 @@ internal class AgentCalendarTools(
         const val ACCESS_OWNER = 700L
         const val QUERY_TIMEOUT_MS = 15_000L
         const val MAX_OUTPUT_BYTES = 256 * 1024
+        const val IDENTITY_APP = "app"
+        const val IDENTITY_ROOT = "root"
+        const val IDENTITY_NONE = "none"
         /**
          * 回读校验比对的每一列都必须出现在这里，否则 [verifyEvent] 永远读到 null，
          * 把「写入其实成功」判成 CALENDAR_UPDATE_NOT_APPLIED（eventTimezone / hasAlarm 曾因此必失败）。

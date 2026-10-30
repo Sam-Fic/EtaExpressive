@@ -592,7 +592,7 @@ internal object AgentDeviceToolCatalog {
                         "a date alone creates an all-day event). When end is omitted it defaults to start plus 1 hour (1 day for all-day events)." +
                         "reminder_minutes is how many minutes early to notify, default 10; pass 0 for no reminder." +
                         "repeat accepts none/daily/weekly/monthly/yearly; with repeat=weekly, repeat_days selects the weekdays." +
-                        "Without Root it degrades to opening a pre-filled calendar UI and returns ok=false; tell the user to confirm and save in the calendar, and do not repeat the call.",
+                        "When the calendar provider rejects a direct write from both the app identity and Root, it opens a pre-filled calendar UI and returns ok=false; tell the user to confirm and save in the calendar, and do not repeat the call.",
                     properties(
                         "title" to string("Event title", 200),
                         "start" to string("Start time, YYYY-MM-DDTHH:MM or YYYY-MM-DD", 32),
