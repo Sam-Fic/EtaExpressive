@@ -429,17 +429,6 @@ internal fun MediaIndexSettingsScreen(
         }
 
         // ── 扫描范围确认区（核心） ─────────────────────────────────
-        item(key = "sources-intro") {
-            EtaText(
-                text = stringResource(R.string.media_sources_intro),
-                secondary = true,
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedTitleSpacing,
-                ),
-            )
-        }
         item(key = "sources-group") {
             EtaSegmentedColumn(
                 title = stringResource(R.string.media_sources_group),
@@ -660,6 +649,7 @@ internal fun MediaIndexSettingsScreen(
                 item(key = "auto-interval") {
                     EtaSegmentedDropdownRow(
                         title = stringResource(R.string.media_auto_interval),
+                        summary = stringResource(R.string.media_auto_power_saver_note),
                         items = listOf(
                             stringResource(R.string.media_auto_interval_off),
                             stringResource(R.string.media_auto_interval_6h),
@@ -678,19 +668,6 @@ internal fun MediaIndexSettingsScreen(
                         },
                     )
                 }
-                // 常驻说明：自动更新固定低耗后台档，不跟随上方手选档位。
-                item(key = "auto-power-saver-note", surface = false) {
-                    EtaText(
-                        text = stringResource(R.string.media_auto_power_saver_note),
-                        style = EtaTextStyle.Footnote,
-                        modifier = Modifier.padding(
-                            start = EtaGroupHorizontalPadding,
-                            end = EtaGroupHorizontalPadding,
-                            top = 4.dp,
-                            bottom = 4.dp,
-                        ),
-                    )
-                }
             }
         }
 
@@ -704,19 +681,6 @@ internal fun MediaIndexSettingsScreen(
                     bottom = EtaSegmentedGroupSpacing,
                 ),
             ) {
-                // 常驻说明（索引区顶部）：增量索引语义，已索引且未变化的文件不会重复处理。
-                item(key = "index-incremental-note", surface = false) {
-                    EtaText(
-                        text = stringResource(R.string.media_index_incremental_note),
-                        style = EtaTextStyle.Footnote,
-                        modifier = Modifier.padding(
-                            start = EtaGroupHorizontalPadding,
-                            end = EtaGroupHorizontalPadding,
-                            top = 4.dp,
-                            bottom = 4.dp,
-                        ),
-                    )
-                }
                 item(key = "index-now") {
                     EtaClickableRow(
                         // 差分：已有索引 → 「更新索引」（增量）；尚无索引 → 「建立索引」（首次全量）。

@@ -2838,7 +2838,6 @@
   <string name="media_backend_npu">NPU</string>
   <string name="media_backend_active_fallback">當前生效：%1$s（初始化失敗已回退）</string>
   <string name="media_low_memory_note">偵測到低記憶體裝置，預設使用純文字模型；可手動切換全模態</string>
-  <string name="media_sources_intro">確認掃描範圍後才會開始索引</string>
   <string name="media_sources_group">掃描範圍</string>
   <string name="media_source_mediastore">系統媒體庫（圖片/影片/音訊）</string>
   <string name="media_source_mediastore_summary">需要媒體讀取權限；Android 14+ 可部分授權</string>
@@ -2868,7 +2867,6 @@
   <string name="media_auto_interval_weekly">每週</string>
   <string name="media_auto_power_saver_note">自動更新固定使用低耗後台模式</string>
   <string name="media_index_group">索引</string>
-  <string name="media_index_incremental_note">增量索引：已索引且未變化的檔案不會重複處理，僅處理新增、修改與已刪除項目</string>
   <string name="media_index_running">索引中…</string>
   <string name="media_index_progress">已處理 %1$d/%2$d · 新增 %3$d · 跳過 %4$d · 失敗 %5$d · 清理 %6$d</string>
   <string name="media_phase_scanning">掃描</string>

@@ -2872,7 +2872,6 @@
   <string name="media_backend_npu">NPU</string>
   <string name="media_backend_active_fallback">In effect: %1$s (fell back after initialization failure)</string>
   <string name="media_low_memory_note">Low-memory device detected: the text-only model is used by default. Switch to the multimodal model manually if needed</string>
-  <string name="media_sources_intro">Nothing is indexed until you confirm the scope below</string>
   <string name="media_sources_group">Scan scope</string>
   <string name="media_source_mediastore">System media library (images/videos/audio)</string>
   <string name="media_source_mediastore_summary">Needs the media read permission; Android 14+ allows partial access</string>
@@ -2902,7 +2901,6 @@
   <string name="media_auto_interval_weekly">Every week</string>
   <string name="media_auto_power_saver_note">Automatic updates always use the power saver mode</string>
   <string name="media_index_group">Index</string>
-  <string name="media_index_incremental_note">Incremental indexing: files already indexed and unchanged are not processed again; only new, changed and deleted items are handled</string>
   <string name="media_index_running">Indexing…</string>
   <string name="media_index_progress">Processed %1$d/%2$d · added %3$d · skipped %4$d · failed %5$d · removed %6$d</string>
   <string name="media_phase_scanning">Scanning</string>
