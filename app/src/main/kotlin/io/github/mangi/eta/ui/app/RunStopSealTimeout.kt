@@ -76,7 +76,7 @@ internal class RunStopSealTimeout(
 /** Copy shown while the UI is still waiting for the runtime to confirm a stop. */
 internal object StopSealNotices {
     /** Means "this round is still winding down", never "we are writing to disk". */
-    const val PENDING = "本轮仍在停止，暂不能修改历史或继续发送；可切换或新建会话。"
+    const val PENDING = "本轮仍在停止，暂不能修改历史或继续发送；可切换或新建会话"
 
     /** Honest wording: the round's final result never arrived, so the record may be incomplete. */
     const val TIMED_OUT = "本轮最终结果未确认，已解除界面锁定；该轮记录可能不完整"

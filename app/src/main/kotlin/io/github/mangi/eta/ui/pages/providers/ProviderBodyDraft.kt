@@ -26,7 +26,7 @@ internal fun parseProviderBodies(rows: List<ProviderBodyDraft>): Result<List<Cus
             Json.parseToJsonElement(row.valueJson).also { require(it.hasStrictJsonLiterals()) }
         }.getOrElse {
             // Do not expose entered JSON or parser diagnostics: it may contain secrets.
-            throw IllegalArgumentException("第 ${index + 1} 项值不是有效 JSON；字符串请加双引号，如 \"1h\"。")
+            throw IllegalArgumentException("第 ${index + 1} 项值不是有效 JSON；字符串请加双引号，如 \"1h\"")
         }
         CustomBody(key, value)
     }
