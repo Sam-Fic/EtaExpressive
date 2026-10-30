@@ -1828,9 +1828,10 @@ internal fun AgentConversationMessages(
                                 }
                             },
                             // 组首与列表内容的间距 2dp；展开后与步骤行之间是 2dp 露缝（1+1）。
+                            // 展开后首步若是纯文本回复，列表不接摘要，摘要下沿仍是 2dp。
                             modifier = Modifier.padding(
                                 top = 2.dp,
-                                bottom = if (entry.expanded) 1.dp else 2.dp,
+                                bottom = if (entry.expanded && entry.group.summaryContinuesIntoSteps()) 1.dp else 2.dp,
                             ),
                         )
                     }

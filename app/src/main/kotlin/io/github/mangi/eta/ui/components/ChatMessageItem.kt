@@ -3414,8 +3414,13 @@ internal fun AgentWorkProcessSummary(
         modifier = modifier,
         expanded = expanded,
         onToggle = onToggle,
-        // 折叠态是单独一条（外圆）；展开后步骤行接在下面，摘要行成为组首（下沿内圆）。
-        position = if (expanded) SegmentedRowPosition.First else SegmentedRowPosition.Whole,
+        // 折叠态是单独一条（外圆）；展开后步骤行接在下面，摘要行成为组首（下沿内圆）——
+        // 但首步若是纯文本回复，列表断开，摘要仍是单独一条。
+        position = if (expanded && group.summaryContinuesIntoSteps()) {
+            SegmentedRowPosition.First
+        } else {
+            SegmentedRowPosition.Whole
+        },
     )
 }
 
