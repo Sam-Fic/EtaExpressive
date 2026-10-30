@@ -702,6 +702,8 @@
   <string name="tool_ui_semantic_search_media">語義搜尋媒體</string>
   <string name="tool_ui_semantic_search_media_summary">用離線索引按語義檢索本機的圖片、影片和檔案</string>
   <string name="tools_group_switch_title">啟用該分組</string>
+  <string name="tools_group_state_expanded">已展開</string>
+  <string name="tools_group_state_collapsed">已收起</string>
   <string name="settings_basic_tools">基礎互動</string>
   <string name="settings_basic_tools_summary">向你提問、讀取時間與位置、尋找並開啟應用、語音、讀取 Skills。這一組常駐下發，其餘分組由模型按需載入</string>
   <string name="settings_web_tools">網頁與瀏覽器</string>

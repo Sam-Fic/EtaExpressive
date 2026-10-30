@@ -690,6 +690,8 @@
   <string name="tool_ui_semantic_search_media">Semantic media search</string>
   <string name="tool_ui_semantic_search_media_summary">Search photos, videos and files on this device by meaning, using an offline embedding index</string>
   <string name="tools_group_switch_title">Enable this group</string>
+  <string name="tools_group_state_expanded">Expanded</string>
+  <string name="tools_group_state_collapsed">Collapsed</string>
   <string name="settings_basic_tools">Core interaction</string>
   <string name="settings_basic_tools_summary">Asking you questions, reading time and location, finding and opening apps, speech and reading Skills. This group is always sent; the others load only when the model asks for them</string>
   <string name="settings_web_tools">Web browsing</string>
