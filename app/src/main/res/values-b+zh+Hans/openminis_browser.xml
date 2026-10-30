@@ -10,7 +10,7 @@
     <string name="om_browser_enter_url_hint">请在上方输入网址开始浏览</string>
     <string name="om_browser_history_action">历史</string>
     <string name="om_browser_history_clear">清除</string>
-    <string name="om_browser_history_clear_dialog_message">这将删除所有浏览历史。此操作无法撤销。</string>
+    <string name="om_browser_history_clear_dialog_message">这将删除所有浏览历史。此操作无法撤销</string>
     <string name="om_browser_history_clear_dialog_title">清除浏览历史？</string>
     <string name="om_browser_history_done">完成</string>
     <string name="om_browser_history_empty_subtitle">历史记录保留 7 天</string>
@@ -28,7 +28,7 @@
     <string name="om_browser_settings_apply">应用</string>
     <string name="om_browser_settings_clear">清除</string>
     <string name="om_browser_settings_clear_all_cookies">清除所有 Cookie 与数据</string>
-    <string name="om_browser_settings_clear_all_dialog_message">这将删除所有 Cookie 和网站数据。您将从所有网站登出。</string>
+    <string name="om_browser_settings_clear_all_dialog_message">这将删除所有 Cookie 和网站数据。您将从所有网站登出</string>
     <string name="om_browser_settings_clear_all_dialog_title">清除所有网站数据？</string>
     <string name="om_browser_settings_clear_cookies_for">清除 %1$s 的 Cookie</string>
     <string name="om_browser_settings_cookies_stored">Cookie 已存储在此设备上</string>
@@ -37,7 +37,7 @@
     <string name="om_browser_settings_done">完成</string>
     <string name="om_browser_settings_filter_by_domain">按域名筛选</string>
     <string name="om_browser_settings_idle_timeout">空闲标签页超时</string>
-    <string name="om_browser_settings_idle_timeout_desc">为节省内存，未使用的标签页将在该分钟数后关闭。</string>
+    <string name="om_browser_settings_idle_timeout_desc">为节省内存，未使用的标签页将在该分钟数后关闭</string>
     <string name="om_browser_settings_minutes_label">分钟</string>
     <string name="om_browser_settings_no_cookies">没有存储的 Cookie</string>
     <string name="om_browser_settings_no_domains_match">没有域名与 “%1$s” 匹配</string>
@@ -53,8 +53,8 @@
     <string name="om_browser_settings_viewport_custom_summary">自定义宽 × 高</string>
     <string name="om_browser_settings_viewport_width">宽度</string>
     <string name="om_browser_settings_viewport_height">高度</string>
-    <string name="om_browser_settings_viewport_using_custom">正在使用自定义视口 %1$d × %2$d。点「默认」可恢复 UA 默认值。</string>
-    <string name="om_browser_settings_viewport_using_default">正在使用 UA 默认视口 %1$d × %2$d。可设置自定义尺寸进行覆盖。</string>
+    <string name="om_browser_settings_viewport_using_custom">正在使用自定义视口 %1$d × %2$d。点「默认」可恢复 UA 默认值</string>
+    <string name="om_browser_settings_viewport_using_default">正在使用 UA 默认视口 %1$d × %2$d。可设置自定义尺寸进行覆盖</string>
     <string name="om_browser_settings_quick_set">快速预设</string>
     <string name="om_browser_settings_preset_phone">手机</string>
     <string name="om_browser_settings_preset_phone_pro">大屏手机</string>
@@ -62,15 +62,15 @@
     <string name="om_browser_settings_preset_laptop">笔记本</string>
     <string name="om_browser_settings_preset_desktop">桌面</string>
     <string name="om_browser_settings_preset_full_hd">全高清</string>
-    <string name="om_browser_settings_ua_mismatch_mobile">UA 为移动端但视口 ≥%1$dpx —— 网站可能返回桌面排版，渲染效果不佳。建议将 UA 切换为桌面。</string>
-    <string name="om_browser_settings_ua_mismatch_desktop">UA 为桌面端但视口 &lt;%1$dpx —— 网站可能返回移动排版，渲染效果不佳。建议将 UA 切换为移动端。</string>
+    <string name="om_browser_settings_ua_mismatch_mobile">UA 为移动端但视口 ≥%1$dpx —— 网站可能返回桌面排版，渲染效果不佳。建议将 UA 切换为桌面</string>
+    <string name="om_browser_settings_ua_mismatch_desktop">UA 为桌面端但视口 &lt;%1$dpx —— 网站可能返回移动排版，渲染效果不佳。建议将 UA 切换为移动端</string>
     <string name="om_browser_stop">停止</string>
     <string name="om_browser_takeover">接管</string>
     <string name="om_browser_title">浏览器</string>
-    <string name="om_browser_use_tab_busy_timeout">另一个工具正在操作浏览器标签页 %1$d，本次请求在 %2$d 秒内没有排到。不支持多个工具同时操作同一个标签页。请新开一个标签页（action: new_tab）并在那里重试。</string>
+    <string name="om_browser_use_tab_busy_timeout">另一个工具正在操作浏览器标签页 %1$d，本次请求在 %2$d 秒内没有排到。不支持多个工具同时操作同一个标签页。请新开一个标签页（action: new_tab）并在那里重试</string>
     <string name="om_cancel">取消</string>
     <string name="om_external_link_blocked">已拦截跳转到外部应用的链接（%1$s）</string>
-    <string name="om_external_link_no_app">没有可以打开此链接的应用。</string>
+    <string name="om_external_link_no_app">没有可以打开此链接的应用</string>
     <string name="om_standard_sheet_close">关闭</string>
-        <string name="browser_initialization_failed">浏览器初始化失败，请关闭后重试。</string>
+        <string name="browser_initialization_failed">浏览器初始化失败，请关闭后重试</string>
 </resources>

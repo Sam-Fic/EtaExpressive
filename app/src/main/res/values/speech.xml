@@ -2,13 +2,13 @@
 <resources>
     <string name="speech_title">Speech to text</string>
     <string name="speech_enable">Enable speech to text</string>
-    <string name="speech_enabled_summary">Tap the circle in the composer to dictate in real time.</string>
-    <string name="speech_requires_pack">Download the speech pack before enabling.</string>
+    <string name="speech_enabled_summary">Tap the circle in the composer to dictate in real time</string>
+    <string name="speech_requires_pack">Download the speech pack before enabling</string>
     <string name="speech_download">Download speech pack</string>
     <string name="speech_cancel_download">Cancel download</string>
     <string name="speech_pack_ready">Speech pack ready</string>
     <string name="speech_checking">Verifying speech pack…</string>
-    <string name="speech_download_failed">Download or verification failed. Tap to retry.</string>
+    <string name="speech_download_failed">Download or verification failed. Tap to retry</string>
     <string name="speech_model">Speech model</string>
     <string name="speech_model_zipformer">Zipformer bilingual zh-en (2023)</string>
     <string name="speech_model_x_asr">X-ASR zh-en streaming (480 ms)</string>
@@ -17,14 +17,14 @@
     <string name="speech_source_hugging_face">Hugging Face</string>
     <string name="speech_source_model_scope">ModelScope</string>
     <string name="speech_pack_summary">%1$s · Works offline after download</string>
-    <string name="speech_privacy">Recording starts only on tap. Audio stays on device. Tap again or pause after speaking to stop. Text stays in the composer and is not sent automatically. Leaving chat or backgrounding the app stops recording.</string>
-    <string name="speech_download_confirm">Download about %1$s of offline speech model files from %2$s? Data charges may apply. Enable speech input manually after verification. Upstream model licensing is not declared; use only as permitted by applicable rights.</string>
+    <string name="speech_privacy">Recording starts only on tap. Audio stays on device. Tap again or pause after speaking to stop. Text stays in the composer and is not sent automatically. Leaving chat or backgrounding the app stops recording</string>
+    <string name="speech_download_confirm">Download about %1$s of offline speech model files from %2$s? Data charges may apply. Enable speech input manually after verification. Upstream model licensing is not declared; use only as permitted by applicable rights</string>
     <string name="speech_start">Start dictation</string>
     <string name="speech_stop">Stop dictation</string>
     <string name="speech_listening">Listening; tap again to stop</string>
     <string name="speech_preparing">Loading speech model</string>
-    <string name="speech_no_voice">No speech recognized. Recording stopped.</string>
-    <string name="speech_failed">Speech input failed. Check microphone permission and the speech pack.</string>
-    <string name="speech_permission_denied">Microphone permission is required for dictation.</string>
+    <string name="speech_no_voice">No speech recognized. Recording stopped</string>
+    <string name="speech_failed">Speech input failed. Check microphone permission and the speech pack</string>
+    <string name="speech_permission_denied">Microphone permission is required for dictation</string>
   <string name="speech_search_option">Search options</string>
 </resources>

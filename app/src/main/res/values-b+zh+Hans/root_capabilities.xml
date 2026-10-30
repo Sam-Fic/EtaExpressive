@@ -20,17 +20,17 @@
     <string name="capability_root_features">Root 能力</string>
     <string name="capability_system_features">系统助手与增强</string>
     <string name="capability_root_device">应用与系统管理</string>
-    <string name="capability_root_device_summary">冻结与停止应用、修改受保护系统设置、读取系统日志。需要 Eta 获得 Root 授权。</string>
+    <string name="capability_root_device_summary">冻结与停止应用、修改受保护系统设置、读取系统日志。需要 Eta 获得 Root 授权</string>
     <string name="capability_root_data">受保护数据与文件</string>
-    <string name="capability_root_data_summary">访问其他应用和系统保存的部分数据。需要 Root，具体范围取决于系统、应用版本与已开启的工具权限。</string>
+    <string name="capability_root_data_summary">访问其他应用和系统保存的部分数据。需要 Root，具体范围取决于系统、应用版本与已开启的工具权限</string>
     <string name="capability_root_linux">Linux 与终端增强</string>
-    <string name="capability_root_linux_summary">Root 可使用 chroot、系统目录与脱离 App 的守护任务；普通模式可使用私有工作区与 PRoot。</string>
+    <string name="capability_root_linux_summary">Root 可使用 chroot、系统目录与脱离 App 的守护任务；普通模式可使用私有工作区与 PRoot</string>
     <string name="capability_hook_assistants">小布与超级小爱接管</string>
-    <string name="capability_hook_assistants_summary">通过系统助手入口调用 Eta Runtime。需要 LSPosed 启用 Eta、对应助手作用域，以及支持的 ColorOS 或 HyperOS。</string>
+    <string name="capability_hook_assistants_summary">通过系统助手入口调用 Eta Runtime。需要 LSPosed 启用 Eta、对应助手作用域，以及支持的 ColorOS 或 HyperOS</string>
     <string name="capability_hook_google">Gemini 与一圈即搜</string>
-    <string name="capability_hook_google_summary">在 ColorOS 创建或修复系统能力与触发入口。需要 LSPosed、对应系统与 Google 应用作用域；Google 应用系统化另需 Root。</string>
+    <string name="capability_hook_google_summary">在 ColorOS 创建或修复系统能力与触发入口。需要 LSPosed、对应系统与 Google 应用作用域；Google 应用系统化另需 Root</string>
     <string name="capability_hook_accessibility">无障碍保护</string>
-    <string name="capability_hook_accessibility_summary">通过 system_server 维护服务启用状态，需要 LSPosed 的系统作用域。普通模式仍可手动开启无障碍。</string>
+    <string name="capability_hook_accessibility_summary">通过 system_server 维护服务启用状态，需要 LSPosed 的系统作用域。普通模式仍可手动开启无障碍</string>
     <string name="capability_optional_root">可选增强权限</string>
     <string name="capability_import_denied">没有权限读取该路径，请选择文件导入或授权共享目录</string>
     <string name="capability_import_failed">文件导入失败，请重试</string>
@@ -59,7 +59,7 @@
     <string name="capability_notifications_summary">在通知栏查看和停止正在运行的终端与 Agent 任务</string>
     <string name="capability_background_failed">无法开始后台任务，请回到 Eta 后重试</string>
     <string name="capability_location_foreground">前台使用时可读取位置；后台任务需要额外的位置授权</string>
-    <string name="capability_xposed_help_summary">在 LSPosed 中启用 Eta 并检查作用域。服务连接不代表模块已启用，关闭模块后连接仍可能保留；实际生效取决于目标进程是否加载 Hook。</string>
+    <string name="capability_xposed_help_summary">在 LSPosed 中启用 Eta 并检查作用域。服务连接不代表模块已启用，关闭模块后连接仍可能保留；实际生效取决于目标进程是否加载 Hook</string>
     <string name="capability_terminal_ordinary_summary">使用普通 Android Shell 或免 Root Linux 环境执行命令与后台任务</string>
     <string name="capability_notification_access_required">授权通知使用权后可用</string>
     <string name="capability_usage_access_required">授权使用情况访问后可用</string>
@@ -88,8 +88,8 @@
     <string name="capability_workspace_empty_summary">导入文件，或通过终端任务生成文件</string>
     <string name="capability_workspace_deleted">已删除</string>
     <string name="capability_workspace_delete_title">删除文件</string>
-    <string name="capability_workspace_delete_message">确定删除“%1$s”？此操作无法撤销。</string>
-    <string name="capability_workspace_delete_dir_message">确定删除文件夹“%1$s”及其全部内容？此操作无法撤销。</string>
+    <string name="capability_workspace_delete_message">确定删除“%1$s”？此操作无法撤销</string>
+    <string name="capability_workspace_delete_dir_message">确定删除文件夹“%1$s”及其全部内容？此操作无法撤销</string>
     <string name="settings_tools_list">工具列表</string>
     <string name="agent_task_surface_title">Agent任务偏好</string>
     <string name="agent_task_surface_ask">每次询问</string>
@@ -98,7 +98,7 @@
     <string name="agent_task_surface_ask_summary">每次操作手机前询问前台还是后台</string>
     <string name="agent_task_surface_foreground_summary">在主屏上操作，和现在一样</string>
     <string name="agent_task_surface_background_summary">实验性：副屏执行，标记交付任务后迁回后台并关闭副屏</string>
-    <string name="agent_task_surface_hint">安装模块不代表交接可用。后台功能未就绪时不会自动改用主屏；可手动选择前台执行。</string>
+    <string name="agent_task_surface_hint">安装模块不代表交接可用。后台功能未就绪时不会自动改用主屏；可手动选择前台执行</string>
     <string name="agent_task_surface_prompt_title">这次任务在哪里执行</string>
-    <string name="agent_task_surface_prompt_body">实验性后台执行，仅在交付任务移交成功并确认源屏为空时关闭副屏；失败时保留副屏。</string>
+    <string name="agent_task_surface_prompt_body">实验性后台执行，仅在交付任务移交成功并确认源屏为空时关闭副屏；失败时保留副屏</string>
 </resources>

@@ -2,5 +2,5 @@
 <resources>
     <string name="agent_task_surface_background_not_ready">後台副屏尚未就緒，請改回前台</string>
     <string name="agent_task_surface_ask_not_ready">詢問模式尚未就緒，請改回前台</string>
-    <string name="agent_task_surface_not_ready_hint">實驗性後台模式：執行期間不要從桌面開啟或清理目標應用。交付失敗保留副屏。</string>
+    <string name="agent_task_surface_not_ready_hint">實驗性後台模式：執行期間不要從桌面開啟或清理目標應用。交付失敗保留副屏</string>
 </resources>

@@ -2,13 +2,13 @@
 <resources>
     <string name="speech_title">语音转文字</string>
     <string name="speech_enable">启用语音转文字</string>
-    <string name="speech_enabled_summary">点击输入框圆形按钮，边说边输入。</string>
-    <string name="speech_requires_pack">请先下载语音包，再开启。</string>
+    <string name="speech_enabled_summary">点击输入框圆形按钮，边说边输入</string>
+    <string name="speech_requires_pack">请先下载语音包，再开启</string>
     <string name="speech_download">下载语音包</string>
     <string name="speech_cancel_download">取消下载</string>
     <string name="speech_pack_ready">语音包已就绪</string>
     <string name="speech_checking">正在校验语音包…</string>
-    <string name="speech_download_failed">下载未完成或校验失败，点击重试。</string>
+    <string name="speech_download_failed">下载未完成或校验失败，点击重试</string>
     <string name="speech_model">语音模型</string>
     <string name="speech_model_zipformer">Zipformer 中英双语（2023）</string>
     <string name="speech_model_x_asr">X-ASR 中英流式（480 ms）</string>
@@ -17,14 +17,14 @@
     <string name="speech_source_hugging_face">Hugging Face</string>
     <string name="speech_source_model_scope">ModelScope</string>
     <string name="speech_pack_summary">%1$s · 下载后离线使用</string>
-    <string name="speech_privacy">仅点击后收音，不上传录音。再次点击或说完停顿后停止，文字留在输入框，不自动发送。离开聊天或切到后台停止收音。</string>
-    <string name="speech_download_confirm">将从 %2$s 下载约 %1$s 的离线语音模型，可能产生流量费用。下载校验完成后仍需手动开启。模型权重的上游授权尚未明确，请仅按适用授权使用。</string>
+    <string name="speech_privacy">仅点击后收音，不上传录音。再次点击或说完停顿后停止，文字留在输入框，不自动发送。离开聊天或切到后台停止收音</string>
+    <string name="speech_download_confirm">将从 %2$s 下载约 %1$s 的离线语音模型，可能产生流量费用。下载校验完成后仍需手动开启。模型权重的上游授权尚未明确，请仅按适用授权使用</string>
     <string name="speech_start">开始语音输入</string>
     <string name="speech_stop">停止语音输入</string>
     <string name="speech_listening">正在收音，再次点击停止</string>
     <string name="speech_preparing">正在加载语音模型</string>
-    <string name="speech_no_voice">未识别到语音，已停止收音。</string>
-    <string name="speech_failed">语音输入失败，请检查麦克风权限和语音包。</string>
-    <string name="speech_permission_denied">需要麦克风权限才能语音输入。</string>
+    <string name="speech_no_voice">未识别到语音，已停止收音</string>
+    <string name="speech_failed">语音输入失败，请检查麦克风权限和语音包</string>
+    <string name="speech_permission_denied">需要麦克风权限才能语音输入</string>
   <string name="speech_search_option">搜索选项</string>
 </resources>

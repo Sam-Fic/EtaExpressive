@@ -10,7 +10,7 @@
     <string name="om_browser_enter_url_hint">Enter a URL above to start browsing</string>
     <string name="om_browser_history_action">History</string>
     <string name="om_browser_history_clear">Clear</string>
-    <string name="om_browser_history_clear_dialog_message">This will remove all browsing history. This cannot be undone.</string>
+    <string name="om_browser_history_clear_dialog_message">This will remove all browsing history. This cannot be undone</string>
     <string name="om_browser_history_clear_dialog_title">Clear Browsing History?</string>
     <string name="om_browser_history_done">Done</string>
     <string name="om_browser_history_empty_subtitle">History is kept for 7 days</string>
@@ -29,7 +29,7 @@
     <string name="om_browser_settings_apply">Apply</string>
     <string name="om_browser_settings_clear">Clear</string>
     <string name="om_browser_settings_clear_all_cookies">Clear All Cookies &amp; Data</string>
-    <string name="om_browser_settings_clear_all_dialog_message">This will remove all cookies and website data. You will be signed out of all websites.</string>
+    <string name="om_browser_settings_clear_all_dialog_message">This will remove all cookies and website data. You will be signed out of all websites</string>
     <string name="om_browser_settings_clear_all_dialog_title">Clear All Website Data?</string>
     <string name="om_browser_settings_clear_cookies_for">Clear cookies for %1$s</string>
     <string name="om_browser_settings_cookies_stored">Cookies are stored on this device</string>
@@ -38,7 +38,7 @@
     <string name="om_browser_settings_done">Done</string>
     <string name="om_browser_settings_filter_by_domain">Filter by domain</string>
     <string name="om_browser_settings_idle_timeout">Idle Tab Timeout</string>
-    <string name="om_browser_settings_idle_timeout_desc">Unused tabs are closed after this many minutes to free memory.</string>
+    <string name="om_browser_settings_idle_timeout_desc">Unused tabs are closed after this many minutes to free memory</string>
     <string name="om_browser_settings_minutes_label">Minutes</string>
     <string name="om_browser_settings_no_cookies">No cookies stored</string>
     <string name="om_browser_settings_no_domains_match">No domains match \"%1$s\"</string>
@@ -55,8 +55,8 @@
     <string name="om_browser_settings_viewport_custom_summary">Set your own width × height</string>
     <string name="om_browser_settings_viewport_width">Width</string>
     <string name="om_browser_settings_viewport_height">Height</string>
-    <string name="om_browser_settings_viewport_using_custom">Using custom viewport %1$d × %2$d. Tap Default to revert to the UA default.</string>
-    <string name="om_browser_settings_viewport_using_default">Using UA default %1$d × %2$d. Set a custom size to override.</string>
+    <string name="om_browser_settings_viewport_using_custom">Using custom viewport %1$d × %2$d. Tap Default to revert to the UA default</string>
+    <string name="om_browser_settings_viewport_using_default">Using UA default %1$d × %2$d. Set a custom size to override</string>
     <string name="om_browser_settings_quick_set">Quick Set</string>
     <string name="om_browser_settings_preset_phone">Phone</string>
     <string name="om_browser_settings_preset_phone_pro">Phone Pro</string>
@@ -64,17 +64,17 @@
     <string name="om_browser_settings_preset_laptop">Laptop</string>
     <string name="om_browser_settings_preset_desktop">Desktop</string>
     <string name="om_browser_settings_preset_full_hd">Full HD</string>
-    <string name="om_browser_settings_ua_mismatch_mobile">Viewport ≥%1$dpx while UA is Mobile — sites may serve a desktop layout that renders awkwardly. Consider switching UA to Desktop.</string>
-    <string name="om_browser_settings_ua_mismatch_desktop">Viewport &lt;%1$dpx while UA is Desktop — sites may serve a mobile layout that renders awkwardly. Consider switching UA to Mobile.</string>
+    <string name="om_browser_settings_ua_mismatch_mobile">Viewport ≥%1$dpx while UA is Mobile — sites may serve a desktop layout that renders awkwardly. Consider switching UA to Desktop</string>
+    <string name="om_browser_settings_ua_mismatch_desktop">Viewport &lt;%1$dpx while UA is Desktop — sites may serve a mobile layout that renders awkwardly. Consider switching UA to Mobile</string>
     <string name="om_browser_stop">Stop</string>
     <string name="om_browser_takeover">Takeover</string>
     <string name="om_browser_title">Browser</string>
-    <string name="om_browser_use_tab_busy_timeout">Another tool is currently operating browser tab %1$d, and this request could not get a turn within %2$d seconds. Multiple tools operating the same tab at once is not supported. Please open a new tab (action: new_tab) and retry your action there.</string>
+    <string name="om_browser_use_tab_busy_timeout">Another tool is currently operating browser tab %1$d, and this request could not get a turn within %2$d seconds. Multiple tools operating the same tab at once is not supported. Please open a new tab (action: new_tab) and retry your action there</string>
 
 
     <string name="om_cancel">Cancel</string>
     <string name="om_external_link_blocked">Blocked link to external app (%1$s)</string>
-    <string name="om_external_link_no_app">No app available to open this link.</string>
+    <string name="om_external_link_no_app">No app available to open this link</string>
     <string name="om_standard_sheet_close">Close</string>
-        <string name="browser_initialization_failed">Browser initialization failed. Close and reopen to retry.</string>
+        <string name="browser_initialization_failed">Browser initialization failed. Close and reopen to retry</string>
 </resources>

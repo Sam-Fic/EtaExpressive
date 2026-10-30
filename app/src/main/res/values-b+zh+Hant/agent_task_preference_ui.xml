@@ -9,6 +9,6 @@
     <string name="agent_task_preference_recovery_raw_phase">原始狀態碼：%1$s</string>
     <string name="agent_task_surface_prompt_continue">繼續</string>
     <string name="agent_task_surface_prompt_cancel">取消</string>
-    <string name="agent_task_surface_prompt_message">請選擇本次回覆中其他應用在哪裡執行。Eta自身直接前台，不詢問。</string>
+    <string name="agent_task_surface_prompt_message">請選擇本次回覆中其他應用在哪裡執行。Eta自身直接前台，不詢問</string>
     <string name="agent_task_preference_mode_hint_ask">首次操作其他應用前選擇前台或後台；Eta自身直接前台，不詢問</string>
 </resources>

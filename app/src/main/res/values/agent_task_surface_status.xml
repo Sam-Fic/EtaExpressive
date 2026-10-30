@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="agent_task_surface_background_not_ready">The background virtual display is not ready yet. Switch back to the foreground.</string>
-    <string name="agent_task_surface_ask_not_ready">Ask mode is not ready yet. Switch back to the foreground.</string>
-    <string name="agent_task_surface_not_ready_hint">Experimental background mode: do not open or clear the target app from the launcher while a task is running. The virtual display is kept if delivery fails.</string>
+    <string name="agent_task_surface_background_not_ready">The background virtual display is not ready yet. Switch back to the foreground</string>
+    <string name="agent_task_surface_ask_not_ready">Ask mode is not ready yet. Switch back to the foreground</string>
+    <string name="agent_task_surface_not_ready_hint">Experimental background mode: do not open or clear the target app from the launcher while a task is running. The virtual display is kept if delivery fails</string>
 </resources>
