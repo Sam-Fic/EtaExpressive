@@ -19,6 +19,4 @@
     <string name="question_show_full_text">Show full question and descriptions</string>
     <string name="question_show_less">Show less</string>
     <string name="question_note_added">Additional notes (added)</string>
-    <string name="question_expanded">Expanded</string>
-    <string name="question_collapsed">Collapsed</string>
 </resources>

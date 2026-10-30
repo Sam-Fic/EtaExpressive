@@ -39,6 +39,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -118,6 +119,11 @@ internal fun AgentWorkSegmentedBubble(
      * supportingContentColor。
      */
     supportingColor: Color? = null,
+    /**
+     * 标题行数上限；默认不限（与官方条目一致，长标题换行撑高）。单行回执类行
+     * （如问答卡的「已回答 · …」）传 1 收成省略号，保持收起态一整行。
+     */
+    titleMaxLines: Int = Int.MAX_VALUE,
     /** 展开箭头之外的状态标记（如工具的 LoadingIndicator / 对勾），由调用方提供。 */
     trailingStatus: (@Composable () -> Unit)? = null,
     /**
@@ -342,6 +348,9 @@ internal fun AgentWorkSegmentedBubble(
             Text(
                 text = title,
                 color = titleColor ?: Color.Unspecified,
+                maxLines = titleMaxLines,
+                // 仅有限行数时会生效（超出截断为省略号）；不限行数的既有调用方不受影响。
+                overflow = TextOverflow.Ellipsis,
                 onTextLayout = { titleNaturalHeight[0] = it.size.height },
             )
         }

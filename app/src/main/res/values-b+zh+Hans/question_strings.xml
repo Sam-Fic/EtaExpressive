@@ -19,6 +19,4 @@
     <string name="question_show_full_text">展开完整问题和选项说明</string>
     <string name="question_show_less">收起长说明</string>
     <string name="question_note_added">补充说明（已填写）</string>
-    <string name="question_expanded">已展开</string>
-    <string name="question_collapsed">已收起</string>
 </resources>

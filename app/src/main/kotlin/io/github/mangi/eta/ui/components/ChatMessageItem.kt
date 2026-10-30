@@ -470,6 +470,7 @@ internal fun ChatMessageItem(
 ) {
     when (message) {
         is io.github.mangi.eta.ui.model.AgentQuestionMessageUi -> AgentQuestionCard(message, modifier,
+            position = segmentedPosition,
             onDraftChanged = { draft -> actions.onQuestionDraftChanged(message.request.conversationId, message.request.questionId, draft) },
             onSubmit = { actions.onSubmitQuestionAnswer(message.request.conversationId, message.request.questionId) })
         is UserMessageUi -> UserMessageBubble(

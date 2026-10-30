@@ -228,7 +228,9 @@ class AgentQuestionCardCompactTest {
         assertNoForm()
     }
 
-    @Test fun headerQueriesBottomAnchorOnlyOnClicksAndFastReverseKeepsForm() {
+    @Test fun fastReverseToggleKeepsFormAndNeverQueriesBottomAnchor() {
+        // 标准气泡统一了展开方向后，卡片不再读取底部锚定状态（旧实现按锚定分方向，
+        // 每次点击查询一次）；这里反向钉住这个负向契约，防止读取悄悄回来。
         var anchorQueries = 0
         show(anchorQuery = { anchorQueries++; true })
         compose.runOnIdle { assertEquals(0, anchorQueries) }
@@ -239,7 +241,7 @@ class AgentQuestionCardCompactTest {
         compose.mainClock.advanceTimeBy(300)
         compose.mainClock.autoAdvance = true
         compose.onNodeWithText("Choose the next step.").assertExists()
-        compose.runOnIdle { assertEquals(2, anchorQueries); assertEquals(0, submissions) }
+        compose.runOnIdle { assertEquals(0, anchorQueries); assertEquals(0, submissions) }
     }
 
     @Test fun submittingDisablesFormAndExplicitRetryRemainsPossibleAfterRejection() {
@@ -326,7 +328,7 @@ class AgentQuestionCardCompactTest {
 
     private fun role(value: Role) = SemanticsMatcher.expectValue(SemanticsProperties.Role, value)
     private fun option(label: String) = compose.onNode(hasText(label) and role(Role.RadioButton))
-    // 重构后标题行是官方 ListItem(onClick)：整行可点但没有 Role.Button，
+    // 标题行是官方 SegmentedListItem(onClick)：整行可点但没有 Role.Button，
     // 用「可点击 + 含标题文本」匹配展开行本身。
     private fun header() = compose.onNode(hasClickAction() and hasText("Decision title", substring = true))
     private fun field(id: Int) = compose.onNodeWithContentDescription(text(id))

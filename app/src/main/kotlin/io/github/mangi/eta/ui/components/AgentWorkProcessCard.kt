@@ -1,36 +1,19 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
 
 /** One visual card, but still one independently composed lazy item per step. */
 internal enum class WorkProcessCardPart(val startsCard: Boolean, val endsCard: Boolean) {
@@ -111,119 +94,8 @@ private fun WorkProcessCardSliceM3(
     ) { content() }
 }
 
-// ── 工作过程类卡片的统一排版（M3） ──────────────────────────────────────
+// ── 工作过程类卡片的旧外壳 ──────────────────────────────────────────────
 //
-// 「提问」卡片是这一类卡片的范式：标题独立成一行，内容在展开后的下半部分。
-// 思考过程与工具调用卡片全部复用下面两个构件，保证三者的标题行、分隔线、
-// 内容内边距与行距完全一致。
-
-/** 统一展开指示箭头：形状、尺寸、色调一处定义。 */
-@Composable
-internal fun WorkCardChevron(expanded: Boolean, modifier: Modifier = Modifier) {
-    // 单图标 + 旋转过渡：收起指向右（0°），展开旋转 90° 指向下。
-    // 直接换图标没有过渡，与标题行的 AnimatedContent 状态切换不同档；旋转取官方
-    // motionScheme 的 spatial 规格，与 tailDetailsEnter/Exit 同源。
-    val rotation by animateFloatAsState(
-        targetValue = if (expanded) 90f else 0f,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>(),
-        label = "work_card_chevron",
-    )
-    Icon(
-        imageVector = Icons.Rounded.ChevronRight,
-        contentDescription = null,
-        modifier = modifier.graphicsLayer { rotationZ = rotation },
-        tint = etaOnSurfaceVariant().copy(alpha = 0.7f),
-    )
-}
-
-/**
- * 卡片标题栏：官方 `ListItem` 承担整行命中区、涟漪、最小行高与语义；容器透明，
- * 外壳仍由 [WorkProcessCardSlice] 绘制。折叠/展开只由这一行触发，标题行下方的
- * 内容不参与点击——与提问卡片一致。`onToggle` 为 null 时退化为纯展示行。
- */
-@Composable
-internal fun WorkCardDisclosureHeader(
-    leadingIcon: ImageVector,
-    leadingTint: Color,
-    title: String,
-    titleColor: Color,
-    expanded: Boolean,
-    onToggle: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-    leadingModifier: Modifier = Modifier,
-    supporting: String? = null,
-    supportingColor: Color? = null,
-    trailingContent: (@Composable () -> Unit)? = null,
-) {
-    val leading: @Composable () -> Unit = {
-        Icon(
-            imageVector = leadingIcon,
-            contentDescription = null,
-            modifier = leadingModifier,
-            tint = leadingTint,
-        )
-    }
-    val headline: @Composable () -> Unit = {
-        Text(
-            text = title,
-            style = chatSecondaryStyle(),
-            color = titleColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-    val supportingSlot: (@Composable () -> Unit)? = supporting?.let { text ->
-        {
-            Text(
-                text = text,
-                style = chatTertiaryStyle(),
-                color = supportingColor ?: etaOnSurfaceVariant().copy(alpha = 0.8f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-    val trailing: @Composable () -> Unit = trailingContent ?: { WorkCardChevron(expanded) }
-    val listColors = ListItemDefaults.colors(containerColor = Color.Transparent)
-    if (onToggle != null) {
-        ListItem(
-            onClick = onToggle,
-            modifier = modifier,
-            colors = listColors,
-            leadingContent = leading,
-            content = headline,
-            supportingContent = supportingSlot,
-            trailingContent = trailing,
-        )
-    } else {
-        ListItem(
-            modifier = modifier,
-            colors = listColors,
-            leadingContent = leading,
-            content = headline,
-            supportingContent = supportingSlot,
-            trailingContent = trailing,
-        )
-    }
-}
-
-/**
- * 展开后的下半部分：发丝分隔线 + 统一内容列。内边距与行距与提问卡片逐值一致，
- * 分隔线缩进对齐 [ListItem] 的正文起始位置。
- */
-@Composable
-internal fun WorkCardExpandedBody(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(modifier = modifier) {
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            content = content,
-        )
-    }
-}
+// 思考、工具与提问卡片已全部迁到官方 `SegmentedListItem`（见 AgentWorkSegmentedBubble），
+// 旧的标题栏 / 展开箭头 / 展开内容构件随之移除。WorkProcessCardSlice 暂无调用方，
+// 保留给 AgentWorkProcessCardDrawTest 的拼接几何回归。

@@ -1,21 +1,20 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -33,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -41,6 +39,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.question.AgentQuestionAnswer
 import io.github.mangi.eta.agent.question.AgentQuestionCodec
 import io.github.mangi.eta.agent.question.AgentQuestionStatus
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaOnSurface
 import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
@@ -49,20 +48,24 @@ import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.app.AgentQuestionProjection
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
 
-/** Draft and submission state stay in the conversation store. Only whole-card disclosure is local; the form itself is never folded in parts. */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 问答卡：与思考/工具卡片同一套 Material 3 Expressive 官方 `SegmentedListItem` 结构
+ * （[AgentWorkSegmentedBubble]），标题行是父条目、表单与回执是展开后的详情子条目。
+ *
+ * Draft and submission state stay in the conversation store. Only whole-card disclosure
+ * is local; the form itself is never folded in parts.
+ */
 @Composable
 internal fun AgentQuestionCard(
     message: AgentQuestionMessageUi,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
+    position: SegmentedRowPosition = SegmentedRowPosition.Whole,
     onDraftChanged: (AgentQuestionAnswer) -> Unit,
     onSubmit: () -> Unit,
 ) {
     // A recycled chat slot must not inherit another conversation/run/call/question's controls.
     key(AgentQuestionProjection.messageId(message.request)) {
-        // M3 Expressive：卡片内所有可点区域都要有官方按下反馈。
-        AgentQuestionCardContent(message, modifier, compact, onDraftChanged, onSubmit)
+        AgentQuestionCardContent(message, modifier, position, onDraftChanged, onSubmit)
     }
 }
 
@@ -70,7 +73,7 @@ internal fun AgentQuestionCard(
 private fun AgentQuestionCardContent(
     message: AgentQuestionMessageUi,
     modifier: Modifier,
-    compact: Boolean,
+    position: SegmentedRowPosition,
     onDraftChanged: (AgentQuestionAnswer) -> Unit,
     onSubmit: () -> Unit,
 ) {
@@ -80,125 +83,108 @@ private fun AgentQuestionCardContent(
     // returns to the original snapshot before Compose observes the intermediate submitting state.
     // Only authoritative status transitions reset disclosure. Submitting/retry keep the form.
     var expanded by remember(message.status) { mutableStateOf(waiting) }
-    var anchorBottom by remember { mutableStateOf(false) }
-    val holdsBottom = LocalExpansionHoldsBottom.current
-    // 展开前解除底部锚定，标题钉在原位、内容向下生长可见。
+    // 展开前解除底部锚定，标题钉在原位、内容向下生长可见（与思考/工具行同一契约；
+    // 展开/收起方向本身由标准气泡统一，不再按锚定状态分方向）。
     val releaseAnchor = LocalChatAnchorRelease.current
-    val state = stringResource(if (expanded) R.string.question_expanded else R.string.question_collapsed)
-    val statusText = questionStatusText(message.status)
     val toggle: () -> Unit = {
-        anchorBottom = holdsBottom()
         if (!expanded) releaseAnchor()
         expanded = !expanded
     }
-    val cardContent: @Composable () -> Unit = {
-        Column(Modifier.fillMaxWidth().testTag("question-card-surface")) {
-            QuestionDisclosureHeader(
-                expanded = expanded,
-                statusText = statusText,
-                title = request.title,
-                waiting = waiting,
-                stateDescription = state,
-                onToggle = toggle,
-            )
-            AnimatedVisibility(visible = expanded,
-                enter = tailDetailsEnter(anchorBottom), exit = tailDetailsExit(anchorBottom)) {
-                Column(modifier = retainDrawLayerWhenIdle()) {
-                    // M3 Expressive：官方 HorizontalDivider 画卡片内的发丝分隔线，
-                    // 缩进与标题正文起始位置对齐（与思考/工具卡片一致）。
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(request.title, modifier = Modifier.fillMaxWidth(),
-                            style = etaTextStyle(EtaType.Body),
-                            color = etaOnSurface())
-                        Text(request.question, modifier = Modifier.fillMaxWidth(),
-                            style = etaTextStyle(EtaType.Body),
-                            color = etaOnSurface())
-                        if (!waiting) {
-                            QuestionReadOnlyDetails(message)
-                        } else {
-                            val editable = !message.submitting
-                            val displayed = AgentQuestionProjection.draftAnswer(message)
-                            val draft = AgentQuestionAnswer(message.answerKind, message.selectedOptionId, message.otherText, message.note)
-                            val valid = AgentQuestionCodec.validateAnswer(request, displayed).accepted
-                            val changeDraft: (AgentQuestionAnswer) -> Unit = { if (editable) onDraftChanged(it) }
-                            Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                request.options.forEach { option ->
-                                    key(option.id) {
-                                        val selected = displayed.kind == "option" && displayed.optionId == option.id
-                                        QuestionOptionRow(option.label, option.description, selected, editable,
-                                            option.id == request.recommendedOptionId) {
-                                            changeDraft(draft.copy(kind = "option", optionId = option.id))
-                                        }
-                                    }
-                                }
-                                if (request.allowOther) {
-                                    QuestionOptionRow(stringResource(R.string.question_other), "",
-                                        displayed.kind == "other", editable, false) {
-                                        changeDraft(draft.copy(kind = "other", optionId = null))
-                                    }
-                                    if (displayed.kind == "other") QuestionTextField(
-                                        value = message.otherText,
-                                        onValueChange = { changeDraft(draft.copy(kind = "other", optionId = null, otherText = it.take(2000))) },
-                                        enabled = editable, label = stringResource(R.string.question_other_hint))
-                                }
-                                if (request.allowDelegation) QuestionOptionRow(stringResource(R.string.question_delegate),
-                                    stringResource(R.string.question_delegate_hint), displayed.kind == "delegate", editable,
-                                    false) { changeDraft(draft.copy(kind = "delegate", optionId = null)) }
-                            }
-                            if (request.allowNote) QuestionTextField(value = message.note,
-                                onValueChange = { changeDraft(draft.copy(note = it.take(2000))) }, enabled = editable,
-                                label = stringResource(R.string.question_note))
-                            message.error?.let {
-                                Text(it, color = MaterialTheme.colorScheme.error,
-                                    style = etaTextStyle(EtaType.Caption))
-                            }
-                            // M3 Expressive：官方 Button 的默认形状、容器高度、内边距、
-                            // primary / onPrimary 与禁用态颜色全部交给官方默认值。
-                            Button(onClick = { if (editable && valid) onSubmit() },
-                                enabled = editable && valid, modifier = Modifier.fillMaxWidth()) {
-                                Text(stringResource(if (message.submitting) R.string.question_submitting else R.string.question_submit))
+    // 展开后的详情子条目：标题、问题正文与表单/只读回执。与思考/工具行同款——
+    // 先落到带类型的局部值上，详情子条目自带官方 ContentPadding（左右 16dp），
+    // 内容列不再自带水平边距。
+    val questionDetails: @Composable AnimatedVisibilityScope.() -> Unit = {
+        Column(
+            modifier = Modifier.fillMaxWidth().then(retainDrawLayerWhenIdle()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(request.title, modifier = Modifier.fillMaxWidth(),
+                style = etaTextStyle(EtaType.Body),
+                color = etaOnSurface())
+            Text(request.question, modifier = Modifier.fillMaxWidth(),
+                style = etaTextStyle(EtaType.Body),
+                color = etaOnSurface())
+            if (!waiting) {
+                QuestionReadOnlyDetails(message)
+            } else {
+                val editable = !message.submitting
+                val displayed = AgentQuestionProjection.draftAnswer(message)
+                val draft = AgentQuestionAnswer(message.answerKind, message.selectedOptionId, message.otherText, message.note)
+                val valid = AgentQuestionCodec.validateAnswer(request, displayed).accepted
+                val changeDraft: (AgentQuestionAnswer) -> Unit = { if (editable) onDraftChanged(it) }
+                Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    request.options.forEach { option ->
+                        key(option.id) {
+                            val selected = displayed.kind == "option" && displayed.optionId == option.id
+                            QuestionOptionRow(option.label, option.description, selected, editable,
+                                option.id == request.recommendedOptionId) {
+                                changeDraft(draft.copy(kind = "option", optionId = option.id))
                             }
                         }
                     }
+                    if (request.allowOther) {
+                        QuestionOptionRow(stringResource(R.string.question_other), "",
+                            displayed.kind == "other", editable, false) {
+                            changeDraft(draft.copy(kind = "other", optionId = null))
+                        }
+                        if (displayed.kind == "other") QuestionTextField(
+                            value = message.otherText,
+                            onValueChange = { changeDraft(draft.copy(kind = "other", optionId = null, otherText = it.take(2000))) },
+                            enabled = editable, label = stringResource(R.string.question_other_hint))
+                    }
+                    if (request.allowDelegation) QuestionOptionRow(stringResource(R.string.question_delegate),
+                        stringResource(R.string.question_delegate_hint), displayed.kind == "delegate", editable,
+                        false) { changeDraft(draft.copy(kind = "delegate", optionId = null)) }
+                }
+                if (request.allowNote) QuestionTextField(value = message.note,
+                    onValueChange = { changeDraft(draft.copy(note = it.take(2000))) }, enabled = editable,
+                    label = stringResource(R.string.question_note))
+                message.error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error,
+                        style = etaTextStyle(EtaType.Caption))
+                }
+                // M3 Expressive：官方 Button 的默认形状、容器高度、内边距、
+                // primary / onPrimary 与禁用态颜色全部交给官方默认值。
+                Button(onClick = { if (editable && valid) onSubmit() },
+                    enabled = editable && valid, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (message.submitting) R.string.question_submitting else R.string.question_submit))
                 }
             }
         }
     }
-    // compact 模式渲染在工作过程卡片内部，不再携带自己的卡片外壳，避免卡中卡。
-    if (compact) {
-        Box(modifier = modifier.fillMaxWidth()) { cardContent() }
-    } else {
-        // Reuse the steps' actual outlined shell, including its sole 16dp message gutters.
-        WorkProcessCardSlice(part = WorkProcessCardPart.Whole, modifier = modifier) { cardContent() }
-    }
-}
-
-/**
- * 卡片标题栏。
- *
- * 用官方 `ListItem(onClick = …)` 承担展开/收起的可点区域、涟漪与语义；
- * 容器保持透明，外壳仍由 `WorkProcessCardSlice` 绘制。
- */
-@Composable
-private fun QuestionDisclosureHeader(
-    expanded: Boolean,
-    statusText: String,
-    title: String,
-    waiting: Boolean,
-    stateDescription: String,
-    onToggle: () -> Unit,
-) {
-    // 标题栏与思考/工具卡片共用同一构件，三类卡片的标题行逐值一致。
-    WorkCardDisclosureHeader(
-        leadingIcon = Icons.Rounded.ChatBubbleOutline,
-        leadingTint = if (waiting) etaPrimary() else etaOnSurfaceVariant(),
-        title = "$statusText · $title",
-        titleColor = etaOnSurfaceVariant(),
+    AgentWorkSegmentedBubble(
+        leading = {
+            // 等待作答是唯一需要被注意的状态（primary）；已回答/取消/中断是只读回执，
+            // 与设置页行首图标同色不抢注意力。
+            Icon(
+                imageVector = Icons.Rounded.ChatBubbleOutline,
+                contentDescription = null,
+                tint = if (waiting) etaPrimary() else etaOnSurfaceVariant(),
+            )
+        },
+        title = "${questionStatusText(message.status)} · ${request.title}",
+        // 回执标题单行省略：完整标题与问题正文都在展开后的详情里（与旧卡一致，
+        // 收起态保持一整行）。
+        titleMaxLines = 1,
+        titleColor = if (waiting) null else etaOnSurfaceVariant(),
+        trailingStatus = if (message.status == AgentQuestionStatus.Answered) {
+            {
+                // 状态已在标题里播报，图标不重复 description；与工具行成功态同款对勾。
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(EtaDimens.StatusIconSize),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            null
+        },
         expanded = expanded,
-        onToggle = onToggle,
-        modifier = Modifier.semantics { this.stateDescription = stateDescription },
+        onToggle = toggle,
+        details = questionDetails,
+        modifier = modifier.testTag("question-card-surface"),
+        position = position,
     )
 }
 
