@@ -73,23 +73,23 @@ internal object MediaReasoningSettings {
                 Capability(Status.SUPPORTED, ordered, default, field, mapped, transport = transport)
             }
         }
-    } catch (_: Exception) { Capability(Status.INVALID, error = "媒体思考配置无效，请检查职责、字段路径和档位映射。") }
+    } catch (_: Exception) { Capability(Status.INVALID, error = "媒体思考配置无效，请检查职责、字段路径和档位映射") }
 
     fun apply(config: AgentModelClient.ModelConfig, role: String, requested: ReasoningEffort?): AgentModelClient.ModelConfig {
         val capability = resolve(config, role)
         require(capability.status != Status.INVALID) { capability.error }
         if (capability.status == Status.UNSUPPORTED) {
-            require(requested == null || requested == ReasoningEffort.OFF) { "当前媒体接口未适配原生思考，不能应用所选档位。" }
+            require(requested == null || requested == ReasoningEffort.OFF) { "当前媒体接口未适配原生思考，不能应用所选档位" }
         }
         val effort = capability.effective(requested)
         val body = extras(config)
         body.remove(CONFIG_KEY)
         if (capability.status == Status.SUPPORTED) {
-            require(effort in capability.efforts) { "保存的思考档位不在当前接口支持列表，请重新选择。" }
+            require(effort in capability.efforts) { "保存的思考档位不在当前接口支持列表，请重新选择" }
             val path = capability.field.split('.')
             var target = body
             for (part in path.dropLast(1)) {
-                require(!target.has(part) || target.opt(part) is JSONObject) { "思考字段路径与已有参数冲突。" }
+                require(!target.has(part) || target.opt(part) is JSONObject) { "思考字段路径与已有参数冲突" }
                 target = target.optJSONObject(part) ?: JSONObject().also { target.put(part, it) }
             }
             target.put(path.last(), capability.values.getValue(effort))

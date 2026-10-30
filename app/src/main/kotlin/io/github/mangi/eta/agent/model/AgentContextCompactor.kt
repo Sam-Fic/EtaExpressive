@@ -743,7 +743,7 @@ internal object AgentContextCompactor {
                                 "摘要未正常结束（OUTPUT_LIMIT，phase=$diagnosticPhase，生成上限=$outputLimit，已重试=$outputRetries，" +
                                     "原因=${if (outputRetries > 0) "retry_exhausted" else "insufficient_window_or_cap"}，" +
                                     "真实窗口=$window，输入估算=$inputTokens，可用生成空间=${AgentCompressionBoundary.inputLimit(window, 0).toLong() - inputTokens}，硬上限=$SUMMARY_GENERATION_CAP）；" +
-                                    "未采用半截摘要，原历史保持不变。请换用生成额度更大的摘要模型或减少待摘要内容。")
+                                    "未采用半截摘要，原历史保持不变。请换用生成额度更大的摘要模型或减少待摘要内容")
                         }
                         acceptSummaryResponse(response)
                         CompressionReasoningStore.remember(base, ladder[index])
@@ -768,7 +768,7 @@ internal object AgentContextCompactor {
                         // the provider labels its rejection as a reasoning error.
                         if (outputRetries > 0) throw IllegalArgumentException(
                             "摘要OUTPUT_LIMIT增额重试失败（phase=$diagnosticPhase，生成上限=$outputLimit，已重试=$outputRetries，code=$code）；" +
-                                "未采用半截摘要，原历史保持不变。不保证提供方接受更大的 max_tokens，请核对摘要模型生成额度或减少待摘要内容。", failure)
+                                "未采用半截摘要，原历史保持不变。不保证提供方接受更大的 max_tokens，请核对摘要模型生成额度或减少待摘要内容", failure)
                         lastError = failure
                         if (!isUnsupportedCompressionReasoning(failure) || index == ladder.lastIndex) throw failure
                         runCatching { AndroidAgentLogger.info(

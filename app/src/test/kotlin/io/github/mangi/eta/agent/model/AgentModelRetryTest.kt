@@ -169,7 +169,7 @@ class AgentModelRetryTest {
             ).message.orEmpty().contains("reasoning_content"),
         )
         assertEquals(
-            "模型请求参数无效（HTTP 400），请检查模型配置。",
+            "模型请求参数无效（HTTP 400），请检查模型配置",
             AgentModelFailure.http(400, "").message,
         )
     }

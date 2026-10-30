@@ -131,7 +131,7 @@ internal class PersonalVoicePreview(
         if (token != generation) return
         trace?.mark("preview.error", "what" to what, "extra" to extra)
         stop(4)
-        mutable.value = State(error = "试听播放失败，请查询音色状态后重试。")
+        mutable.value = State(error = "试听播放失败，请查询音色状态后重试")
     }
 
     // 0 leave screen; 1 explicit stop; 2 switch voice; 3 completion; 4 error; 5 remove voice.

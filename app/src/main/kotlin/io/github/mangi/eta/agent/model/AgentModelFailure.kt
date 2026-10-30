@@ -62,7 +62,7 @@ internal class AgentModelFailure(
             code = ResponsesToolEnvelopeRecovery.CODE,
             retryable = false,
             envelopeCorrectionAllowed = true,
-            message = "模型生成的工具封装未通过代理 JSON 校验（missing-separator）。",
+            message = "模型生成的工具封装未通过代理 JSON 校验（missing-separator）",
             // Never retain the rejected code, request body, headers, or provider text.
             diagnostic = "responses_tool_envelope_rejected; json_failure=missing-separator",
         )
@@ -85,7 +85,7 @@ internal class AgentModelFailure(
             }
             val diagnostic = AgentHttpFailureDiagnostics.collect(status, body, headers, secrets)
             if (status in setOf(400, 413) && isContextOverflow(error)) {
-                return AgentModelFailure("CONTEXT_WINDOW_EXCEEDED", false, "提供方确认上下文超限，需缩减上下文后重试。", diagnostic = diagnostic)
+                return AgentModelFailure("CONTEXT_WINDOW_EXCEEDED", false, "提供方确认上下文超限，需缩减上下文后重试", diagnostic = diagnostic)
             }
             val permanent = isPermanent(error, body)
             val providerMessage = error?.optString("message")
@@ -106,21 +106,21 @@ internal class AgentModelFailure(
                 retryMode = if (status in transientStatus && !permanent) RetryMode.TRANSIENT else RetryMode.PERMANENT,
                 permanentReason = if (status in transientStatus && !permanent) null
                     else permanentReasonFor(status, permanent),
-                message = if (permanent) "模型接口额度或计费受限（HTTP $status），请检查服务商账户。" +
-                    safeProviderMessage.takeIf { it.isNotBlank() }?.let { " 服务端：$it" }.orEmpty()
+                message = if (permanent) "模型接口额度或计费受限（HTTP $status），请检查服务商账户" +
+                    safeProviderMessage.takeIf { it.isNotBlank() }?.let { "。服务端：$it" }.orEmpty()
                 else when (status) {
                     400 -> {
                         val detail = safeProviderMessage.takeIf { it.isNotBlank() }
                             ?: body.replace('\n', ' ').replace('\r', ' ').trim().take(400)
                                 .takeIf { it.isNotBlank() }
                         if (detail != null) "模型请求参数无效（HTTP 400）：$detail"
-                        else "模型请求参数无效（HTTP 400），请检查模型配置。"
+                        else "模型请求参数无效（HTTP 400），请检查模型配置"
                     }
                     401 -> {
                         val detail = safeProviderMessage.takeIf { it.isNotBlank() }
                         if (detail != null && detail.contains("verify", true))
                             "Google 要求验证这个账号（HTTP 401）：$detail"
-                        else "模型接口认证失败（HTTP 401）。OAuth 请重新登录，API Key 请检查密钥。"
+                        else "模型接口认证失败（HTTP 401）。OAuth 请重新登录，API Key 请检查密钥"
                     }
                     403 -> {
                         val detail = safeProviderMessage.takeIf { it.isNotBlank() }
@@ -131,15 +131,15 @@ internal class AgentModelFailure(
                         )
                         when {
                             validationUrl != null ->
-                                "Google 要求验证这个账号（HTTP 403）。请用无痕浏览器打开：$validationUrl 登录被标记的账号完成验证，然后再发消息。官网首页通常不会弹验证。"
-                            verify -> "Google 要求先验证这个账号（HTTP 403）。请用无痕浏览器打开接口返回的 validation_url 完成账号验证。"
+                                "Google 要求验证这个账号（HTTP 403）。请用无痕浏览器打开：$validationUrl 登录被标记的账号完成验证，然后再发消息。官网首页通常不会弹验证"
+                            verify -> "Google 要求先验证这个账号（HTTP 403）。请用无痕浏览器打开接口返回的 validation_url 完成账号验证"
                             detail != null -> "模型接口拒绝访问（HTTP 403）：$detail"
-                            else -> "模型接口拒绝访问（HTTP 403），请检查账户与模型权限。"
+                            else -> "模型接口拒绝访问（HTTP 403），请检查账户与模型权限"
                         }
                     }
-                    404 -> "模型接口或模型不存在（HTTP 404），请检查接口地址与模型名称。"
-                    429 -> "模型接口暂时限流（HTTP 429）。" +
-                        safeProviderMessage.takeIf { it.isNotBlank() }?.let { " 服务端：$it" }.orEmpty() +
+                    404 -> "模型接口或模型不存在（HTTP 404），请检查接口地址与模型名称"
+                    429 -> "模型接口暂时限流（HTTP 429）" +
+                        safeProviderMessage.takeIf { it.isNotBlank() }?.let { "。服务端：$it" }.orEmpty() +
                         retryAfter?.let { " Retry-After：$it" }.orEmpty()
                     else -> {
                         val title = htmlTitle(body)
@@ -190,11 +190,11 @@ internal class AgentModelFailure(
             is AgentModelFailure -> failure
             is InterruptedIOException -> AgentModelFailure(
                 "MODEL_TIMEOUT", true,
-                "模型请求等待超时（连接或写入超时，或读取响应等待超过 ${AgentHttpClient.MODEL_READ_TIMEOUT_MS / 60_000} 分钟）。",
+                "模型请求等待超时（连接或写入超时，或读取响应等待超过 ${AgentHttpClient.MODEL_READ_TIMEOUT_MS / 60_000} 分钟）",
                 failure,
             )
             is IOException -> AgentModelFailure(
-                "MODEL_CONNECTION_FAILED", true, "模型连接中断或暂时无法建立，请检查网络与服务商状态。", failure,
+                "MODEL_CONNECTION_FAILED", true, "模型连接中断或暂时无法建立，请检查网络与服务商状态", failure,
             )
             else -> unexpectedMediaType(failure)
         }
@@ -214,7 +214,7 @@ internal class AgentModelFailure(
                 return AgentModelFailure(
                     "HTTP_${status ?: 200}",
                     false,
-                    "接口返回了 Responses API 事件流。请把该提供商的 Endpoint 模式改为 Responses API。",
+                    "接口返回了 Responses API 事件流。请把该提供商的 Endpoint 模式改为 Responses API",
                     cause,
                     // 明确要用户改配置，不是网络抖动；无限重发只会一直失败到用户手动停止。
                     retryMode = RetryMode.PERMANENT,
@@ -233,7 +233,7 @@ internal class AgentModelFailure(
                 code = "HTTP_${status ?: 200}",
                 retryable = transientShape,
                 message = if (html) {
-                    "模型接口返回了网页而不是数据流（$statusLabel${detail?.let { "：$it" } ?: ""}）。Chat Completions 可能被反代拦截，可改用 Responses API 或检查隧道/上游。"
+                    "模型接口返回了网页而不是数据流（$statusLabel${detail?.let { "：$it" } ?: ""}）。Chat Completions 可能被反代拦截，可改用 Responses API 或检查隧道/上游"
                 } else {
                     "模型接口返回了无法解析的响应（$statusLabel）${detail?.let { "：$it" } ?: ""}"
                 },

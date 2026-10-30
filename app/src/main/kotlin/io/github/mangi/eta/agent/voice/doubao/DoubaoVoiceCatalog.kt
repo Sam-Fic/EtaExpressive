@@ -51,11 +51,11 @@ internal object DoubaoVoiceCatalog {
         val message = DoubaoDiagnostics.sanitize(error?.optString("Message").orEmpty(), secrets)
         val requestId = DoubaoDiagnostics.sanitize(meta?.optString("RequestId").orEmpty(), secrets)
         val hint = when {
-            code.contains("Signature", true) -> "签名校验失败：请核对 AK/SK 是否为同一对；也可能是客户端签名实现问题。"
-            code.contains("Expired", true) || code.contains("Time", true) -> "请求时间无效：请检查手机自动日期与时间。"
-            http == 401 -> "访问密钥鉴权失败：请使用火山访问密钥管理中的 AK/SK，不是豆包 API Key，并检查密钥是否有效。"
-            http == 403 -> "账户没有查询权限，请核对项目及子账户 IAM 授权。"
-            else -> "读取失败，未取得音色列表。"
+            code.contains("Signature", true) -> "签名校验失败：请核对 AK/SK 是否为同一对；也可能是客户端签名实现问题"
+            code.contains("Expired", true) || code.contains("Time", true) -> "请求时间无效：请检查手机自动日期与时间"
+            http == 401 -> "访问密钥鉴权失败：请使用火山访问密钥管理中的 AK/SK，不是豆包 API Key，并检查密钥是否有效"
+            http == 403 -> "账户没有查询权限，请核对项目及子账户 IAM 授权"
+            else -> "读取失败，未取得音色列表"
         }
         return "$hint\nHTTP $http · $code\n$message\n请求标识：$requestId"
     }

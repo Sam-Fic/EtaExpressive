@@ -4,7 +4,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Tombstone only: reject old configurations/backups, never make a network request. */
 internal object RemovedProviderPolicy {
-    private const val MESSAGE = "该提供商接入已移除，请选择其他提供商。"
+    private const val MESSAGE = "该提供商接入已移除，请选择其他提供商"
 
     fun isRemoved(baseUrl: String, endpointMode: String = "", authMode: String = ""): Boolean {
         val host = baseUrl.trim().toHttpUrlOrNull()?.host.orEmpty()

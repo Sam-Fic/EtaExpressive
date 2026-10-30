@@ -59,7 +59,7 @@ internal class AgentImageGenerationClient(
             else ImageRequestParameters.prepare(inputBody, inline, overrides, defaultCount = 1)
         val prepared = prepare(parsedPrompt.options, options)
         if (config.providerType == ProviderTypes.ANTHROPIC && !prepared.explicitEndpoint)
-            AgentImageGenerationOptions.invalid("Anthropic 原生消息协议不是生图接口；若该中转另有 Images 端点，请显式配置 eta_image_config.endpoint。")
+            AgentImageGenerationOptions.invalid("Anthropic 原生消息协议不是生图接口；若该中转另有 Images 端点，请显式配置 eta_image_config.endpoint")
         val batchCount = prepared.options.count ?: 1
         val parallelism = prepared.options.concurrency
         val single = if (parallelism == null) prepared else prepare(
@@ -69,18 +69,18 @@ internal class AgentImageGenerationClient(
         val plan = ImageEndpointPlan.create(single, images.size, mask != null)
         (images + listOfNotNull(mask)).forEach {
             require(it.bytes.isNotEmpty() && it.bytes.size <= MAX_AGENT_IMAGE_BYTES && it.bytes.hasSupportedImageMagic()) {
-                "参考图或遮罩为空、过大或不是支持的图片；不会丢弃后继续生成。"
+                "参考图或遮罩为空、过大或不是支持的图片；不会丢弃后继续生成"
             }
         }
         if (mask != null) {
-            require(mask.bytes.sniffAgentImageMimeType() == "image/png") { "遮罩必须为 PNG。" }
+            require(mask.bytes.sniffAgentImageMimeType() == "image/png") { "遮罩必须为 PNG" }
             fun bounds(bytes: ByteArray): Pair<Int, Int> {
                 val b = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, b)
                 return b.outWidth to b.outHeight
             }
             val size = bounds(images.single().bytes)
-            require(size.first > 0 && size.second > 0 && bounds(mask.bytes) == size) { "遮罩尺寸必须与参考图一致；不会缩放。" }
+            require(size.first > 0 && size.second > 0 && bounds(mask.bytes) == size) { "遮罩尺寸必须与参考图一致；不会缩放" }
         }
         val request = buildRequest(config, plan, images, mask) // validate the full plan before any billable call
         if (parallelism == null) return executePlan(plan, request, prepared.summary, runController)
@@ -97,7 +97,7 @@ internal class AgentImageGenerationClient(
             }
             val completed = results.mapNotNull { it.getOrNull() }
             check(completed.isNotEmpty()) {
-                "IMAGE_BATCH_FAILED：$batchCount 张均未获得结果；未重试。" + results.mapNotNull { it.exceptionOrNull()?.message?.take(120) }.distinct().joinToString("；")
+                "IMAGE_BATCH_FAILED：$batchCount 张均未获得结果；未重试" + results.mapNotNull { it.exceptionOrNull()?.message?.take(120) }.distinct().joinToString("；")
             }
             val allImages = completed.flatMap { it.images }
             val report = buildString {
@@ -154,20 +154,20 @@ internal class AgentImageGenerationClient(
                 val requested = plan.options.toJson().toString()
                 "生图请求失败（HTTP ${response.code}，协议 ${plan.kind.name.lowercase()}）\n" +
                     AgentImageGenerationParser.errorMessage(bytes.toString(Charsets.UTF_8), response.code) +
-                    "\n本次输出参数：$requested\n未自动重试。服务端未明确原因时，不能断言是尺寸、模型限制或内容审核。"
+                    "\n本次输出参数：$requested\n未自动重试。服务端未明确原因时，不能断言是尺寸、模型限制或内容审核"
             }
             if (plan.kind == ImageEndpointPlan.Kind.NOVELAI)
                 NovelAiImageProtocol.parse(bytes) { controller?.throwIfCancelled() }
             else AgentImageGenerationParser.parse(bytes.toString(Charsets.UTF_8))
         }
         val generated = materialize(parsed, controller)
-        check(generated.images.isNotEmpty()) { "响应里没有图片；不会自动重发可能已计费的请求。" }
+        check(generated.images.isNotEmpty()) { "响应里没有图片；不会自动重发可能已计费的请求" }
         val reports = generated.images.map { image ->
             imageOutputLine(plan, image.width, image.height)
         }.toMutableList()
         val expectedCount = plan.options.count ?: 1
         if (generated.images.size != expectedCount)
-            reports += "IMAGE_COUNT_MISMATCH：请求 $expectedCount 张，实际 ${generated.images.size} 张。"
+            reports += "IMAGE_COUNT_MISMATCH：请求 $expectedCount 张，实际 ${generated.images.size} 张"
         return generated.copy(text = reports.joinToString("\n") +
             generated.text.takeIf { it.isNotBlank() }?.let { "\n\n$it" }.orEmpty())
     }
@@ -217,7 +217,7 @@ internal class AgentImageGenerationClient(
         val prompt = if (!keepMessages) target.opt("prompt") else null
         if (config.extraBodyJson.isNotBlank()) {
             val extra = try { JSONObject(config.extraBodyJson) } catch (_: Exception) {
-                AgentImageGenerationOptions.invalid("生图额外请求体不是有效 JSON 对象；不会忽略后继续发送。")
+                AgentImageGenerationOptions.invalid("生图额外请求体不是有效 JSON 对象；不会忽略后继续发送")
             }
             extra.keys().forEach { key -> target.put(key, extra.get(key)) }
         }
@@ -275,7 +275,7 @@ internal class AgentImageGenerationClient(
             }
         }
         val report = if (failures.isEmpty()) "" else
-            "IMAGE_DOWNLOAD_PARTIAL：第 ${failures.joinToString()} 张读取失败；已保留其他成功图片，不重试。"
+            "IMAGE_DOWNLOAD_PARTIAL：第 ${failures.joinToString()} 张读取失败；已保留其他成功图片，不重试"
         return Result(images = images, text = listOf(parsed.text, report).filter { it.isNotBlank() }.joinToString("\n"))
     }
 

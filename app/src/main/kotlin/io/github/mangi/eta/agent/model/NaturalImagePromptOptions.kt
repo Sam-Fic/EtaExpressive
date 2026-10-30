@@ -85,16 +85,16 @@ internal object NaturalImagePromptOptions {
         // An example can scope comma-separated values. Require a new explicit output instruction.
         if (example.containsMatchIn(searchable) && accepted.isNotEmpty() &&
             !Regex("(?:输出|生成|画)(?:设置|参数|尺寸|比例|分辨率)?\\s*(?:为|用|设为|:)",flags).containsMatchIn(searchable))
-            AgentImageGenerationOptions.invalid("示例中的参数不能作为本次输出设置，请明确本次比例、尺寸或使用 image_options。")
+            AgentImageGenerationOptions.invalid("示例中的参数不能作为本次输出设置，请明确本次比例、尺寸或使用 image_options")
         if ((rejected.any { it in setOf("size","aspect_ratio","resolution") } &&
                 accepted.none { it.key in setOf("size","aspect_ratio","resolution") }) ||
             rejected.any { key -> key in setOf("n","concurrency") && accepted.none { it.key == key } })
-            AgentImageGenerationOptions.invalid("只识别到被否定或作为示例的生图参数，请明确本次输出设置；不会静默生成默认方图。")
+            AgentImageGenerationOptions.invalid("只识别到被否定或作为示例的生图参数，请明确本次输出设置；不会静默生成默认方图")
         val values = JSONObject()
         for (candidate in accepted) {
             val value: Any = if (candidate.key in setOf("n","concurrency")) integer(candidate.value) else candidate.value
             if (values.has(candidate.key) && values.get(candidate.key) != value)
-                AgentImageGenerationOptions.invalid("出现多个不同的 ${candidate.key} 设置，请只保留目标值或使用 image_options。")
+                AgentImageGenerationOptions.invalid("出现多个不同的 ${candidate.key} 设置，请只保留目标值或使用 image_options")
             values.put(candidate.key,value)
         }
         // A labeled value which failed extraction must not silently become a default request.
@@ -104,7 +104,7 @@ internal object NaturalImagePromptOptions {
             if (literal.containsMatchIn(clause) || reference.containsMatchIn(clause) || Regex("头身|身材|人体|配比").containsMatchIn(clause)) continue
             parameterLabels.forEach { (key,names) ->
                 if (key !in overridden && !values.has(key) && Regex("(?:$names)\\s*(?:为|是|=|:)?\\s*[-0-9零]",flags).containsMatchIn(clause))
-                    AgentImageGenerationOptions.invalid("检测到 $key 设置但无法识别，请使用明确数值；不会忽略后生成。")
+                    AgentImageGenerationOptions.invalid("检测到 $key 设置但无法识别，请使用明确数值；不会忽略后生成")
             }
             val malformedConcurrency = "concurrency" !in overridden &&
                 Regex("(?:并发(?:数|度)?|concurrency)\\s*(?:为|是|=|:)?\\s*(?:-[0-9]|[0-9]+\\.[0-9])",flags).containsMatchIn(clause)
@@ -112,7 +112,7 @@ internal object NaturalImagePromptOptions {
                 Regex("(?:张数|出图数|图片数|(?<![\\p{L}\\p{N}_])数量|\\bn)\\s*(?:为|是|=|:)?\\s*(?:-[0-9]|[0-9]+\\.[0-9])",flags).containsMatchIn(clause) ||
                 Regex("(?:生成|绘制|画)\\s*[0-9]+\\.[0-9]+\\s*[张幅]").containsMatchIn(clause))
             if (malformedConcurrency || malformedCount)
-                AgentImageGenerationOptions.invalid("张数、并发数必须是支持范围内的正整数，不会忽略后生成。")
+                AgentImageGenerationOptions.invalid("张数、并发数必须是支持范围内的正整数，不会忽略后生成")
         }
         return AgentImageGenerationOptions.fromJson(values).also { it.validateShape() }
     }
@@ -130,7 +130,7 @@ internal object NaturalImagePromptOptions {
                 if (tens != null && units != null) return tens * 10 + units
             }
         }
-        AgentImageGenerationOptions.invalid("参数数值无法识别，请使用明确整数。")
+        AgentImageGenerationOptions.invalid("参数数值无法识别，请使用明确整数")
     }
     private inline fun String.indexOfFirstFrom(from: Int, predicate: (Char) -> Boolean): Int {
         for (i in from until length) if (predicate(this[i])) return i

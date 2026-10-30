@@ -431,15 +431,15 @@ internal class SubAgentCoordinator(
                                     }
                                     if (role == "implementation" || t.result.isBlank()) t.result = when {
                                         role == "implementation" && t.errorCode == SubAgentDeliveryEvidence.EMPTY ->
-                                            "未交付代码改动：相对任务基线的净 diff 为空。模型原回复仅保存在 model_report_unverified 字段；工作树保留，请 inspect 核对，不自动重试。"
+                                            "未交付代码改动：相对任务基线的净 diff 为空。模型原回复仅保存在 model_report_unverified 字段；工作树保留，请 inspect 核对，不自动重试"
                                         role == "implementation" && error is WorkspaceOperationException ->
-                                            "实现产物未通过运行时核验（${t.errorCode}）；不能认定实现完成。工作树保留，先 inspect 核对，模型原回复不是交付证据。"
+                                            "实现产物未通过运行时核验（${t.errorCode}）；不能认定实现完成。工作树保留，先 inspect 核对，模型原回复不是交付证据"
                                         error is ImageGenerationParameterException -> error.message.orEmpty()
-                                        error is SubAgentContextLimitException -> "子代理上下文不足，自动压缩不可用或未能释放足够空间。请拆分任务；已有工作树改动保留。"
+                                        error is SubAgentContextLimitException -> "子代理上下文不足，自动压缩不可用或未能释放足够空间。请拆分任务；已有工作树改动保留"
                                         // Built from runtime-owned fields only; no provider or tool text.
-                                        error is io.github.mangi.eta.agent.model.AgentOutputLimitException -> "子代理模型连续在输出上限处截断，未产出正文或工具调用（${workers[worker].providerName} / ${workers[worker].model}）。已有工作树改动保留；请拆小任务或调整该模型的推理档位。"
+                                        error is io.github.mangi.eta.agent.model.AgentOutputLimitException -> "子代理模型连续在输出上限处截断，未产出正文或工具调用（${workers[worker].providerName} / ${workers[worker].model}）。已有工作树改动保留；请拆小任务或调整该模型的推理档位"
                                         executionFailure != null -> executionFailure.message + "\n" + executionFailure.nextStep
-                                        providerFailure != null -> "子代理供应商不可用（${providerFailure.code.replace('_', ' ')}）：${workerNames[worker]}（${workers[worker].providerName} / ${workers[worker].model}）。这不是任务结论；不要自动重试副作用或付费请求。"
+                                        providerFailure != null -> "子代理供应商不可用（${providerFailure.code.replace('_', ' ')}）：${workerNames[worker]}（${workers[worker].providerName} / ${workers[worker].model}）。这不是任务结论；不要自动重试副作用或付费请求"
                                         // The class and the first Eta frame locate the failure; the message may carry
                                         // provider bodies, paths or prompt text, so it is never echoed.
                                         else -> "子代理未完成，请主代理接手；不会自动重新执行。（${error.javaClass.simpleName}${failureOrigin(error)?.let { " @ $it" }.orEmpty()}）"

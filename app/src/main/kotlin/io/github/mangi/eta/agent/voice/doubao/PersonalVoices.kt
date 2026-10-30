@@ -126,7 +126,7 @@ internal object PersonalVoices {
             if (!response.isSuccessful || json.optInt("code", 0) !in listOf(0, 20000000)) {
                 val detail = DoubaoDiagnostics.sanitize(json.optString("message"), listOf(key))
                 val hint = if (json.optInt("code") == 45000030) {
-                    "；资源未授权：免费/预付费槽位请使用控制台 S_ 音色 ID；自定义 ID 需在同项目单独开通后付费音色服务。若已有槽位也被拒绝，请核对 API Key 所属项目与声音复刻权限。"
+                    "；资源未授权：免费/预付费槽位请使用控制台 S_ 音色 ID；自定义 ID 需在同项目单独开通后付费音色服务。若已有槽位也被拒绝，请核对 API Key 所属项目与声音复刻权限"
                 } else ""
                 throw VoiceRequestException(response.code, "豆包请求失败：HTTP ${response.code}，错误码 ${json.optInt("code", -1)}：$detail$hint")
             }
@@ -185,7 +185,7 @@ internal object PersonalVoices {
             try {
                 val response = request("voice_clone", key, identity(voice).put("audio", JSONObject()
                     .put("data", Base64.encodeToString(bytes, Base64.NO_WRAP)).put("format", format)).put("language", 0)
-                    .put("extra_params", JSONObject().put("demo_text", "你好，这是我的个人音色试听。")))
+                    .put("extra_params", JSONObject().put("demo_text", "你好，这是我的个人音色试听")))
                 uploadReturned = true
                 var current = updated(voice, response); latest = current; save(current)
                 repeat(30) {

@@ -555,7 +555,7 @@ internal object EtaBackupRepository {
                                         mayRetire = true
                                     } catch (rollbackFailure: Throwable) {
                                         failure.addSuppressed(rollbackFailure)
-                                        throw EtaBackupException("会话导入失败且回滚未完成，日志已保留，请重启应用完成恢复。", failure)
+                                        throw EtaBackupException("会话导入失败且回滚未完成，日志已保留，请重启应用完成恢复", failure)
                                     }
                                     throw failure
                                 }
@@ -716,7 +716,7 @@ internal object EtaBackupRepository {
                                         mediaIndexRows = readMediaSnapshot(operation))
                                 } catch (rollbackFailure: Throwable) {
                                     failure.addSuppressed(rollbackFailure)
-                                    throw EtaBackupException("恢复失败且回滚尚未完成，恢复日志已保留。请重启应用完成恢复。", failure)
+                                    throw EtaBackupException("恢复失败且回滚尚未完成，恢复日志已保留。请重启应用完成恢复", failure)
                                 }
                                 journal.commit()
                                 mayRetire = true
@@ -1165,7 +1165,7 @@ internal object EtaBackupRepository {
                             database.providerDao().activateRestoredOAuthProvider(
                                 provider.id, provider.authMode, provider.isEnabled,
                             ) == 1,
-                        ) { "恢复的订阅连接状态不一致，请重新选择登录方式并登录。" }
+                        ) { "恢复的订阅连接状态不一致，请重新选择登录方式并登录" }
                     }
                 }
             }

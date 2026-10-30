@@ -311,7 +311,7 @@ internal class AgentLoop(
                 runController.pause()
                 onEvent(AgentEvent.ContextCompacted(round, false, messages.length(), messages.length(),
                     blocked = true, reason = compactionFailure.ifBlank {
-                        "上下文空间不足；受保护历史未删除。可保持暂停、仅本次允许压缩较早步骤，或停止后选择更大窗口模型。"
+                        "上下文空间不足；受保护历史未删除。可保持暂停、仅本次允许压缩较早步骤，或停止后选择更大窗口模型"
                     }))
                 runController.throwIfCancelled()
                 reductions = 0
@@ -458,7 +458,7 @@ internal class AgentLoop(
                 if (failure.code != "CONTEXT_WINDOW_EXCEEDED") throw failure
                 overflowPending = true
                 overflowRecoveryAttempts++
-                compactionFailure = "提供方确认上下文超限。只在缩减成功后有限重试；否则保持暂停，不删除受保护历史。"
+                compactionFailure = "提供方确认上下文超限。只在缩减成功后有限重试；否则保持暂停，不删除受保护历史"
                 continue
             }
             localOnlyRecovery = localOnlyRecovery || completedRound.reconnectLocalToolsOnly
@@ -504,7 +504,7 @@ internal class AgentLoop(
                     buildString {
                         append("模型服务商拦截了本次回复，未完成的内容已丢弃。")
                         explanation?.let { append("服务商说明：").append(it) }
-                        append("请修改或删除触发拦截的请求后重试，或换用其他模型。")
+                        append("请修改或删除触发拦截的请求后重试，或换用其他模型")
                     },
                 )
             }
@@ -618,7 +618,7 @@ internal class AgentLoop(
                                 round = round,
                                 toolCall = call,
                                 code = "ASK_USER_BATCH_BARRIER",
-                                message = "ask_user 必须是本批唯一的工具调用。本批未执行任何工具，请只保留一个 ask_user 后重试。",
+                                message = "ask_user 必须是本批唯一的工具调用。本批未执行任何工具，请只保留一个 ask_user 后重试",
                             )
                         }
                     } else when (providerResponse.stopReason) {
@@ -630,7 +630,7 @@ internal class AgentLoop(
                                     round = round,
                                     toolCall = call,
                                     code = "TRUNCATED_TOOL_CALL",
-                                    message = "模型输出达到长度上限，工具参数可能不完整；本次调用未执行，请重新提交完整参数。",
+                                    message = "模型输出达到长度上限，工具参数可能不完整；本次调用未执行，请重新提交完整参数",
                                 )
                             }
                         else ->
@@ -640,7 +640,7 @@ internal class AgentLoop(
                                     toolCall = call,
                                     code = "UNEXPECTED_TOOL_CALL",
                                     message = "模型在 ${providerResponse.stopReason.name} 终止状态下返回了工具调用；" +
-                                        "本批调用未执行，请重新规划。",
+                                        "本批调用未执行，请重新规划",
                                 )
                             }
                     }
@@ -887,7 +887,7 @@ internal class AgentLoop(
         val charLimit = persistenceCharLimit()
         if (storedChars > charLimit) {
             compactionFailure = compactionFailure.ifBlank {
-                "本轮历史接近本机持久化容量上限；已暂停，未截断受保护原文。可允许压缩较早步骤或停止任务。"
+                "本轮历史接近本机持久化容量上限；已暂停，未截断受保护原文。可允许压缩较早步骤或停止任务"
             }
             return true
         }
@@ -1026,7 +1026,7 @@ internal class AgentLoop(
         if (cut <= 0) {
             if (!forced) logAutoDecision(round, "no_cut", cloudTokens ?: latchedCloudTokens, cut)
             if (forced) onEvent(AgentEvent.ContextCompacted(round, false, messages.length(), messages.length(),
-                reason = "当前保留范围内没有可压缩的完整历史单元。"))
+                reason = "当前保留范围内没有可压缩的完整历史单元"))
             else if (dueToRing) onEvent(AgentEvent.ContextCompacted(round, false, messages.length(), messages.length()))
             return
         }
@@ -1054,7 +1054,7 @@ internal class AgentLoop(
         }
         if (forced && cut <= 0) {
             onEvent(AgentEvent.ContextCompacted(round, false, messages.length(), messages.length(),
-                reason = "当前保留范围内没有可压缩的完整历史单元。"))
+                reason = "当前保留范围内没有可压缩的完整历史单元"))
         }
         if (!forced) logAutoDecision(round, "accepted", decisionTokens, cut)
         val reduced = cut > 0 && applyCompaction(round, history, cut, decisionTokens)
@@ -1444,7 +1444,7 @@ internal class AgentLoop(
                     return ToolOutcome(toolCall, repair)
                 }
                 return rejectedToolOutcome(round, toolCall, "DELEGATION_ARGUMENT_REPAIR_EXHAUSTED",
-                    "委派参数补全失败，本轮已停用新委派；未创建子任务，已有子任务不受影响。请主代理接手。")
+                    "委派参数补全失败，本轮已停用新委派；未创建子任务，已有子任务不受影响。请主代理接手")
             }
             val declared = toolCallValidator.declares(toolCall.name)
             // 延迟组内的工具尚未打开时被调用：属时序问题，用独立的按组预算纠正，

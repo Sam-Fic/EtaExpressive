@@ -462,11 +462,11 @@ internal object OpenAiResponsesProvider : AgentProviderClient {
             throw AgentModelFailure(
                 code = "RESPONSES_TOOL_CALL_INCOMPLETE",
                 retryable = false,
-                message = "模型接口 Responses 工具调用缺少响应终止事件；已拒绝执行，按所选重连策略处理。",
+                message = "模型接口 Responses 工具调用缺少响应终止事件；已拒绝执行，按所选重连策略处理",
             )
         }
         if (requireTerminal && terminal == null) {
-            throw AgentModelFailure.incompleteStream("Responses 响应缺少结束事件；保留正文并按重连策略继续请求。")
+            throw AgentModelFailure.incompleteStream("Responses 响应缺少结束事件；保留正文并按重连策略继续请求")
         }
 
         if (!sawEvent) throw AgentModelFailure.incompleteStream("模型接口未返回 SSE data chunk")
@@ -661,7 +661,7 @@ internal object OpenAiResponsesProvider : AgentProviderClient {
                     throw AgentModelFailure(
                         code = "RESPONSES_TOOL_ARGUMENTS_INCOMPLETE",
                         retryable = false,
-                        message = "模型接口 Responses 工具流未提供完整参数；已拒绝执行，且不会自动重试。",
+                        message = "模型接口 Responses 工具流未提供完整参数；已拒绝执行，且不会自动重试",
                     )
                 },
             )
@@ -799,7 +799,7 @@ internal object OpenAiResponsesProvider : AgentProviderClient {
             throw AgentModelFailure(
                 code = "RESPONSES_TOOL_ARGUMENTS_INCOMPLETE",
                 retryable = false,
-                message = "模型接口 Responses 终态工具调用的 arguments 缺失、为 null 或空白；已拒绝执行，且不会自动重试。",
+                message = "模型接口 Responses 终态工具调用的 arguments 缺失、为 null 或空白；已拒绝执行，且不会自动重试",
             )
         }
         // The non-empty terminal snapshot is authoritative. Never revive streamed

@@ -334,7 +334,7 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
         }
 
         if (requireTerminal && !sawDone && finishReason.isNullOrBlank()) {
-            throw AgentModelFailure.incompleteStream("模型响应尚未完成，连接已中断；保留正文并按重连策略继续请求。")
+            throw AgentModelFailure.incompleteStream("模型响应尚未完成，连接已中断；保留正文并按重连策略继续请求")
         }
 
         if (!sawStreamData) throw AgentModelFailure.incompleteStream("模型接口未返回 SSE data chunk")

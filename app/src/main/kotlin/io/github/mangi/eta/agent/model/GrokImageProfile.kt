@@ -13,11 +13,11 @@ internal object GrokImageProfile {
 
     fun applies(baseUrl: String, model: String, body: JSONObject): Boolean {
         if (body.has(ImageRequestParameters.CONFIG_KEY) && body.optJSONObject(ImageRequestParameters.CONFIG_KEY) == null)
-            AgentImageGenerationOptions.invalid("eta_image_config 必须是对象。")
+            AgentImageGenerationOptions.invalid("eta_image_config 必须是对象")
         val config = body.optJSONObject(ImageRequestParameters.CONFIG_KEY)
         if (config?.has("profile") == true) {
             val profile = config.getString("profile")
-            if (profile !in setOf(PROFILE, "generic")) AgentImageGenerationOptions.invalid("未知生图 profile。")
+            if (profile !in setOf(PROFILE, "generic")) AgentImageGenerationOptions.invalid("未知生图 profile")
             return profile == PROFILE
         }
         // Explicit alternative contracts take priority over an automatic host preset.
@@ -27,37 +27,37 @@ internal object GrokImageProfile {
     }
 
     fun prepare(body: JSONObject, inline: AgentImageGenerationOptions, explicit: AgentImageGenerationOptions, imageCount: Int, hasMask: Boolean): ImageRequestParameters.Prepared {
-        if (imageCount != 0 || hasMask) AgentImageGenerationOptions.invalid("该 Grok 中转仅验证了文生图；尚未验证参考图/遮罩编辑，不会丢弃图片后发送。")
+        if (imageCount != 0 || hasMask) AgentImageGenerationOptions.invalid("该 Grok 中转仅验证了文生图；尚未验证参考图/遮罩编辑，不会丢弃图片后发送")
         val result = JSONObject(body.toString())
         val config = result.optJSONObject(ImageRequestParameters.CONFIG_KEY)
         if (config != null && config.keys().asSequence().any { it != "profile" })
-            AgentImageGenerationOptions.invalid("Grok 实测 profile 不能与其他字段、尺寸或端点映射混用。")
+            AgentImageGenerationOptions.invalid("Grok 实测 profile 不能与其他字段、尺寸或端点映射混用")
         result.remove(ImageRequestParameters.CONFIG_KEY); result.remove("eta_media_reasoning")
         val shape = JSONObject()
         (ImageRequestParameters.keys + "concurrency").forEach { key -> if (result.has(key)) shape.put(key,result.get(key)) }
         inline.applyTo(shape); explicit.applyTo(shape)
         var options = AgentImageGenerationOptions.fromJson(shape).also { it.validateShape() }
         if (options.size != null) {
-            if (options.resolution != null) AgentImageGenerationOptions.invalid("不能同时指定精确尺寸和分辨率档位。")
+            if (options.resolution != null) AgentImageGenerationOptions.invalid("不能同时指定精确尺寸和分辨率档位")
             if (options.size !in low.values && options.size !in high.values)
-                AgentImageGenerationOptions.invalid("该 Grok 中转未验证此精确尺寸，请使用已验证比例及低/高分辨率。")
+                AgentImageGenerationOptions.invalid("该 Grok 中转未验证此精确尺寸，请使用已验证比例及低/高分辨率")
         } else {
             val tier = options.resolution ?: "low"
-            if (tier !in setOf("low", "high")) AgentImageGenerationOptions.invalid("该 Grok 中转只验证了低/高两档，尚无独立中/超高分辨率；不会静默降档或重发。")
+            if (tier !in setOf("low", "high")) AgentImageGenerationOptions.invalid("该 Grok 中转只验证了低/高两档，尚无独立中/超高分辨率；不会静默降档或重发")
             val ratio = options.aspectRatio ?: "1:1"
             val size = (if(tier == "low") low else high)[ratio]
-                ?: AgentImageGenerationOptions.invalid("该 Grok 中转尚未验证 $ratio 的 $tier 分辨率，不会改成方图。")
+                ?: AgentImageGenerationOptions.invalid("该 Grok 中转尚未验证 $ratio 的 $tier 分辨率，不会改成方图")
             options = options.copy(aspectRatio = ratio, resolution = tier)
             result.put("size", size)
         }
         if (options.size != null) result.put("size",options.size)
         result.remove("aspect_ratio"); result.remove("resolution"); result.remove("concurrency")
         if (listOf("ratio", "aspectRatio", "imageSize").any(result::has))
-            AgentImageGenerationOptions.invalid("Grok 实测路径不能混发其他比例或分辨率字段。")
+            AgentImageGenerationOptions.invalid("Grok 实测路径不能混发其他比例或分辨率字段")
         listOf("n", "quality", "response_format").forEach { key -> result.remove(key); if(shape.has(key)) result.put(key,shape.get(key)) }
         if(!result.has("n")) result.put("n",1)
         val expected = if (options.size != null) null else (if(options.resolution == "low") actualLow else actualHigh)[options.aspectRatio]
         return ImageRequestParameters.Prepared(result,options,"multipart",
-            "Grok 实测端点适配；发送 size=${result.getString("size")}；请求${options.resolution ?: "精确尺寸"}；已观察输出 ${expected ?: "精确尺寸需以实际返回校验"}；不保证上游稳定，不自动重发。", expectedSize = expected)
+            "Grok 实测端点适配；发送 size=${result.getString("size")}；请求${options.resolution ?: "精确尺寸"}；已观察输出 ${expected ?: "精确尺寸需以实际返回校验"}；不保证上游稳定，不自动重发", expectedSize = expected)
     }
 }

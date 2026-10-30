@@ -122,7 +122,7 @@ internal class ModelErrorReconnect(
         cancel?.cancelTransport()
         if (expired) throw AgentModelFailure(
             "ERROR_RECONNECT_DEADLINE", false,
-            "错误重连期限已到，模型请求仍未恢复；此前正文和工具结果已保留。",
+            "错误重连期限已到，模型请求仍未恢复；此前正文和工具结果已保留",
             lastReason,
         )
     }
@@ -137,7 +137,7 @@ internal class ModelErrorReconnect(
         if (finalStatus == "succeeded" && (expired || (windowMs != null && elapsedLocked() >= windowMs))) {
             expired = true
             throw AgentModelFailure("ERROR_RECONNECT_DEADLINE", false,
-                "错误重连期限已到，未接纳迟到的响应；此前正文和工具结果已保留。", lastReason)
+                "错误重连期限已到，未接纳迟到的响应；此前正文和工具结果已保留", lastReason)
         }
         finishLocked(finalStatus)
     }

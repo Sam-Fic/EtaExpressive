@@ -21,7 +21,7 @@ internal object GptServiceTier {
                 GptSpeedMode.FAST -> "priority"
                 GptSpeedMode.ULTRA_FAST -> throw AgentModelFailure(
                     UNSUPPORTED_CODEX_TIER, false,
-                    "当前官方 Codex 适配不支持极速（ULTRA_FAST），请选择普通或快速（FAST）。",
+                    "当前官方 Codex 适配不支持极速（ULTRA_FAST），请选择普通或快速（FAST）",
                 )
             }
         } else {

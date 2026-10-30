@@ -17,7 +17,7 @@ internal object AgentResponseFormat {
         fun invalid(): Nothing = throw AgentModelFailure(
             code = "INVALID_JSON_RESPONSE",
             retryable = false,
-            message = "模型接口未返回单个完整 JSON 对象。",
+            message = "模型接口未返回单个完整 JSON 对象",
         )
         // JVM JSONTokener can treat a raw NUL as EOF. An escaped \\u0000 is valid
         // string data, but a raw NUL anywhere in the response must be rejected.

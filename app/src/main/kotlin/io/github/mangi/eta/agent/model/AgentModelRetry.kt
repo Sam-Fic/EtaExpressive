@@ -134,7 +134,7 @@ internal class AgentModelRetry(
                 val diagnosticRequest = if (toolAttempt == null) attemptRequest
                     else attemptRequest.copy(toolDiagnosticAttempt = toolAttempt)
                 fun repetitive(surface: String) = AgentModelFailure("MODEL_REPETITIVE_REASONING", false,
-                    "检测到模型${surface}持续高度重复，已中止本次请求；按所选重连策略处理，此前工具结果已保留。")
+                    "检测到模型${surface}持续高度重复，已中止本次请求；按所选重连策略处理，此前工具结果已保留")
                 fun deliver(event: ProviderEvent) {
                     if (event is ProviderEvent.BlockDelta && event.kind == AssistantBlockKind.TEXT) {
                         textBlocks.getOrPut(event.index) { StringBuilder() }.append(event.delta)
@@ -239,12 +239,12 @@ internal class AgentModelRetry(
                         // The cancelled attempt may return after a fast resume. Never accept
                         // its body/tools as a fresh recovery response or reset the budget.
                         throw AgentModelFailure("MODEL_RECONNECT_PAUSED", false,
-                            "重连请求因暂停中断；继续后使用剩余重连时限。")
+                            "重连请求因暂停中断；继续后使用剩余重连时限")
                     }
                     if (attemptRequest.reconnectTextOnly && (toolDeliveryPossible ||
                         (response.assistantMessage.optJSONArray("tool_calls")?.length() ?: 0) > 0)) {
                         throw AgentModelFailure("RECONNECT_TOOL_CALL_BLOCKED", false,
-                            "重连请求只允许续写正文，未执行返回的工具调用；将继续请求直到恢复或期限结束。")
+                            "重连请求只允许续写正文，未执行返回的工具调用；将继续请求直到恢复或期限结束")
                     }
                     if (!controller.isCancelled) textFilter.finish().forEach(::deliver)
                     if (prefix.isNotEmpty()) {
@@ -277,10 +277,10 @@ internal class AgentModelRetry(
                             reconnectLocalToolsOnly = localOnlyRecovery)
                     }
                     val classified = if (pausedRecovery) AgentModelFailure("MODEL_RECONNECT_PAUSED", false,
-                        "重连请求因暂停中断；继续后使用剩余重连时限。", failure)
+                        "重连请求因暂停中断；继续后使用剩余重连时限", failure)
                         else attemptModelFailure ?: AgentModelFailure.transport(failure)
                         ?: if (reconnectEnabled) AgentModelFailure("PROVIDER_EXCEPTION", false,
-                            "模型请求发生异常；保留已有结果并按所选重连策略继续请求。", failure)
+                            "模型请求发生异常；保留已有结果并按所选重连策略继续请求", failure)
                         else throw failure
                     // A local unsupported tier cannot recover by resending the same configuration.
                     if (classified.code == GptServiceTier.UNSUPPORTED_CODEX_TIER) throw classified
@@ -296,7 +296,7 @@ internal class AgentModelRetry(
                         (envelopeRejected && !correctionAllowed))) {
                         val protected = if (!guarded && (toolDeliveryPossible || unsafeHostedReplay)) AgentModelFailure(
                             "UNSAFE_TOOL_REPLAY", false,
-                            "请求中已有工具证据或远端工具执行状态未知，未重发以免重复副作用；已保留此前正文和工具证据。", classified)
+                            "请求中已有工具证据或远端工具执行状态未知，未重发以免重复副作用；已保留此前正文和工具证据", classified)
                         else classified
                         beginReconnect(protected).finish("failed")
                         throw protected
@@ -304,7 +304,7 @@ internal class AgentModelRetry(
                     if (envelopeRejected && !reconnectEnabled) {
                         if (envelopeRetries >= ResponsesToolEnvelopeRecovery.MAX_RETRIES) throw AgentModelFailure(
                             classified.code, false,
-                            "工具封装 JSON 校验连续失败，停止纠错；未执行被拒绝的工具调用。", classified)
+                            "工具封装 JSON 校验连续失败，停止纠错；未执行被拒绝的工具调用", classified)
                         envelopeRetries++
                         attemptRequest = ResponsesToolEnvelopeRecovery.corrected(request)
                         val delay = backoffMs(envelopeRetries, classified, reconnect)

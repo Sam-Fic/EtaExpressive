@@ -17,7 +17,7 @@ internal object SubAgentExecutionFailure {
 
     private val toolArgumentsExhausted = Failure(
         code = AgentInvalidToolArgumentsGuard.STOP_CODE,
-        message = "子代理工具参数纠错预算已耗尽；已在本批工具结果完整配对后安全终止，任务未完成。",
+        message = "子代理工具参数纠错预算已耗尽；已在本批工具结果完整配对后安全终止，任务未完成",
         nextStep = "检查本次工具 schema 允许的 action、字段、类型与范围；停止且不要重放已成功或结果不确定的调用。" +
             "如有工作区，先用 manage_agent_workspace 的 inspect 核验实际改动；不要据此替换子任务、恢复或自动重试。",
     )

@@ -157,7 +157,7 @@ internal object AgentCompressionBoundary {
     )
 
     const val OPAQUE_CUT_STOP =
-        "没有可安全截断的完整协议边界：最新推理与工具链必须原样保留，且没有更早的完整单元可归档。未把加密回放折算成 token，也未宣称压缩成功。"
+        "没有可安全截断的完整协议边界：最新推理与工具链必须原样保留，且没有更早的完整单元可归档。未把加密回放折算成 token，也未宣称压缩成功"
 
     /** Reasoning items that will be replayed. Count only; ciphertext length is not a token price. */
     fun opaqueReplayItemCount(message: AgentModelClient.ConversationMessage): Int {

@@ -340,7 +340,7 @@ internal object AnthropicMessagesProvider : AgentProviderClient {
         }
 
         if (requireTerminal && !sawMessageStop) {
-            throw AgentModelFailure.incompleteStream("Anthropic 响应缺少结束事件；保留正文并按重连策略继续请求。")
+            throw AgentModelFailure.incompleteStream("Anthropic 响应缺少结束事件；保留正文并按重连策略继续请求")
         }
 
         if (!sawMessageStop) {

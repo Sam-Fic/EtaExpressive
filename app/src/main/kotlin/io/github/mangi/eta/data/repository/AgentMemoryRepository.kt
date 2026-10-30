@@ -102,7 +102,7 @@ internal class AgentMemoryStore(
     }
 
     fun replaceAll(content: String, revision: String): AgentMemorySnapshot = withStorageLock {
-        if (snapshotLocked().revision != revision) throw AgentMemoryException("MEMORY_CONFLICT", "记忆已被其他操作更新，草稿已保留；请先重新读取并合并。")
+        if (snapshotLocked().revision != revision) throw AgentMemoryException("MEMORY_CONFLICT", "记忆已被其他操作更新，草稿已保留；请先重新读取并合并")
         writeLocked(content)
         snapshotOf(content)
     }
