@@ -133,20 +133,25 @@ internal fun etaSegmentedRowColors(
     val containerColor = containerColorOverride
         ?: LocalEtaSegmentedRowContainerColor.current
         ?: MaterialTheme.colorScheme.surfaceBright
-    // 指定底色时，标题/图标/箭头一并取该底色配套的内容色（tertiaryContainer → onTertiaryContainer），
-    // 文字与底色始终成对；不指定时保持原有默认。
+    // 只有显式指定底色时才推导配套内容色（tertiaryContainer → onTertiaryContainer），
+    // 文字/图标/箭头与底色始终成对。LocalEtaSegmentedRowContainerColor 可能是动画中的
+    // 中间色（如设置页搜索命中高亮），不能据此判定内容色，保持原来的默认内容色。
     val contentColor = containerColorOverride?.let { contentColorFor(it) }
+    // 选中态同理：由选中的容器色推出配套内容色，并覆盖前导/尾部/支持文本，
+    // 避免选中行里图标、时间戳仍用未选中态颜色（如会话抽屉选中行）。
+    val selectedContentColor = selectedContainerColor?.let { contentColorFor(it) }
     return ListItemDefaults.segmentedColors(
         containerColor = containerColor,
         disabledContainerColor = containerColor,
-        contentColor = contentColor ?: contentColorFor(containerColor),
+        contentColor = contentColor ?: Color.Unspecified,
+        leadingContentColor = contentColor ?: Color.Unspecified,
+        trailingContentColor = contentColor ?: Color.Unspecified,
         supportingContentColor = contentColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
         selectedContainerColor = selectedContainerColor ?: Color.Unspecified,
-        selectedContentColor = if (selectedContainerColor != null) {
-            MaterialTheme.colorScheme.onTertiaryContainer
-        } else {
-            Color.Unspecified
-        },
+        selectedContentColor = selectedContentColor ?: Color.Unspecified,
+        selectedLeadingContentColor = selectedContentColor ?: Color.Unspecified,
+        selectedTrailingContentColor = selectedContentColor ?: Color.Unspecified,
+        selectedSupportingContentColor = selectedContentColor ?: Color.Unspecified,
     )
 }
 
