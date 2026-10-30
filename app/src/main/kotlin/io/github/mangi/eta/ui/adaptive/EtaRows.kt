@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -18,7 +17,6 @@ import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.SelectableDropdownMenuItem
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -242,13 +240,13 @@ fun EtaSegmentedDropdownRow(
             choiceRow = true,
             onClick = rowClick,
             enabled = enabled,
-            // 前导图标对齐 PreferenceIcon：24dp + 尾部 8dp，保证标题起点与其它设置行一致。
+            // 官方默认几何：裸 Icon（24dp + ItemBetweenSpace 12dp）；着色统一设置页 onSurfaceVariant。
             leadingContent = icon?.let {
                 {
                     Icon(
                         imageVector = it,
                         contentDescription = null,
-                        modifier = Modifier.padding(end = 8.dp).size(IconButtonDefaults.smallIconSize),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             },

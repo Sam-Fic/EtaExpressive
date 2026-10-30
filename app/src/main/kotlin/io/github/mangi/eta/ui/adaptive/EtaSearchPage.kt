@@ -35,7 +35,6 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -381,13 +380,11 @@ fun LazyListScope.EtaSearchHistoryItems(
                 EtaClickableRow(
                     title = record,
                     leading = {
-                        // 与设置主页行首图标同一规格（onSurfaceVariant 24dp）。
+                        // 官方默认几何：裸 Icon（24dp + 官方 ItemBetweenSpace 12dp）；
+                        // 着色与设置行统一 onSurfaceVariant。
                         Icon(
                             imageVector = Icons.Rounded.History,
                             contentDescription = null,
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .size(IconButtonDefaults.smallIconSize),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },

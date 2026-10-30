@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -109,10 +109,11 @@ internal fun AgentMemoryOverviewScreen(
                         summary = stringResource(R.string.memory_global_switch_summary),
                         checked = globalEnabled,
                         leading = {
+                            // 官方默认几何（24dp + ItemBetweenSpace 12dp）；着色统一设置页 onSurfaceVariant。
                             Icon(
                                 imageVector = Icons.Rounded.Psychology,
                                 contentDescription = null,
-                                modifier = Modifier.padding(end = 8.dp).size(IconButtonDefaults.smallIconSize),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
                         onCheckedChange = ::persistGlobal,

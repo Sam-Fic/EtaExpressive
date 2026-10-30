@@ -41,7 +41,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as M3IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -82,8 +81,8 @@ private fun ProviderBrandImage(
         painter = painterResource(logo),
         contentDescription = null,
         contentScale = ContentScale.Fit,
+        // 官方图标槽宽度 24dp；间距由官方 ItemBetweenSpace 12dp 施加。
         modifier = modifier
-            .padding(end = 8.dp)
             .size(24.dp)
             .clip(CircleShape),
     )
@@ -110,14 +109,12 @@ internal fun ProviderIcon(
     }
 
     val fallbackIcon = if (provider is CustomProviderSetting) Icons.Rounded.Dns else Icons.Rounded.Language
-    // M3：官方 Icon + 官方 onSurfaceVariant 角色色 + 官方图标尺寸令牌。
+    // 官方默认几何（24dp + ItemBetweenSpace 12dp）；着色统一设置页 onSurfaceVariant。
     Icon(
         imageVector = fallbackIcon,
         contentDescription = null,
         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier
-            .padding(end = 8.dp)
-            .size(IconButtonDefaults.smallIconSize),
+        modifier = modifier,
     )
 }
 
