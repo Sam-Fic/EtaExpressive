@@ -202,6 +202,51 @@ class AgentTimelineProjectionTest {
         assertFalse(rows.any { it is AgentTimelineRow.Message && it.message == retry })
     }
 
+    @Test
+    fun textReplyInsideWorkGroupBreaksContinuousSegmentRun() {
+        val group = AgentTimelineEntry.WorkProcess(
+            key = "work-turn",
+            messages = listOf(
+                workMessage(1),                                    // 工具
+                AgentMessageUi("mid", "中间回复"),                  // 纯文本：列表在此断开
+                workMessage(0),                                    // 思考
+                workMessage(1),                                    // 工具
+            ),
+        )
+        val steps = listOf(group).toLazyTimelineRows()
+            .filterIsInstance<AgentTimelineRow.WorkStep>()
+        // 文本前的工具组末收外圆；文本后重新起段。
+        assertEquals(listOf(true, false, true, false), steps.map { it.isFirst })
+        assertEquals(listOf(true, false, false, true), steps.map { it.isLast })
+
+        // 折叠组展开后：摘要与首个工具同段（首步不担组首），文本处再断、之后重新起段。
+        val folded = listOf<AgentTimelineEntry>(group).toLazyTimelineRows(
+            foldedGroups = setOf(group.key),
+            expandedGroups = setOf(group.key),
+        )
+        assertTrue((folded.first() as AgentTimelineRow.WorkSummary).expanded)
+        assertTrue(group.summaryContinuesIntoSteps())
+        val foldedSteps = folded.filterIsInstance<AgentTimelineRow.WorkStep>()
+        assertEquals(listOf(false, false, true, false), foldedSteps.map { it.isFirst })
+        assertEquals(listOf(true, false, false, true), foldedSteps.map { it.isLast })
+
+        // 空文本不算列表成员、不断开；首步是纯文本时摘要不接进列表。
+        val headBreak = AgentTimelineEntry.WorkProcess(
+            key = "work-head",
+            messages = listOf(
+                AgentMessageUi("lead", "引子"),
+                workMessage(1),
+                AgentMessageUi("blank", "   "),
+                workMessage(0),
+            ),
+        )
+        assertFalse(headBreak.summaryContinuesIntoSteps())
+        val headSteps = listOf(headBreak).toLazyTimelineRows()
+            .filterIsInstance<AgentTimelineRow.WorkStep>()
+        assertEquals(listOf(true, true, false, false), headSteps.map { it.isFirst })
+        assertEquals(listOf(false, false, false, true), headSteps.map { it.isLast })
+    }
+
     private fun workMessage(index: Int): AgentChatMessageUi = when (index % 3) {
         0 -> ThinkingMessageUi(
             id = "step-$index",
