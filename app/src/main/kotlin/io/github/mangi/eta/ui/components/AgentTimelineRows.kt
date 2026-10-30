@@ -33,13 +33,28 @@ internal sealed interface AgentTimelineRow {
     data class WorkStep(
         val groupKey: String,
         val message: AgentChatMessageUi,
-        /** 本行在组内可见分段列表中的位置（连续工具/思考调用是设置页「同组项」样式）。 */
+        /**
+         * 本行在组内可见分段列表中的位置（连续工具/思考调用是设置页「同组项」样式）。
+         * 组内夹进的纯文本模型回复不算列表成员：它把工具调用断开，前后的步骤各自重新起段
+         * （见 [isSegmentTextBreak]）。
+         */
         val isFirst: Boolean,
         val isLast: Boolean,
     ) : AgentTimelineRow {
         override val key: String get() = "work-step:${message.id}"
     }
 }
+
+/** 工作组里夹着的模型纯文本回复：连续分段列表在它的两侧断开。 */
+internal fun AgentChatMessageUi?.isSegmentTextBreak(): Boolean =
+    this is AgentMessageUi && content.isNotBlank()
+
+/**
+ * 折叠组展开后摘要行是否与首个步骤行露缝相接（摘要成为组首）。首步若是纯文本回复，
+ * 列表在它前面就断开，摘要保持单独一条。
+ */
+internal fun AgentTimelineEntry.WorkProcess.summaryContinuesIntoSteps(): Boolean =
+    !messages.firstOrNull().isSegmentTextBreak()
 
 internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
     foldedGroups: Set<String> = emptySet(),
@@ -53,7 +68,8 @@ internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
                 val folded = entry.key in foldedGroups
                 if (folded) {
                     // 折叠组永远有摘要行；用户手动展开后步骤行跟在摘要行后面。
-                    // 摘要行是组首（上沿外圆），首步骤行不再承担组首圆角。
+                    // 摘要行是组首（上沿外圆），首步骤行不再承担组首圆角——除非它紧跟
+                    // 组内的纯文本回复（文本把列表断开，其后步骤自己重新起段）。
                     val expanded = entry.key in expandedGroups
                     add(AgentTimelineRow.WorkSummary(entry, expanded = expanded))
                     if (expanded) {
@@ -62,8 +78,8 @@ internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
                             add(
                                 AgentTimelineRow.WorkStep(
                                     entry.key, message,
-                                    isFirst = false,
-                                    isLast = index == size - 1,
+                                    isFirst = index > 0 && entry.messages[index - 1].isSegmentTextBreak(),
+                                    isLast = index == size - 1 || entry.messages.getOrNull(index + 1).isSegmentTextBreak(),
                                 ),
                             )
                         }
@@ -74,8 +90,8 @@ internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
                         add(
                             AgentTimelineRow.WorkStep(
                                 entry.key, message,
-                                isFirst = index == 0,
-                                isLast = index == size - 1,
+                                isFirst = index == 0 || entry.messages[index - 1].isSegmentTextBreak(),
+                                isLast = index == size - 1 || entry.messages.getOrNull(index + 1).isSegmentTextBreak(),
                             ),
                         )
                     }
