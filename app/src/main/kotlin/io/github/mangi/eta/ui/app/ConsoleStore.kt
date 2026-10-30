@@ -90,6 +90,7 @@ internal class ConsoleStore(
 
     /** 每个会话独立的屏幕缓冲区；写入只能在 IO 线程持锁进行，UI 线程持锁读快照。 */
     private val buffers = mutableMapOf<String, TerminalScreenBuffer>()
+    /** 会话网格尺寸；与 [buffers] 共用一把锁，避免主线程读、IO 线程写的裸 HashMap 竞争。 */
     private val sessionSizes = mutableMapOf<String, Pair<Int, Int>>()
 
     private val _uiState = MutableStateFlow(
@@ -130,6 +131,10 @@ internal class ConsoleStore(
     /**
      * 确保当前有存活会话；网格尺寸变化重入时，当前会话存活则不重建。
      * [environment] 仅用于没有可复用会话时的新建。
+     *
+     * 存活判断走状态快照而不是问控制器：控制器在进程创建/回收期间持有会话锁，
+     * 本方法由 `LaunchedEffect(cols, rows)` 在主线程调用（旋转、IME 弹出都会触发），
+     * 直接问会把这些等待搬到主线程上，最坏情况直接 ANR。
      */
     fun open(environment: TerminalEnvironment, cols: Int, rows: Int) {
         if (cols <= 0 || rows <= 0) return
@@ -137,10 +142,12 @@ internal class ConsoleStore(
         lastRows = rows
         val state = _uiState.value
         val activeId = state.activeSessionId
-        if (activeId != null && controller.sessionAlive(activeId)) return
-        if (activeId == null) {
+        if (activeId != null) {
+            val active = state.sessions.firstOrNull { it.id == activeId }
+            if (active != null && !active.exited) return
+        } else {
             val reusable = state.sessions.lastOrNull { !it.exited && it.environment == environment }
-            if (reusable != null && controller.sessionAlive(reusable.id)) {
+            if (reusable != null) {
                 switchSession(reusable.id)
                 return
             }
@@ -174,8 +181,10 @@ internal class ConsoleStore(
             controller.closeSession(sessionId)
             sessionLeases.remove(sessionId)?.release()
         }
-        synchronized(bufferLock) { buffers.remove(sessionId) }
-        sessionSizes.remove(sessionId)
+        synchronized(bufferLock) {
+            buffers.remove(sessionId)
+            sessionSizes.remove(sessionId)
+        }
         _uiState.update { state ->
             val sessions = state.sessions.filterNot { it.id == sessionId }
             if (state.activeSessionId != sessionId) {
@@ -199,14 +208,16 @@ internal class ConsoleStore(
     /** 重启指定会话：终止后按原环境与原网格尺寸重开。 */
     fun restartSession(sessionId: String) {
         val session = _uiState.value.sessions.find { it.id == sessionId } ?: return
-        val size = sessionSizes[sessionId] ?: (lastCols to lastRows)
+        val size = synchronized(bufferLock) { sessionSizes[sessionId] } ?: (lastCols to lastRows)
         if (size.first <= 0 || size.second <= 0) return
         scope.launch(Dispatchers.IO) {
             controller.closeSession(sessionId)
             sessionLeases.remove(sessionId)?.release()
         }
-        synchronized(bufferLock) { buffers.remove(sessionId) }
-        sessionSizes.remove(sessionId)
+        synchronized(bufferLock) {
+            buffers.remove(sessionId)
+            sessionSizes.remove(sessionId)
+        }
         _uiState.update { state ->
             state.copy(sessions = state.sessions.filterNot { it.id == sessionId })
         }
@@ -294,8 +305,8 @@ internal class ConsoleStore(
                     }
                     synchronized(bufferLock) {
                         buffers[result.sessionId] = TerminalScreenBuffer(cols, rows, SCROLLBACK_LINES)
+                        sessionSizes[result.sessionId] = cols to rows
                     }
-                    sessionSizes[result.sessionId] = cols to rows
                     _uiState.update { state ->
                         state.copy(
                             sessions = state.sessions + ConsoleSessionUi(result.sessionId, environment),

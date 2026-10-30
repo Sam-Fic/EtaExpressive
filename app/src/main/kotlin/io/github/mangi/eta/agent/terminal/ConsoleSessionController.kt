@@ -39,6 +39,9 @@ internal class ConsoleSessionController(
     private val sessions = LinkedHashMap<String, PtySession>()
     private var nextSessionNumber = 0
 
+    /** 正在创建、尚未登记的会话数；进程创建在锁外进行，并发上限仍要算上它们。 */
+    private var pendingOpens = 0
+
     fun listSessions(): List<SessionInfo> = synchronized(sessionLock) {
         sessions.map { (id, session) ->
             SessionInfo(
@@ -53,6 +56,13 @@ internal class ConsoleSessionController(
         sessions[sessionId]?.let { !it.closed && it.process.isAlive } == true
     }
 
+    /**
+     * 新建会话。
+     *
+     * 进程创建（proot 下可达数秒）与进程树回收都在 [sessionLock] 外完成，锁内只做槽位预留、
+     * 登记与摘除。原实现整段持锁，任何一次 open/close 都会把其它会话的存活查询（含主线程）
+     * 一起堵住，被系统判成 ANR。
+     */
     fun open(
         environment: TerminalEnvironment,
         cols: Int,
@@ -61,25 +71,45 @@ internal class ConsoleSessionController(
         onExit: (sessionId: String) -> Unit,
         identity: String? = null,
     ): OpenResult {
+        val environmentRootfsPath = rootfsPath(environment)
+        val selectedIdentity = identity ?: if (environment.isLinux) {
+            TerminalRuntime.defaultIdentity(environment, environmentRootfsPath)
+        } else if (rootAvailable()) {
+            "root"
+        } else {
+            "user"
+        }
+        if (selectedIdentity !in setOf("root", "user")) {
+            return OpenResult.Failed("INVALID_ARGUMENT", "执行身份无效")
+        }
+        if (environment.isLinux && selectedIdentity == "user" &&
+            LinuxEnvironmentPaths.backendOf(environmentRootfsPath) != LinuxExecutionBackend.PROOT
+        ) {
+            return OpenResult.Failed("LINUX_ENVIRONMENT_REQUIRES_ROOT", "所选 Linux 环境需要 Root")
+        }
+        if (environment.isLinux && selectedIdentity == "root" &&
+            LinuxEnvironmentPaths.backendOf(environmentRootfsPath) == LinuxExecutionBackend.PROOT
+        ) {
+            return OpenResult.Failed("INVALID_IDENTITY", "免 Root Linux 使用普通应用身份")
+        }
+        if (selectedIdentity == "root" && !rootAvailable()) {
+            return OpenResult.Failed("ROOT_REQUIRED", "Root 授权不可用")
+        }
+        if (environment.isLinux && !LinuxEnvironmentPaths.rootfsReady(environmentRootfsPath)) {
+            return OpenResult.Failed("LINUX_ENVIRONMENT_NOT_READY", "Linux 工具环境尚未安装")
+        }
+
+        detachDeadSessions().forEach(::reapDetached)
         synchronized(sessionLock) {
-            pruneDeadSessionsLocked()
-            if (sessions.size >= MAX_SESSIONS) {
+            if (sessions.size + pendingOpens >= MAX_SESSIONS) {
                 return OpenResult.Failed("SESSION_LIMIT_REACHED", "会话数量已达上限")
             }
-            val environmentRootfsPath = rootfsPath(environment)
-            val identity = identity ?: if (environment.isLinux) TerminalRuntime.defaultIdentity(environment, environmentRootfsPath) else if (rootAvailable()) "root" else "user"
-            if (identity !in setOf("root", "user")) return OpenResult.Failed("INVALID_ARGUMENT", "执行身份无效")
-            if (environment.isLinux && identity == "user" && LinuxEnvironmentPaths.backendOf(environmentRootfsPath) != LinuxExecutionBackend.PROOT) return OpenResult.Failed("LINUX_ENVIRONMENT_REQUIRES_ROOT", "所选 Linux 环境需要 Root")
-            if (environment.isLinux && identity == "root" && LinuxEnvironmentPaths.backendOf(environmentRootfsPath) == LinuxExecutionBackend.PROOT) return OpenResult.Failed("INVALID_IDENTITY", "免 Root Linux 使用普通应用身份")
-            if (identity == "root" && !rootAvailable()) return OpenResult.Failed("ROOT_REQUIRED", "Root 授权不可用")
-            if (environment.isLinux &&
-                !LinuxEnvironmentPaths.rootfsReady(environmentRootfsPath)
-            ) {
-                return OpenResult.Failed("LINUX_ENVIRONMENT_NOT_READY", "Linux 工具环境尚未安装")
-            }
+            pendingOpens++
+        }
+        try {
             var startFailure = "stage=unknown"
             val process = processSupervisor.startShellProcess(
-                identity = identity,
+                identity = selectedIdentity,
                 command = null,
                 mergeStderr = true,
                 environment = environment,
@@ -95,9 +125,21 @@ internal class ConsoleSessionController(
                 onStartFailure = { startFailure = it },
             ) ?: return OpenResult.Failed("PROCESS_START_FAILED", "无法启动控制台进程，请检查所选环境和终端组件 ($startFailure)")
 
-            val sessionId = "c${++nextSessionNumber}"
-            val newSession = PtySession(environment, process, identity)
-            sessions[sessionId] = newSession
+            val sessionId = synchronized(sessionLock) { "c${++nextSessionNumber}" }
+            val newSession = PtySession(environment, process, selectedIdentity)
+            val admitted = synchronized(sessionLock) {
+                if (processSupervisor.isClosing) {
+                    false
+                } else {
+                    sessions[sessionId] = newSession
+                    true
+                }
+            }
+            if (!admitted) {
+                processSupervisor.terminateProcessTree(process)
+                processSupervisor.reapProcess(process)
+                return OpenResult.Failed("TERMINAL_CLOSED", "终端控制器已关闭")
+            }
             newSession.readerThread = thread(name = "console-pty-reader", isDaemon = true) {
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                 try {
@@ -118,7 +160,7 @@ internal class ConsoleSessionController(
             }
             // 落到环境默认工作目录；clear 清掉这条引导命令本身的回显。
             // 用户工具的安装器常把 PATH 写进 profile；控制台 shell 不是 login shell，这里显式补齐。
-            val defaultCwd = if (environment.isLinux) "/workspace" else TerminalRuntime.workspace(identity)
+            val defaultCwd = if (environment.isLinux) "/workspace" else TerminalRuntime.workspace(selectedIdentity)
             val bootstrap = "mkdir -p ${shellQuote(defaultCwd)}; " +
                 "[ -f /etc/profile ] && . /etc/profile; " +
                 "[ -f \"\$HOME/.profile\" ] && . \"\$HOME/.profile\"; " +
@@ -129,6 +171,8 @@ internal class ConsoleSessionController(
             }
             logger.info("Console action=open outcome=succeeded environment=${environment.wireName} cols=$cols rows=$rows")
             return OpenResult.Ready(sessionId)
+        } finally {
+            synchronized(sessionLock) { pendingOpens-- }
         }
     }
 
@@ -152,32 +196,37 @@ internal class ConsoleSessionController(
 
     /** 关闭单个会话；只回收该进程树，不影响其它会话，也不触发 supervisor 全局关闭。 */
     fun closeSession(sessionId: String) {
-        synchronized(sessionLock) {
-            closeSessionLocked(sessionId)
+        val detached = synchronized(sessionLock) {
+            sessions.remove(sessionId)?.also { it.closed = true }
         }
+        detached?.let(::reapDetached)
     }
 
     override fun close() {
         processSupervisor.beginClosing()
-        synchronized(sessionLock) {
-            sessions.keys.toList().forEach { closeSessionLocked(it) }
+        val detached = synchronized(sessionLock) {
+            val all = sessions.values.toList()
+            sessions.clear()
+            all
         }
+        detached.forEach(::reapDetached)
     }
 
-    private fun closeSessionLocked(sessionId: String) {
-        val current = sessions.remove(sessionId) ?: return
+    /** 回收一个已从会话表摘除的会话（进程树终止 + 读线程收尾），调用方不持锁。 */
+    private fun reapDetached(current: PtySession) {
         current.closed = true
         runCatching { current.process.outputStream.close() }
         processSupervisor.terminateAndReap(current.process)
-        runCatching { current.readerThread.join(500) }
-        runCatching { current.waiterThread.join(500) }
+        runCatching { current.readerThread?.join(500) }
+        runCatching { current.waiterThread?.join(500) }
         processSupervisor.unregisterProcess(current.process)
     }
 
-    /** 回收已退出的会话槽位，避免死会话占用并发上限。 */
-    private fun pruneDeadSessionsLocked() {
-        val deadIds = sessions.filterValues { it.closed || !it.process.isAlive }.keys.toList()
-        deadIds.forEach { closeSessionLocked(it) }
+    /** 摘掉已退出的会话槽位；实际回收由调用方在锁外执行。 */
+    private fun detachDeadSessions(): List<PtySession> = synchronized(sessionLock) {
+        val dead = sessions.filterValues { it.closed || !it.process.isAlive }
+        dead.keys.forEach { sessions.remove(it) }
+        dead.values.toList()
     }
 
     private fun rootfsPath(environment: TerminalEnvironment): String? =
@@ -193,7 +242,10 @@ internal class ConsoleSessionController(
         @Volatile
         var closed: Boolean = false
 
-        lateinit var readerThread: Thread
-        lateinit var waiterThread: Thread
+        @Volatile
+        var readerThread: Thread? = null
+
+        @Volatile
+        var waiterThread: Thread? = null
     }
 }

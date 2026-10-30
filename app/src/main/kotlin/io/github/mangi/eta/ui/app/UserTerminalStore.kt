@@ -83,10 +83,21 @@ internal class UserTerminalStore(
     private companion object {
         const val MAX_BLOCKS = 200
         const val MAX_BLOCK_OUTPUT_CHARS = 64_000
+        /** 超过上限多少字符才真正裁剪；避免每次刷新都重拷整段。 */
+        const val TRIM_SLACK_CHARS = 8_000
         const val FLUSH_INTERVAL_MS = 120L
     }
 
     private val appContext = context.applicationContext
+
+    /**
+     * 块列表与流式缓冲的互斥量。
+     *
+     * [onOutputDelta] 在 exec 轮询线程上跑，`closeSession` / `switchSession` 在主线程跑；
+     * 这两张表原来是无保护的 HashMap，并发改写下会丢条目、死循环甚至
+     * ConcurrentModificationException 把进程带走。
+     */
+    private val stateLock = Any()
     private val sessionLeases = ConcurrentHashMap<String, TerminalSessionLease>()
     private val controller = UserTerminalController(
         logger = AndroidAgentLogger,
@@ -129,7 +140,7 @@ internal class UserTerminalStore(
 
     private var blockId = 0L
 
-    /** 每个会话独立的块列表与流式输出缓冲；只有当前会话投影进 uiState.blocks。 */
+    /** 每个会话独立的块列表与流式输出缓冲；只有当前会话投影进 uiState.blocks。受 [stateLock] 保护。 */
     private val sessionBlocks = mutableMapOf<String, List<TerminalBlockUi>>()
     private val sessionBuffers = mutableMapOf<String, SessionOutput>()
 
@@ -182,10 +193,11 @@ internal class UserTerminalStore(
     /** 切换当前会话；块列表、cwd 与运行态随之换绑。 */
     fun switchSession(sessionId: String) {
         val session = _uiState.value.sessions.find { it.id == sessionId } ?: return
+        val blocks = synchronized(stateLock) { sessionBlocks[sessionId].orEmpty() }
         _uiState.update { state ->
             state.copy(
                 activeSessionId = sessionId,
-                blocks = sessionBlocks[sessionId].orEmpty(),
+                blocks = blocks,
                 environment = session.environment,
                 cwd = session.cwd,
                 running = session.running,
@@ -198,8 +210,10 @@ internal class UserTerminalStore(
         scope.launch {
             withContext(Dispatchers.IO) { controller.stopSession(sessionId) }
             sessionLeases.remove(sessionId)?.release()
-            sessionBlocks.remove(sessionId)
-            sessionBuffers.remove(sessionId)
+            synchronized(stateLock) {
+                sessionBlocks.remove(sessionId)
+                sessionBuffers.remove(sessionId)
+            }
             _uiState.update { state ->
                 val sessions = state.sessions.filterNot { it.id == sessionId }
                 if (state.activeSessionId != sessionId) {
@@ -209,7 +223,9 @@ internal class UserTerminalStore(
                     state.copy(
                         sessions = sessions,
                         activeSessionId = next?.id,
-                        blocks = next?.let { sessionBlocks[it.id].orEmpty() }.orEmpty(),
+                        blocks = next?.let { entry ->
+                            synchronized(stateLock) { sessionBlocks[entry.id].orEmpty() }
+                        }.orEmpty(),
                         cwd = next?.cwd ?: "",
                         running = next?.running == true,
                         environment = next?.environment ?: state.environment,
@@ -264,7 +280,7 @@ internal class UserTerminalStore(
                 ),
             )
             updateSessionEntry(sessionId) { it.copy(running = true) }
-            sessionBuffers[sessionId] = SessionOutput()
+            synchronized(stateLock) { sessionBuffers[sessionId] = SessionOutput() }
             val result = withContext(Dispatchers.IO) {
                 controller.exec(sessionId, command) { text, _ -> onOutputDelta(sessionId, id, text) }
             }
@@ -409,7 +425,7 @@ internal class UserTerminalStore(
                     environment = opened.environment,
                     cwd = opened.cwd,
                 )
-                sessionBlocks[opened.sessionId] = emptyList()
+                synchronized(stateLock) { sessionBlocks[opened.sessionId] = emptyList() }
                 _uiState.update { state ->
                     state.copy(
                         sessions = state.sessions + session,
@@ -428,9 +444,10 @@ internal class UserTerminalStore(
     /** 重启/重开场景：新 sessionId 接替旧会话的位置，命令块随 id 迁移。 */
     private fun replaceSession(oldId: String, opened: UserTerminalController.OpenResult.Ready) {
         sessionLeases.remove(oldId)?.release()
-        val inheritedBlocks = sessionBlocks.remove(oldId).orEmpty()
-        sessionBlocks[opened.sessionId] = inheritedBlocks
-        sessionBuffers.remove(oldId)
+        val inheritedBlocks = synchronized(stateLock) {
+            sessionBuffers.remove(oldId)
+            sessionBlocks.remove(oldId).orEmpty().also { sessionBlocks[opened.sessionId] = it }
+        }
         _uiState.update { state ->
             val sessions = state.sessions.map { session ->
                 if (session.id == oldId) {
@@ -460,7 +477,7 @@ internal class UserTerminalStore(
     /** 输出保留原始 ANSI 序列，渲染层解析为颜色与样式；运行日志/复制场景由渲染层剥离。 */
     private fun onOutputDelta(sessionId: String, blockId: Long, text: String) {
         if (text.isEmpty()) return
-        val buffer = sessionBuffers[sessionId] ?: return
+        val buffer = synchronized(stateLock) { sessionBuffers[sessionId] } ?: return
         synchronized(buffer.lock) { buffer.text.append(text) }
         val now = System.currentTimeMillis()
         if (now - buffer.lastFlushMs >= FLUSH_INTERVAL_MS) {
@@ -469,7 +486,7 @@ internal class UserTerminalStore(
     }
 
     private fun flushOutput(sessionId: String, blockId: Long) {
-        val buffer = sessionBuffers[sessionId] ?: return
+        val buffer = synchronized(stateLock) { sessionBuffers[sessionId] } ?: return
         val chunk = synchronized(buffer.lock) {
             if (buffer.text.isEmpty()) null else buffer.text.toString().also { buffer.text.setLength(0) }
         } ?: return
@@ -480,13 +497,24 @@ internal class UserTerminalStore(
                     block
                 } else {
                     val combined = block.output + chunk
-                    if (combined.length > MAX_BLOCK_OUTPUT_CHARS) {
-                        block.copy(
-                            output = combined.take(MAX_BLOCK_OUTPUT_CHARS),
-                            truncated = true,
-                        )
-                    } else {
+                    val overflow = combined.length - MAX_BLOCK_OUTPUT_CHARS
+                    if (overflow <= 0) {
                         block.copy(output = combined)
+                    } else if (overflow < TRIM_SLACK_CHARS) {
+                        // 刚过线先不裁剪（还没有真正丢内容）：每次刷新都裁一次等于每帧多拷两份 64K。
+                        block.copy(output = combined)
+                    } else {
+                        // 终端语义是「最新输出才重要」：超限时丢最旧的，保留尾部。
+                        // 原来用 take() 保头部，输出一旦超上限画面就永久定格，用户看到的是「卡死」。
+                        // 截断点可能落在行中甚至转义序列里，丢掉第一行残片，从下一个换行开始。
+                        val tail = combined.takeLast(MAX_BLOCK_OUTPUT_CHARS)
+                        val firstBreak = tail.indexOf('\n')
+                        val clean = if (firstBreak in 0 until tail.length - 1) {
+                            tail.substring(firstBreak + 1)
+                        } else {
+                            tail
+                        }
+                        block.copy(output = clean, truncated = true)
                     }
                 }
             }
@@ -533,8 +561,9 @@ internal class UserTerminalStore(
     }
 
     private fun updateSessionBlocks(sessionId: String, transform: (List<TerminalBlockUi>) -> List<TerminalBlockUi>) {
-        val updated = transform(sessionBlocks[sessionId].orEmpty())
-        sessionBlocks[sessionId] = updated
+        val updated = synchronized(stateLock) {
+            transform(sessionBlocks[sessionId].orEmpty()).also { sessionBlocks[sessionId] = it }
+        }
         _uiState.update { state ->
             if (state.activeSessionId == sessionId) state.copy(blocks = updated) else state
         }
