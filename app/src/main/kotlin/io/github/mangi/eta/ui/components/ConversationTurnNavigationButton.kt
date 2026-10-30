@@ -3,6 +3,7 @@ package io.github.mangi.eta.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,12 +34,18 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.material3.ToggleButtonSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Density
@@ -61,6 +68,9 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
  * MaterialTheme.motionScheme 的 spatial 规格。
  *
  * 长按语义不变：长按「上一轮」跳到会话开头、长按「下一轮」跳到会话末尾。
+ *
+ * 投影：整组一份 3dp（官方 Level2）阴影，轮廓由两颗按钮当前形状合成一条路径
+ * （见 [TurnNavigationGroupShape]），随形变与位移一起动，退场的那颗影子同步缩掉。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -104,31 +114,85 @@ internal fun ConversationTurnNavigationButton(
         val paired = upEnabled && downEnabled
         val spacing = ButtonGroupDefaults.ConnectedSpaceBetween
         val slot = IconButtonDefaults.smallContainerSize().width
-        val leadingShift by animateDpAsState(
-            targetValue = if (paired) 0.dp else slot + spacing,
+        val leadingShift = animateDpAsState(
+            targetValue = if (upEnabled && !downEnabled) slot + spacing else 0.dp,
             animationSpec = shiftSpec,
             label = "turnNavigationShift",
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(spacing)) {
-            NavigationHalfSlot(present = upEnabled, shiftX = leadingShift, enter = halfEnter, exit = halfExit) {
-                M3TurnNavigationToggle(
-                    direction = ConversationNavigationDirection.Up,
-                    paired = paired,
-                    leading = true,
-                    colors = colors,
-                    onStep = onStep,
-                    onEdge = onEdge,
-                )
+        // 内侧两角「连体 ↔ 独占整圆」的形变进度提到这一层：两颗按钮与整组投影共用同一进度，
+        // 影子才会跟着按钮一起变形（各自驱动会差半拍）。
+        val morphProgress = animateFloatAsState(
+            targetValue = if (paired) 0f else 1f,
+            animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            label = "turnNavigationShapeMorph",
+        )
+        // 半颗的「在场度」：影子随按钮一起退场（按钮淡出时影子同步缩到零），
+        // 否则空槽里会留下一块残影。
+        val upPresence = remember { Animatable(if (upEnabled) 1f else 0f) }
+        LaunchedEffect(upEnabled) {
+            if (upEnabled) {
+                upPresence.animateTo(1f, fadeInSpec)
+            } else {
+                upPresence.animateTo(0f, fadeOutSpec)
             }
-            NavigationHalfSlot(present = downEnabled, shiftX = 0.dp, enter = halfEnter, exit = halfExit) {
-                M3TurnNavigationToggle(
-                    direction = ConversationNavigationDirection.Down,
-                    paired = paired,
-                    leading = false,
-                    colors = colors,
-                    onStep = onStep,
-                    onEdge = onEdge,
-                )
+        }
+        val downPresence = remember { Animatable(if (downEnabled) 1f else 0f) }
+        LaunchedEffect(downEnabled) {
+            if (downEnabled) {
+                downPresence.animateTo(1f, fadeInSpec)
+            } else {
+                downPresence.animateTo(0f, fadeOutSpec)
+            }
+        }
+        // 官方连体组的内侧内角（ConnectedButtonGroupSmallTokens.InnerCornerCornerSize），
+        // 直接从官方形状取，影子才不会和按钮本身脱节。
+        val density = LocalDensity.current
+        val slotPx = with(density) { slot.toPx() }
+        val innerCornerPx = with(density) {
+            (ButtonGroupDefaults.connectedLeadingButtonShapes().shape as CornerBasedShape)
+                .topEnd.toPx(Size(slotPx, slotPx), density)
+        }
+        // 整组一个投影：把两颗按钮当前轮廓合成一条路径交给 shadow，
+        // 接缝处才不会叠出双重暗线（两颗各自投影必然在 2dp 间隙处叠暗）。
+        val groupShape = remember {
+            TurnNavigationGroupShape(
+                slot = slot,
+                spacing = spacing,
+                innerCornerPx = innerCornerPx,
+                leadingOffset = { leadingShift.value },
+                morph = { morphProgress.value },
+                leadingPresence = { upPresence.value },
+                trailingPresence = { downPresence.value },
+            )
+        }
+        Box(
+            modifier = Modifier.shadow(
+                elevation = 3.dp,
+                shape = groupShape,
+                clip = false,
+            ),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                NavigationHalfSlot(present = upEnabled, shiftX = leadingShift.value, enter = halfEnter, exit = halfExit) {
+                    M3TurnNavigationToggle(
+                        direction = ConversationNavigationDirection.Up,
+                        leading = true,
+                        morphProgress = morphProgress,
+                        colors = colors,
+                        onStep = onStep,
+                        onEdge = onEdge,
+                    )
+                }
+                NavigationHalfSlot(present = downEnabled, shiftX = 0.dp, enter = halfEnter, exit = halfExit) {
+                    M3TurnNavigationToggle(
+                        direction = ConversationNavigationDirection.Down,
+                        leading = false,
+                        morphProgress = morphProgress,
+                        colors = colors,
+                        onStep = onStep,
+                        onEdge = onEdge,
+                    )
+                }
             }
         }
     }
@@ -171,8 +235,8 @@ private fun NavigationHalfSlot(
 @Composable
 private fun M3TurnNavigationToggle(
     direction: ConversationNavigationDirection,
-    paired: Boolean,
     leading: Boolean,
+    morphProgress: State<Float>,
     colors: ToggleButtonColors,
     onStep: (ConversationNavigationDirection) -> Unit,
     onEdge: (ConversationNavigationDirection) -> Unit,
@@ -214,11 +278,6 @@ private fun M3TurnNavigationToggle(
             bottomStart = fullCorner,
         )
     }
-    val morphProgress = animateFloatAsState(
-        targetValue = if (paired) 0f else 1f,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-        label = "turnNavigationShapeMorph",
-    )
     val shape = remember(connected, standalone, morphProgress) {
         CornerMorphShape(start = connected, stop = standalone) { morphProgress.value }
     }
@@ -235,6 +294,9 @@ private fun M3TurnNavigationToggle(
         shapes = shapes,
         contentPadding = PaddingValues(0.dp),
         colors = colors,
+        // 整组只出一份投影：官方 elevation 一律置空（默认 hover 态还有 1dp 自己的影子，
+        // 会和整组影子打架），影子统一由外层 TurnNavigationGroupShape 出。
+        elevation = null,
     ) {
         ChatInputLongPressSlot(
             enabled = true,
@@ -299,6 +361,108 @@ private fun lerpCorners(
         topEnd = corner(start.topEnd, stop.topEnd),
         bottomEnd = corner(start.bottomEnd, stop.bottomEnd),
         bottomStart = corner(start.bottomStart, stop.bottomStart),
+    )
+}
+
+/**
+ * 整组投影的轮廓：把「上一轮 / 下一轮」两颗按钮当前轮廓合成一条路径。
+ *
+ * 整组只出一份影子，而不是两颗各自投影——官方连体组两半之间有 2dp 间隙，
+ * 各自投影必然在缝里叠出一条暗线；合成一条路径则只有一份干净的影子。
+ *
+ * 轮廓跟着状态一起动（读的都是动画中的实时值，不引起重组）：
+ * - 留下的那颗平移进右槽（[leadingOffset]），内侧两角从官方连体内角插值到整圆（[morph]）；
+ * - 退场的那颗按 [leadingPresence] / [trailingPresence] 缩到零，影子随之消失，空槽不留残影。
+ *
+ * minSdk 34 ≥ API 30，自定义路径轮廓可以走 RenderNode.setPath，投影按真实轮廓绘制。
+ */
+private class TurnNavigationGroupShape(
+    private val slot: Dp,
+    private val spacing: Dp,
+    private val innerCornerPx: Float,
+    private val leadingOffset: () -> Dp,
+    private val morph: () -> Float,
+    private val leadingPresence: () -> Float,
+    private val trailingPresence: () -> Float,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val slotPx = with(density) { slot.toPx() }
+        val spacingPx = with(density) { spacing.toPx() }
+        val fraction = morph().coerceIn(0f, 1f)
+        // 外侧两角是官方整圆（= 半边长，官方角是 100% 百分比，落到路径上按半边长收敛）；
+        // 内侧两角从官方连体内角插值到整圆，与按钮自身的形变进度一致。
+        val outer = slotPx / 2f
+        val inner = lerp(innerCornerPx, outer, fraction)
+        val path = Path()
+        // 上一轮：外侧（左）两角整圆，内侧（右）两角随形变插值。
+        val leadingLeft = with(density) { leadingOffset().toPx() }
+        addScaledRoundRect(
+            path = path,
+            left = leadingLeft,
+            top = 0f,
+            right = leadingLeft + slotPx,
+            bottom = size.height,
+            topLeft = outer,
+            topRight = inner,
+            bottomRight = inner,
+            bottomLeft = outer,
+            scale = leadingPresence(),
+        )
+        // 下一轮：外侧（右）两角整圆，内侧（左）两角随形变插值。
+        val trailingLeft = slotPx + spacingPx
+        addScaledRoundRect(
+            path = path,
+            left = trailingLeft,
+            top = 0f,
+            right = trailingLeft + slotPx,
+            bottom = size.height,
+            topLeft = inner,
+            topRight = outer,
+            bottomRight = outer,
+            bottomLeft = inner,
+            scale = trailingPresence(),
+        )
+        return Outline.Generic(path)
+    }
+}
+
+/**
+ * 把一个圆角矩形按 [scale] 围绕自身中心缩放后并入 [path]（[scale] 为 0 时整颗不画）。
+ * 影子随按钮退场时就是这么缩掉的。
+ */
+private fun addScaledRoundRect(
+    path: Path,
+    left: Float,
+    top: Float,
+    right: Float,
+    bottom: Float,
+    topLeft: Float,
+    topRight: Float,
+    bottomRight: Float,
+    bottomLeft: Float,
+    scale: Float,
+) {
+    val factor = scale.coerceIn(0f, 1f)
+    if (factor <= 0f) return
+    val centerX = (left + right) / 2f
+    val centerY = (top + bottom) / 2f
+    val halfWidth = (right - left) / 2f * factor
+    val halfHeight = (bottom - top) / 2f * factor
+    path.addRoundRect(
+        RoundRect(
+            left = centerX - halfWidth,
+            top = centerY - halfHeight,
+            right = centerX + halfWidth,
+            bottom = centerY + halfHeight,
+            topLeftCornerRadius = CornerRadius(topLeft * factor, topLeft * factor),
+            topRightCornerRadius = CornerRadius(topRight * factor, topRight * factor),
+            bottomRightCornerRadius = CornerRadius(bottomRight * factor, bottomRight * factor),
+            bottomLeftCornerRadius = CornerRadius(bottomLeft * factor, bottomLeft * factor),
+        )
     )
 }
 
