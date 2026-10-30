@@ -740,8 +740,11 @@ class AgentModelClientLoopTest {
         var executed = false
 
         AgentModelClient.complete(
-            config = modelConfig(),
+            // tap 属延迟的屏幕组：先打开该组，参数校验才会落在 INVALID_TOOL_ARGUMENTS，
+            // 而不是「组未打开」的提示分支。
+            config = modelConfig().copy(screenTools = true),
             prompt = "点击",
+            openedToolGroupsProvider = { setOf(AgentToolGroups.SCREEN_GROUP.id) },
             toolExecutor = AgentModelClient.ToolExecutor {
                 executed = true
                 AgentModelClient.ToolResult("unexpected")

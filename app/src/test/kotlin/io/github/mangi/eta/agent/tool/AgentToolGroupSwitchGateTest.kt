@@ -7,6 +7,7 @@ import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.core.AgentLogger
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,11 +61,14 @@ class AgentToolGroupSwitchGateTest {
             val result = open(tools, AgentToolGroups.DEVICE_GROUP.id)
             assertTrue(result.getBoolean("ok"))
             assertEquals("next_turn", result.getString("available"))
-            assertEquals(
-                AgentToolGroups.DEVICE_GROUP.toolNames.sorted(),
-                (0 until result.getJSONArray("tools").length())
-                    .map { result.getJSONArray("tools").getString(it) },
-            )
+            val reported = (0 until result.getJSONArray("tools").length())
+                .map { result.getJSONArray("tools").getString(it) }
+            // 回执必须是整组声明名的子集（AgentToolGroupCatalog.result 的合同）：Robolectric 环境
+            // 没有 Root，Root-only 工具此刻真发不出来，照抄整组名单会承诺一批必然被拒的工具名。
+            assertTrue("回执不应是空的", reported.isNotEmpty())
+            assertTrue("回执只能列组内工具", reported.all { it in AgentToolGroups.DEVICE_GROUP.toolNames })
+            assertTrue("非 Root 工具应出现在回执里", "set_alarm" in reported)
+            assertFalse("Root-only 工具不得出现在回执里", "create_note" in reported)
             assertTrue(AgentToolGroups.DEVICE_GROUP.id in tools.openedToolGroups())
         } finally {
             tools.close()

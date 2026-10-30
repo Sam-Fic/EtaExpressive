@@ -21,7 +21,11 @@ internal object ToolGroupSwitch {
         "web" -> Prefs.Keys.AGENT_BROWSER_TOOLS
         "terminal" -> Prefs.Keys.AGENT_TERMINAL_TOOLS
         "device" -> Prefs.Keys.AGENT_DEVICE_TOOLS
+        // 日程与设备状态组复用宿主组的开关：与 AgentToolGroups.groupEnabled、
+        // AgentToolCatalog 的组可用性判定保持一致，用户关一次设备/个人数据开关即整体收起。
+        "calendar" -> Prefs.Keys.AGENT_DEVICE_TOOLS
         "personal" -> Prefs.Keys.AGENT_PERSONAL_TOOLS
+        "device_state" -> Prefs.Keys.AGENT_PERSONAL_TOOLS
         // Eta 自身配置组刻意不提供开关入口之外的模型控制，但用户可以在这里关掉。
         "extensions" -> Prefs.Keys.AGENT_EXTENSIONS_TOOLS
         else -> null

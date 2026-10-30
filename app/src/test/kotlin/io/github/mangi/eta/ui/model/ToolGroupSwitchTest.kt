@@ -20,7 +20,9 @@ class ToolGroupSwitchTest {
             "web" to Prefs.Keys.AGENT_BROWSER_TOOLS,
             "terminal" to Prefs.Keys.AGENT_TERMINAL_TOOLS,
             "device" to Prefs.Keys.AGENT_DEVICE_TOOLS,
+            "calendar" to Prefs.Keys.AGENT_DEVICE_TOOLS,
             "personal" to Prefs.Keys.AGENT_PERSONAL_TOOLS,
+            "device_state" to Prefs.Keys.AGENT_PERSONAL_TOOLS,
             "extensions" to Prefs.Keys.AGENT_EXTENSIONS_TOOLS,
         )
         // 分组定义是唯一来源：新增一个组而忘了给开关，这条会先失败。

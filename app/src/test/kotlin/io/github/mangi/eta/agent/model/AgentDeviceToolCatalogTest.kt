@@ -28,7 +28,12 @@ class AgentDeviceToolCatalogTest {
             capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
             openedToolGroups = setOf(AgentToolGroups.DEVICE_GROUP.id),
         ).toolNames()
-        assertEquals(AgentToolGroups.DEVICE_GROUP.toolNames, deferred)
+        // 日程组的工具本体被延迟，但设备开关开着，所以目录里留一个 tools_use_group
+        // 供模型打开它（枚举应只含 calendar）。少了这个入口，日程能力就永远开不出来。
+        assertEquals(
+            AgentToolGroups.DEVICE_GROUP.toolNames + AgentToolGroupCatalog.USE_GROUP,
+            deferred,
+        )
 
         val opened = AgentToolCatalog.build(
             basicTools = false, terminalTools = false, browserTools = false, screenTools = false,
@@ -43,8 +48,11 @@ class AgentDeviceToolCatalogTest {
     }
 
     @Test fun personalGroupIsExactlyThePersonalContentTier() {
+        // 个人数据开关同时门禁「个人内容」与「设备状态」两个延迟组；目录用 allIds（视为全部打开），
+        // 因此这里断言的是两组并集，而不是只有个人内容——设备状态组的成员不混进设备控制组。
         assertEquals(
-            AgentDeviceToolCatalog.personalReadToolNames(),
+            AgentDeviceToolCatalog.personalReadToolNames() +
+                AgentDeviceToolCatalog.deviceStateReadToolNames(),
             names(deviceTools = false, personalTools = true),
         )
     }
@@ -57,7 +65,12 @@ class AgentDeviceToolCatalogTest {
             capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
             openedToolGroups = setOf(AgentToolGroups.PERSONAL_GROUP.id),
         ).toolNames()
-        assertEquals(AgentDeviceToolCatalog.personalReadToolNames(), withheld)
+        // 设备状态组的工具本体被延迟，但个人数据开关开着，所以目录里留一个 tools_use_group
+        // 供模型打开它（枚举此时应只剩 device_state）。
+        assertEquals(
+            AgentDeviceToolCatalog.personalReadToolNames() + AgentToolGroupCatalog.USE_GROUP,
+            withheld,
+        )
 
         val both = AgentToolCatalog.build(
             basicTools = false, terminalTools = false, browserTools = false, screenTools = false,

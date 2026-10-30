@@ -200,9 +200,10 @@ class AgentPromptBuilderTest {
         assertTrue(messages.systemContents().any { it.contains("工具已向你公开表示对应能力已由用户开启") })
         assertTrue(messages.systemContents().any { it.contains("从多个相关来源按时间和代表性取样") })
         assertTrue(messages.systemContents().any { it.contains("系统记忆") })
-        assertTrue(messages.systemContents().any { it.contains("主动使用它们定位并只读检查") })
-        assertTrue(messages.systemContents().any { it.contains("相关应用私有文件与数据库") })
-        assertTrue(messages.systemContents().any { it.contains("执行有界查询，不修改源数据") })
+        // 所有组（含扩展组）都已打开时，没有专用工具读取数据应优先自写配方，
+        // 而不是让模型用 Shell 逐轮试探格式；终端分支此时刻意让位。
+        assertTrue(messages.systemContents().any { it.contains("优先用 eta_author_tool 写一个配方") })
+        assertTrue(messages.systemContents().any { it.contains("不要用 Shell 逐轮试探文件格式或数据库 schema") })
         assertTrue(messages.systemContents().any { it.contains("合法且克制的 GitHub Flavored Markdown") })
         assertTrue(messages.systemContents().any { it.contains("不用整句粗体冒充标题") })
         assertTrue(messages.systemContents().any { it.contains("表格前后留空行") })
