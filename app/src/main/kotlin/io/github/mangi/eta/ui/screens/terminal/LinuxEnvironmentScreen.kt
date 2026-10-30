@@ -70,9 +70,13 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaStatusDot
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.navigation.AppRoute
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 private enum class InstallTarget {
     BASE,
@@ -94,6 +98,18 @@ private data class PackageProfileUi(
     @param:StringRes val debianSummaryRes: Int = summaryRes,
     @param:StringRes val debianReadyRes: Int = readyRes,
 )
+
+/**
+ * 安装任务的宿主作用域。
+ *
+ * 安装是不可中断的长任务（解包 rootfs、apt 装包）：原来挂在 `rememberCoroutineScope()` 上，
+ * 用户一离开页面就被取消，留下半残环境——之后所有终端操作都表现为「卡住 / 失败」。
+ * 这里改用 App 级作用域，页面销毁只影响进度展示，不影响任务本身。
+ */
+private val installScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+/** 同一时刻只允许一个安装任务：作用域脱离页面后会话持续存在，必须自己防重入。 */
+private val installRunning = AtomicBoolean(false)
 
 private val packageProfileUis = listOf(
     PackageProfileUi(
@@ -221,6 +237,12 @@ internal fun LinuxEnvironmentScreen(
     }
 
     fun launchInstallation(block: suspend () -> Unit) {
+        if (!installRunning.compareAndSet(false, true)) {
+            // 上一个安装任务还在后台跑（用户可能刚从别的页面绕回来）。
+            resultMessage = context.getString(R.string.linux_installing)
+            busyTarget = null
+            return
+        }
         val operation: suspend () -> Unit = {
             try {
                 block()
@@ -230,20 +252,22 @@ internal fun LinuxEnvironmentScreen(
                 profileProgressSummary = null
                 apkAnalysisProgress = null
                 busyTarget = null
+                installRunning.set(false)
             }
         }
         if (backend == LinuxExecutionBackend.PROOT) {
             requestExecutionNotifications()
-            coroutineScope.launchForegroundExecution(
+            installScope.launchForegroundExecution(
                 context = appContext,
                 onUnavailable = {
+                    installRunning.set(false)
                     busyTarget = null
                     resultMessage = context.getString(R.string.capability_background_failed)
                 },
                 block = operation,
             )
         } else {
-            coroutineScope.launch { operation() }
+            installScope.launch { operation() }
         }
     }
 
@@ -300,8 +324,16 @@ internal fun LinuxEnvironmentScreen(
         kimiWebLaunching = true
         resultMessage = null
         coroutineScope.launch {
-            val result = kimiWebLauncher.launch(selectedDistribution.terminalEnvironment)
-            kimiWebLaunching = false
+            val result = try {
+                kimiWebLauncher.launch(selectedDistribution.terminalEnvironment)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                KimiWebLaunchResult.Failed("LAUNCH_FAILED")
+            } finally {
+                // 异常也必须复位，否则按钮永久停在「启动中」不可再点。
+                kimiWebLaunching = false
+            }
             if (result is KimiWebLaunchResult.Failed) {
                 resultMessage = result.message(context)
             }
