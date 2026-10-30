@@ -924,13 +924,15 @@ internal fun AgentConversationMessages(
             collapsingWorkGroups = collapsingWorkGroups + (groupKey to left)
         }
     }
-    // 「本轮回答出来，就把回答之前的内容收起来」：只在整轮停下之后生效，
-    // 生成过程中一律摊开，不打扰看进度。收起范围由档位决定：
-    // 普通/激进=折叠成摘要行（激进档连中间回复一起归组）；不折叠=彻底不收。
+    // 「本轮回答出来，就把回答之前的内容收起来」：更早的轮次只要已出现过正文回复
+    // 就保持收起——生成过程中也一样，否则发新一轮/继续生成时旧轮会被重新摊开；
+    // 最新一轮只在整轮停下（非生成、非暂停、非压缩中）后收，生成过程摊开看进度。
+    // 收起范围由档位决定：普通/激进=折叠成摘要行（激进档连中间回复一起归组）；
+    // 不折叠=彻底不收。手动点过的分组永远优先。
     val answerFoldEnabled = answerFoldLevel != AnswerFoldLevel.NONE
     val isTurnSettled = !isStreaming && !isPaused && !isCompressingContext
     val foldedWorkKeys = remember(projectedTimelineEntries, answerFoldEnabled, isTurnSettled) {
-        projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled && isTurnSettled)
+        projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled, foldLatestTurn = isTurnSettled)
     }
     LaunchedEffect(projectedTimelineEntries) {
         val activeKeys = projectedTimelineEntries.filterIsInstance<AgentTimelineEntry.WorkProcess>().mapTo(mutableSetOf()) { it.key }

@@ -273,6 +273,71 @@ class AgentTimelineProjectionTest {
         assertEquals(65, expandedRows.count { it is AgentTimelineRow.WorkStep })
     }
 
+    @Test
+    fun autoFoldKeepsOlderTurnsFoldedWhileGeneratingAndFoldsLatestTurnOnlyWhenSettled() {
+        val olderTurn = listOf(
+            UserMessageUi("user-1", "first task"),
+            workMessage(0),
+            workMessage(1),
+            AgentMessageUi("answer-1", "first answer"),
+        )
+        val latestTurn = listOf(
+            UserMessageUi("user-2", "second task"),
+            workMessage(2),
+            workMessage(3),
+            AgentMessageUi("answer-2", "second answer"),
+        )
+        val entries = (olderTurn + latestTurn).toTimelineEntries()
+        // 连续工作消息并成同组，组键取首条消息 id。
+        val olderKeys = setOf("work-step-0")
+        val latestKeys = setOf("work-step-2")
+
+        // 生成中（foldLatestTurn=false）：旧轮保持收起，最新一轮摊开看进度。
+        assertEquals(olderKeys, entries.autoFoldedWorkKeys(enabled = true, foldLatestTurn = false))
+        // 整轮停下：最新一轮一并收起。
+        assertEquals(olderKeys + latestKeys, entries.autoFoldedWorkKeys(enabled = true, foldLatestTurn = true))
+        // 不折叠档：完全不收。
+        assertTrue(entries.autoFoldedWorkKeys(enabled = false, foldLatestTurn = true).isEmpty())
+    }
+
+    @Test
+    fun autoFoldTreatsSteerSupplementAsSameTurnAndUnansweredTurnStaysOpen() {
+        // steer 补充不算新轮：它之后的工作组仍属于最新一轮，生成中不收。
+        val withSteer = listOf(
+            UserMessageUi("user-1", "task"),
+            workMessage(0),
+            AgentMessageUi("answer-1", "answer"),
+            UserMessageUi("user-1-supplement-steer", "补充一点"),
+            workMessage(1),
+            AgentMessageUi("answer-2", "second answer"),
+        ).toTimelineEntries()
+        // steer 补充不算新轮：它之前的工作组也属于最新一轮，生成中同样不收
+        // （若 steer 开了新轮，这里会收到 work-step-0）。
+        assertEquals(emptySet<String>(), withSteer.autoFoldedWorkKeys(true, foldLatestTurn = false))
+        assertEquals(setOf("work-step-0", "work-step-1"), withSteer.autoFoldedWorkKeys(true, foldLatestTurn = true))
+
+        // 没有正文回复的整轮不收（停下也不收）；有回复的轮正常收。
+        val unanswered = listOf(
+            UserMessageUi("user-1", "task"),
+            workMessage(0),
+            UserMessageUi("user-2", "next task"),
+            workMessage(1),
+            AgentMessageUi("answer-2", "second answer"),
+        ).toTimelineEntries()
+        val folded = unanswered.autoFoldedWorkKeys(true, foldLatestTurn = true)
+        assertFalse("无回复的整轮不该被收起", folded.contains("work-step-0"))
+        assertTrue("有回复的轮该被收起", folded.contains("work-step-1"))
+
+        // 没有任何真实用户消息时整表视为最新一轮：生成中不收，停下后收已出现回复之前的组。
+        val headless = listOf(
+            workMessage(0),
+            AgentMessageUi("answer-1", "answer"),
+            workMessage(1),
+        ).toTimelineEntries()
+        assertTrue(headless.autoFoldedWorkKeys(true, foldLatestTurn = false).isEmpty())
+        assertEquals(setOf("work-step-0"), headless.autoFoldedWorkKeys(true, foldLatestTurn = true))
+    }
+
     private fun workMessage(index: Int): AgentChatMessageUi = when (index % 3) {
         0 -> ThinkingMessageUi(
             id = "step-$index",

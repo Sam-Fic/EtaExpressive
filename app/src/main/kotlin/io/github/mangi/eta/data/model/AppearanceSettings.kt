@@ -104,8 +104,9 @@ enum class AppearanceTopBarBlurStyle(val persistedValue: String) {
 /**
  * 「回答出现后收起本轮内容」的分级。枚举顺序即设置页选项顺序。
  *
- * 三档共用同一套收起时机：只在整轮停下（非生成、非暂停、非压缩中）后生效，
- * 且手动点过的分组永远优先。差别只在收起的范围：
+ * 三档共用同一套收起时机：更早的轮次只要已出现过正文回答就收（生成过程中也保持
+ * 收起，不随新一轮生成重新摊开）；最新一轮只在整轮停下（非生成、非暂停、非压缩中）
+ * 后收，生成过程摊开看进度。手动点过的分组永远优先。差别只在收起的范围：
  */
 @Serializable
 enum class AnswerFoldLevel(val persistedValue: String) {

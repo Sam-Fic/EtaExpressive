@@ -123,13 +123,30 @@ private fun MutableList<AgentTimelineRow>.addWorkSteps(
  * 「本轮回答出来，就把回答之前的内容收起来」：普通档收思考/工具工作组，激进档
  * 连并进来的中间回复一起（激进归组在 toTimelineEntries）；轮次边界与归组一致——
  * 真实用户消息开新轮，steer 补充与压缩后的 resume 只是续跑。
- * 只在整轮停下后生效（调用方负责传入 isTurnSettled）。
+ *
+ * 收起时机分轮处理：更早的轮次只要已出现过正文回复就收（生成过程中也保持收起，
+ * 否则发新一轮时旧轮会被重新摊开）；最新一轮（[foldLatestTurn] = false 时）只在
+ * 整轮停下后收——生成中的回复还会继续长、工作组也可能随后续工具调用重组，
+ * 提前收会有「收了又摊开」的回跳，摊开看进度是刻意的。无正文回复的整轮不收。
  */
-internal fun List<AgentTimelineEntry>.autoFoldedWorkKeys(enabled: Boolean): Set<String> {
+internal fun List<AgentTimelineEntry>.autoFoldedWorkKeys(
+    enabled: Boolean,
+    foldLatestTurn: Boolean,
+): Set<String> {
     if (!enabled) return emptySet()
+    // 最新一轮 = 最后一条真实用户消息之后的部分（没有用户消息则整表视为最新一轮）。
+    var latestTurnStart = 0
+    forEachIndexed { index, entry ->
+        val message = (entry as? AgentTimelineEntry.Message)?.message
+        if (message is UserMessageUi && !message.isSteerSupplement() &&
+            !message.isResumeAfterCompress()
+        ) {
+            latestTurnStart = index + 1
+        }
+    }
     var pending: MutableList<String>? = null
     var folded: MutableSet<String>? = null
-    forEach { entry ->
+    forEachIndexed { index, entry ->
         when (entry) {
             is AgentTimelineEntry.Message -> {
                 val message = entry.message
@@ -137,8 +154,10 @@ internal fun List<AgentTimelineEntry>.autoFoldedWorkKeys(enabled: Boolean): Set<
                     message is UserMessageUi && !message.isSteerSupplement() &&
                         !message.isResumeAfterCompress() -> pending = null
                     message is AgentMessageUi && message.content.isNotBlank() -> {
-                        pending?.let { keys ->
-                            (folded ?: LinkedHashSet<String>().also { folded = it }).addAll(keys)
+                        if (foldLatestTurn || index < latestTurnStart) {
+                            pending?.let { keys ->
+                                (folded ?: LinkedHashSet<String>().also { folded = it }).addAll(keys)
+                            }
                         }
                         pending = null
                     }
