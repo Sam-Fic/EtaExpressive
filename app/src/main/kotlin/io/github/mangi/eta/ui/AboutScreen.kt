@@ -199,7 +199,7 @@ private fun AboutHero(versionName: String) {
         // 直接用官方字阶令牌（含字重/行高/字距），不再只拷 fontSize 或额外覆盖字重。
         Text(
             modifier = Modifier.padding(top = 12.dp),
-            text = stringResource(R.string.app_name),
+            text = stringResource(R.string.about_app_name),
             style = MaterialTheme.typography.headlineMedium,
         )
         Text(

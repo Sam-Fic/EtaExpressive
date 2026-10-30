@@ -536,8 +536,9 @@
   <string name="ui_clear_84fcd7">Clear</string>
   <string name="ui_clear_all_memory_a43bd3">Clear all memory?</string>
   <string name="ui_source_code_740296">Source code</string>
-  <string name="ui_author_homepage_6b41d2">Author\'s homepage</string>
-  <string name="ui_author_homepage_summary_8f0c73">Browse all repositories by this author</string>
+  <string name="about_app_name">EtaExpressive</string>
+  <string name="ui_author_homepage_6b41d2">This fork\'s author homepage</string>
+  <string name="ui_author_homepage_summary_8f0c73">See my other repositories</string>
   <string name="update_check_title">Check for updates</string>
   <string name="update_checking">Checking…</string>
   <string name="update_current_version">Current version %1$s</string>
