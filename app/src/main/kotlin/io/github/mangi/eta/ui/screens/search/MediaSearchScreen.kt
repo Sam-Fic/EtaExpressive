@@ -23,18 +23,32 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BookmarkRemove
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Deselect
+import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.material.icons.rounded.FileCopy
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SelectAll
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,12 +80,15 @@ import io.github.mangi.eta.agent.media.index.MediaFileOps.MediaTarget
 import io.github.mangi.eta.agent.media.index.MediaSearchService
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.MediaKind
-import io.github.mangi.eta.ui.adaptive.EtaCard
+import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDecorativeShape
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaIconButton
+import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaSearchHistory
 import io.github.mangi.eta.ui.adaptive.EtaSearchHistoryItems
 import io.github.mangi.eta.ui.adaptive.EtaSearchScaffold
@@ -125,8 +142,9 @@ private fun kindsForFilter(index: Int): Set<MediaKind> = when (index) {
  *
  * 版式沿用应用内其它搜索页（[EtaSearchScaffold]）：顶栏是「返回钮 + 透明底搜索框 +
  * 清除按钮 + 搜索按钮」，没有大标题页，搜索词就在顶栏里改；类型标签条常驻在顶栏下方，
- * 搜索前后都能切换范围；多选入口是与「找到 X 项」同行的纯文字按钮（有结果时显示
- * 「多选」，多选态变为「取消」）。
+ * 搜索前后都能切换范围；「找到 X 项」行右端是纯图标按钮——多选入口（多选态原位
+ * 变为「取消」，退出并清空勾选）与匹配度阈值（始终居最右；多选态已选计数以居中
+ * 点号并入行首文案）；批量操作集中在底部官方浮动图标工具栏。
  *
  * 检索统一走 [MediaSearchService]（与 AI 工具 `search_media` 同一入口），全程离线；
  * 模型未下载或扫描源未确认时显示引导卡片跳设置页。
@@ -158,6 +176,8 @@ internal fun MediaSearchScreen(
     var selectionMode by remember { mutableStateOf(false) }
     var selectedKeys by remember { mutableStateOf(setOf<String>()) }
     var confirmDeleteFiles by remember { mutableStateOf(false) }
+    // 匹配度阈值面板：从多选工具栏的「阈值」按钮打开（官方 ModalBottomSheet）。
+    var showThresholdSheet by remember { mutableStateOf(false) }
     var batchBusy by remember { mutableStateOf(false) }
     // 批量移动/复制：先由目录选择器拿目标文件夹，再二次确认；两者齐备才弹确认框。
     var pendingOperation by remember { mutableStateOf<MediaFileOps.Op?>(null) }
@@ -517,20 +537,10 @@ internal fun MediaSearchScreen(
                     }
                 }
                 else -> {
-                    // 匹配度阈值调节行：结果区上方，低于阈值的命中即时隐藏并提示已隐藏条数。
-                    item(key = "threshold") {
-                        MediaThresholdRow(
-                            minScore = minScore,
-                            hiddenCount = hiddenCount,
-                            onValueChange = { minScore = it },
-                            onValueChangeFinished = {
-                                EmbeddingModelStore.setSearchMinScore(context, minScore)
-                            },
-                        )
-                    }
-                    // 结果计数行：左侧「找到 X 项」组标题，右侧多选入口（纯文字按钮，
-                    // 原顶栏图标钮迁到这里）。非多选态显示「多选」，多选态变为「取消」，
-                    // 点按退出并清空勾选；长按结果行同样可进入多选。
+                    // 结果计数行：左侧「找到 X 项」组标题，多选态把「已选 n 项」并入行首
+                    // 文案（居中点号隔开）。右端纯图标按钮：多选入口（多选态原位变为
+                    // 「取消」，退出并清空勾选）与阈值（始终居最右，打开阈值面板）；
+                    // 长按结果行同样可进入多选。
                     item(key = "result-count") {
                         Row(
                             modifier = Modifier
@@ -541,30 +551,48 @@ internal fun MediaSearchScreen(
                                     bottom = EtaSegmentedTitleSpacing,
                                 ),
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Text(
-                                text = stringResource(R.string.media_search_result_count, hits.size),
+                                text = if (selectionMode) {
+                                    stringResource(R.string.media_search_result_count, hits.size) +
+                                        " · " +
+                                        stringResource(R.string.media_selected_count, selectedHits.size)
+                                } else {
+                                    stringResource(R.string.media_search_result_count, hits.size)
+                                },
                                 style = MaterialTheme.typography.titleSmallEmphasized,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(
+                            // 多选入口：多选态原位变为「取消」，退出并清空勾选（底栏不再放取消钮）。
+                            EtaIconButton(
+                                icon = if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist,
+                                contentDescription = stringResource(
+                                    if (selectionMode) {
+                                        R.string.action_cancel
+                                    } else {
+                                        R.string.media_action_multiselect
+                                    },
+                                ),
                                 onClick = {
                                     TouchHaptics.click(view)
                                     selectionMode = !selectionMode
                                     selectedKeys = emptySet()
                                 },
-                            ) {
-                                Text(
-                                    text = stringResource(
-                                        if (selectionMode) {
-                                            R.string.action_cancel
-                                        } else {
-                                            R.string.media_action_multiselect
-                                        },
-                                    ),
-                                )
-                            }
+                                size = EtaIconSize.S,
+                                style = EtaButtonStyle.Standard,
+                            )
+                            EtaIconButton(
+                                icon = Icons.Rounded.Tune,
+                                contentDescription = stringResource(R.string.media_threshold_label),
+                                onClick = {
+                                    TouchHaptics.click(view)
+                                    showThresholdSheet = true
+                                },
+                                size = EtaIconSize.S,
+                                style = EtaButtonStyle.Standard,
+                            )
                         }
                     }
                     // 结果行完全复用设置主页的分组列表：行距 2dp、组末 13dp、左右页边距 16dp，
@@ -607,7 +635,7 @@ internal fun MediaSearchScreen(
             }
         }
 
-        // 多选批量操作栏：底部悬浮常驻，显示已选数量并承载全选与两个批量操作。
+        // 多选批量操作栏：底部官方浮动图标工具栏（纯图标），常驻承载全选与批量操作。
         if (selectionMode) {
             MediaSelectionBar(
                 selectedCount = selectedHits.size,
@@ -641,14 +669,22 @@ internal fun MediaSearchScreen(
                     TouchHaptics.click(view)
                     confirmDeleteFiles = true
                 },
-                onExit = {
-                    TouchHaptics.click(view)
-                    selectionMode = false
-                    selectedKeys = emptySet()
-                },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
+    }
+
+    // 匹配度阈值面板：官方 ModalBottomSheet 承载调节行，从多选工具栏「阈值」按钮打开。
+    if (showThresholdSheet) {
+        MediaThresholdSheet(
+            minScore = minScore,
+            hiddenCount = hiddenCount,
+            onValueChange = { minScore = it },
+            onValueChangeFinished = {
+                EmbeddingModelStore.setSearchMinScore(context, minScore)
+            },
+            onDismiss = { showThresholdSheet = false },
+        )
     }
 
     // 删除文件是破坏性操作：必须经确认弹窗（标题/说明带数量）后才执行。
@@ -801,8 +837,35 @@ private fun MediaSearchEmptyState(
 }
 
 /**
+ * 匹配度阈值面板：官方 [ModalBottomSheet]（不进半展开态）承载 [MediaThresholdRow]，
+ * 从「找到 X 项」行的阈值按钮打开；关闭走下拉 / 点遮罩 / 返回键。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MediaThresholdSheet(
+    minScore: Float,
+    hiddenCount: Int,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        MediaThresholdRow(
+            minScore = minScore,
+            hiddenCount = hiddenCount,
+            onValueChange = onValueChange,
+            onValueChangeFinished = onValueChangeFinished,
+        )
+    }
+}
+
+/**
  * 匹配度阈值调节行：左侧标签 + 右侧当前值 + [EtaSlider]（Material3 Slider，0.00–1.00，步进 0.05）。
  * 0 表示不过滤；低于阈值的命中即时隐藏，下方小字提示已隐藏条数（0 条不显示）。
+ * 承载于 [MediaThresholdSheet]，不再常驻结果列表上方。
  */
 @Composable
 private fun MediaThresholdRow(
@@ -849,9 +912,12 @@ private fun MediaThresholdRow(
 }
 
 /**
- * 多选批量操作栏：底部悬浮（[EtaCard]），显示已选数量；
- * 操作顺序：移动到 / 复制到 / 移出索引 / 删除文件（破坏性操作靠右，文案走 error 色）。
+ * 多选批量操作栏：官方 M3E [HorizontalFloatingToolbar]（纯图标药丸），底部居中悬浮。
+ * 操作顺序：全选（全不选）/ 移动到 / 复制到 / 移出索引 / 删除文件；
+ * 退出多选的「取消」在结果计数行（多选入口原位切换），已选数量提示也与
+ * 「找到 X 项」合并显示在同一行。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun MediaSelectionBar(
     selectedCount: Int,
@@ -862,75 +928,80 @@ private fun MediaSelectionBar(
     onCopyTo: () -> Unit,
     onRemoveFromIndex: () -> Unit,
     onDeleteFiles: () -> Unit,
-    onExit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    EtaCard(
-        modifier = modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp)
-            .padding(bottom = 12.dp),
-    ) {
-        Column(
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        HorizontalFloatingToolbar(
+            expanded = true,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 12.dp),
+            // 显式空 leadingContent：官方 minimumInteractiveBalancedPadding 只在两侧都没有
+            // leading/trailing 内容时才生效，会按内容里的 MinimumInteractive 对齐线补偿内边距、
+            // 把药丸撑高；本栏布局完全显式（固定间距 + 同心端盖），传空让补偿归零
+            // （官方参数语义，非 hack）。
+            leadingContent = {},
+            // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
+            contentPadding = EtaFloatingToolbarConcentricPadding(
+                IconButtonDefaults.smallContainerSize().width,
+            ),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                EtaText(
-                    text = stringResource(R.string.media_selected_count, selectedCount),
-                    modifier = Modifier.weight(1f),
+            // 动作组：固定 8dp 间距的一行图标按钮（EtaIconButton 的 `Standard` 档裸图标）。
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EtaIconButton(
+                    icon = if (allSelected) Icons.Rounded.Deselect else Icons.Rounded.SelectAll,
+                    contentDescription = stringResource(
+                        if (allSelected) {
+                            R.string.media_action_deselect_all
+                        } else {
+                            R.string.media_action_select_all
+                        },
+                    ),
+                    onClick = onSelectAll,
+                    enabled = !busy,
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
                 )
-                TextButton(onClick = onSelectAll, enabled = !busy) {
-                    Text(
-                        stringResource(
-                            if (allSelected) {
-                                R.string.media_action_deselect_all
-                            } else {
-                                R.string.media_action_select_all
-                            },
-                        ),
-                    )
-                }
-                TextButton(onClick = onExit, enabled = !busy) {
-                    Text(stringResource(R.string.media_action_exit_select))
-                }
-            }
-            // 四个操作分两行：非破坏性的「移动到 / 复制到」在上，破坏性的「移出索引 / 删除文件」在下。
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
+                EtaIconButton(
+                    icon = Icons.Rounded.DriveFileMove,
+                    contentDescription = stringResource(R.string.media_action_move_to),
                     onClick = onMoveTo,
                     enabled = selectedCount > 0 && !busy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.media_action_move_to))
-                }
-                TextButton(
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
+                )
+                EtaIconButton(
+                    icon = Icons.Rounded.FileCopy,
+                    contentDescription = stringResource(R.string.media_action_copy_to),
                     onClick = onCopyTo,
                     enabled = selectedCount > 0 && !busy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.media_action_copy_to))
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
+                )
+                EtaIconButton(
+                    icon = Icons.Rounded.BookmarkRemove,
+                    contentDescription = stringResource(R.string.media_action_remove_from_index),
                     onClick = onRemoveFromIndex,
                     enabled = selectedCount > 0 && !busy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.media_action_remove_from_index))
-                }
-                // 删除文件是破坏性操作：文案用 error 色区分，执行前另有确认弹窗。
-                TextButton(
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
+                )
+                // 删除文件是破坏性操作：图标用 error 色区分（官方裸 IconButton，容器/图标
+                // 尺寸与 EtaIconButton 的 `Standard` + S 档一致），执行前另有确认弹窗。
+                IconButton(
                     onClick = onDeleteFiles,
                     enabled = selectedCount > 0 && !busy,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
                 ) {
-                    Text(
-                        text = stringResource(R.string.media_action_delete_files),
-                        color = MaterialTheme.colorScheme.error,
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = stringResource(R.string.media_action_delete_files),
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                     )
                 }
             }
@@ -1034,7 +1105,12 @@ private fun MediaHitRow(
         choiceRow = true,
         leadingContent = {
             if (selectionMode) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // 8dp 间距与缩略图右侧留白同一节奏（行内既定值）；官方勾选行里勾选框
+                // 独占 leading 槽，组内间距无官方默认值可依，这里显式取 8dp。
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     // 前导勾选框仅作视觉呈现（与官方 SegmentedCheckboxItem 一致），
                     // 切换统一由整行点击完成，避免两次回调。
                     Checkbox(

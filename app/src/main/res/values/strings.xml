@@ -2821,7 +2821,6 @@
   <string name="media_search_not_ready_summary">Download the embedding model and confirm the scan scope first</string>
   <string name="media_open_failed">Could not open this item: %1$s</string>
   <string name="media_action_multiselect">Select items</string>
-  <string name="media_action_exit_select">Exit selection</string>
   <string name="media_selected_count">%1$d selected</string>
   <string name="media_action_select_all">Select all</string>
   <string name="media_action_deselect_all">Clear selection</string>

@@ -2787,7 +2787,6 @@
   <string name="media_search_not_ready_summary">请先下载嵌入模型并确认扫描范围</string>
   <string name="media_open_failed">无法打开该条目：%1$s</string>
   <string name="media_action_multiselect">多选</string>
-  <string name="media_action_exit_select">退出多选</string>
   <string name="media_selected_count">已选 %1$d 项</string>
   <string name="media_action_select_all">全选</string>
   <string name="media_action_deselect_all">取消全选</string>

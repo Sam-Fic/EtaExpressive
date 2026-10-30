@@ -2787,7 +2787,6 @@
   <string name="media_search_not_ready_summary">請先下載嵌入模型並確認掃描範圍</string>
   <string name="media_open_failed">無法開啟該項目：%1$s</string>
   <string name="media_action_multiselect">多選</string>
-  <string name="media_action_exit_select">退出多選</string>
   <string name="media_selected_count">已選 %1$d 項</string>
   <string name="media_action_select_all">全選</string>
   <string name="media_action_deselect_all">取消全選</string>
