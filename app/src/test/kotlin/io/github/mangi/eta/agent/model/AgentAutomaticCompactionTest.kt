@@ -462,7 +462,9 @@ class AgentAutomaticCompactionTest {
         val messages = smallHistory()
         val events = mutableListOf<AgentEvent>()
         var summaries = 0
-        val output = "x".repeat(360_000)
+        // 单条工具结果写入历史前最多 8 192 字符；这里取该上限内的稠密正文，
+        // 仍足以让本地增量明显高于上一次云端回执，但不触发额外修剪。
+        val output = "中".repeat(8_192)
         val provider = ScriptedProvider(listOf(
             { _, _ -> toolReply("big").put("usage", JSONObject().put("prompt_tokens", 131_470)) },
             { _, _ -> toolReply("next").put("usage", JSONObject().put("prompt_tokens", AUTO_PRESSURE)) },
@@ -912,12 +914,23 @@ class AgentAutomaticCompactionTest {
     @Test fun acceptedRunReceiptRestoresHardGuardEvenBelowAutomaticPressure() {
         val messages = oversizedUnknownHistory()
         val events = mutableListOf<AgentEvent>()
+        // 单条工具结果入历史前会被限长到 8 192 字符，一个结果不再能撑破硬上限；
+        // 同一批 5 个结果合计约 61k 本地增量，仍能让锚定后的下一请求超限。
+        val calls = JSONArray()
+        repeat(5) { index ->
+            calls.put(
+                JSONObject().put("id", "measured-$index").put("type", "function")
+                    .put("function", JSONObject().put("name", "get_current_context").put("arguments", "{}")),
+            )
+        }
         val provider = ScriptedProvider(listOf({ _, _ ->
-            toolReply("measured").put("usage", JSONObject().put("prompt_tokens", 200_000))
+            assistant(content = "").put("finish_reason", "tool_calls").put("tool_calls", calls)
+                .put("usage", JSONObject().put("prompt_tokens", 200_000))
         }))
-        val output = "中".repeat(40_000) // +60k local growth makes the anchored next request too large.
+        val output = "中".repeat(8_192)
+        val growth = AgentContextBudget.countTokens(output) * calls.length()
         assertTrue(200_000 < AgentContextCompactor.autoPressureTokens(UNKNOWN_WINDOW))
-        assertTrue(200_000 + AgentContextBudget.countTokens(output) > AgentCompressionBoundary.inputLimit(
+        assertTrue(200_000 + growth > AgentCompressionBoundary.inputLimit(
             UNKNOWN_WINDOW, AgentCompressionBoundary.outputReserve(modelConfig()), calibrated = true))
         assertThrows(AgentRunCancelledException::class.java) {
             runLoop(messages, provider, events,

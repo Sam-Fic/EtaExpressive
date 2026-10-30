@@ -21,6 +21,18 @@ class AgentCompressionBoundaryTest {
     private fun message(role: String, text: String = "", id: String = "", calls: String = "") =
         AgentModelClient.ConversationMessage(role, content = text, toolCallId = id, toolCallsJson = calls)
 
+    /**
+     * 工具结果写入历史前的限长形态（见 AgentLoop.boundedToolResult）：
+     * 超过 8 192 字符只保留头 4 608 / 尾 1 536，中间以省略提示连接。
+     */
+    private fun bounded(raw: String): String {
+        if (raw.length <= 8_192) return raw
+        val head = raw.take(4_608)
+        val tail = raw.takeLast(1_536)
+        return head + "\n\n…[省略 ${raw.length - head.length - tail.length} 字符：" +
+            "工具结果入历史时只保留头 4608 / 尾 1536 字符。需要后续内容请用更窄的范围重新调用该工具。]…\n\n" + tail
+    }
+
     @Test fun defaultPressureStartsAtEightyPercent() {
         val history = listOf(message("user", "old"), message("assistant", "result"), message("user", "current"))
         assertFalse(AgentContextCompactor.shouldCompress(history, 100_000, 1, estimatedTokens = 79_999))
@@ -181,7 +193,7 @@ class AgentCompressionBoundaryTest {
                 assertEquals("keep", liveCall.getJSONObject("provider_private").getString("opaque"))
                 val result = (0 until request.messages.length()).map { request.messages.getJSONObject(it) }
                     .single { it.optString("role") == "tool" }
-                assertEquals(toolBody, result.getString("content"))
+                assertEquals(bounded(toolBody), result.getString("content"))
                 JSONObject().put("role", "assistant").put("content", "done").put("finish_reason", "stop")
             }
         }
@@ -247,11 +259,14 @@ class AgentCompressionBoundaryTest {
         assertFalse(compacted)
     }
 
-    @Test fun manualContinuationPrunesOldStepsButPreservesLatestBatchWithinOneRun() {
+    @Test fun manualContinuationSummarizesOldStepsButPreservesLatestBatchWithinOneRun() {
         val controller = AgentRunController()
         val model = config(20_000)
         val events = mutableListOf<AgentEvent>()
-        val tail = "L".repeat(16_000)
+        // 工具结果入历史前会限长到约 6.2k 字符；拉丁正文只值约 1.5k token，
+        // 整段历史低于 3.2k 保留预算时切点会退化成 0。改用 CJK 稠密正文，
+        // 限长后最新批次仍超过预算，切点才会停在它（第 3 条）之前。
+        val tail = "中".repeat(16_000)
         var requests = 0
         var toolRuns = 0
         var summaries = 0
@@ -267,7 +282,7 @@ class AgentCompressionBoundaryTest {
                     val liveTool = (0 until request.messages.length()).map { request.messages.getJSONObject(it) }
                         .single { it.optString("role") == "tool" }
                     assertEquals("call-2", liveTool.getString("tool_call_id"))
-                    assertEquals(tail, liveTool.getString("content"))
+                    assertEquals(bounded(tail), liveTool.getString("content"))
                     JSONObject().put("role", "assistant").put("content", "done").put("finish_reason", "stop")
                 }
             }, AgentModelClient.ToolExecutor {
@@ -282,8 +297,9 @@ class AgentCompressionBoundaryTest {
             compactionArchive = AgentCompactionArchive(temporary.root, "same-run"),
             compactHistory = { history, _ ->
                 summaries++
-                assertTrue(history[2].content.contains("[Eta tool output pruned;"))
-                assertEquals(tail, history.last().content)
+                // 旧工具结果在写入历史时已限长，压缩前不再需要额外修剪；被摘要的仍是完整单元。
+                assertEquals(bounded("O".repeat(20_000)), history[2].content)
+                assertEquals(bounded(tail), history.last().content)
                 val cut = AgentCompressionBoundary.selectStart(history, 20_000)
                 assertEquals(3, cut)
                 listOf(message("user", "[Conversation summary]\nfirst step verified")) + history.drop(cut)
@@ -292,7 +308,9 @@ class AgentCompressionBoundaryTest {
         assertEquals("done", result.content)
         assertEquals(3, requests)
         assertEquals(2, toolRuns)
-        assertEquals(2, events.filterIsInstance<AgentEvent.ContextCompacted>().count { it.applied })
+        // 工具结果写入历史时已限长到 8 192 字符以内，不再触发额外的「仅修剪」提交，
+        // 因此本次 run 只提交一次真正的摘要压缩。
+        assertEquals(1, events.filterIsInstance<AgentEvent.ContextCompacted>().count { it.applied })
     }
 
     @Test fun continuationCompactionRedactsSensitiveToolsInsteadOfFailing() {
@@ -366,8 +384,8 @@ class AgentCompressionBoundaryTest {
                 val encoded = history.joinToString { it.content + it.toolCallsJson }
                 assertFalse(encoded.contains(secret))
                 assertFalse(encoded.contains("/secret.jpg"))
-                assertEquals(tail, history.last().content)
-                val lastBulk = history.indexOfLast { it.content == tail }
+                assertEquals(bounded(tail), history.last().content)
+                val lastBulk = history.indexOfLast { it.content == bounded(tail) }
                 val keepFrom = if (lastBulk > 0 && history[lastBulk - 1].toolCallsJson.contains("get_current_context")) {
                     lastBulk - 1
                 } else {

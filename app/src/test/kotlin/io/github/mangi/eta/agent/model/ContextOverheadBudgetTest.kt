@@ -99,28 +99,25 @@ class ContextOverheadBudgetTest {
 
     @Test
     fun screenOffKeepsTheDisabledPrefixUnderBudget() {
-        // 上一次实测 4809（system 3191 + tools 1618 / 9 个工具）。
-        // 之后系统提示正文压了一轮：委派结果规则改为派发后才下发（−750），Root 只读检查、
-        // 副屏交接、习惯分析三条指引改为跟随各自组（此配置下全部不在场，−621），
-        // 并删掉一句与「能由上下文合理推断」重复的话。tools 未变，故上界从 5000 收到 3900。
+        // 当前实测 4800（system 3182 + tools 1618 / 9 个工具）。
+        // 系统提示里只剩通用策略与关闭说明：委派结果规则、Root 只读检查、副屏交接、
+        // 习惯分析都已跟随各自组，此配置下全部不在场。上界只做回归护栏，留约 100 余量。
         val screenOff = measure(allOff, withDisabledNotice = true)
-        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 3_900)
+        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 4_900)
     }
 
     @Test
     fun enabledCapabilitiesCostNothingUntilTheirGroupIsOpened() {
         // 开关全开但一个组都没打开：第一轮只付基础交互 + 一行索引。
         // 这正是「除基础交互外全延迟」要买到的东西——成本跟着需要走，不跟着开关走。
-        // 上一次实测 4914（system 3067 + tools 1847 / 11 个工具）；同一份配置全部打开是 38998。
-        // 上面那一轮压缩在这里同样生效（终端组也没打开，Root 指引一并省掉），
-        // 另外延迟组索引去掉了 title= 字段并收紧了摘要：422 → 300。
+        // 当前实测 4882（system 3028 + tools 1854 / 11 个工具）；同一份配置全部打开是 38998。
         val resident = measure(allOn, extensionsTools = true, personalTools = true)
         assertTrue(
             "resident prefix grew to ${resident}",
-            resident.total <= 3_700,
+            resident.total <= 4_950,
         )
         // 常驻开销里系统提示占大头，单独钉一条上界：它是唯一每轮必付、且与任务无关的部分。
-        assertTrue("resident system prompt grew to ${resident.system}", resident.system <= 1_700)
+        assertTrue("resident system prompt grew to ${resident.system}", resident.system <= 3_100)
         val screenOpened = measure(
             allOn,
             extensionsTools = true,

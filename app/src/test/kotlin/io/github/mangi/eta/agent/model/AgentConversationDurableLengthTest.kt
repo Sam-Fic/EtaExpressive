@@ -130,14 +130,16 @@ class AgentConversationDurableLengthTest {
         val messages = history()
         val withoutRedaction = perMessage(messages, 0, emptySet())
         val withRedaction = perMessage(messages, 0, setOf("call_secret"))
-        assertTrue("脱敏会替换正文，长度必须变化", withRedaction < withoutRedaction)
+        // 脱敏占位文本可能比原始正文更长（占位必须说明调用已执行、不要重放），
+        // 因此这里只要求长度变化，不假设方向。
+        assertNotEquals("脱敏会替换正文，长度必须变化", withoutRedaction, withRedaction)
         // 同一对象在脱敏集合增长后必须给出新长度，否则缓存会把旧值留在总额里。
         // 索引 5 是 call_secret 的 tool 结果（0 system / 1 user / 2 assistant / 3 tool /
         // 4 assistant / 5 tool-secret）。
         val secret = messages.getJSONObject(5)
-        assertTrue(
-            AgentConversationCodec.durableMessageLength(secret, setOf("call_secret")) <
-                AgentConversationCodec.durableMessageLength(secret, emptySet()),
+        assertNotEquals(
+            AgentConversationCodec.durableMessageLength(secret, setOf("call_secret")),
+            AgentConversationCodec.durableMessageLength(secret, emptySet()),
         )
     }
 
