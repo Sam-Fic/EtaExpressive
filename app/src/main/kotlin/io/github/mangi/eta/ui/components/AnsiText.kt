@@ -44,23 +44,28 @@ internal fun ansiToAnnotatedString(text: String): AnnotatedString {
 
     var i = 0
     // \r 只记录行起点；其后出现新文本才覆盖该行（CRLF 换行不会被误删）。
+    // 行起点跟着 out 的写入位置走，不再每次 \r 都 lastIndexOf 回扫——进度条类输出
+    // （apt / curl / docker pull）每行都有 \r，回扫会退化成 O(n²)，整段在组合期卡死。
+    var lineStart = 0
     var pendingOverwriteFrom = -1
 
     fun applyPendingOverwrite() {
         if (pendingOverwriteFrom < 0) return
-        val lineStart = pendingOverwriteFrom
+        val overwriteFrom = pendingOverwriteFrom
         pendingOverwriteFrom = -1
-        if (out.length > lineStart) {
-            out.setLength(lineStart)
-            while (spans.isNotEmpty() && spans.last().first >= lineStart) {
+        if (out.length > overwriteFrom) {
+            out.setLength(overwriteFrom)
+            while (spans.isNotEmpty() && spans.last().first >= overwriteFrom) {
                 spans.removeAt(spans.lastIndex)
             }
-            if (spans.isNotEmpty() && spans.last().second > lineStart) {
+            if (spans.isNotEmpty() && spans.last().second > overwriteFrom) {
                 val last = spans.removeAt(spans.lastIndex)
-                spans += Triple(last.first, lineStart, last.third)
+                spans += Triple(last.first, overwriteFrom, last.third)
             }
         }
         runStart = out.length
+        // 覆盖后行起点回到被截断处，后续 \r 仍然只回退到本行开头。
+        lineStart = out.length
     }
 
     while (i < text.length) {
@@ -73,12 +78,13 @@ internal fun ansiToAnnotatedString(text: String): AnnotatedString {
             }
             '\r' -> {
                 flushRun()
-                pendingOverwriteFrom = out.lastIndexOf('\n') + 1
+                pendingOverwriteFrom = lineStart
                 i++
             }
             '\n' -> {
                 pendingOverwriteFrom = -1
                 out.append('\n')
+                lineStart = out.length
                 i++
             }
             else -> {
