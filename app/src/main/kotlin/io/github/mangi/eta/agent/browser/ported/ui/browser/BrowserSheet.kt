@@ -1110,7 +1110,11 @@ private class WebViewToolbarScrollBridge(
         // 新的滚动事件到来时取消在飞的 settle 动画，手势直接接管 offset。
         settleJob?.cancel()
         if (delta != 0f) {
-            behavior.onPostScroll(Offset.Zero, Offset(0f, delta), NestedScrollSource.UserInput)
+            // 官方实现取参不对称（1.5.0-alpha29 字节码确认）：onPostScroll 累加的是第一个参数
+            // consumed.y（内容实际滚过的量），而 onPostFling 取 fling 速度用的才是第二个参数
+            // available。差量必须放 consumed 位——放 available 位会被整段丢弃（offset 恒加 0，
+            // 工具栏纹丝不动）。
+            behavior.onPostScroll(Offset(0f, delta), Offset.Zero, NestedScrollSource.UserInput)
         }
 
         val now = SystemClock.uptimeMillis()
