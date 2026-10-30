@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
@@ -148,6 +149,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlinx.coroutines.Job
@@ -206,6 +208,43 @@ private fun chatMutedLabelColor(): androidx.compose.ui.graphics.Color =
 @Composable
 private fun chatMessageFadeInSpec(): FiniteAnimationSpec<Float> =
     MaterialTheme.motionScheme.defaultEffectsSpec()
+
+/**
+ * 工作步骤行的行内自绘揭示：等效官方 `expandVertically() + fadeIn()`——内部内容
+ * （含调用方 padding）全高测量，上报高度与透明度同用一条无过冲弹簧进度在 0..1 间
+ * 伸缩/淡变，顶边锚定、底边生长/收回，相邻行被实时顶推。[animateEntry] 仅数据新
+ * 插入的行为 true（firstRowAppearance 闩锁），滚动进视野重组合的行从当前目标起步，
+ * 不重播入场；[visible] 为 false 的退场完成后回调 [onHidden]（折叠退场登记）。
+ */
+@Composable
+private fun WorkStepReveal(
+    visible: Boolean,
+    animateEntry: Boolean,
+    modifier: Modifier = Modifier,
+    onHidden: () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
+    val progress = remember { Animatable(if (animateEntry) 0f else if (visible) 1f else 0f) }
+    LaunchedEffect(visible) {
+        progress.animateTo(if (visible) 1f else 0f, StandardWorkRowFadeSpec)
+        if (!visible) onHidden()
+    }
+    Column(
+        // layout 在外层测量并截断上报高度，clipToBounds 裁掉超出的绘制；
+        // graphicsLayer 与高度共用同一进度做透明度渐变（官方组合同款）。
+        modifier = Modifier
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val height = (placeable.height * progress.value).roundToInt()
+                layout(placeable.width, height) { placeable.placeRelative(0, 0) }
+            }
+            .clipToBounds()
+            .graphicsLayer { alpha = progress.value }
+            .then(modifier),
+    ) {
+        content()
+    }
+}
 
 @Composable
 private fun chatBodyLabelColor(): androidx.compose.ui.graphics.Color =
@@ -870,6 +909,21 @@ internal fun AgentConversationMessages(
     var workExpansionOverrides by rememberSaveable(stateSaver = expansionSaver) {
         mutableStateOf<Map<String, Boolean>>(emptyMap())
     }
+    // 收起进行中的折叠组：组 key -> 已进入组合、尚待退场完成的步骤行 key。期间展开
+    // 覆盖照常保留（步骤行仍投影在列表里，只是各自用行内 clip 缩回 0），最后一步退场
+    // 完成才真正清掉覆盖、让行离开列表；中途再点摘要则撤销登记，行原地长回。
+    var collapsingWorkGroups by remember { mutableStateOf(emptyMap<String, Set<String>>()) }
+    fun onWorkStepExitFinished(groupKey: String, rowKey: String) {
+        val pending = collapsingWorkGroups[groupKey] ?: return
+        if (rowKey !in pending) return
+        val left = pending - rowKey
+        if (left.isEmpty()) {
+            collapsingWorkGroups = collapsingWorkGroups - groupKey
+            workExpansionOverrides = workExpansionOverrides - groupKey
+        } else {
+            collapsingWorkGroups = collapsingWorkGroups + (groupKey to left)
+        }
+    }
     // 「本轮回答出来，就把回答之前的内容收起来」：只在整轮停下之后生效，
     // 生成过程中一律摊开，不打扰看进度。收起范围由档位决定：
     // 普通/激进=折叠成摘要行（激进档连中间回复一起归组）；不折叠=彻底不收。
@@ -882,6 +936,9 @@ internal fun AgentConversationMessages(
         val activeKeys = projectedTimelineEntries.filterIsInstance<AgentTimelineEntry.WorkProcess>().mapTo(mutableSetOf()) { it.key }
         if (workExpansionOverrides.keys.any { it !in activeKeys }) {
             workExpansionOverrides = workExpansionOverrides.filterKeys { it in activeKeys }
+        }
+        if (collapsingWorkGroups.keys.any { it !in activeKeys }) {
+            collapsingWorkGroups = collapsingWorkGroups.filterKeys { it in activeKeys }
         }
     }
     val timelineRowsProjection = remember { AgentTimelineRowsCache() }
@@ -1210,6 +1267,11 @@ internal fun AgentConversationMessages(
     // A measured/recovered message can be virtualized during a large expansion. Its stable
     // key must not replay the root opacity animation when composed again in the same chat.
     val appearedMessageKeys = remember { HashSet<String>() }
+    // 入场闩锁只针对当前投影在列的行：行一旦离开时间线（收起退场、自动折叠、轮次
+    // 变化）就清掉标记，下次重新进入投影时再演一次入场。
+    LaunchedEffect(timelineRows) {
+        appearedMessageKeys.retainAll(timelineRows.mapTo(mutableSetOf()) { it.key })
+    }
     // 点开工具或推理后，逐帧记下列表状态：跟底、上提、暂停上提、哨兵相对静止线的位置、
     // 用户是否在拖动。只在点击窗口内运行，读 layoutInfo 不参与组合。
     LaunchedEffect(scrollState) {
@@ -1739,12 +1801,12 @@ internal fun AgentConversationMessages(
                         diagnosticList, entry.key, timelineDiagnosticRowType(entry)),
                 ) {
                 val diagnosticRow = LocalStreamDiagnosticRow.current
-                val firstMessageAppearance = if (entry is AgentTimelineRow.Message) {
-                    // Retire an existing root's appearance on an explicit toggle even
-                    // if LazyColumn retains its composition while temporarily unmeasured.
-                    // New message keys still get the normal fade.
-                    remember(entry.key) { appearedMessageKeys.add(entry.key) }
-                } else false
+                // 入场闩锁（Message 淡入与工作行进出共用）：行首次组合时为 true，
+                // 即该行是新插入数据的；滚动进视野的重新组合不重播入场动画。
+                // An explicit toggle retires an existing root's appearance even if
+                // LazyColumn retains its composition while temporarily unmeasured.
+                val firstRowAppearance = remember(entry.key) { appearedMessageKeys.add(entry.key) }
+                val firstMessageAppearance = firstRowAppearance && entry is AgentTimelineRow.Message
                 // 刚发出的用户气泡：入场交给气泡自己演（轻上浮 + 淡入），列表层不再叠一遍淡入。
                 // 记在行内：入场作废后这行不重算，避免透明度被两段动画相乘。
                 val sentEntrance = remember(entry.key) {
@@ -1758,11 +1820,27 @@ internal fun AgentConversationMessages(
                         .streamDiagnosticPlacement("row.place", diagnosticRow)
                         .streamDiagnosticDraw("row.draw", diagnosticRow)
                         .fillMaxWidth().then(
-                        if (entry is AgentTimelineRow.Message) Modifier.animateItem(
-                            fadeInSpec = if (firstMessageAppearance && !sentEntrance) chatMessageFadeInSpec() else null,
-                            placementSpec = null,
-                            fadeOutSpec = null,
-                        ) else Modifier,
+                        when (entry) {
+                            is AgentTimelineRow.Message -> Modifier.animateItem(
+                                fadeInSpec = if (firstMessageAppearance && !sentEntrance) chatMessageFadeInSpec() else null,
+                                placementSpec = null,
+                                fadeOutSpec = null,
+                            )
+                            // 摘要行：新入场（自动折叠）淡入、离列淡出。
+                            // 步骤行：进退由 WorkStepReveal 行内 clip 自绘接管，列表层
+                            // 只留自动折叠这类「直接移除」场景的淡出兑底；位移弹簧一律不用
+                            // ——clip 生长时实时顶推才是正确节奏，叠加位移会双重缓动。
+                            is AgentTimelineRow.WorkSummary -> Modifier.animateItem(
+                                fadeInSpec = if (firstRowAppearance) StandardWorkRowFadeSpec else null,
+                                placementSpec = null,
+                                fadeOutSpec = StandardWorkRowFadeSpec,
+                            )
+                            is AgentTimelineRow.WorkStep -> Modifier.animateItem(
+                                fadeInSpec = null,
+                                placementSpec = null,
+                                fadeOutSpec = StandardWorkRowFadeSpec,
+                            )
+                        },
                     ),
                 ) {
                 when (entry) {
@@ -1820,11 +1898,27 @@ internal fun AgentConversationMessages(
                             expanded = entry.expanded,
                             isPaused = isPaused,
                             onToggle = {
-                                // 手动展开的组在投影里恢复为「摘要行 + 步骤行」；再点收起。
-                                workExpansionOverrides = if (entry.expanded) {
-                                    workExpansionOverrides - entry.key
+                                if (!entry.expanded) {
+                                    // 展开：步骤行进投影，各自实行内 clip 入场。
+                                    workExpansionOverrides = workExpansionOverrides + (entry.key to true)
+                                } else if (entry.key in collapsingWorkGroups) {
+                                    // 收起进行中被再点 = 取消退场登记：步骤行原地长回，覆盖不动。
+                                    collapsingWorkGroups = collapsingWorkGroups - entry.key
                                 } else {
-                                    workExpansionOverrides + (entry.key to true)
+                                    // 发起收起：投影不动，只登记退场；参与登记的必须是
+                                    // 已进组合的行（可见项），全部缩回 0 才真正清覆盖。
+                                    // 整组都在离屏位置时没有动画可等，直接收起。
+                                    val mountedKeys = scrollState.layoutInfo.visibleItemsInfo
+                                        .mapNotNull { item -> item.key as? String }
+                                        .toSet()
+                                    val pending = entry.group.messages
+                                        .map { workStepRowKey(it.id) }
+                                        .filterTo(mutableSetOf()) { it in mountedKeys }
+                                    if (pending.isEmpty()) {
+                                        workExpansionOverrides = workExpansionOverrides - entry.key
+                                    } else {
+                                        collapsingWorkGroups = collapsingWorkGroups + (entry.key to pending)
+                                    }
                                 }
                             },
                             // 组首与列表内容的间距 2dp；展开后与步骤行之间是 2dp 露缝（1+1）。
@@ -1841,30 +1935,39 @@ internal fun AgentConversationMessages(
                             (message.isStreaming || streamingMarkdownStates.containsKey(message.id))) {
                             streamingMarkdownStates.getOrPut(message.id) { StreamingMarkdownState() }
                         } else null
-                        ChatMessageItem(
-                            message = message,
-                            actions = messageActions,
-                            retainedStreamingState = retainedState,
-                            showBrowserShortcut = message is ToolActivityMessageUi &&
-                                message.id == currentBrowserMessageId,
-                            enableLivePreview = message is ToolActivityMessageUi && !isStreaming,
-                            isPaused = isPaused,
-                            onThinkingToggle = if (message is ThinkingMessageUi) {
-                                { _, willExpand -> onThinkingRowToggle(message.id, willExpand) }
-                            } else null,
+                        // 行内自绘 clip 揭示：与气泡详情子条目同款（顶边锚定、底边伸缩、
+                        // 无过冲弹簧）。收起进行中投影不动，本行缩回 0 后回报退场完成。
+                        WorkStepReveal(
+                            visible = entry.groupKey !in collapsingWorkGroups,
+                            animateEntry = firstRowAppearance,
+                            onHidden = { onWorkStepExitFinished(entry.groupKey, entry.key) },
                             // 连续步骤是设置页「同组项」式的连续分段列表：组内露缝 2dp（1+1），
-                            // 组首/组末与相邻内容保持 2dp 间距。
-                            segmentedPosition = when {
-                                entry.isFirst && entry.isLast -> SegmentedRowPosition.Whole
-                                entry.isFirst -> SegmentedRowPosition.First
-                                entry.isLast -> SegmentedRowPosition.Last
-                                else -> SegmentedRowPosition.Middle
-                            },
+                            // 组首/组末与相邻内容保持 2dp 间距。padding 在 clip 之内，缩回时一起消失。
                             modifier = Modifier.padding(
                                 top = if (entry.isFirst) 2.dp else 1.dp,
                                 bottom = if (entry.isLast) 2.dp else 1.dp,
                             ),
-                        )
+                        ) {
+                            ChatMessageItem(
+                                message = message,
+                                actions = messageActions,
+                                retainedStreamingState = retainedState,
+                                showBrowserShortcut = message is ToolActivityMessageUi &&
+                                    message.id == currentBrowserMessageId,
+                                enableLivePreview = message is ToolActivityMessageUi && !isStreaming,
+                                isPaused = isPaused,
+                                onThinkingToggle = if (message is ThinkingMessageUi) {
+                                    { _, willExpand -> onThinkingRowToggle(message.id, willExpand) }
+                                } else null,
+                                segmentedPosition = when {
+                                    entry.isFirst && entry.isLast -> SegmentedRowPosition.Whole
+                                    entry.isFirst -> SegmentedRowPosition.First
+                                    entry.isLast -> SegmentedRowPosition.Last
+                                    else -> SegmentedRowPosition.Middle
+                                },
+                                modifier = Modifier,
+                            )
+                        }
                     }
                 }
                 turnFooters[entry.key]?.let { owner ->
