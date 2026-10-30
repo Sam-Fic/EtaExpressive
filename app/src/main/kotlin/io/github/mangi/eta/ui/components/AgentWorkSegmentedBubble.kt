@@ -2,7 +2,6 @@ package io.github.mangi.eta.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
@@ -22,17 +21,21 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
-import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -42,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaActionRowPadding
 import io.github.mangi.eta.ui.adaptive.etaSegmentedRowColors
+import kotlin.math.roundToInt
 
 /** 展开 / 收起的标准动效：无过冲的标准弹簧（expressive spatial 弹簧带轻微回弹）。 */
 private val StandardExpandSpec = spring<IntSize>(
@@ -61,16 +65,16 @@ internal val StandardWorkRowFadeSpec = spring<Float>(
 )
 
 /**
- * 行高 morph 规格：Supporting text 出现/消失（如摘要行「跑了哪些工具」一行）会让
- * ListItem 在 OneLine/TwoLine 档间切换、整行高度跳变，用官方 animateContentSize
- * 以同族无过冲弹簧把高度差平滑掉。不能改成常驻槽位 + AnimatedVisibility：官方
- * ListItem 只看槽位存在就按 TwoLine 钉住最小高（72dp），收起后行反而降不回去。
+ * 官方 `ListTokens.ItemOneLineContainerHeight`（56dp）：摘要行收起态（无 supporting）
+ * 的总高。只在没量到实测收起高时作为 morph 起点兜底（例如行一进来就是展开态）。
  */
-private val StandardContentSizeSpec: androidx.compose.animation.core.FiniteAnimationSpec<IntSize> = spring(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessMediumLow,
-    visibilityThreshold = IntSize.VisibilityThreshold,
-)
+private val OneLineRowHeight = 56.dp
+
+/**
+ * 官方 `ListTokens.ItemTwoLineContainerHeight`（72dp）：有 supporting 时的最小总高。
+ * 同样只在没量到实测展开高时作为 morph 终点的下限。
+ */
+private val TwoLineRowHeight = 72.dp
 
 /**
  * 本行在一组连续分段列表（设置页「同组项」样式）里的位置：决定上/下沿用外圆（组首/组末）
@@ -130,17 +134,22 @@ internal fun AgentWorkSegmentedBubble(
     details: (@Composable AnimatedVisibilityScope.() -> Unit)? = null,
     /** 挂在展开动画节点上的修饰符（诊断探针等），不影响标准结构。 */
     expandAnimationModifier: Modifier = Modifier,
-    /** 本行在连续分段列表里的位置（连续工具/思考调用为一组，同设置页同组项）。 */
+    /** 挂在本行在连续分段列表里的位置（连续工具/思考调用为一组，同设置页同组项）。 */
     position: SegmentedRowPosition = SegmentedRowPosition.Whole,
+    /**
+     * Supporting 槽出现/消失引起行高变化时，用一条连续的总行高曲线平滑（special 仅用于
+     * 没有详情子条目的摘要行）：行高在实测的收起高与展开高之间插值，supporting 自身高度
+     * 同步收缩并裁切揭示，两者共用同一弹簧。外框矩形因此无缝伸缩，标题 / 图标 / 行尾箭头
+     * 跟着居中量连续平移，不会出现上下裁切。带 [details] 的思考 / 工具行保持官方
+     * expandVertically，不叠这层尺寸动画。
+     */
+    animateSupportingHeight: Boolean = false,
 ) {
     val expandedStateDescription = stringResource(R.string.work_state_expanded)
     val collapsedStateDescription = stringResource(R.string.work_state_collapsed)
     // 与设置页同款配色：surfaceBright 容器从 surfaceContainer 背景浮出一档，
     // 禁用态同样交出底色，保证分段条目在任何状态下表面连续。
     val colors = etaSegmentedRowColors(containerColorOverride = containerColor)
-    // 指定底色时展开箭头也取下底色的配套内容色（与标题/前导图标成对）；
-    // Color.Unspecified 时 Icon 自动回落到行的 LocalContentColor。
-    val overriddenContentColor = containerColor?.let { contentColorFor(it) } ?: Color.Unspecified
     // 可展开只要求 onToggle；details 为 null 时（如「已完成 N 个步骤」折叠摘要，
     // 步骤是列表里的兄弟行）只有箭头与语义，没有详情子条目。
     val expandable = onToggle != null
@@ -181,58 +190,165 @@ internal fun AgentWorkSegmentedBubble(
         ),
     )
 
+    // —— 摘要行的 Supporting 高度 morph ——
+    // 官方 ListItem 把内容块垂直居中、且只要 supporting 槽存在就按 72dp 档锁最小高，
+    // 槽位一出现/消失，行高和内部元素位置都会硬跳。这里在两端之间直接驱动**总行高**：
+    //   行高   = 收起高 + (展开高 - 收起高) * progress
+    //   内容块 = 标题高 + supporting 自然高 * progress（由下方 supporting 自身收缩上报）
+    // 每帧都按插值高度强制测量，外框矩形连续伸缩，标题 / 图标 / 行尾箭头随居中量连续
+    // 平移，supporting 从上方裁切揭示并同拍淡入；两端取实测值，所以 1 行 / 多行
+    // supporting、多行标题都能落回真实尺寸，不会裁到内容。
+    val supportingProgress = remember { Animatable(if (supporting != null) 1f else 0f) }
+    // supporting 逻辑上消失后仍保留子树，等 progress 归零再摘除：若立刻离树，
+    // 居中的内容块会瞬间变矮、标题会先弹一下再复位。
+    var shownSupporting by remember { mutableStateOf(supporting) }
+    // 布局期量出的三种自然高（px）：收起态总高、静止展开态总高、supporting 自身高，
+    // 以及标题文字自身高（两端都还没实测到时用来推算）。
+    // 用普通 IntArray 持有——这些只在测量里读写，如果换成 Compose State，在测量里
+    // 写值会请求重组 / 重测，形成抖动。
+    val collapsedRowHeight = remember { intArrayOf(0) }
+    val expandedRowHeight = remember { intArrayOf(0) }
+    val supportingNaturalHeight = remember { intArrayOf(0) }
+    val titleNaturalHeight = remember { intArrayOf(0) }
+
+    LaunchedEffect(supporting) {
+        if (!animateSupportingHeight) return@LaunchedEffect
+        if (supporting != null) {
+            shownSupporting = supporting
+            supportingProgress.animateTo(1f, StandardWorkRowFadeSpec)
+        } else {
+            supportingProgress.animateTo(0f, StandardWorkRowFadeSpec)
+            shownSupporting = null
+        }
+    }
+
+    val displayedSupporting = if (animateSupportingHeight) shownSupporting else supporting
+    // 进度必须读在组合阶段：Animatable.value 若只在测量块里读，快照观察不会注册到
+    // 布局上，弹簧推进时不会逐帧重测，行高会停在旧值（表现为硬切）。
+    // 作为捕获值传入下方 layout 修饰符，值一变修饰符实例就变，从而每帧重新测量。
+    val supportingMorphProgress = supportingProgress.value
+
+    val heightMorphModifier =
+        if (animateSupportingHeight) {
+            Modifier.layout { measurable, constraints ->
+                val progress = supportingMorphProgress
+                val natural = supportingNaturalHeight[0]
+                val expandedHeight = expandedRowHeight[0]
+                val collapsedHeight = collapsedRowHeight[0]
+                if (shownSupporting != null && progress < 1f) {
+                    // 两端锚点优先取实测总高；还没有实测值（首次展开 / 行一进来就是展开态）
+                    // 时按官方档位推算：总高 = max(档位最小高, 上下内边距 + 内容块高)。
+                    val padding =
+                        (EtaActionRowPadding.calculateTopPadding() +
+                            EtaActionRowPadding.calculateBottomPadding())
+                            .roundToPx()
+                    val titleHeight = titleNaturalHeight[0]
+                    val from = if (collapsedHeight > 0) {
+                        collapsedHeight
+                    } else {
+                        maxOf(OneLineRowHeight.roundToPx(), titleHeight + padding)
+                    }
+                    val to = if (expandedHeight > 0) {
+                        expandedHeight
+                    } else {
+                        maxOf(TwoLineRowHeight.roundToPx(), titleHeight + natural + padding)
+                    }
+                    val height = (from + (to - from) * progress)
+                        .roundToInt()
+                        .coerceIn(0, constraints.maxHeight)
+                    // 每帧按插值高度强制精确尺寸：ListItem 的内容块按该高度居中后再排版，
+                    // 布局体和绘制体同尺寸，所以下沿不会被裁、邻行也按真实高度连续让位。
+                    val placeable = measurable.measure(
+                        constraints.copy(minHeight = height, maxHeight = height),
+                    )
+                    layout(placeable.width, height) { placeable.placeRelative(0, 0) }
+                } else {
+                    val placeable = measurable.measure(constraints)
+                    // 静止态顺手记录两端自然高，供后续 morph 使用。动画中的测量不记录
+                    // （此时高度是插值出来的伪值）。
+                    if (shownSupporting == null) {
+                        collapsedRowHeight[0] = placeable.height
+                    } else if (progress >= 1f) {
+                        expandedRowHeight[0] = placeable.height
+                    }
+                    layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+                }
+            }
+        } else {
+            Modifier
+        }
+
+    // 行体：父项条目 + 展开后的详情子条目。父项按行位置挂分段形状；摘要行额外挂
+    // [heightMorphModifier]（见上方 morph 说明），其余行原样直出。
     Column(
         // 与旧卡片切片、正文块同拍：左右各 16dp，不贴屏幕边。
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         val trailing: @Composable () -> Unit = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 trailingStatus?.invoke()
                 if (expandable) {
+                    // tint 用行尾槽位提供的 LocalContentColor（= 该行 trailingContentColor）：
+                    // 收起态是 onSurfaceVariant，展开态随底色变成 onTertiaryContainer，
+                    // 与标题/前导图标成对；不要传 Color.Unspecified——那会关掉着色，
+                    // 图标按自身黑色绘制，深色主题下几乎不可见。
                     Icon(
                         imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                         contentDescription = null,
-                        tint = overriddenContentColor,
+                        tint = LocalContentColor.current,
                     )
                 }
             }
         }
-        val supportingSlot: (@Composable () -> Unit)? = supporting?.let { text ->
+        val supportingSlot: (@Composable () -> Unit)? = displayedSupporting?.let { text ->
             {
-                // 出现时子树是新组合的：alpha 与行高 morph 同步淡入；消失方向由
-                // animateContentSize 的行压缩承接（文字随行高收拢离开组合树）。
-                val appearAlpha = remember(text) { Animatable(0f) }
-                LaunchedEffect(text) { appearAlpha.animateTo(1f, StandardWorkRowFadeSpec) }
-                Text(
-                    text = text,
-                    color = supportingColor ?: Color.Unspecified,
-                    modifier = Modifier.graphicsLayer { alpha = appearAlpha.value },
-                )
+                if (!animateSupportingHeight) {
+                    Text(text = text, color = supportingColor ?: Color.Unspecified)
+                } else {
+                    // 子树始终按自然高测量（onTextLayout 拿到自然高），只收缩上报高度并
+                    // 裁切：与行高共用同一 progress，呈「从上方揭示」；淡入同拍。
+                    Text(
+                        text = text,
+                        color = supportingColor ?: Color.Unspecified,
+                        onTextLayout = { supportingNaturalHeight[0] = it.size.height },
+                        modifier = Modifier
+                            .graphicsLayer { alpha = supportingMorphProgress }
+                            .clipToBounds()
+                            .layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints)
+                                val height = (placeable.height * supportingMorphProgress)
+                                    .roundToInt()
+                                layout(placeable.width, height) { placeable.placeRelative(0, 0) }
+                            },
+                    )
+                }
             }
         }
         val parentModifier = if (expandable) {
             Modifier
                 .fillMaxWidth()
-                .animateContentSize(
-                    alignment = Alignment.Center,
-                    animationSpec = StandardContentSizeSpec,
-                )
                 .semantics {
                     stateDescription = if (expanded) expandedStateDescription else collapsedStateDescription
                 }
         } else {
-            Modifier
-                .fillMaxWidth()
-                .animateContentSize(
-                    alignment = Alignment.Center,
-                    animationSpec = StandardContentSizeSpec,
-                )
+            Modifier.fillMaxWidth()
+        }
+        // 标题同时也报出自身自然高：行高 morph 的两端没实测到总高时，用它 + 内边距
+        // 按官方档位推算端点，保证首帧起就不跳。
+        val titleContent: @Composable () -> Unit = {
+            Text(
+                text = title,
+                color = titleColor ?: Color.Unspecified,
+                onTextLayout = { titleNaturalHeight[0] = it.size.height },
+            )
         }
         if (onToggle != null && expandable) {
             SegmentedListItem(
                 onClick = onToggle,
-                modifier = parentModifier,
+                modifier = parentModifier.then(heightMorphModifier),
                 verticalAlignment = Alignment.CenterVertically,
                 contentPadding = EtaActionRowPadding,
                 colors = colors,
@@ -240,11 +356,11 @@ internal fun AgentWorkSegmentedBubble(
                 leadingContent = leading,
                 trailingContent = trailing,
                 supportingContent = supportingSlot,
-                content = { Text(text = title, color = titleColor ?: Color.Unspecified) },
+                content = titleContent,
             )
         } else {
             SegmentedListItem(
-                modifier = parentModifier,
+                modifier = parentModifier.then(heightMorphModifier),
                 verticalAlignment = Alignment.CenterVertically,
                 contentPadding = EtaActionRowPadding,
                 colors = colors,
@@ -252,7 +368,7 @@ internal fun AgentWorkSegmentedBubble(
                 leadingContent = leading,
                 trailingContent = trailing,
                 supportingContent = supportingSlot,
-                content = { Text(text = title, color = titleColor ?: Color.Unspecified) },
+                content = titleContent,
             )
         }
 

@@ -3416,6 +3416,9 @@ internal fun AgentWorkProcessSummary(
         // 展开态用 tertiaryContainer 标出「这一组正被展开」，与其后的步骤行区分。
         containerColor = if (expanded) MaterialTheme.colorScheme.tertiaryContainer else null,
         supporting = stepToolsLabel,
+        // 摘要行没有详情子条目：Supporting（工具名一行）的显隐只影响行高，用连续的总行高
+        // morph 平滑（外框无缝伸缩、图标 / 文字连续平移，supporting 裁切揭示淡入）。
+        animateSupportingHeight = true,
         modifier = modifier,
         expanded = expanded,
         onToggle = onToggle,

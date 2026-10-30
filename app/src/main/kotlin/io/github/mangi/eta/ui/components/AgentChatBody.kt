@@ -1893,9 +1893,14 @@ internal fun AgentConversationMessages(
                     }
 
                     is AgentTimelineRow.WorkSummary -> {
+                        // 收起进行中（步骤行还在缩回）就让摘要先换到收起态：Supporting
+                        // 出现 / 行高伸展与步骤行的退场同帧开始、同弹簧并行，而不是等
+                        // 步骤全部缩完、展开覆盖清掉之后再补一次行高变化（两段式）。
+                        // 中途再点摘要会撤销退场登记，摘要随即回到展开态，也是同帧反向。
+                        val visualExpanded = entry.expanded && entry.key !in collapsingWorkGroups
                         AgentWorkProcessSummary(
                             group = entry.group,
-                            expanded = entry.expanded,
+                            expanded = visualExpanded,
                             isPaused = isPaused,
                             onToggle = {
                                 if (!entry.expanded) {
@@ -1923,9 +1928,11 @@ internal fun AgentConversationMessages(
                             },
                             // 组首与列表内容的间距 2dp；展开后与步骤行之间是 2dp 露缝（1+1）。
                             // 展开后首步若是纯文本回复，列表不接摘要，摘要下沿仍是 2dp。
+                            // 用 visualExpanded：收起进行中摘要已回到单独一条的间距/形状，
+                            // 与步骤行退场同帧。
                             modifier = Modifier.padding(
                                 top = 2.dp,
-                                bottom = if (entry.expanded && entry.group.summaryContinuesIntoSteps()) 1.dp else 2.dp,
+                                bottom = if (visualExpanded && entry.group.summaryContinuesIntoSteps()) 1.dp else 2.dp,
                             ),
                         )
                     }
