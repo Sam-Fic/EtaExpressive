@@ -4,6 +4,7 @@ import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentIncrementalList
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
+import io.github.mangi.eta.ui.model.ErrorReconnectMessageUi
 import io.github.mangi.eta.ui.model.incrementalSnapshot
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
@@ -43,8 +44,8 @@ internal sealed interface AgentTimelineRow {
         val message: AgentChatMessageUi,
         /**
          * 本行在组内可见分段列表中的位置（连续工具/思考调用是设置页「同组项」样式）。
-         * 组内夹进的纯文本模型回复不算列表成员：它把工具调用断开，前后的步骤各自重新起段
-         * （见 [isSegmentTextBreak]）。
+         * 组内夹进的纯文本模型回复与重连分割线不算连续列表成员：它们把工具调用断开，
+         * 前后的步骤各自重新起段（见 [isSegmentBreak]），断点两侧取段末/段首外圆。
          */
         val isFirst: Boolean,
         val isLast: Boolean,
@@ -53,16 +54,19 @@ internal sealed interface AgentTimelineRow {
     }
 }
 
-/** 工作组里夹着的模型纯文本回复：连续分段列表在它的两侧断开。 */
-internal fun AgentChatMessageUi?.isSegmentTextBreak(): Boolean =
-    this is AgentMessageUi && content.isNotBlank()
+/**
+ * 工作组里夹着的「断开件」：模型纯文本回复与重连分割线。连续分段列表在它们两侧断开，
+ * 断点前后的步骤行各自取段末/段首的大圆角（外圆），不与断开件相接成小圆角。
+ */
+internal fun AgentChatMessageUi?.isSegmentBreak(): Boolean =
+    (this is AgentMessageUi && content.isNotBlank()) || this is ErrorReconnectMessageUi
 
 /**
- * 折叠组展开后摘要行是否与首个步骤行露缝相接（摘要成为组首）。首步若是纯文本回复，
- * 列表在它前面就断开，摘要保持单独一条。
+ * 折叠组展开后摘要行是否与首个步骤行露缝相接（摘要成为组首）。首步若是断开件
+ * （纯文本回复 / 重连分割线），列表在它前面就断开，摘要保持单独一条。
  */
 internal fun AgentTimelineEntry.WorkProcess.summaryContinuesIntoSteps(): Boolean =
-    !messages.firstOrNull().isSegmentTextBreak()
+    !messages.firstOrNull().isSegmentBreak()
 
 internal fun List<AgentTimelineEntry>.toLazyTimelineRows(
     foldedGroups: Set<String> = emptySet(),
@@ -114,8 +118,8 @@ private fun MutableList<AgentTimelineRow>.addWorkSteps(
             AgentTimelineRow.WorkStep(
                 group.key, message,
                 // 展开后的首步与摘要行同段（摘要承担组首圆角），除非它紧跟纯文本回复。
-                isFirst = if (index == 0) !afterSummary else group.messages[index - 1].isSegmentTextBreak(),
-                isLast = index == size - 1 || group.messages.getOrNull(index + 1).isSegmentTextBreak(),
+                isFirst = if (index == 0) !afterSummary else group.messages[index - 1].isSegmentBreak(),
+                isLast = index == size - 1 || group.messages.getOrNull(index + 1).isSegmentBreak(),
             ),
         )
     }

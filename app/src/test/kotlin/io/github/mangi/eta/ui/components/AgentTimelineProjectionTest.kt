@@ -9,6 +9,8 @@ import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
 import io.github.mangi.eta.ui.model.ContextCompactedMessageUi
 import io.github.mangi.eta.ui.model.ConversationMention
+import io.github.mangi.eta.ui.model.ErrorReconnectMessageUi
+import io.github.mangi.eta.ui.model.ErrorReconnectStatus
 import io.github.mangi.eta.ui.model.SystemNoticeCode
 import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
@@ -401,6 +403,49 @@ class AgentTimelineProjectionTest {
         val folded = olderTurnWaiting.autoFoldedWorkKeys(true, foldLatestTurn = true)
         assertFalse(folded.contains("work-step-0"))
         assertTrue(folded.contains("work-step-1"))
+    }
+
+    @Test
+    fun reconnectDividerBreaksTheSegmentedListInsideAGroup() {
+        // 重连分割线把组内连续分段列表断开：断点前后的步骤行各自取段末/段首
+        // （isLast/isFirst），映射到 Last/First/Whole 位置后两侧都是大圆角；
+        // 分割线本身不带卡片壳，位置标记只影响它的露缝 padding。
+        val turn = listOf(
+            UserMessageUi("user-1", "task"),
+            workMessage(0),
+            workMessage(1),
+            ErrorReconnectMessageUi("reconnect-1", runId = "run", reconnectId = "r1", round = 1,
+                status = ErrorReconnectStatus.Succeeded),
+            workMessage(2),
+            workMessage(3),
+            AgentMessageUi("answer-1", "answer"),
+        )
+        val group = turn.toTimelineEntries(aggressive = true)
+            .filterIsInstance<AgentTimelineEntry.WorkProcess>().single()
+        val rows = listOf(group).toLazyTimelineRows().filterIsInstance<AgentTimelineRow.WorkStep>()
+        val positions = rows.associate { it.message.id to segmentPosition(it) }
+        assertEquals(
+            mapOf(
+                "step-0" to SegmentedRowPosition.First,
+                "step-1" to SegmentedRowPosition.Last,
+                // 分割线自身前后都是步骤（Middle）：裸行不带卡片壳，位置只影响露缝 padding；
+                // 断开语义体现在两侧步骤的 Last/First 上。
+                "reconnect-1" to SegmentedRowPosition.Middle,
+                "step-2" to SegmentedRowPosition.First,
+                "step-3" to SegmentedRowPosition.Last,
+            ),
+            positions,
+        )
+        // 断开件两侧的步骤行不互相衔接：分割线前的 step-1 与分割线后的 step-2 都是外圆端。
+        assertTrue(rows.first { it.message.id == "step-1" }.isLast)
+        assertTrue(rows.first { it.message.id == "step-2" }.isFirst)
+    }
+
+    private fun segmentPosition(row: AgentTimelineRow.WorkStep): SegmentedRowPosition = when {
+        row.isFirst && row.isLast -> SegmentedRowPosition.Whole
+        row.isFirst -> SegmentedRowPosition.First
+        row.isLast -> SegmentedRowPosition.Last
+        else -> SegmentedRowPosition.Middle
     }
 
     private fun questionMessage(id: String, status: AgentQuestionStatus): AgentChatMessageUi =
