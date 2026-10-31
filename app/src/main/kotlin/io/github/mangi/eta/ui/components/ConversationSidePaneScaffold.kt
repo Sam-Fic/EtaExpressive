@@ -10,18 +10,14 @@ import androidx.compose.animation.core.TwoWayConverter
 import androidx.compose.animation.core.VectorizedAnimationSpec
 import androidx.compose.animation.core.VectorizedDecayAnimationSpec
 import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -47,6 +43,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import io.github.mangi.eta.ui.components.streamDiagnosticDraw
@@ -136,7 +133,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
@@ -213,7 +209,8 @@ private object DrawerMetrics {
     // 40dp 图标按钮居中后中线在状态栏下 4 + 8 + 20 = 32dp；这里 12 + 20 = 32dp 与之对齐。
     val TopInset = 12.dp
     val ChipGap = 8.dp
-    // 胶囊行横向滚动的两端淡出带宽度。与底色同色，滚动到中间时把视口切开的胶囊边缘擦掉。
+    // 胶囊行横向滚动的两端淡出带宽度。用 DstIn 蒙版淡化这行内容本身，
+    // 滚动到中间时把视口切开的胶囊边缘擦掉，底下露出的自然是抽屉底色。
     val ChipRowEdgeFadeWidth = 24.dp
     val AfterChips = 10.dp
     // 底部浮动工具栏（M3E HorizontalFloatingToolbar with FAB）：可视药丸高 64dp（官方
@@ -842,53 +839,46 @@ private fun Material3ConversationPane(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.CenterStart,
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        // 两端淡出带：滚动到中间时，被视口切一半的胶囊会留一条生硬的
+                        // 竖直截断边，用 DstIn 蒙版把切开的部分擦掉（底下露出的自然是抽屉底色）。
+                        .horizontalScrollEdgeFade(chipScrollState, DrawerMetrics.ChipRowEdgeFadeWidth)
+                        .horizontalScroll(chipScrollState),
+                    verticalAlignment = Alignment.CenterVertically,
+                    // 官方相连按钮组间距：ButtonGroupDefaults.ConnectedSpaceBetween = 2dp
+                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(chipScrollState),
-                        verticalAlignment = Alignment.CenterVertically,
-                        // 官方相连按钮组间距：ButtonGroupDefaults.ConnectedSpaceBetween = 2dp
-                        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-                    ) {
-                        var chipIndex = 0
-                        Material3DrawerChip(
-                            text = stringResource(R.string.drawer_chats_chip),
-                            position = drawerGroupPosition(chipIndex++, chipCount),
-                            selected = state.selectedFolderId == null,
-                            selectable = true,
-                            leadingIcon = null,
-                            onClick = { onSelectFolder(null) },
-                        )
-                        Material3DrawerChip(
-                            text = stringResource(R.string.drawer_uncategorized_chip),
-                            position = drawerGroupPosition(chipIndex++, chipCount),
-                            selected = state.selectedFolderId == UNCATEGORIZED_FOLDER_ID,
-                            selectable = true,
-                            leadingIcon = null,
-                            onClick = { onSelectFolder(UNCATEGORIZED_FOLDER_ID) },
-                        )
-                        // 文件夹胶囊与「聊天 / 未分类」同款官方 ToggleButton；
-                        // 重命名 / 删除只在文件夹管理页提供，这里长按不再弹菜单。
-                        folders.forEach { folder ->
-                            Material3DrawerChip(
-                                text = folder.name,
-                                position = drawerGroupPosition(chipIndex++, chipCount),
-                                selected = state.selectedFolderId == folder.id,
-                                selectable = true,
-                                leadingIcon = Icons.Rounded.Folder,
-                                onClick = { onSelectFolder(folder.id) },
-                            )
-                        }
-                    }
-                    // 两端淡出带：滚动到中间时，被视口切一半的胶囊与抽屉底色融合，不留硬切边。
-                    ChipRowEdgeFades(
-                        scrollState = chipScrollState,
-                        color = paneContainerColor,
+                    var chipIndex = 0
+                    Material3DrawerChip(
+                        text = stringResource(R.string.drawer_chats_chip),
+                        position = drawerGroupPosition(chipIndex++, chipCount),
+                        selected = state.selectedFolderId == null,
+                        selectable = true,
+                        leadingIcon = null,
+                        onClick = { onSelectFolder(null) },
                     )
+                    Material3DrawerChip(
+                        text = stringResource(R.string.drawer_uncategorized_chip),
+                        position = drawerGroupPosition(chipIndex++, chipCount),
+                        selected = state.selectedFolderId == UNCATEGORIZED_FOLDER_ID,
+                        selectable = true,
+                        leadingIcon = null,
+                        onClick = { onSelectFolder(UNCATEGORIZED_FOLDER_ID) },
+                    )
+                    // 文件夹胶囊与「聊天 / 未分类」同款官方 ToggleButton；
+                    // 重命名 / 删除只在文件夹管理页提供，这里长按不再弹菜单。
+                    folders.forEach { folder ->
+                        Material3DrawerChip(
+                            text = folder.name,
+                            position = drawerGroupPosition(chipIndex++, chipCount),
+                            selected = state.selectedFolderId == folder.id,
+                            selectable = true,
+                            leadingIcon = Icons.Rounded.Folder,
+                            onClick = { onSelectFolder(folder.id) },
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(ButtonGroupDefaults.ConnectedSpaceBetween))
                 // 独立胶囊按钮（DrawerGroupPosition.Single）：始终贴右，不随文件夹列表滚动。
@@ -913,12 +903,25 @@ private fun Material3ConversationPane(
                     .weight(1f)
                     .fillMaxWidth(),
             ) {
+                // 顶部截断淡出带：滚动时上沿被切一半的会话行在这里化开，
+                // 不留一条生硬的横切边。做法与主页对话流的顶部带子同一套实现、
+                // 同一组数值（带高 40dp，起点即列表视口上沿）。
+                // 只在列表真能往上滚（顶部确实有内容被切走）时才出现——停在最上方时
+                // 第一行是完整的，不该被削淡；底部不加带子（末尾由浮动工具栏托着）。
+                val listState = rememberLazyListState()
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .streamDiagnosticMeasure("drawer.lazy.measure")
                         .streamDiagnosticPlacement("drawer.lazy.place")
-                        .streamDiagnosticDraw("drawer.lazy.draw"),
+                        .streamDiagnosticDraw("drawer.lazy.draw")
+                        // 淡出带挂在列表自己身上：蒙版坐标系即视口坐标，
+                        // 固定在视口上沿，不随内容滚动位移。
+                        .lazyColumnEdgeFade(
+                            listState = listState,
+                            edges = ScrollEdgeFadeEdges.Start,
+                        ),
                     contentPadding = PaddingValues(
                         bottom = DrawerMetrics.ToolbarListBottomPadding + navigationBarBottom,
                     ),
@@ -980,63 +983,6 @@ private fun Material3ConversationPane(
         }
     }
 
-}
-
-/**
- * 横向胶囊行（聊天 / 未分类 / 文件夹）两端的淡出带。
- *
- * 胶囊行可以横向滚动，但视口自身没有内边距：滚到中间时，首尾胶囊会被视口边缘
- * 竖直切开，留下一条生硬的截断边。这里在两端各盖一条与抽屉底色同色的渐变，
- * 把切开的胶囊「擦」进背景里。
- *
- * 只在对应方向真的还有内容可滚时才显示（[ScrollState.canScrollBackward]
- * / [ScrollState.canScrollForward]），
- * 停在两端时不会把完整可见的胶囊再罩上一层。渐变透明端用同 RGB 的 alpha 0，
- * 不用 `Color.Transparent`（黑色全透明），避免渐出一道灰边。
- */
-@Composable
-private fun BoxScope.ChipRowEdgeFades(
-    scrollState: ScrollState,
-    color: Color,
-) {
-    // 边缘淡出带只变透明度：M3E Effects fast 档，临界阻尼无过冲。
-    val chipEdgeFadeSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
-    val startAlpha by animateFloatAsState(
-        targetValue = if (scrollState.canScrollBackward) 1f else 0f,
-        animationSpec = chipEdgeFadeSpec,
-        label = "drawerChipFadeStart",
-    )
-    val endAlpha by animateFloatAsState(
-        targetValue = if (scrollState.canScrollForward) 1f else 0f,
-        animationSpec = chipEdgeFadeSpec,
-        label = "drawerChipFadeEnd",
-    )
-    Box(modifier = Modifier.matchParentSize()) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxHeight()
-                .width(DrawerMetrics.ChipRowEdgeFadeWidth)
-                .graphicsLayer { alpha = startAlpha }
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(color, color.copy(alpha = 0f)),
-                    ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(DrawerMetrics.ChipRowEdgeFadeWidth)
-                .graphicsLayer { alpha = endAlpha }
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(color.copy(alpha = 0f), color),
-                    ),
-                ),
-        )
-    }
 }
 
 /** M3 抽屉：相连按钮组里的位置，决定官方相连形状哪一侧保持完全圆角。 */

@@ -333,10 +333,13 @@ internal fun PendingFileReferenceStrip(
     onRemoveReference: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val referenceStripScrollState = rememberScrollState()
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            // 两端截断淡出带：文件引用横向滚动时，被视口切一半的卡片用 DstIn 蒙版擦掉。
+            .horizontalScrollEdgeFade(referenceStripScrollState)
+            .horizontalScroll(referenceStripScrollState),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

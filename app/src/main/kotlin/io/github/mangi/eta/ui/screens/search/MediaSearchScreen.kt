@@ -104,6 +104,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.etaRandomDecorativeShape
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
+import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.navigation.AppRoute
 import java.io.File
@@ -771,10 +772,13 @@ private fun MediaFilterBar(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
 ) {
+    val filterScrollState = rememberScrollState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            // 两端截断淡出带：筛选标签横向滚动时，被视口切一半的胶囊用 DstIn 蒙版擦掉。
+            .horizontalScrollEdgeFade(filterScrollState)
+            .horizontalScroll(filterScrollState)
             .padding(
                 start = EtaGroupHorizontalPadding,
                 end = EtaGroupHorizontalPadding,

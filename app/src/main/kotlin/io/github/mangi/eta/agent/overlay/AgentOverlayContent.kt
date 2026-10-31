@@ -95,6 +95,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.components.verticalScrollEdgeFade
 
 // 无语义 success 色，沿用项目既有值；失败色走主题 error
 private val SuccessColor = Color(0xFF34C759)
@@ -620,13 +621,18 @@ internal fun AgentResultCard(
                             color = textColor,
                         ),
                     )
+                    // 结果区限高 280dp 后纵向滚动：内容超出时被上下边缘硬切。
+                    // 底部挂一条淡出带告诉用户「下面还有」，与工具详情、横向滚动截断同一套做法。
+                    val resultScrollState = rememberScrollState()
                     Markdown(
                         markdownState = markdownState,
                         typography = typography,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 280.dp)
-                            .verticalScroll(rememberScrollState()),
+                            // 淡出带挂在 verticalScroll 之前（外层），蒙版坐标系才是视口坐标。
+                            .verticalScrollEdgeFade(resultScrollState)
+                            .verticalScroll(resultScrollState),
                         loading = {
                             Text(text = content, color = textColor, fontSize = MaterialTheme.typography.bodyLarge.fontSize, modifier = it)
                         },

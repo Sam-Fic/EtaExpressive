@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -125,6 +126,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaTonalCard
 import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
+import io.github.mangi.eta.ui.components.lazyRowEdgeFade
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.app.LocalAppearanceSettings
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -314,10 +316,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
     // ② 色板按钮行（首个 = 系统动态取色，其后为固定强调色）
     // 全宽滚动行：两端由 contentPadding 对齐页边距，间距与页边距同为 16dp（同 KernelSU 色板行）。
     item(key = "m3_color_buttons") {
+        // 色板按钮 72dp 宽，一屏放不下几枚，滚动时首尾的色板会被视口竖直切开，
+        // 留下半枚色板。这里在两端各挂一条 DstIn 淡出带（与抽屉胶囊行、热力图同一套）。
+        val colorListState = rememberLazyListState()
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
+                .lazyRowEdgeFade(colorListState)
                 .padding(bottom = EtaSegmentedGroupSpacing),
+            state = colorListState,
             contentPadding = PaddingValues(horizontal = EtaGroupHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(EtaGroupHorizontalPadding),
         ) {

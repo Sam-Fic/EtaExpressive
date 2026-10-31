@@ -884,6 +884,12 @@ private fun M3VoiceBar(
  * 追到最新转写的尾部——用户始终能看到自己最后说的内容。滚动距离按固定速度换算时长
  * （约 1000dp/s），连续分片到达时会不断接续新的目标，而不是每次瞬移到末尾；转写被
  * 清空（发送后切到思考 / 播报阶段）时本组件退出组合，下一轮从起点重新开始。
+ *
+ * 视口固定跟着尾部走，于是**左端**永远是被视口切掉一半的旧文字——转写越长，左边被
+ * 「挤走」得越明显，右端却始终是刚说出的新内容。这里只在左端挂一条 DstIn 淡出带
+ * （与语音助手气泡的屏幕上下文 chip 行同一套做法，见 `ScrollEdgeFade.kt`）：
+ * 蒙版削的是文字自身的 alpha，底下露出的自然是胶囊底色。
+ * 右端不能淡——那里是用户正要读的当前识别结果，淡掉反而看不清。
  */
 @Composable
 private fun VoiceLiveTranscript(
@@ -909,6 +915,13 @@ private fun VoiceLiveTranscript(
     Text(
         text = text.replace('\n', ' '),
         modifier = modifier
+            // 淡出带必须挂在 horizontalScroll 之前（外层），蒙版坐标系才是视口坐标。
+            // 只淡左端：右端是刚说出的内容，必须完整可读。
+            .horizontalScrollEdgeFade(
+                scrollState = scroll,
+                fadeWidth = VoiceTranscriptEdgeFadeWidth,
+                edges = ScrollEdgeFadeEdges.Start,
+            )
             .horizontalScroll(scroll)
             .testTag("voice-live-transcript"),
         style = etaTextStyle(EtaType.Body),
@@ -918,6 +931,14 @@ private fun VoiceLiveTranscript(
         overflow = TextOverflow.Clip,
     )
 }
+
+/**
+ * 语音实时转写左端的淡出带宽度。
+ *
+ * 比通用默认（24dp）窄：这里淡掉的是**半个字**——转写单行、字号是 Body，
+ * 24dp 会连着吃掉一整字多一点，看着像少了字；12dp 刚好把被切一半的那字化开。
+ */
+private val VoiceTranscriptEdgeFadeWidth = 12.dp
 
 /**
  * 语音进行中的停止圆钮：参考稿的粉色圆钮取官方 `tertiaryContainer` / `onTertiaryContainer` 角色。

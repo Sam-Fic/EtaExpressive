@@ -9,7 +9,6 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -77,15 +76,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -116,6 +112,7 @@ import io.github.mangi.eta.ui.components.Material3ComposerBody
 import io.github.mangi.eta.ui.components.PendingFileReferenceStrip
 import io.github.mangi.eta.ui.components.PendingImageStrip
 import io.github.mangi.eta.ui.components.collectPreviewableChatImages
+import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.components.rememberDataUrlBitmap
 import io.github.mangi.eta.ui.components.rememberImeVisible
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
@@ -1004,49 +1001,12 @@ private fun ScreenContextActionRow(
     val sizeSpec: FiniteAnimationSpec<IntSize> = MaterialTheme.motionScheme.defaultSpatialSpec()
     val scrollState = rememberScrollState()
     // 两端淡出带：滚动到中间时，被视口切一半的 chip 会留下硬切边。浮窗背景是透明的，
-    // 不能像抽屉那样盖一层同色渐变，这里用 DstIn 蒙版直接淡化内容本身（见下方 drawWithContent）。
+    // 不能盖一层同色渐变，这里用 DstIn 蒙版直接淡化内容本身（见 horizontalScrollEdgeFade）。
     // 只在对应方向真的还有内容可滚时才出现，停在两端时不会把完整可见的 chip 罩暗。
-    val edgeFadeSpec = MaterialTheme.motionScheme.fastSpatialSpec<Dp>()
-    val startFadeWidth by animateDpAsState(
-        targetValue = if (scrollState.canScrollBackward) ScreenContextChipEdgeFadeWidth else 0.dp,
-        animationSpec = edgeFadeSpec,
-        label = "screenContextChipFadeStart",
-    )
-    val endFadeWidth by animateDpAsState(
-        targetValue = if (scrollState.canScrollForward) ScreenContextChipEdgeFadeWidth else 0.dp,
-        animationSpec = edgeFadeSpec,
-        label = "screenContextChipFadeEnd",
-    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // DstIn 蒙版只应作用在这一行的内容上，先隔离到自己的离屏层，别擦到下层压暗或用户界面。
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                val start = startFadeWidth.toPx()
-                if (start > 0f) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color.Transparent, Color.Black),
-                            startX = 0f,
-                            endX = start,
-                        ),
-                        blendMode = BlendMode.DstIn,
-                    )
-                }
-                val end = endFadeWidth.toPx()
-                if (end > 0f) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color.Black, Color.Transparent),
-                            startX = size.width - end,
-                            endX = size.width,
-                        ),
-                        blendMode = BlendMode.DstIn,
-                    )
-                }
-            }
+            .horizontalScrollEdgeFade(scrollState, ScreenContextChipEdgeFadeWidth)
             .horizontalScroll(scrollState),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

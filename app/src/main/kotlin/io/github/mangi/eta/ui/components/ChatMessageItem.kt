@@ -4032,13 +4032,20 @@ private fun ToolDetailBlock(
         }
         ChatHairlineDivider(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
         HapticSelectionContainer {
+            // 工具输出常常很长，这一块限高 280dp 后纵向滚动：内容超出时被容器上下边缘
+            // 硬切，看起来像被裁掉了。底部挂一条淡出带，告诉用户「下面还有」——
+            // 做法与横向滚动截断同一套（见 ScrollEdgeFade.kt）：DstIn 蒙版削内容自身的
+            // alpha，底下露出的自然是卡片底色。
+            val detailScrollState = rememberScrollState()
             Text(
                 text = text,
                 style = chatExpandedBodyStyle(monospace = true),
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = ToolDetailMaxHeight)
-                    .verticalScroll(rememberScrollState())
+                    // 淡出带挂在 verticalScroll 之前（外层），蒙版坐标系才是视口坐标。
+                    .verticalScrollEdgeFade(detailScrollState)
+                    .verticalScroll(detailScrollState)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
@@ -4071,8 +4078,12 @@ private fun ToolMediaStrip(
             style = chatQuaternaryStyle(),
             color = etaOnSurfaceVariant(),
         )
+        val mediaStripScrollState = rememberScrollState()
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth()
+                // 两端截断淡出带：素材缩略图横向滚动时，被视口切一半的图用 DstIn 蒙版擦掉。
+                .horizontalScrollEdgeFade(mediaStripScrollState)
+                .horizontalScroll(mediaStripScrollState),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             sources.forEach { source ->

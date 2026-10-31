@@ -44,6 +44,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -64,7 +65,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
@@ -689,6 +689,12 @@ internal fun AgentChatScaffold(
     val appearance = LocalAppearanceSettings.current
     // 宽屏（平板横屏）下消息列与输入栏一起收进居中的内容列，避免一行文字横贯整块屏幕。
     val contentSidePadding = rememberPageContentSidePadding()
+    // 底部淡出带的锚点：输入胶囊顶盖圆心距屏幕底部的像素。
+    // 底栏在布局期量到输入工具栏高度后发布（那边才知道工具栏多高、键盘顶到哪儿）；
+    // 消息列表层据此在自己的层上画 DstIn 蒙版——蒙版必须作用在消息内容上才谈得上
+    // 「削 alpha」，画在列表上层的实色板遮得住下层却削不到下层。
+    // 底栏底与列表底同在屏幕底，两边共用这个基准，带子才接得上。
+    val bottomFadeAnchorPx = remember { mutableIntStateOf(0) }
     // Pure function of the visible list, but it scans to the last user turn and then
     // forward for model output. Memoised so a recomposition that does not change the
     // list (or the run flags) does not rescan a multi-thousand-message transcript.
@@ -717,6 +723,7 @@ internal fun AgentChatScaffold(
         ),
         bottomBar = {
             AgentChatBottomBar(
+                bottomFadeAnchorPx = bottomFadeAnchorPx,
                 collaborationConversationId = collaborationConversationId,
                 input = input,
                 draftField = draftField,
@@ -814,6 +821,7 @@ internal fun AgentChatScaffold(
                 isWaitingForCompression = isWaitingForCompression,
                 bottomInset = bottomPadding,
                 topInset = topBarInset,
+                bottomFadeAnchorPx = bottomFadeAnchorPx,
                 horizontalPadding = contentSidePadding,
                 keepBottomAnchored = keepBottomAnchored,
                 onBottomAnchorChanged = onBottomAnchorChanged,
@@ -855,6 +863,11 @@ internal fun AgentConversationMessages(
     isWaitingForCompression: Boolean = false,
     bottomInset: Dp,
     topInset: Dp = 0.dp,
+    /**
+     * 底部淡出带的锚点：输入胶囊顶盖圆心距屏幕底部的像素。
+     * 由底栏在布局期发布；为 null 时不画底部带（语音浮窗里没有输入栏，不需要）。
+     */
+    bottomFadeAnchorPx: MutableIntState? = null,
     horizontalPadding: Dp = 0.dp,
     keepBottomAnchored: Boolean,
     onBottomAnchorChanged: (Boolean) -> Unit,
@@ -1610,17 +1623,20 @@ internal fun AgentConversationMessages(
         modifier = modifier
             .onGloballyPositioned(markdownViewport::updateCoordinates)
             .clipToBounds()
-            // clipRect 和普通 clip 都裁不到子级 graphicsLayer（跟底上提、思考卡片的离屏纹理）。
-            // 先把整列画进一张按静止线裁切的离屏纹理，文字才不会露进输入框。
+            // 消息区常驻一张离屏纹理，两个用途：
+            // 1) 上下两条淡出带的 DstIn 蒙版只能削自己这一层。DstIn 削的是「当前画布上
+            //    已绘制像素」的 alpha；画布上还画着页面背景（壳层 Scaffold 的
+            //    surfaceContainer）的话，背景会被一起削成半透明，透出透明窗口底
+            //    （styles.xml 里 windowBackground = transparent）就是两条纯黑渐变带。
+            //    消息内容在离屏层里、页面背景在层外，带子削完露出的正是页面背景。
+            // 2) clipRect 和普通 clip 都裁不到子级 graphicsLayer（跟底上提、思考卡片的
+            //    离屏纹理）。跟底时把整列画进一张按静止线裁切的纹理，文字才不会露进
+            //    输入框；不跟底时不裁，内容照旧铺到屏幕底。
             .then(
-                if (shouldClipTail) {
-                    Modifier.graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                        clip = true
-                        shape = restClip
-                    }
-                } else {
-                    Modifier
+                Modifier.graphicsLayer {
+                    compositingStrategy = CompositingStrategy.Offscreen
+                    clip = shouldClipTail
+                    shape = restClip
                 },
             )
             .drawWithContent {
@@ -1668,6 +1684,36 @@ internal fun AgentConversationMessages(
             // Commit count only (ns=0): proves this content lambda was applied, not its cost.
             StreamPerformanceDiagnostics.record("chat.content.commit", value = 1)
         }
+        // 顶部淡出带：上沿对齐顶栏盖板的下沿（按钮中线），往下 40dp 让滚上来的消息化开。
+        // topInset 为 0 表示这一屏内容整体排在顶栏下方（不与顶栏重叠），不需要带子。
+        val topFadeBand = if (topInset > 0.dp) {
+            Modifier.verticalFadeBand(
+                bandTopPx = { (topInset - TopBarCenterlineAboveRowBottom).toPx() },
+                bandHeight = TopBarGradientHeight,
+                fadeIn = true,
+            )
+        } else {
+            Modifier
+        }
+        // 底部淡出带：下沿对齐输入胶囊顶盖的圆心，往上 40dp 让滚上来的消息化开。
+        // 锚点由底栏在布局期发布（那边才知道输入工具栏多高、键盘顶到哪儿）；
+        // 还没量出来时这一帧不画，免得先削掉列表最底下的一截。
+        val bottomFadeBand = if (bottomFadeAnchorPx != null) {
+            Modifier.verticalFadeBand(
+                bandTopPx = {
+                    val anchor = bottomFadeAnchorPx.intValue
+                    if (anchor <= 0) {
+                        null
+                    } else {
+                        size.height - anchor - ChatInputScrimHeight.toPx()
+                    }
+                },
+                bandHeight = ChatInputScrimHeight,
+                fadeIn = false,
+            )
+        } else {
+            Modifier
+        }
         androidx.compose.runtime.CompositionLocalProvider(
             io.github.mangi.eta.ui.markdown.LocalMarkdownDrawViewport provides markdownViewport,
         ) {
@@ -1682,6 +1728,16 @@ internal fun AgentConversationMessages(
                 .streamDiagnosticMeasure("list.measure", diagnosticListAttribution)
                 .streamDiagnosticPlacement("list.place", diagnosticListAttribution)
                 .fillMaxSize()
+                // 上下两条淡出带（DstIn 蒙版，削消息内容自身的 alpha）：
+                // 上沿对齐顶栏盖板的下沿，下沿对齐输入胶囊顶盖的圆心——滚上来的消息在这
+                // 两处化开，底下露出的自然是页面背景。与原先「盖一层同色渐变」视觉等价
+                // （盖色与削 alpha 都是线性混合），但蒙版作用在内容上，和其它滚动区统一成
+                // 同一套实现。
+                // 挂在列表自己身上而不是外层 Box：右下角跳转轮次按钮组不在蒙版范围内。
+                // 放在尾部上提的 graphicsLayer 之外（更外层），蒙版才固定在视口坐标上，
+                // 不会跟着被上提的内容一起位移。
+                .then(topFadeBand)
+                .then(bottomFadeBand)
                 // 层本身就会在滑动时整列重录。只有跟底上提才挂上；手指滑动时列表直接滚动，
                 // 已完成块的离屏纹理可以复用。打字机和振动不在这里停。
                 .then(if (shouldLiftTail) {
@@ -2254,6 +2310,7 @@ internal fun visibleTurnSpeechPreface(
 
 @Composable
 private fun AgentChatBottomBar(
+    bottomFadeAnchorPx: MutableIntState,
     input: String,
     draftField: androidx.compose.foundation.text.input.TextFieldState? = null,
     modelPickerState: AgentModelPickerUiState,
@@ -2313,10 +2370,11 @@ private fun AgentChatBottomBar(
     horizontalPadding: Dp = 0.dp,
 ) {
     val drawerBlocksIme = LocalConversationDrawerBlocksIme.current
-    // 底部渐变板取页面背景同色：官方 surfaceContainer（壳层 Scaffold 同色）。
+    // 底部盖板取页面背景同色：官方 surfaceContainer（壳层 Scaffold 同色）。
     val scrimColor = MaterialTheme.colorScheme.surfaceContainer
     val navigationBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // 输入工具栏高度：渐变板终点的锚定输入。普通 int 数组 + 布局期回调（与
+    val density = LocalDensity.current
+    // 输入工具栏高度：盖板终点的锚定输入。普通 int 数组 + 布局期回调（与
     // AgentChatInputBar 的 inputContainerTopPx 同款），避免键盘动画逐帧重组。
     val inputToolbarHeightPx = remember { intArrayOf(0) }
     Box(
@@ -2324,28 +2382,20 @@ private fun AgentChatBottomBar(
             .fillMaxWidth()
             .then(if (drawerBlocksIme) Modifier else Modifier.imePadding())
             .drawBehind {
-                // 底部渐变背景板：颜色与页面背景一致。
-                // 终点锚在输入胶囊「顶盖圆弧圆心」的 y（胶囊顶边 + 外圆角 36dp）：单行时胶囊
-                // 就是整圆胶囊，圆心即按钮中线；多行长高后顶边上移，终点随之整体上移。
-                // 渐变条总高与底栏按钮同高（40dp），从圆心向上完全透明——消息从那里开始淡出、
-                // 到圆心处完全消失；圆心以下（按钮下半段 + 底部留白 + 导航栏）保持完全不透明，
+                // 底部盖板：颜色与页面背景一致，铺在输入胶囊下半段 + 底部留白 + 导航栏上，
                 // 输入栏附近不会露出消息残影。
+                // 圆心位置锚在输入胶囊「顶盖圆弧圆心」的 y（胶囊顶边 + 外圆角 36dp）：
+                // 单行时胶囊就是整圆胶囊，圆心即按钮中线；多行长高后顶边上移，圆心随之整体上移。
+                // 圆心以上那条渐变条不再由这里画——盖板画在自己层里，遮得住下层却削不到
+                // 下层内容的 alpha。淡出改由消息列表层用 DstIn 蒙版做（蒙版作用在消息内容上，
+                // 滚上来的消息在圆心附近化开，底下露出的自然是页面背景），
+                // 与原先「盖一层同色渐变」视觉等价，但实现统一成了同一套蒙版。
                 val toolbarHeightPx = inputToolbarHeightPx[0]
                     .takeIf { it > 0 }?.toFloat() ?: ChatInputToolbarDefaultHeight.toPx()
                 val arcCenterY = size.height -
                     (navigationBarBottom + ChatInputBarBottomGap).toPx() -
                     toolbarHeightPx +
                     ChatInputScrimAnchorRadius.toPx()
-                val stripHeight = ChatInputScrimHeight.toPx()
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(scrimColor.copy(alpha = 0f), scrimColor),
-                        startY = arcCenterY - stripHeight,
-                        endY = arcCenterY,
-                    ),
-                    topLeft = Offset(0f, arcCenterY - stripHeight),
-                    size = Size(size.width, stripHeight),
-                )
                 drawRect(
                     color = scrimColor,
                     topLeft = Offset(0f, arcCenterY),
@@ -2365,7 +2415,16 @@ private fun AgentChatBottomBar(
                 ),
         ) {
             AgentChatInputBar(
-                onToolbarHeightPx = { inputToolbarHeightPx[0] = it },
+                onToolbarHeightPx = { px ->
+                    inputToolbarHeightPx[0] = px
+                    // 发布底部淡出带的锚点：顶盖圆心距底栏底的距离
+                    // = 导航栏 + 底部留白 + 工具栏高 - 圆角半径。
+                    // 消息列表层用同一个基准画自己的 DstIn 蒙版，带子与盖板严丝合缝。
+                    bottomFadeAnchorPx.intValue = with(density) {
+                        (navigationBarBottom + ChatInputBarBottomGap).roundToPx() + px -
+                            ChatInputScrimAnchorRadius.roundToPx()
+                    }
+                },
                 collaborationConversationId = collaborationConversationId,
                 input = input,
                 draftField = draftField,

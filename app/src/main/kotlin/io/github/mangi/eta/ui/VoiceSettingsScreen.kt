@@ -24,6 +24,7 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedScope
+import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 
 internal enum class VoiceSettingsSection(val title: Int) {
@@ -94,11 +95,14 @@ internal fun VoiceSettingsScreen(
             // 原地替换内容（key(selected) 重建分区内容），不经下拉弹层中转。
             val view = LocalView.current
             val sections = VoiceSettingsSection.entries
+            val sectionScrollState = rememberScrollState()
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 13.dp)
-                    .horizontalScroll(rememberScrollState())
+                    // 两端截断淡出带：整组横向滚动时，被视口切一半的按钮用 DstIn 蒙版擦掉。
+                    .horizontalScrollEdgeFade(sectionScrollState)
+                    .horizontalScroll(sectionScrollState)
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {

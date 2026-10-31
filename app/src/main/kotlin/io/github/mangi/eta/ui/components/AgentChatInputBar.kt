@@ -893,10 +893,13 @@ internal fun PendingImageStrip(
     onRemoveImage: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val imageStripScrollState = rememberScrollState()
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            // 两端截断淡出带：缩略图横向滚动时，被视口切一半的图用 DstIn 蒙版擦掉。
+            .horizontalScrollEdgeFade(imageStripScrollState)
+            .horizontalScroll(imageStripScrollState),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -44,8 +44,12 @@ internal fun ConversationMentionPanel(
         // surfaceContainerHigh 底色；移除动作走官方 IconButton（容器尺寸取官方
         // IconButtonDefaults.smallContainerSize()，图标取官方 smallIconSize，涟漪与
         // disabled 状态全部由官方组件提供）。文字色只用官方 primary / onSurfaceVariant 角色。
+        val mentionScrollState = rememberScrollState()
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+            modifier = Modifier.fillMaxWidth()
+                // 两端截断淡出带：引用行横向滚动时，被视口切一半的胶囊用 DstIn 蒙版擦掉。
+                .horizontalScrollEdgeFade(mentionScrollState)
+                .horizontalScroll(mentionScrollState)
                 .padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {

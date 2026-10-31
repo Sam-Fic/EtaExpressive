@@ -93,6 +93,7 @@ import io.github.mangi.eta.ui.app.UserTerminalUiState
 import io.github.mangi.eta.ui.components.TERMINAL_RENDER_WINDOW_CHARS
 import io.github.mangi.eta.ui.components.ansiPlainText
 import io.github.mangi.eta.ui.components.ansiToAnnotatedString
+import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.components.terminalRenderWindow
 
 /** 快捷命令 chips（shell 命令本身不翻译）：点击填入输入框，不直接执行。 */
@@ -770,10 +771,13 @@ private fun TerminalBottomBar(
             }
             // 快捷命令：官方 AssistChip 一行，仅在输入为空时出现，点击填入输入框（不直接执行）。
             if (input.isBlank()) {
+                val quickCommandScrollState = rememberScrollState()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
+                        // 两端截断淡出带：命令行横向滚动时，被视口切一半的胶囊用 DstIn 蒙版擦掉。
+                        .horizontalScrollEdgeFade(quickCommandScrollState)
+                        .horizontalScroll(quickCommandScrollState)
                         .padding(horizontal = 12.dp)
                         .padding(bottom = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
