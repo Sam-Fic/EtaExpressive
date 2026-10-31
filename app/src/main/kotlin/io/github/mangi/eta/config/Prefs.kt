@@ -84,6 +84,12 @@ internal object Prefs {
          */
         const val AGENT_SCREEN_TOOLS = "agent_screen_tools"
 
+        /**
+         * 后台虚拟屏执行：跨应用 GUI 任务优先在受信任虚拟屏静默完成（launch_app/open_uri
+         * 智能画布分流，present_to_user 破壁移交回主屏）。关闭后一律走物理主屏。
+         */
+        const val AGENT_VIRTUAL_DISPLAY_ENABLED = "agent_virtual_display_enabled"
+
         @Deprecated("迁移用；由 AGENT_DEVICE_TOOLS + AGENT_DISABLED_TOOLS 取代")
         const val AGENT_DEVICE_DIRECT_TOOLS = "agent_device_direct_tools"
 
@@ -180,6 +186,7 @@ internal object Prefs {
             AGENT_SHELL_TOOLS to true,
             AGENT_BROWSER_TOOLS to true,
             AGENT_SCREEN_TOOLS to true,
+            AGENT_VIRTUAL_DISPLAY_ENABLED to true,
             AGENT_BASIC_TOOLS to true,
             AGENT_DEVICE_TOOLS to true,
             AGENT_PERSONAL_TOOLS to true,
@@ -210,6 +217,7 @@ internal object Prefs {
             AGENT_SHELL_TOOLS,
             AGENT_BROWSER_TOOLS,
             AGENT_SCREEN_TOOLS,
+            AGENT_VIRTUAL_DISPLAY_ENABLED,
             AGENT_BASIC_TOOLS,
             AGENT_DEVICE_TOOLS,
             AGENT_PERSONAL_TOOLS,

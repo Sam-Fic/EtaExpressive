@@ -82,6 +82,12 @@
 # Root app_process entrypoints packaged in the app APK.
 -keep class vd.runtime.** { *; }
 
+# 虚拟屏 Root 特权桥：由 Root shell 以 app_process + CLASSPATH 反射全限定名启动，
+# 混淆改名后 VirtualDisplayController 将找不到入口类。
+-keep class io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayCommandMain {
+    public static void main(java.lang.String[]);
+}
+
 # ── Navigation Compose 类型安全路由 ───────────────────────────────────────────
 # 路由类与路由参数类型（如枚举 NewProviderType）由 Navigation 在运行时按
 # 全限定名反射解析；R8 混淆改名后会抛

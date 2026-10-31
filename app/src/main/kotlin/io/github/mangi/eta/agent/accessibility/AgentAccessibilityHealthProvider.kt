@@ -15,8 +15,25 @@ class AgentAccessibilityHealthProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
+        val callingUid = Binder.getCallingUid()
         if (
-            Binder.getCallingUid() != Process.SYSTEM_UID ||
+            (callingUid == Process.SYSTEM_UID || callingUid == Process.ROOT_UID) &&
+            method == AccessibilityProtectionProtocol.VIRTUAL_DISPLAY_SURFACE_METHOD &&
+            AccessibilityProtectionProtocol.hasSupportedVersion(extras)
+        ) {
+            // 仅 Root/system_server 特权进程可凭一次性 token 取走 Surface；
+            // token 由 VirtualDisplaySurfaceRegistry 签发，取出即销毁。
+            val token = extras?.getString(AccessibilityProtectionProtocol.EXTRA_SURFACE_TOKEN).orEmpty()
+            val surface = io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySurfaceRegistry.consume(token)
+            return Bundle().apply {
+                putInt(AccessibilityProtectionProtocol.EXTRA_PROTOCOL_VERSION, AccessibilityProtectionProtocol.VERSION)
+                if (surface != null) {
+                    putParcelable(AccessibilityProtectionProtocol.EXTRA_SURFACE, surface)
+                }
+            }
+        }
+        if (
+            callingUid != Process.SYSTEM_UID ||
             method != AccessibilityProtectionProtocol.HEALTH_METHOD ||
             !AccessibilityProtectionProtocol.hasSupportedVersion(extras)
         ) {

@@ -3,6 +3,8 @@ package io.github.mangi.eta.agent.device
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.agent.virtualdisplay.CanvasRoutingPolicy
+import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
 import io.github.mangi.eta.core.AgentLogger
 
 import android.content.ClipData
@@ -10,6 +12,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Rect
 import android.os.SystemClock
+import android.view.Display
 import java.io.IOException
 import java.io.StringReader
 import java.util.concurrent.TimeUnit
@@ -71,7 +74,7 @@ internal class RootShellDeviceController(
 
     data class ScreenPoint(val x: Int, val y: Int)
 
-    fun screenDimensions(): Pair<Int, Int> = screenSize()
+    fun screenDimensions(displayId: Int = Display.DEFAULT_DISPLAY): Pair<Int, Int> = screenSize(displayId)
 
     data class UiNode(
         val index: Int,
@@ -96,15 +99,21 @@ internal class RootShellDeviceController(
         val centerY: Int get() = bounds.centerY()
     }
 
-    fun observe(includeScreenshot: Boolean, includeUiTree: Boolean, maxNodes: Int): Observation {
+    fun observe(
+        includeScreenshot: Boolean,
+        includeUiTree: Boolean,
+        maxNodes: Int,
+        displayId: Int = Display.DEFAULT_DISPLAY,
+    ): Observation {
         val accessibility = AgentAccessibilityService.current()
         if (accessibility == null && !rootAvailable()) {
             return Observation(accessibilityUnavailable(), null, null, null)
         }
         val nodeLimit = maxNodes.coerceIn(1, 120)
-        val display = screenSize()
+        val display = screenSize(displayId)
+        val isVirtual = CanvasRoutingPolicy.isVirtualDisplay(displayId)
         val focus = accessibility
-            ?.currentPackageName()
+            ?.currentPackageName(displayId)
             ?.takeIf { it.isNotBlank() }
             ?.let { packageName ->
                 JSONObject()
@@ -112,9 +121,17 @@ internal class RootShellDeviceController(
                     .put("component", packageName)
                     .put("source", "accessibility")
             }
-            ?: focusedWindow()
+            ?: if (isVirtual) {
+                val vdPkg = VirtualDisplayController.snapshots.value.packageName
+                JSONObject()
+                    .put("package", vdPkg)
+                    .put("component", vdPkg)
+                    .put("source", "virtual_display")
+            } else {
+                focusedWindow()
+            }
         val elementObservation = if (includeUiTree) {
-            val accessibilitySnapshot = accessibility?.captureNodeSnapshot(nodeLimit)
+            val accessibilitySnapshot = accessibility?.captureNodeSnapshot(nodeLimit, displayId)
             if (accessibilitySnapshot != null) {
                 ElementObservation(
                     id = accessibilitySnapshot.id,
@@ -126,7 +143,7 @@ internal class RootShellDeviceController(
                     truncated = accessibilitySnapshot.truncated,
                     accessibilitySnapshot = accessibilitySnapshot,
                 )
-            } else if (rootAvailable()) {
+            } else if (rootAvailable() && !isVirtual) {
                 val rootNodes = dumpUiNodes(nodeLimit)
                 ElementObservation(
                     id = "u${ROOT_OBSERVATION_IDS.incrementAndGet()}",
@@ -145,7 +162,7 @@ internal class RootShellDeviceController(
             null
         }
         val nodes = elementObservation?.nodes.orEmpty()
-        val capture = if (includeScreenshot) captureScreenshot() else ScreenCapture.notRequested()
+        val capture = if (includeScreenshot) captureScreenshot(displayId) else ScreenCapture.notRequested()
         val image = capture.image
         val coordinateSpace = if (image?.width != null && image.height != null) {
             CoordinateSpace(
@@ -160,12 +177,14 @@ internal class RootShellDeviceController(
         val json = JSONObject()
             .put("ok", true)
             .put("tool", "observe_screen")
+            .put("canvas", if (isVirtual) CanvasRoutingPolicy.CanvasTarget.VIRTUAL_DISPLAY.wireName else CanvasRoutingPolicy.CanvasTarget.MAIN_DISPLAY.wireName)
+            .put("display_id", displayId)
             .put("screen", JSONObject().put("width", display.first).put("height", display.second))
             .put(
                 "accessibility",
                 JSONObject()
                     .put("available", accessibility != null)
-                    .put("package", accessibility?.currentPackageName().orEmpty())
+                    .put("package", accessibility?.currentPackageName(displayId).orEmpty())
                     .put(
                         "note",
                         if (accessibility != null) {
@@ -230,11 +249,11 @@ internal class RootShellDeviceController(
         return Observation(json.toString(), image, elementObservation, coordinateSpace)
     }
 
-    fun tap(x: Int, y: Int): String {
+    fun tap(x: Int, y: Int, displayId: Int = Display.DEFAULT_DISPLAY): String {
         if (AgentAccessibilityService.current() == null && !rootAvailable()) return accessibilityUnavailable()
-        validatePoint(x, y)
+        validatePoint(x, y, displayId)
         AgentAccessibilityService.current()?.let { service ->
-            val result = service.gestureTap(x.toFloat(), y.toFloat())
+            val result = service.gestureTap(x.toFloat(), y.toFloat(), displayId = displayId)
             if (result.ok) {
                 waitForUiSettle("tap")
                 return nodeActionJson("tap", result)
@@ -244,15 +263,15 @@ internal class RootShellDeviceController(
             }
             if (!rootAvailable()) return nodeActionJson("tap", result)
         }
-        return inputCommand("input tap $x $y", "tap")
+        return inputCommand("${inputCommandPrefix(displayId)} tap $x $y", "tap")
     }
 
-    fun longPress(x: Int, y: Int, durationMs: Int): String {
+    fun longPress(x: Int, y: Int, durationMs: Int, displayId: Int = Display.DEFAULT_DISPLAY): String {
         if (AgentAccessibilityService.current() == null && !rootAvailable()) return accessibilityUnavailable()
-        validatePoint(x, y)
+        validatePoint(x, y, displayId)
         val duration = durationMs.coerceIn(300, 3_000)
         AgentAccessibilityService.current()?.let { service ->
-            val result = service.gestureTap(x.toFloat(), y.toFloat(), duration.toLong())
+            val result = service.gestureTap(x.toFloat(), y.toFloat(), duration.toLong(), displayId = displayId)
             if (result.ok) {
                 waitForUiSettle("long_press")
                 return nodeActionJson("long_press", result.copy(method = "GESTURE_LONG_PRESS"))
@@ -262,13 +281,20 @@ internal class RootShellDeviceController(
             }
             if (!rootAvailable()) return nodeActionJson("long_press", result)
         }
-        return inputCommand("input swipe $x $y $x $y $duration", "long_press")
+        return inputCommand("${inputCommandPrefix(displayId)} swipe $x $y $x $y $duration", "long_press")
     }
 
-    fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int): String {
+    fun swipe(
+        x1: Int,
+        y1: Int,
+        x2: Int,
+        y2: Int,
+        durationMs: Int,
+        displayId: Int = Display.DEFAULT_DISPLAY,
+    ): String {
         if (AgentAccessibilityService.current() == null && !rootAvailable()) return accessibilityUnavailable()
-        validatePoint(x1, y1)
-        validatePoint(x2, y2)
+        validatePoint(x1, y1, displayId)
+        validatePoint(x2, y2, displayId)
         val duration = durationMs.coerceIn(100, 2_000)
         AgentAccessibilityService.current()?.let { service ->
             val result = service.gestureSwipe(
@@ -277,6 +303,7 @@ internal class RootShellDeviceController(
                 x2.toFloat(),
                 y2.toFloat(),
                 duration.toLong(),
+                displayId = displayId,
             )
             if (result.ok) {
                 waitForUiSettle("swipe")
@@ -287,10 +314,10 @@ internal class RootShellDeviceController(
             }
             if (!rootAvailable()) return nodeActionJson("swipe", result)
         }
-        return inputCommand("input swipe $x1 $y1 $x2 $y2 $duration", "swipe")
+        return inputCommand("${inputCommandPrefix(displayId)} swipe $x1 $y1 $x2 $y2 $duration", "swipe")
     }
 
-    fun scroll(direction: String, amount: String = ""): String {
+    fun scroll(direction: String, amount: String = "", displayId: Int = Display.DEFAULT_DISPLAY): String {
         val parsed = ScrollDirection.parse(direction)
             ?: return scrollErrorJson(
                 "scroll",
@@ -301,7 +328,7 @@ internal class RootShellDeviceController(
         val parsedAmount = ScrollAmount.parse(amount)
             ?: return scrollErrorJson("scroll", parsed, "INVALID_ARGUMENT", "amount 仅支持 small/page")
         AgentAccessibilityService.current()?.let { service ->
-            return scrollActionJson("scroll", service.scrollCurrent(parsed, parsedAmount))
+            return scrollActionJson("scroll", service.scrollCurrent(parsed, parsedAmount, displayId = displayId))
         }
         if (!rootAvailable()) return accessibilityUnavailable()
         val beforeNodes = dumpUiNodes(120)
@@ -310,7 +337,7 @@ internal class RootShellDeviceController(
             .filter(UiNode::scrollable)
             .maxByOrNull { node -> node.bounds.width().toLong() * node.bounds.height().toLong() }
             ?.bounds
-            ?: screenContentBounds()
+            ?: screenContentBounds(displayId)
         return rootScroll(
             tool = "scroll",
             direction = parsed,
@@ -319,16 +346,17 @@ internal class RootShellDeviceController(
             maxNodes = 120,
             targetIndex = null,
             amount = parsedAmount,
+            displayId = displayId,
         )
     }
 
-    fun inputText(text: String): String {
+    fun inputText(text: String, displayId: Int = Display.DEFAULT_DISPLAY): String {
         if (text.isEmpty()) return errorJson("INVALID_ARGUMENT", "text 不能为空")
         if (text.length > MAX_INPUT_TEXT_CHARS) {
             return errorJson("TEXT_TOO_LONG", "input_text 最多支持 $MAX_INPUT_TEXT_CHARS 个字符")
         }
         AgentAccessibilityService.current()?.let { service ->
-            val result = service.inputTextFocused(text)
+            val result = service.inputTextFocused(text, displayId = displayId)
             if (result.ok) {
                 waitForUiSettle("input_text")
                 return nodeActionJson("input_text", result)
@@ -345,13 +373,14 @@ internal class RootShellDeviceController(
         text: String,
         index: Int?,
         observation: ElementObservation?,
+        displayId: Int = Display.DEFAULT_DISPLAY,
     ): String {
         if (text.length > MAX_REPLACE_TEXT_CHARS) {
             return errorJson("TEXT_TOO_LONG", "replace_text 最多支持 $MAX_REPLACE_TEXT_CHARS 个字符")
         }
         AgentAccessibilityService.current()?.let { service ->
             val snapshot = observation?.accessibilitySnapshot
-            val result = service.setTextNode(snapshot, index, text)
+            val result = service.setTextNode(snapshot, index, text, displayId = displayId)
             if (result.ok) {
                 waitForUiSettle("replace_text")
                 return nodeActionJson("replace_text", result)
@@ -466,28 +495,32 @@ internal class RootShellDeviceController(
         )
     }
 
-    fun pressKey(button: String): String {
+    fun pressKey(button: String, displayId: Int = Display.DEFAULT_DISPLAY): String {
         val normalized = button.uppercase()
         if (normalized == "PASTE" && !rootAvailable()) return rootRequired()
+        val isVirtual = CanvasRoutingPolicy.isVirtualDisplay(displayId)
         AgentAccessibilityService.current()?.let { service ->
             when (normalized) {
                 "BACK", "HOME", "RECENTS", "NOTIFICATIONS", "QUICK_SETTINGS" -> {
-                    val actionResult = service.globalActionResult(normalized)
-                    if (actionResult.ok) {
-                        waitForUiSettle("press_key")
-                        return okJson("press_key", "accessibility").let {
-                            JSONObject(it).put("button", normalized).toString()
+                    // 虚拟屏上若存在 Root，优先通过 input -d 定向发送按键，避免 GLOBAL_ACTION 误作用于物理主屏。
+                    if (!isVirtual || !rootAvailable()) {
+                        val actionResult = service.globalActionResult(normalized)
+                        if (actionResult.ok) {
+                            waitForUiSettle("press_key")
+                            return okJson("press_key", "accessibility").let {
+                                JSONObject(it).put("button", normalized).toString()
+                            }
                         }
-                    }
-                    if (actionResult.code == "ACTION_OUTCOME_UNKNOWN") {
-                        return nodeActionJson("press_key", actionResult).let {
-                            JSONObject(it).put("button", normalized).toString()
+                        if (actionResult.code == "ACTION_OUTCOME_UNKNOWN") {
+                            return nodeActionJson("press_key", actionResult).let {
+                                JSONObject(it).put("button", normalized).toString()
+                            }
                         }
+                        if (!rootAvailable()) return nodeActionJson("press_key", actionResult)
                     }
-                    if (!rootAvailable()) return nodeActionJson("press_key", actionResult)
                 }
                 "ENTER" -> {
-                    val result = service.imeEnter()
+                    val result = service.imeEnter(displayId = displayId)
                     if (result.ok) {
                         waitForUiSettle("press_key")
                         return nodeActionJson("press_key", result).let {
@@ -517,7 +550,7 @@ internal class RootShellDeviceController(
             ).let { JSONObject(it).put("button", normalized).toString() }
             else -> return errorJson("INVALID_ARGUMENT", "button 仅支持 BACK/HOME/ENTER/RECENTS/PASTE/NOTIFICATIONS/QUICK_SETTINGS")
         }
-        return inputCommand("input keyevent $keyCode", "press_key")
+        return inputCommand("${inputCommandPrefix(displayId)} keyevent $keyCode", "press_key")
     }
 
     fun waitMs(durationMs: Int): String {
@@ -530,21 +563,28 @@ internal class RootShellDeviceController(
             .toString()
     }
 
-    fun waitForText(text: String, timeoutMs: Int, includeDesc: Boolean, matchMode: String): String {
+    fun waitForText(
+        text: String,
+        timeoutMs: Int,
+        includeDesc: Boolean,
+        matchMode: String,
+        displayId: Int = Display.DEFAULT_DISPLAY,
+    ): String {
         val needle = text.trim()
         if (needle.isBlank()) return errorJson("INVALID_ARGUMENT", "text 不能为空")
         val timeout = timeoutMs.coerceIn(500, 60_000)
         val deadline = System.currentTimeMillis() + timeout
         var attempts = 0
+        val isVirtual = CanvasRoutingPolicy.isVirtualDisplay(displayId)
         while (System.currentTimeMillis() <= deadline) {
             attempts++
             val service = AgentAccessibilityService.current()
             if (service == null && !rootAvailable()) return accessibilityUnavailable()
             val nodes = service
-                ?.queryNodes(120)
+                ?.queryNodes(120, displayId)
                 ?.map { it.toUiNode() }
                 ?.takeIf { it.isNotEmpty() }
-                ?: if (rootAvailable()) dumpUiNodes(120) else emptyList()
+                ?: if (rootAvailable() && !isVirtual) dumpUiNodes(120) else emptyList()
             val match = nodes.firstOrNull { node ->
                 val haystacks = if (includeDesc) listOf(node.text, node.desc) else listOf(node.text)
                 haystacks.any { value -> matches(value, needle, matchMode) }
@@ -572,18 +612,19 @@ internal class RootShellDeviceController(
             .toString()
     }
 
-    fun waitForPackage(packageName: String, timeoutMs: Int): String {
+    fun waitForPackage(packageName: String, timeoutMs: Int, displayId: Int = Display.DEFAULT_DISPLAY): String {
         val target = packageName.trim()
         if (target.isBlank()) return errorJson("INVALID_ARGUMENT", "package_name 不能为空")
         val timeout = timeoutMs.coerceIn(500, 60_000)
         val deadline = System.currentTimeMillis() + timeout
         var attempts = 0
         var lastPackage = ""
+        val isVirtual = CanvasRoutingPolicy.isVirtualDisplay(displayId)
         while (System.currentTimeMillis() <= deadline) {
             attempts++
             val service = AgentAccessibilityService.current()
             if (service == null && !rootAvailable()) return accessibilityUnavailable()
-            lastPackage = service?.currentPackageName().orEmpty()
+            lastPackage = service?.currentPackageName(displayId).orEmpty()
             if (lastPackage == target) {
                 return JSONObject()
                     .put("ok", true)
@@ -592,15 +633,17 @@ internal class RootShellDeviceController(
                     .put("attempts", attempts)
                     .toString()
             }
-            val focus = focusedWindow()
-            if (focus.optString("package") == target) {
-                return JSONObject()
-                    .put("ok", true)
-                    .put("tool", "wait_for_package")
-                    .put("package_name", target)
-                    .put("attempts", attempts)
-                    .put("focus", focus)
-                    .toString()
+            if (!isVirtual) {
+                val focus = focusedWindow()
+                if (focus.optString("package") == target) {
+                    return JSONObject()
+                        .put("ok", true)
+                        .put("tool", "wait_for_package")
+                        .put("package_name", target)
+                        .put("attempts", attempts)
+                        .put("focus", focus)
+                        .toString()
+                }
             }
             Thread.sleep(350)
         }
@@ -666,12 +709,12 @@ internal class RootShellDeviceController(
         return json.toString()
     }
 
-    fun pasteText(text: String): String {
+    fun pasteText(text: String, displayId: Int = Display.DEFAULT_DISPLAY): String {
         if (text.length > MAX_CLIPBOARD_TEXT_CHARS) {
             return errorJson("TEXT_TOO_LONG", "paste_text 最多支持 $MAX_CLIPBOARD_TEXT_CHARS 个字符")
         }
         AgentAccessibilityService.current()?.let { service ->
-            val result = service.pasteText(text)
+            val result = service.pasteText(text, displayId = displayId)
             if (result.ok) {
                 waitForUiSettle("input_text")
                 return nodeActionJson("paste_text", result)
@@ -714,7 +757,51 @@ internal class RootShellDeviceController(
         return inputCommand(command, "open_system_panel")
     }
 
-    private fun captureScreenshot(): ScreenCapture {
+    private fun captureScreenshot(displayId: Int = Display.DEFAULT_DISPLAY): ScreenCapture {
+        if (CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            val vdBitmap = VirtualDisplayController.captureScreenshotBitmap()
+            if (vdBitmap != null) {
+                val image = try {
+                    runCatching {
+                        AgentImageCodec.fromScreenBitmap(vdBitmap, source = "screen")
+                    }.getOrNull()
+                } finally {
+                    vdBitmap.recycle()
+                }
+                if (image != null && image.bytes > 0) {
+                    return ScreenCapture(
+                        image = image,
+                        source = "virtual_display",
+                        complete = true,
+                        partial = false,
+                        expectedWindows = 1,
+                        capturedWindows = 1,
+                    )
+                }
+            }
+            val a11yResult = AgentAccessibilityService.current()?.captureDisplayScreenshot(displayId)
+            val a11yBitmap = a11yResult?.bitmap
+            if (a11yBitmap != null) {
+                val image = try {
+                    runCatching {
+                        AgentImageCodec.fromScreenBitmap(a11yBitmap, source = "screen")
+                    }.getOrNull()
+                } finally {
+                    a11yBitmap.recycle()
+                }
+                if (image != null && image.bytes > 0) {
+                    return ScreenCapture(
+                        image = image,
+                        source = "accessibility",
+                        complete = a11yResult.complete,
+                        partial = a11yResult.partial,
+                        expectedWindows = 1,
+                        capturedWindows = 1,
+                    )
+                }
+            }
+            return ScreenCapture.failed(source = "virtual_display", code = "SCREENSHOT_UNAVAILABLE")
+        }
         val excludedPackages = screenshotExcludedPackages()
         // 优先用无障碍截图：takeScreenshotOfWindow 逐窗口过滤 TYPE_ACCESSIBILITY_OVERLAY，
         // 天然排除浮层（glow/orb/bubble 等），对 Agent 透明
@@ -902,16 +989,22 @@ internal class RootShellDeviceController(
             .put("package", focused?.packageName.orEmpty())
     }
 
-    private fun screenSize(): Pair<Int, Int> {
-        AgentAccessibilityService.current()?.displaySize()?.let { return it }
+    private fun screenSize(displayId: Int = Display.DEFAULT_DISPLAY): Pair<Int, Int> {
+        if (CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            val vd = VirtualDisplayController.snapshots.value
+            if (vd.active && vd.displayId == displayId && vd.width > 0 && vd.height > 0) {
+                return vd.width to vd.height
+            }
+        }
+        AgentAccessibilityService.current()?.displaySize(displayId)?.let { return it }
         if (!rootAvailable()) throw DeviceControlUnavailableException()
         val result = runSuText("wm size", timeoutSeconds = 5)
         return AndroidDisplaySizeParser.parse(result.output)
             ?: error("无法读取屏幕尺寸：${result.output.take(160)}")
     }
 
-    private fun screenContentBounds(): Rect {
-        val (width, height) = screenSize()
+    private fun screenContentBounds(displayId: Int = Display.DEFAULT_DISPLAY): Rect {
+        val (width, height) = screenSize(displayId)
         return Rect(
             0,
             (height * 0.1f).toInt(),
@@ -928,6 +1021,7 @@ internal class RootShellDeviceController(
         maxNodes: Int,
         targetIndex: Int?,
         amount: ScrollAmount = ScrollAmount.PAGE,
+        displayId: Int = Display.DEFAULT_DISPLAY,
     ): String {
         val startedAt = SystemClock.elapsedRealtime()
         val gesture = direction.gestureWithin(bounds, amount)
@@ -938,7 +1032,7 @@ internal class RootShellDeviceController(
                 "滚动区域过小或不在屏幕内",
             )
         val result = runSuText(
-            "input swipe ${gesture.start.x} ${gesture.start.y} " +
+            "${inputCommandPrefix(displayId)} swipe ${gesture.start.x} ${gesture.start.y} " +
                 "${gesture.end.x} ${gesture.end.y} 300",
             timeoutSeconds = 8,
         )
@@ -1109,8 +1203,11 @@ internal class RootShellDeviceController(
         Thread.sleep(delayMs)
     }
 
-    private fun validatePoint(x: Int, y: Int) {
-        val (width, height) = screenSize()
+    private fun inputCommandPrefix(displayId: Int): String =
+        if (CanvasRoutingPolicy.isVirtualDisplay(displayId)) "input -d $displayId" else "input"
+
+    private fun validatePoint(x: Int, y: Int, displayId: Int = Display.DEFAULT_DISPLAY) {
+        val (width, height) = screenSize(displayId)
         require(x in 0 until width && y in 0 until height) {
             "坐标超出屏幕范围：($x,$y) not in ${width}x$height"
         }
@@ -1358,6 +1455,7 @@ internal class RootShellDeviceController(
         val timedOut: Boolean = false,
         val criticalWindowMissing: Boolean = false,
         val requested: Boolean = true,
+        val code: String? = null,
     ) {
         fun toJson(): JSONObject {
             val failures = JSONArray()
@@ -1387,6 +1485,7 @@ internal class RootShellDeviceController(
                 .put("failures", failures)
                 .put("timed_out", timedOut)
                 .put("critical_window_missing", criticalWindowMissing)
+                .also { result -> code?.let { result.put("code", it) } }
         }
 
         companion object {
@@ -1400,13 +1499,14 @@ internal class RootShellDeviceController(
                 requested = false,
             )
 
-            fun failed(source: String): ScreenCapture = ScreenCapture(
+            fun failed(source: String, code: String? = null): ScreenCapture = ScreenCapture(
                 image = null,
                 source = source,
                 complete = false,
                 partial = false,
                 expectedWindows = 0,
                 capturedWindows = 0,
+                code = code,
             )
         }
     }

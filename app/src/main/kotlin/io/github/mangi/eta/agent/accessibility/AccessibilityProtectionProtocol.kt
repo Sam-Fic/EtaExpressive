@@ -32,6 +32,9 @@ internal object AccessibilityProtectionProtocol {
 
     const val HEALTH_AUTHORITY = "io.github.mangi.eta.accessibility.health"
     const val HEALTH_METHOD = "accessibility_health"
+    const val VIRTUAL_DISPLAY_SURFACE_METHOD = "virtual_display_surface"
+    const val EXTRA_SURFACE_TOKEN = "surface_token"
+    const val EXTRA_SURFACE = "surface"
     const val HEALTH_STATUS = "status"
     const val HEALTH_STATUS_CONNECTED = "connected"
     const val HEALTH_STATUS_DISCONNECTED = "disconnected"
