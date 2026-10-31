@@ -1739,7 +1739,7 @@ internal class AgentAppState(
         if (AgentRuntimeHistoryReducer.wasApplied(existing, runId)) return false
 
         bindUsageRun(runId, conversationId)
-        updateConversation(conversationId, existing.copy(isStreaming = true))
+        updateConversation(conversationId, existing.copy(isStreaming = true, activeRunId = runId))
         restoreRunEvents(runId, checkpoint.events)
         flushPendingRunDelta(runId)
         updateRunTrace(runId) { messages ->
@@ -1783,7 +1783,7 @@ internal class AgentAppState(
         if (runId in runJobs || AgentRuntimeHistoryReducer.wasApplied(existing, runId)) return
 
         bindUsageRun(runId, conversationId)
-        updateConversation(conversationId, existing.copy(isStreaming = true))
+        updateConversation(conversationId, existing.copy(isStreaming = true, activeRunId = runId))
         refreshConversationSummaries()
         runJobs[runId] = scope.launch(Dispatchers.IO) {
             val client = AgentRuntimeClient(appContext, AndroidAgentLogger)
@@ -3909,6 +3909,8 @@ internal class AgentAppState(
             conversationId,
             contextState.copy(
                 isStreaming = true,
+                // 运行身份交给回复自动朗读区分「看着开跑」与「切进来接到半截」。
+                activeRunId = runId,
                 isPaused = false,
                 // Keep the latest actual until a new valid usage replaces it. Estimates are only
                 // for contexts without a cloud receipt, never a delta replacement for an actual.
@@ -4996,7 +4998,11 @@ internal class AgentAppState(
                     cancelStopSealWatchdog(runId)
                     conversationIdForRun(runId)?.let { owner ->
                         conversationState(owner)?.let { current ->
-                            updateConversation(owner, current.copy(isStreaming = true, isPaused = false), updateTimestamp = false)
+                            updateConversation(
+                                owner,
+                                current.copy(isStreaming = true, isPaused = false, activeRunId = runId),
+                                updateTimestamp = false,
+                            )
                         }
                     }
                     AndroidAgentLogger.warn("Stop request not confirmed for run=$runId")
@@ -7156,6 +7162,8 @@ internal class AgentAppState(
             conversationId,
             state.copy(
                 isStreaming = isStreaming,
+                // 只有真在跑的这一轮才有运行身份；结束即交还，残留值不会骗到朗读判定。
+                activeRunId = if (isStreaming) runId else null,
                 // Normal, failed, stopped and direct-media completion all consume first-turn NONE.
                 contextHasStarted = state.contextHasStarted || !isStreaming,
                 // A parent terminal event does not determine independently owned child status.

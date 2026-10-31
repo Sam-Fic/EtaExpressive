@@ -15,6 +15,11 @@ internal data class AgentChatUiState(
     val history: List<AgentModelClient.ConversationMessage> = emptyList(),
     val input: String,
     val isStreaming: Boolean,
+    /**
+     * 当前会话正在跑的那一轮运行 id；不在跑时为 null。回复自动朗读用它区分
+     * 「这一场回复是我看着开始的」与「切进来时已经接到半截」，后者整轮不读。
+     */
+    val activeRunId: String? = null,
     val isPaused: Boolean = false,
     val isWaitingForAnswer: Boolean = false,
     val isCompressingContext: Boolean = false,

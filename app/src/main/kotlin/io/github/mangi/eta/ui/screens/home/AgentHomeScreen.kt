@@ -77,6 +77,7 @@ internal fun AgentHomeScreen(
             input = state.input,
             draftField = draftField,
             isStreaming = state.isStreaming,
+            activeRunId = state.activeRunId,
             isPaused = state.isPaused,
             isCompressingContext = state.isCompressingContext,
             isWaitingForCompression = state.isWaitingForCompression,

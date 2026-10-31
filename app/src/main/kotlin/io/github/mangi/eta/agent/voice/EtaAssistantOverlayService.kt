@@ -423,6 +423,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                             isStreaming = uiState.phase == EtaVoicePhase.PROCESSING,
                             lastAgentId = lastAssistant?.id,
                             lastAgentText = lastAssistant?.content.orEmpty(),
+                            // 浮窗有独立的会话标识：与应用内会话靠门禁互斥，避免两边同时读。
+                            conversationId = conversationKey,
+                            runId = activeRunId.takeIf { uiState.phase == EtaVoicePhase.PROCESSING },
                         )
                         voiceController.updateChat(snapshot)
                         ReplyReadAloudController.updateChat(applicationContext, snapshot)

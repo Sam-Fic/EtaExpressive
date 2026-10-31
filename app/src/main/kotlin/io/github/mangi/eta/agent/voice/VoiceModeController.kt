@@ -53,6 +53,13 @@ data class VoiceChatSnapshot(
     val isStreaming: Boolean = false,
     val lastAgentId: String? = null,
     val lastAgentText: String = "",
+    /**
+     * 这一段快照来自哪场会话。回复自动朗读只在「武装自己的那一场会话」里开口，
+     * 切会话时盯着目标会话的最后一条历史回复是最常见的误读来源。null = 生产方没提供。
+     */
+    val conversationId: String? = null,
+    /** 进行中的运行 id；没有运行在跑时为 null。用于识别「切进一个正在生成的会话」。 */
+    val runId: String? = null,
 )
 
 /** Owns either the cascaded chat loop or the direct SeedDuplex call, never both. */

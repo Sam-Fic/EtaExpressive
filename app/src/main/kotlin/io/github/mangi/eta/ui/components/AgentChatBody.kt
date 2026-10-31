@@ -288,6 +288,8 @@ internal fun AgentChatBody(
     input: String,
     draftField: androidx.compose.foundation.text.input.TextFieldState? = null,
     isStreaming: Boolean,
+    /** 本轮运行 id：自动朗读用它区分「看着这轮跑起来」和「中途切进正在生成的会话」。 */
+    activeRunId: String? = null,
     isPaused: Boolean = false,
     canContinueDisconnected: Boolean = false,
     isCompressingContext: Boolean = false,
@@ -383,12 +385,15 @@ internal fun AgentChatBody(
         visibleMessagesCache.project(uiMessages, messageEdit?.targetMessageId)
     }
     LaunchedEffect(messages, isStreaming) {
-        val last = messages.filterIsInstance<AgentMessageUi>().lastOrNull()
+        val last = messages.lastOrNull { it is AgentMessageUi } as? AgentMessageUi
         val speechText = last?.content.orEmpty()
         val snapshot = VoiceChatSnapshot(
             isStreaming = isStreaming,
             lastAgentId = last?.id,
             lastAgentText = speechText,
+            conversationId = collaborationConversationId,
+            // 运行 id 只在流式期间有意义：结束后给 null，让控制器自然收尾本轮。
+            runId = activeRunId.takeIf { isStreaming },
         )
         voiceController.updateChat(snapshot)
         // 自动朗读与语音对话共用同一份快照：是否开口由各自的开关决定。
