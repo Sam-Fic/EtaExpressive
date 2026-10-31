@@ -1,7 +1,9 @@
 package io.github.mangi.eta.ui.components
 
+import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentIncrementalList
+import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
 import io.github.mangi.eta.ui.model.incrementalSnapshot
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
@@ -146,6 +148,10 @@ internal fun List<AgentTimelineEntry>.autoFoldedWorkKeys(
     }
     var pending: MutableList<String>? = null
     var folded: MutableSet<String>? = null
+    // 含等待作答提问卡的组永不折叠：提问表单必须留在卡片外可见。正常时序下等人回答时
+    // 整轮不会停下（isTurnSettled=false），折叠根本轮不到它；这里兜底的是停跑/恢复等
+    // 极端时序下问题仍处 Waiting 的时刻——一旦作答/取消/中断即恢复可折叠。
+    val holdVisible = HashSet<String>()
     forEachIndexed { index, entry ->
         when (entry) {
             is AgentTimelineEntry.Message -> {
@@ -164,11 +170,15 @@ internal fun List<AgentTimelineEntry>.autoFoldedWorkKeys(
                     else -> Unit
                 }
             }
-            is AgentTimelineEntry.WorkProcess ->
+            is AgentTimelineEntry.WorkProcess -> {
+                if (entry.messages.any { it is AgentQuestionMessageUi && it.status == AgentQuestionStatus.Waiting }) {
+                    holdVisible += entry.key
+                }
                 (pending ?: ArrayList<String>().also { pending = it }) += entry.key
+            }
         }
     }
-    return folded.orEmpty()
+    return folded.orEmpty() - holdVisible
 }
 
 /**

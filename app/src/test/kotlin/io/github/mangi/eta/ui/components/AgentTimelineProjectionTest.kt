@@ -1,7 +1,12 @@
 package io.github.mangi.eta.ui.components
 
+import io.github.mangi.eta.agent.question.AgentQuestionAnswer
+import io.github.mangi.eta.agent.question.AgentQuestionOption
+import io.github.mangi.eta.agent.question.AgentQuestionRequest
+import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
+import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
 import io.github.mangi.eta.ui.model.ContextCompactedMessageUi
 import io.github.mangi.eta.ui.model.ConversationMention
 import io.github.mangi.eta.ui.model.SystemNoticeCode
@@ -337,6 +342,78 @@ class AgentTimelineProjectionTest {
         assertTrue(headless.autoFoldedWorkKeys(true, foldLatestTurn = false).isEmpty())
         assertEquals(setOf("work-step-0"), headless.autoFoldedWorkKeys(true, foldLatestTurn = true))
     }
+
+    @Test
+    fun questionCardIsAWorkProcessMemberInEveryFoldLevel() {
+        // 提问卡（无论等待还是已回答）并入工作组：上方紧挨工具/思考步骤时圆角按
+        // 分段列表相接规则取内圆，不再单独成卡夹在前后两张卡片之间。
+        val turn = listOf(
+            UserMessageUi("user-1", "task"),
+            workMessage(0),
+            questionMessage("q-1", AgentQuestionStatus.Waiting),
+            workMessage(1),
+        )
+        for (aggressive in listOf(false, true)) {
+            val entries = turn.toTimelineEntries(aggressive)
+            // 用户气泡一条 + 工作组一条（三步同组）。
+            assertEquals(2, entries.size)
+            val group = entries.filterIsInstance<AgentTimelineEntry.WorkProcess>().single()
+            assertEquals(listOf("step-0", "q-1", "step-1"), group.messages.map { it.id })
+        }
+
+        // 组首/组末也能是提问卡：独立成卡（Whole 圆角）由 toLazyTimelineRows 的位置标记负责。
+        val questionOnly = listOf(UserMessageUi("user-1", "task"), questionMessage("q-2", AgentQuestionStatus.Answered))
+        val group = questionOnly.toTimelineEntries().filterIsInstance<AgentTimelineEntry.WorkProcess>().single()
+        assertEquals(listOf("q-2"), group.messages.map { it.id })
+    }
+
+    @Test
+    fun autoFoldNeverCollapsesAGroupStillHoldingAWaitingQuestion() {
+        // 等待作答的提问卡必须留在卡片外可见：含 Waiting 提问的组即使整轮已停下也不折叠；
+        // 一旦作答，同一张表恢复按轮收起。
+        val waiting = listOf(
+            UserMessageUi("user-1", "task"),
+            workMessage(0),
+            questionMessage("q-1", AgentQuestionStatus.Waiting),
+            AgentMessageUi("answer-1", "answer"),
+        ).toTimelineEntries()
+        val groupKey = waiting.filterIsInstance<AgentTimelineEntry.WorkProcess>().single().key
+        assertFalse(waiting.autoFoldedWorkKeys(true, foldLatestTurn = true).contains(groupKey))
+
+        val answered = listOf(
+            UserMessageUi("user-1", "task"),
+            workMessage(0),
+            questionMessage("q-1", AgentQuestionStatus.Answered),
+            AgentMessageUi("answer-1", "answer"),
+        ).toTimelineEntries()
+        assertEquals(setOf(groupKey), answered.autoFoldedWorkKeys(true, foldLatestTurn = true))
+
+        // 旧轮里还挂着 Waiting 提问时同样不收（恢复/停跑等极端时序的兜底）。
+        val olderTurnWaiting = listOf(
+            UserMessageUi("user-1", "task"),
+            workMessage(0),
+            questionMessage("q-1", AgentQuestionStatus.Waiting),
+            AgentMessageUi("answer-1", "answer"),
+            UserMessageUi("user-2", "next task"),
+            workMessage(1),
+            AgentMessageUi("answer-2", "second answer"),
+        ).toTimelineEntries()
+        val folded = olderTurnWaiting.autoFoldedWorkKeys(true, foldLatestTurn = true)
+        assertFalse(folded.contains("work-step-0"))
+        assertTrue(folded.contains("work-step-1"))
+    }
+
+    private fun questionMessage(id: String, status: AgentQuestionStatus): AgentChatMessageUi =
+        AgentQuestionMessageUi(
+            id,
+            AgentQuestionRequest(
+                questionId = "question-$id", conversationId = "conversation", runId = "run", toolCallId = "call-$id",
+                title = "Decision title", question = "Choose the next step.",
+                options = listOf(AgentQuestionOption("a", "First", ""), AgentQuestionOption("b", "Second", "")),
+            ),
+            status = status,
+            answer = if (status == AgentQuestionStatus.Answered) AgentQuestionAnswer("option", "a") else null,
+        )
 
     private fun workMessage(index: Int): AgentChatMessageUi = when (index % 3) {
         0 -> ThinkingMessageUi(

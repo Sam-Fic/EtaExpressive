@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.components
 
-import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
@@ -39,7 +38,7 @@ internal sealed interface AgentTimelineEntry {
  * 把消息流投影为时间线条目。
  *
  * [aggressive]（激进折叠档）改变的是**归组**而非显隐：每一轮只保留最后一条非空正文回复，
- * 它之前的中间文字回复、提示/重连等、已作答/已取消的提问卡与思考/工具步骤并进同一工作组，
+ * 它之前的中间文字回复、提示/重连等、提问卡与思考/工具步骤并进同一工作组，
  * 由 [toLazyTimelineRows] 展开为逐条步骤行（每条一个可展开的 SegmentedListItem 气泡，无嵌套）。
  * 普通/不折叠两档传 false，条目结构与旧版逐条投影完全一致。
  */
@@ -119,8 +118,14 @@ internal fun List<AgentTimelineEntry>.userMessageIndices(): List<Int> = mapIndex
     index.takeIf { user != null && !user.isResumeAfterCompress() }
 }
 
+/**
+ * 工作过程成员：思考、工具（含汇总）与提问卡。提问卡无论是否已回答都是列表成员——
+ * 上方紧挨工具/思考步骤时，圆角按分段列表相接规则取内圆，不再单独成卡夹在两张卡片之间；
+ * 等待作答期间所在组不可折叠（见 [autoFoldedWorkKeys]），表单始终可见。
+ */
 private fun AgentChatMessageUi.isWorkProcessMessage(): Boolean =
-    this is ThinkingMessageUi || this is ToolActivityMessageUi || this is ToolSummaryMessageUi
+    this is ThinkingMessageUi || this is ToolActivityMessageUi || this is ToolSummaryMessageUi ||
+        this is AgentQuestionMessageUi
 
 /**
  * 激进档每轮唯一保留的回复：该轮最后一条非空 [AgentMessageUi]；整轮没有正文则记 null。
@@ -147,9 +152,7 @@ private fun List<AgentChatMessageUi>.aggressiveTurnFinalReplyIds(): List<String?
 /**
  * 激进档允许并入本轮卡片的消息。建议芯片等仍需点击的交互件与未知类型一律保持直接可见，
  * 避免把可点的东西藏进卡片；流式中的回复也照常显示，保住「等待响应」的行内指示。
- *
- * 提问卡只有还在等人回答（[AgentQuestionStatus.Waiting]）时才必须留在卡片外；一旦已回答/取消/中断，
- * 它就是只读回执，与本轮其余步骤一起收进卡片 —— 否则它会夹在前后两张卡片之间，整轮折叠不完整。
+ * 提问卡已全部并入工作组（见 [isWorkProcessMessage]），不再走这条分支。
  */
 private fun AgentChatMessageUi.isAggressiveFoldable(): Boolean = when (this) {
     is ThinkingMessageUi,
@@ -160,7 +163,6 @@ private fun AgentChatMessageUi.isAggressiveFoldable(): Boolean = when (this) {
     is RunTraceMessageUi,
     is ContextCompactedMessageUi,
     -> true
-    is AgentQuestionMessageUi -> status != AgentQuestionStatus.Waiting
     is AgentMessageUi -> !isStreaming
     else -> false
 }
