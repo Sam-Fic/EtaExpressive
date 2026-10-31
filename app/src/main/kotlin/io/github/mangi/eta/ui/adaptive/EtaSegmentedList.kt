@@ -95,7 +95,11 @@ private const val SegmentedSpringDamping = 0.9f
 private fun defaultSegmentedShape(index: Int, count: Int): ListItemShapes {
     val base = ListItemDefaults.segmentedShapes(index, count)
     return if (count == 1) {
-        base.copy(shape = MaterialTheme.shapes.large)
+        // remember 锁住实例身份：官方 shapeForInteraction 以 shapes 实例为 key 保存
+        // rememberAnimatedShape 状态，若每次重组都新建 shapes 实例，选中 morph 会被
+        // 反复重置成硬跳。官方 segmentedShapes 内部已 remember（多条目组走 base 即可）。
+        val shapes = MaterialTheme.shapes
+        remember(base, shapes) { base.copy(shape = shapes.large) }
     } else {
         base
     }
@@ -427,6 +431,10 @@ internal val EtaSegmentedGap: Dp = ListItemDefaults.SegmentedGap
  * 勾选 / 开关行（`choiceRow = true`）保持官方 [ListItemDefaults.ContentPadding]，
  * 不再额外补纵向留白。
  *
+ * 勾选值需要反复翻转的多选行（勾选/取消勾选伴随官方选中形状 morph 与底色过渡）必须
+ * 走 `checked`/`onCheckedChange`（官方 checked 变体，单调用点）；不要用 `selected`
+ * 承载这种翻转——按 `selected` 在多个调用点之间切换会重建官方子树、重置动画状态。
+ *
  * 轻触反馈由本行自己触发，调用方**不要**在 `onClick` 里再写 `TouchHaptics.click`。
  */
 @Composable
@@ -439,6 +447,13 @@ fun EtaSegmentedRow(
     onLongClickLabel: String? = null,
     enabled: Boolean = true,
     selected: Boolean = false,
+    // 勾选行（官方 checked 变体）：非 null 时优先于 selected，走勾选语义（Role.Checkbox，
+    // 行点击经 onCheckedChange 切换）。多选列表必须用本变体承载反复勾选/取消——官方选中
+    // 形状 morph（shapeForInteraction → rememberAnimatedShape）与选中底色 animateColor
+    // 都是调用点内的 remember 状态，若按 selected 翻转在多个调用点之间切换，整棵官方子树
+    // 被销毁重建、状态重置，morph 就成了硬跳。
+    checked: Boolean? = null,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
     // 选中态容器色覆盖：不传时保持官方 segmentedColors 默认。仅个别列表（如会话抽屉）
     // 需要自定义选中色，其他调用方不受影响。
     selectedContainerColor: Color? = null,
@@ -461,7 +476,33 @@ fun EtaSegmentedRow(
     val view = LocalView.current
     // 显式类型：let 返回嵌套 lambda 时推断器会落到 Nothing?。
     val hapticClick: (() -> Unit)? = onClick?.let { click -> { TouchHaptics.click(view); click() } }
-    if (selected) {
+    // 勾选行的行级触感同样由本组件内建，调用方不要在 onCheckedChange 里再加。
+    val hapticOnCheckedChange = onCheckedChange?.let { callback ->
+        { value: Boolean -> TouchHaptics.click(view); callback(value) }
+    }
+    // 勾选行必须且只能走这一个调用点：checked 值在同一调用点内翻转，官方形状/颜色
+    // morph 的 remember 状态才不会丢。官方 checked 变体长按入口可用（onLongClick 槽位）。
+    if (checked != null) {
+        SegmentedListItem(
+            verticalAlignment = Alignment.CenterVertically,
+            checked = checked,
+            // 官方 checked 变体的 onCheckedChange 为非空参数；未给时以空实现兜底
+            // （行点击无效果），因此 checked 非 null 时调用方应同时提供 onCheckedChange。
+            onCheckedChange = hapticOnCheckedChange ?: {},
+            onLongClick = onLongClick,
+            onLongClickLabel = onLongClickLabel,
+            enabled = enabled,
+            shapes = shapes,
+            colors = colors,
+            modifier = modifier,
+            leadingContent = leadingContent,
+            trailingContent = trailingContent,
+            overlineContent = overlineContent,
+            supportingContent = supportingContent,
+            contentPadding = contentPadding,
+            content = content,
+        )
+    } else if (selected) {
         SegmentedListItem(
             verticalAlignment = Alignment.CenterVertically,
             selected = true,

@@ -1084,6 +1084,8 @@ private fun HitThumbnail(hit: MediaSearchService.Hit) {
 /**
  * 结果行：非多选态点按打开、长按进入多选并选中当前行；多选态行首显示复选框，
  * 整行点击改勾选（单条「打开」入口随多选模式隐藏，专注批量）。
+ * 多选态走官方 checked 变体（[EtaSegmentedRow] 的 checked/onCheckedChange 入口）：
+ * 勾选翻转发生在同一调用点内，官方的选中形状 morph 与底色过渡才能动画播放。
  * 点按/长按触感由 [EtaSegmentedRow] 内建（与设置主页同一套），行内不再重复触发。
  */
 @Composable
@@ -1100,7 +1102,15 @@ private fun MediaHitRow(
         modifier = modifier,
         onClick = onClick,
         onLongClick = onLongClick,
-        selected = selectionMode && checked,
+        // 多选态切到官方 checked 变体：勾选/取消勾选在同一调用点内翻转，官方选中形状
+        // morph（rememberAnimatedShape）与选中底色过渡才会动画播放；非多选态仍是普通
+        // 可点行。行点击统一走调用方注入的 onClick（多选态即勾选切换，触感由组件内建）。
+        checked = if (selectionMode) checked else null,
+        onCheckedChange = if (selectionMode) {
+            { onClick() }
+        } else {
+            null
+        },
         // 多选勾选行：上下保持官方内边距，不参与动作行的纵向补偿。
         choiceRow = true,
         leadingContent = {
