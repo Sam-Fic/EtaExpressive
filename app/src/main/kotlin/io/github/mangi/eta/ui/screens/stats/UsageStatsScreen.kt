@@ -1,14 +1,18 @@
 package io.github.mangi.eta.ui.screens.stats
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -35,8 +39,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -771,59 +777,126 @@ private fun ChatHeatmap(conversationsPerDay: Map<LocalDate, Int>) {
                 }
             }
         }
-        Column(
-            modifier = Modifier.horizontalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(cellSpacing)) {
-                for (weekIdx in 0 until numWeeks) {
-                    val weekStart = startSunday.plusDays((weekIdx * 7).toLong())
-                    val labelDate = (0..6)
-                        .map { weekStart.plusDays(it.toLong()) }
-                        .firstOrNull { it.dayOfMonth == 1 }
-                    Box(
-                        modifier = Modifier
-                            .width(cellSize)
-                            .height(monthLabelHeight),
-                        contentAlignment = Alignment.BottomStart,
-                    ) {
-                        if (labelDate != null) {
-                            HeatmapCaption(
-                                text = if (labelDate.monthValue == 1) {
-                                    labelDate.year.toString()
-                                } else {
-                                    labelDate.month.getDisplayName(TextStyle.SHORT, LocalConfiguration.current.locales[0])
-                                },
-                                modifier = Modifier.wrapContentWidth(unbounded = true),
-                                fontSize = 9.sp,
-                                color = onSurfaceVariant,
-                                maxLines = 1,
-                            )
+        Box(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.horizontalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(cellSpacing)) {
+                    for (weekIdx in 0 until numWeeks) {
+                        val weekStart = startSunday.plusDays((weekIdx * 7).toLong())
+                        val labelDate = (0..6)
+                            .map { weekStart.plusDays(it.toLong()) }
+                            .firstOrNull { it.dayOfMonth == 1 }
+                        Box(
+                            modifier = Modifier
+                                .width(cellSize)
+                                .height(monthLabelHeight),
+                            contentAlignment = Alignment.BottomStart,
+                        ) {
+                            if (labelDate != null) {
+                                HeatmapCaption(
+                                    text = if (labelDate.monthValue == 1) {
+                                        labelDate.year.toString()
+                                    } else {
+                                        labelDate.month.getDisplayName(TextStyle.SHORT, LocalConfiguration.current.locales[0])
+                                    },
+                                    modifier = Modifier.wrapContentWidth(unbounded = true),
+                                    fontSize = 9.sp,
+                                    color = onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                    // 末尾留白：最右侧月份标签（如“10月”）会溢出自身网格列宽度，
+                    // 留出空间让它完整落在水平滚动视口内，不被右边缘裁切。
+                    Spacer(Modifier.width(16.dp))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(cellSpacing)) {
+                    for (weekIdx in 0 until numWeeks) {
+                        Column(verticalArrangement = Arrangement.spacedBy(cellSpacing)) {
+                            for (dow in 0..6) {
+                                val date = startSunday.plusDays((weekIdx * 7 + dow).toLong())
+                                val isFuture = date.isAfter(today)
+                                val count = if (isFuture) 0 else (conversationsPerDay[date] ?: 0)
+                                HeatmapCell(
+                                    alpha = heatmapAlpha(count, q1, q2, q3, isFuture),
+                                    sizeDp = cellSize.value.toInt(),
+                                )
+                            }
                         }
                     }
                 }
-                // 末尾留白：最右侧月份标签（如“10月”）会溢出自身网格列宽度，
-                // 留出空间让它完整落在水平滚动视口内，不被右边缘裁切。
-                Spacer(Modifier.width(16.dp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(cellSpacing)) {
-                for (weekIdx in 0 until numWeeks) {
-                    Column(verticalArrangement = Arrangement.spacedBy(cellSpacing)) {
-                        for (dow in 0..6) {
-                            val date = startSunday.plusDays((weekIdx * 7 + dow).toLong())
-                            val isFuture = date.isAfter(today)
-                            val count = if (isFuture) 0 else (conversationsPerDay[date] ?: 0)
-                            HeatmapCell(
-                                alpha = heatmapAlpha(count, q1, q2, q3, isFuture),
-                                sizeDp = cellSize.value.toInt(),
-                            )
-                        }
-                    }
-                }
-            }
+            // 两端淡出带：横向滚到中间时，被视口切一半的格子与月份标签与容器底色融合，
+            // 不留生硬的竖直截断边。做法与会话抽屉顶部文件夹胶囊行一致。
+            HeatmapEdgeFades(
+                scrollState = scrollState,
+                color = MaterialTheme.colorScheme.surfaceBright,
+            )
         }
     }
 }
+
+/**
+ * 热力图横向滚动区两端的淡出带。
+ *
+ * 与会话抽屉顶部的文件夹胶囊行同一做法：滚动区可以横向滚动，但视口自身没有内边距，
+ * 滚到中间时，首尾的格子 / 月份标签会被视口边缘竖直切开，留下一条生硬的截断边。
+ * 这里在两端各盖一条与热力图容器底色同色的渐变，把切开的部分「擦」进背景里。
+ *
+ * 只在对应方向真的还有内容可滚时才显示（[ScrollState.canScrollBackward] /
+ * [ScrollState.canScrollForward]），停在两端时不会把完整可见的格子再罩上一层。
+ * 渐变透明端用同 RGB 的 alpha 0，不用 `Color.Transparent`（黑色全透明），避免渐出一道灰边。
+ */
+@Composable
+private fun BoxScope.HeatmapEdgeFades(
+    scrollState: ScrollState,
+    color: Color,
+) {
+    // 边缘淡出带只变透明度：M3E Effects fast 档，临界阻尼无过冲。
+    val edgeFadeSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    val startAlpha by animateFloatAsState(
+        targetValue = if (scrollState.canScrollBackward) 1f else 0f,
+        animationSpec = edgeFadeSpec,
+        label = "heatmapFadeStart",
+    )
+    val endAlpha by animateFloatAsState(
+        targetValue = if (scrollState.canScrollForward) 1f else 0f,
+        animationSpec = edgeFadeSpec,
+        label = "heatmapFadeEnd",
+    )
+    Box(modifier = Modifier.matchParentSize()) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight()
+                .width(HeatmapEdgeFadeWidth)
+                .graphicsLayer { alpha = startAlpha }
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(color, color.copy(alpha = 0f)),
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(HeatmapEdgeFadeWidth)
+                .graphicsLayer { alpha = endAlpha }
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(color.copy(alpha = 0f), color),
+                    ),
+                ),
+        )
+    }
+}
+
+/** 热力图滚动区两端的淡出带宽：约一格半（格子 11dp + 间距 2dp）。 */
+private val HeatmapEdgeFadeWidth = 16.dp
 
 /** 热力图色块：非交互数据可视化，颜色只取主题角色。 */
 @Composable
