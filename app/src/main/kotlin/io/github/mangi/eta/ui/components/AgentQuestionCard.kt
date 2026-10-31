@@ -41,7 +41,6 @@ import io.github.mangi.eta.agent.question.AgentQuestionCodec
 import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaType
-import io.github.mangi.eta.ui.adaptive.etaOnSurface
 import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
 import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
@@ -99,11 +98,9 @@ private fun AgentQuestionCardContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(request.title, modifier = Modifier.fillMaxWidth(),
-                style = etaTextStyle(EtaType.Body),
-                color = etaOnSurface())
+                style = chatExpandedBodyStyle())
             Text(request.question, modifier = Modifier.fillMaxWidth(),
-                style = etaTextStyle(EtaType.Body),
-                color = etaOnSurface())
+                style = chatExpandedBodyStyle())
             if (!waiting) {
                 QuestionReadOnlyDetails(message)
             } else {
@@ -139,10 +136,10 @@ private fun AgentQuestionCardContent(
                 if (request.allowNote) QuestionTextField(value = message.note,
                     onValueChange = { changeDraft(draft.copy(note = it.take(2000))) }, enabled = editable,
                     label = stringResource(R.string.question_note))
-                message.error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error,
-                        style = etaTextStyle(EtaType.Caption))
-                }
+                    message.error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                 // M3 Expressive：官方 Button 的默认形状、容器高度、内边距、
                 // primary / onPrimary 与禁用态颜色全部交给官方默认值。
                 Button(onClick = { if (editable && valid) onSubmit() },
@@ -164,9 +161,8 @@ private fun AgentQuestionCardContent(
         },
         title = "${questionStatusText(message.status)} · ${request.title}",
         // 回执标题单行省略：完整标题与问题正文都在展开后的详情里（与旧卡一致，
-        // 收起态保持一整行）。
+        // 收起态保持一整行）。颜色走官方默认——与思考/工具行标题同一档。
         titleMaxLines = 1,
-        titleColor = if (waiting) null else etaOnSurfaceVariant(),
         trailingStatus = if (message.status == AgentQuestionStatus.Answered) {
             {
                 // 状态已在标题里播报，图标不重复 description；与工具行成功态同款对勾。
@@ -216,11 +212,8 @@ private fun QuestionOptionRow(
         },
         supportingContent = if (description.isNotBlank()) {
             {
-                Text(
-                    text = description,
-                    style = etaTextStyle(EtaType.Secondary),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // 官方 supporting 槽位默认：bodyMedium + onSurfaceVariant。
+                Text(text = description)
             }
         } else {
             null
@@ -233,7 +226,8 @@ private fun QuestionOptionRow(
 private fun QuestionOptionLabel(label: String, recommended: Boolean) {
     // M3 Expressive：「推荐」标签用官方 Badge（官方容器色与内边距），不自绘底色圆角块。
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), style = etaTextStyle(EtaType.Body), color = MaterialTheme.colorScheme.onSurface)
+        // 官方 content 槽位默认：bodyLarge + contentColor，不显式传样式。
+        Text(label, Modifier.weight(1f))
         if (recommended) {
             Badge(
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
@@ -271,15 +265,15 @@ private fun QuestionReadOnlyDetails(message: AgentQuestionMessageUi) {
     val request = message.request
     // Only the submitted answer is authority. Never read selectedOptionId, otherText or note drafts here.
     val answer = message.answer.takeIf { message.status == AgentQuestionStatus.Answered }
-    val bodyStyle = MaterialTheme.typography.bodyLarge
-    val labelStyle = MaterialTheme.typography.bodyMedium
-    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val bodyColor = etaOnSurface()
-    val summaryColor = MaterialTheme.colorScheme.primary
+    // 档位与思考/工具详情同源：正文 chatExpandedBodyStyle（14sp/onSurfaceVariant），
+    // 小标签 chatQuaternaryStyle（labelSmall）+ onSurfaceVariant——不另设字号与颜色。
+    val bodyStyle = chatExpandedBodyStyle()
+    val labelStyle = chatQuaternaryStyle()
+    val labelColor = etaOnSurfaceVariant()
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         questionSummary(message)?.let { summary ->
             // This is the only summary. Custom answers remain complete, even when very long.
-            Text(summary, modifier = Modifier.fillMaxWidth(), style = bodyStyle, color = summaryColor)
+            Text(summary, modifier = Modifier.fillMaxWidth(), style = bodyStyle)
         }
         if (answer == null) {
             // Unanswered history may show the original options, never an uncommitted draft.
@@ -293,17 +287,17 @@ private fun QuestionReadOnlyDetails(message: AgentQuestionMessageUi) {
             when (answer.kind) {
                 "option" -> request.options.firstOrNull { it.id == answer.optionId }?.description
                     ?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, modifier = Modifier.fillMaxWidth(), style = labelStyle, color = labelColor)
+                        Text(it, modifier = Modifier.fillMaxWidth(), style = bodyStyle)
                     }
                 "delegate" -> Text(stringResource(R.string.question_delegate_hint), modifier = Modifier.fillMaxWidth(),
-                    style = labelStyle, color = labelColor)
+                    style = bodyStyle)
                 else -> Unit
             }
         }
         answer?.note?.takeIf { it.isNotBlank() }?.let { note ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(R.string.question_note), style = labelStyle, color = labelColor)
-                Text(note, modifier = Modifier.fillMaxWidth(), style = bodyStyle, color = bodyColor)
+                Text(note, modifier = Modifier.fillMaxWidth(), style = bodyStyle)
             }
         }
     }
@@ -330,11 +324,8 @@ private fun QuestionHistoryOption(label: String, description: String, selected: 
         },
         supportingContent = if (description.isNotBlank()) {
             {
-                Text(
-                    text = description,
-                    style = etaTextStyle(EtaType.Secondary),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // 官方 supporting 槽位默认：bodyMedium + onSurfaceVariant。
+                Text(text = description)
             }
         } else {
             null
