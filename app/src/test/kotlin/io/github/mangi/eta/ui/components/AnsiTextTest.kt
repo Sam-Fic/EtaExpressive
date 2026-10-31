@@ -103,4 +103,29 @@ class AnsiTextTest {
         // 38;5;111 → cube(135,175,255)
         assertTrue(parsed.spanStyles.any { it.item.color == Color(0xFF87AFFF) })
     }
+
+    @Test
+    fun renderWindowPassesShortTextThrough() {
+        assertEquals("hello", terminalRenderWindow("hello", limit = 8))
+        assertEquals("exactly8c", terminalRenderWindow("exactly8c", limit = 9))
+    }
+
+    @Test
+    fun renderWindowKeepsTailAlignedToLineBreak() {
+        val text = "head-half-missing\nline-a\nline-b"
+        val window = terminalRenderWindow(text, limit = 20)
+        // 窗口起点对齐到换行之后：整行保留，不会劈开行与转义序列。
+        assertEquals("line-a\nline-b", window)
+    }
+
+    @Test
+    fun renderWindowWithoutLineBreakFallsBackToCharCut() {
+        assertEquals("x".repeat(20), terminalRenderWindow("x".repeat(30), limit = 20))
+    }
+
+    @Test
+    fun renderWindowTrailingLineBreakDoesNotRenderEmpty() {
+        val window = terminalRenderWindow("a".repeat(25) + "\n", limit = 20)
+        assertTrue(window.isNotEmpty())
+    }
 }

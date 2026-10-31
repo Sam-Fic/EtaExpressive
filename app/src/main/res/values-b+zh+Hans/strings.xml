@@ -3003,6 +3003,7 @@
   <string name="tool_load_tool_group">加载工具组</string>
   <string name="action_conversation_menu">会话操作</string>
   <string name="action_enter_selection">进入多选</string>
+  <string name="action_terminal_menu">终端操作</string>
   <string name="appst_history_create_folder_need_name">新建文件夹需要提供 name</string>
   <string name="appst_history_rename_folder_need_name">重命名文件夹需要提供 name</string>
   <string name="appst_history_rename_conversation_need_name">重命名对话需要提供 name</string>

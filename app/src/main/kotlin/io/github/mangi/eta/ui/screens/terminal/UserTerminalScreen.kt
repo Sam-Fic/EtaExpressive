@@ -90,8 +90,10 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.app.TerminalBlockUi
 import io.github.mangi.eta.ui.app.UserTerminalStore
 import io.github.mangi.eta.ui.app.UserTerminalUiState
+import io.github.mangi.eta.ui.components.TERMINAL_RENDER_WINDOW_CHARS
 import io.github.mangi.eta.ui.components.ansiPlainText
 import io.github.mangi.eta.ui.components.ansiToAnnotatedString
+import io.github.mangi.eta.ui.components.terminalRenderWindow
 
 /** 快捷命令 chips（shell 命令本身不翻译）：点击填入输入框，不直接执行。 */
 private val TerminalQuickCommands = listOf("ls", "pwd", "df -h", "free -h", "ps aux", "whoami")
@@ -367,13 +369,16 @@ private fun CommandBlock(
                     EtaSegmentedRow(
                         onClick = {},
                         onLongClick = { showActions = true },
+                        onLongClickLabel = stringResource(R.string.action_terminal_menu),
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             TerminalMonoText(text = blockHeader(block))
                             if (block.output.isNotEmpty()) {
                                 // 原始输出含 ANSI 序列；整段重解析保证流式截断的序列在下一次到达后恢复。
+                                // 渲染只取尾部窗口：整段喂给一个 Text 的排版成本随输出长度增长，
+                                // 流式期间每帧全量重排；更早的输出仍可通过动作菜单复制。
                                 val parsedOutput = remember(block.output) {
-                                    ansiToAnnotatedString(block.output)
+                                    ansiToAnnotatedString(terminalRenderWindow(block.output))
                                 }
                                 TerminalMonoText(
                                     text = parsedOutput,
@@ -410,7 +415,8 @@ private fun CommandBlock(
                                     )
                                 }
                             }
-                            if (block.truncated) {
+                            // 超出渲染窗口的部分（store 截断或仅渲染窗口丢弃）对用户一样不可见。
+                            if (block.truncated || block.output.length > TERMINAL_RENDER_WINDOW_CHARS) {
                                 TerminalMonoText(
                                     text = AnnotatedString(stringResource(R.string.terminal_output_truncated)),
                                     color = terminalMutedForeground(),

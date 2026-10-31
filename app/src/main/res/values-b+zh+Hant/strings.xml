@@ -3003,6 +3003,7 @@
   <string name="tool_load_tool_group">載入工具組</string>
   <string name="action_conversation_menu">會話操作</string>
   <string name="action_enter_selection">進入多選</string>
+  <string name="action_terminal_menu">終端操作</string>
   <string name="appst_history_create_folder_need_name">新建資料夾需要提供 name</string>
   <string name="appst_history_rename_folder_need_name">重新命名資料夾需要提供 name</string>
   <string name="appst_history_rename_conversation_need_name">重新命名對話需要提供 name</string>

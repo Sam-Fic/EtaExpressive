@@ -3037,6 +3037,7 @@
   <string name="tool_load_tool_group">Load tool group</string>
   <string name="action_conversation_menu">Conversation actions</string>
   <string name="action_enter_selection">Enter selection mode</string>
+  <string name="action_terminal_menu">Terminal actions</string>
   <string name="appst_history_create_folder_need_name">Creating a folder requires a name</string>
   <string name="appst_history_rename_folder_need_name">Renaming a folder requires a name</string>
   <string name="appst_history_rename_conversation_need_name">Renaming a conversation requires a name</string>
