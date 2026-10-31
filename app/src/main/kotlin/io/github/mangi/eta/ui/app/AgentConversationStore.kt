@@ -207,10 +207,16 @@ internal object AgentConversationStore {
                     for ((conversationId, state) in sorted) {
                         if (!state.conversationContentLoaded) continue
                         if (contentConversationIds != null && conversationId !in contentConversationIds) continue
-                        dao.deleteMessagesForConversation(conversationId)
+                        // 展示分页下只重写已加载后缀：边界（含）之前的未加载记录原地保留，
+                        // 不会被内存窗口覆盖。全量视图边界为 0，与历史全删重写行为一致。
+                        dao.deleteMessagesFrom(conversationId, state.loadedFromSortIndex)
                         dao.deleteContextCheckpoint(conversationId)
+                        // 窗口内行号从边界起重新压实；mapIndexed 的下标是列表位置，
+                        // 跳过的空行只产生边界内的空洞，与边界外的旧记录互不影响。
                         val pages = state.messages.asSequence()
-                            .mapIndexedNotNull { index, message -> message.toEntityOrNull(conversationId, index) }
+                            .mapIndexedNotNull { index, message ->
+                                message.toEntityOrNull(conversationId, state.loadedFromSortIndex + index)
+                            }
                             .chunked(MESSAGE_LOAD_PAGE_SIZE)
                         for (page in pages) dao.insertMessages(page)
                         writeConversationHistory(appContext, conversationId, state.history)
@@ -339,16 +345,65 @@ internal object AgentConversationStore {
     suspend fun questionConversationIds(context: Context): List<String> =
         EtaDatabase.get(context.applicationContext).conversationDao().questionConversationIds()
 
-    fun loadConversation(context: Context, id: String): AgentChatHomeUiState? = runBlocking(Dispatchers.IO) {
+    /**
+     * 加载单个会话。[displayWindowRows] 给定且模型历史可用时，展示消息只取最后 N 行
+     * （展示分页）：更早记录留在库里，窗口边界记在
+     * [AgentChatUiState.loadedFromSortIndex]，之后由 [loadEarlierConversationWindow]
+     * 按需上翻补齐。传 null 保持历史全量视图，供未接预取的调用方零行为差异。
+     */
+    fun loadConversation(
+        context: Context,
+        id: String,
+        displayWindowRows: Int? = null,
+    ): AgentChatHomeUiState? = runBlocking(Dispatchers.IO) {
         val database = EtaDatabase.get(context.applicationContext)
         database.withTransaction {
             val dao = database.conversationDao()
-            dao.conversationMetadata(id)?.let { loadConversationState(context, dao, it, true) }
+            dao.conversationMetadata(id)?.let { loadConversationState(context, dao, it, true, displayWindowRows) }
+        }
+    }
+
+    /** [loadEarlierConversationWindow] 的一页结果：消息按 sort_index 升序，可直接前插。 */
+    data class EarlierConversationPage(
+        val messages: List<AgentChatMessageUi>,
+        /** 本页最前一行对应的持久化 sort_index，前插后作为新的 loadedFromSortIndex。 */
+        val loadedFromSortIndex: Int,
+        /** 前插后仍留在库里未加载的更早记录条数。 */
+        val earlierPersistedCount: Int,
+    )
+
+    /**
+     * 展示分页的上翻页：取 [loadedFromSortIndex] 之前的一批更早记录。调用方把返回的
+     * messages 前插进 state.messages 并以页内新边界 copy 状态；没有更早记录时返回 null。
+     * 独立事务读取，行号有空洞也成立（边界按实际 sort_index 而非行数计算）。
+     */
+    suspend fun loadEarlierConversationWindow(
+        context: Context,
+        id: String,
+        loadedFromSortIndex: Int,
+        rows: Int = MESSAGE_LOAD_PAGE_SIZE,
+    ): EarlierConversationPage? {
+        if (loadedFromSortIndex <= 0 || rows <= 0) return null
+        val database = EtaDatabase.get(context.applicationContext)
+        return database.withTransaction {
+            val dao = database.conversationDao()
+            if (!dao.hasMessagesBefore(id, loadedFromSortIndex)) return@withTransaction null
+            val window = dao.messagesBefore(id, loadedFromSortIndex, rows)
+            val boundary = window.firstOrNull()?.sortIndex ?: return@withTransaction null
+            EarlierConversationPage(
+                messages = window.mapNotNull { it.toMessageOrNull() },
+                loadedFromSortIndex = boundary,
+                earlierPersistedCount = dao.messageCountBefore(id, boundary),
+            )
         }
     }
 
     private suspend fun loadConversationState(
-        context: Context, dao: ConversationDao, conversation: ConversationMetadata, withContent: Boolean,
+        context: Context,
+        dao: ConversationDao,
+        conversation: ConversationMetadata,
+        withContent: Boolean,
+        displayWindowRows: Int? = null,
     ): AgentChatHomeUiState {
         val (fallbackProviderId, fallbackModelId) = defaultSelection()
         val checkpoint = if (withContent) dao.contextCheckpoint(conversation.id) else null
@@ -357,10 +412,15 @@ internal object AgentConversationStore {
                 ?: AgentConversationCodec.decodeTranscript(checkpoint?.historyJson)
         }
         val legacyHistory = mutableListOf<AgentModelClient.ConversationMessage>()
-        val storedRows = buildList {
-            if (!withContent) {
-                dao.conversationPreview(conversation.id)?.asMessageEntity()?.let(::add)
-            } else {
+        // 展示分页只在模型历史可用时生效：历史文件缺失时展示行还要承担旧版历史重建，
+        // 必须全量读取。窗口行数 ≥ 已存行数时不分页，自然退化为全量视图。
+        val window = if (withContent && displayWindowRows != null && persistedHistory.isNotEmpty()) {
+            displayWindowRows.takeIf { it > 0 && dao.messageCount(conversation.id) > it }
+        } else null
+        val storedRows = if (!withContent) {
+            listOfNotNull(dao.conversationPreview(conversation.id)?.asMessageEntity())
+        } else if (window == null) {
+            buildList {
                 var offset = 0
                 while (true) {
                     val page = dao.messagesPage(conversation.id, MESSAGE_LOAD_PAGE_SIZE, offset)
@@ -371,10 +431,17 @@ internal object AgentConversationStore {
                     offset += page.size
                 }
             }
+        } else {
+            dao.messagesBefore(conversation.id, Int.MAX_VALUE, window)
         }
         val sourceHistory = persistedHistory.ifEmpty { legacyHistory }
         val history = AgentTurnIdentity.migrate(sourceHistory)
         val rawMessages = storedRows.mapNotNull { it.toMessageOrNull() }
+        // 窗口边界取本页最前一行的实际 sort_index（行号可能有空洞），上翻页与保存
+        // 边界都以此为基准；全量视图固定 0，表示"更早记录也全部在内存里"。
+        val windowBoundary = window?.let { storedRows.first().sortIndex } ?: 0
+        val windowEarlierCount = if (window == null) 0
+        else dao.messageCountBefore(conversation.id, windowBoundary)
         val identityMigration = if (withContent) {
             migrateStableMessageIdentities(rawMessages, history)
         } else {
@@ -418,6 +485,8 @@ internal object AgentConversationStore {
             contextAwaitingReceipt = contextDisplay?.awaitingReceipt ?: (receipt == null && history.isNotEmpty()),
             cloudRouteSignature = receipt?.routeSignature,
             conversationContentLoaded = withContent,
+            loadedFromSortIndex = windowBoundary,
+            earlierPersistedCount = windowEarlierCount,
             messages = messages,
             isWaitingForAnswer = AgentQuestionProjection.hasWaiting(messages),
             history = history,

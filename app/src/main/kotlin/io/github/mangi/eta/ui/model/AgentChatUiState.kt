@@ -59,6 +59,14 @@ internal data class AgentChatUiState(
     /** False means metadata/preview only; persistence must not replace its stored content. */
     val conversationContentLoaded: Boolean = true,
     /**
+     * 展示分页的持久化边界：messages 里第一行对应的 sort_index。0 表示更早记录也已全部
+     * 在内存里（历史全量视图）。保存时只重写 >= 该边界的行，更早的记录原地保留，
+     * 未加载的窗口外历史不会被内存视图覆盖。
+     */
+    val loadedFromSortIndex: Int = 0,
+    /** 持久层里仍留在边界之前、尚未加载的更早记录条数；驱动 UI 的"加载更早消息"入口。 */
+    val earlierPersistedCount: Int = 0,
+    /**
      * GPT 速度有效档位：AppState 从独立主代理模型记忆（供应商 ID + 模型选择 ID）投影。
      * 非 GPT/不可用绑定仅显示正常，不清除模型记忆；UI 只渲染并派发切换事件。
      */

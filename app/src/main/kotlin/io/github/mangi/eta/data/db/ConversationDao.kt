@@ -75,6 +75,26 @@ internal interface ConversationDao {
     @Query("SELECT * FROM conversation_messages WHERE conversation_id = :conversationId ORDER BY sort_index ASC LIMIT :limit OFFSET :offset")
     suspend fun messagesPage(conversationId: String, limit: Int, offset: Int): List<ConversationMessageEntity>
 
+    // 展示分页：倒序取一批再翻正，加载窗口只碰 sort_index 边界之前的行。
+    @Query("SELECT * FROM conversation_messages WHERE conversation_id = :conversationId AND sort_index < :before " +
+        "ORDER BY sort_index DESC LIMIT :limit")
+    suspend fun messageRowsBefore(conversationId: String, before: Int, limit: Int): List<ConversationMessageEntity>
+
+    @Transaction
+    suspend fun messagesBefore(conversationId: String, before: Int, limit: Int): List<ConversationMessageEntity> =
+        messageRowsBefore(conversationId, before, limit).asReversed()
+
+    @Query("SELECT EXISTS(SELECT 1 FROM conversation_messages WHERE conversation_id = :conversationId AND sort_index < :before)")
+    suspend fun hasMessagesBefore(conversationId: String, before: Int): Boolean
+
+    @Query("SELECT COUNT(*) FROM conversation_messages WHERE conversation_id = :conversationId AND sort_index < :before")
+    suspend fun messageCountBefore(conversationId: String, before: Int): Int
+
+    // 保存边界：只清掉已加载窗口覆盖到的行（>= fromSortIndex），未加载的更早记录原地保留。
+    // fromSortIndex = 0 时等价于 deleteMessagesForConversation，即历史全量重写路径。
+    @Query("DELETE FROM conversation_messages WHERE conversation_id = :conversationId AND sort_index >= :fromSortIndex")
+    suspend fun deleteMessagesFrom(conversationId: String, fromSortIndex: Int)
+
     // Message IDs are primary keys for the whole table, not just one conversation.
     @Query("SELECT EXISTS(SELECT 1 FROM conversation_messages WHERE id = :id)")
     suspend fun messageIdExists(id: String): Boolean
