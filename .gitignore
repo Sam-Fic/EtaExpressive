@@ -38,8 +38,10 @@ google-services.json
 /local.properties
 /.analysis/
 /.tmp/
+/.tmp-tmp/
 /.tmp_navsrc/
 /.tmp_shots/
+/.zcode-tmp/
 
 # 外部源码参考，仅供阅读，不参与当前仓库版本管理
 /reference/
@@ -51,6 +53,7 @@ google-services.json
 /.trae/
 /.codebuddy/
 /.workbuddy/
+/.zcode/
 
 # AI 助手约定文档（本地维护，不入库）
 /AGENTS.md
