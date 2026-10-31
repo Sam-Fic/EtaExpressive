@@ -1505,6 +1505,7 @@ private fun Material3ConversationRow(
                             count = 6,
                             text = stringResource(R.string.conversation_move_to_trash),
                             icon = Icons.Rounded.Delete,
+                            destructive = true,
                             onClick = {
                                 showActionMenu = false
                                 onDelete()

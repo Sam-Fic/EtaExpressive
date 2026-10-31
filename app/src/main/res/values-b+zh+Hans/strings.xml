@@ -51,7 +51,6 @@
   <string name="action_browse_workspace_files">浏览工作区文件</string>
   <string name="action_auto_compress_context">自动压缩</string>
   <string name="action_compress_conversation">压缩会话</string>
-  <string name="action_delete_current_conversation">删除当前会话</string>
   <string name="compress_conversation_nothing_to_compress">没有足够的消息可以压缩</string>
   <string name="compress_conversation_failed">压缩会话失败</string>
   <string name="compress_conversation_streaming">模型回复时无法压缩</string>

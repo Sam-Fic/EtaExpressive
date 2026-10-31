@@ -283,7 +283,7 @@ internal fun TopBarMenuItems(
 
         TopBarMenuSection {
             TopBarMenuItem(
-                text = stringResource(R.string.action_delete_current_conversation),
+                text = stringResource(R.string.conversation_move_to_trash),
                 index = fifthSectionStart,
                 count = itemCount,
                 enabled = canDeleteCurrentConversation,

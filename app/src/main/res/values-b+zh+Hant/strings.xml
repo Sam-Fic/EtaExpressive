@@ -53,7 +53,6 @@
   <string name="action_browse_workspace_files">瀏覽工作區檔案</string>
   <string name="action_auto_compress_context">自動壓縮</string>
   <string name="action_compress_conversation">壓縮會話</string>
-  <string name="action_delete_current_conversation">刪除目前會話</string>
   <string name="compress_conversation_nothing_to_compress">沒有足夠的訊息可以壓縮</string>
   <string name="compress_conversation_failed">壓縮會話失敗</string>
   <string name="compress_conversation_streaming">模型回覆時無法壓縮</string>

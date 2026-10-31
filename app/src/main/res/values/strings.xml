@@ -1860,7 +1860,6 @@
 
   <string name="action_auto_compress_context">Auto compact</string>
   <string name="action_compress_conversation">Compress conversation</string>
-  <string name="action_delete_current_conversation">Delete current conversation</string>
   <string name="compress_conversation_nothing_to_compress">Not enough messages to compress</string>
   <string name="compress_conversation_failed">Failed to compress conversation</string>
   <string name="compress_conversation_streaming">Cannot compress while a reply is in progress</string>
