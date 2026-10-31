@@ -3049,4 +3049,7 @@
   <string name="appst_history_not_in_trash_restore">The conversation is not in the trash; nothing to restore</string>
   <string name="appst_history_not_in_trash_purge">The conversation is not in the trash; delete it before purging</string>
   <string name="appst_summary_failed">Summarization failed</string>
+  <string name="systemizer_resource_prepare_failed">Failed to prepare module resources</string>
+  <string name="systemizer_install_failed">Module installation failed</string>
+  <string name="systemizer_command_timeout">Command execution timed out</string>
 </resources>

@@ -3,7 +3,9 @@ package io.github.mangi.eta.systemizer
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.RootSu
+import io.github.mangi.eta.agent.runtime.localizedText
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
 import java.io.File
@@ -85,7 +87,7 @@ internal class GoogleAppSystemizerInstaller(
                     "Google App systemizer action=prepare outcome=failed " +
                         "errorType=${it.safeLogType()}"
                 )
-                return SystemizerInstallResult.Failed("模块资源准备失败")
+                return SystemizerInstallResult.Failed(localizedText(R.string.systemizer_resource_prepare_failed, "模块资源准备失败"))
             }
 
         val command = buildInstallCommand(rootManager, moduleZip.absolutePath)
@@ -102,7 +104,7 @@ internal class GoogleAppSystemizerInstaller(
                     "rootManager=$rootManager exitCode=${result.exitCode} outputChars=${result.output.length}"
             )
             SystemizerInstallResult.Failed(
-                message = "模块安装失败",
+                message = localizedText(R.string.systemizer_install_failed, "模块安装失败"),
                 commandOutput = result.output.takeLast(1200),
             )
         }
@@ -169,7 +171,7 @@ internal class GoogleAppSystemizerInstaller(
         if (!finished) {
             process.destroyForcibly()
             reader.join(1000)
-            return RootCommandResult(exitCode = -2, output = "命令执行超时")
+            return RootCommandResult(exitCode = -2, output = localizedText(R.string.systemizer_command_timeout, "命令执行超时"))
         }
 
         reader.join(1000)

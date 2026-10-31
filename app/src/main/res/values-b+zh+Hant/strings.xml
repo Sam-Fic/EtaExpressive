@@ -3015,4 +3015,7 @@
   <string name="appst_history_not_in_trash_restore">該對話不在回收站中，無需還原</string>
   <string name="appst_history_not_in_trash_purge">該對話不在回收站中；請先刪除再永久清理</string>
   <string name="appst_summary_failed">摘要失敗</string>
+  <string name="systemizer_resource_prepare_failed">模組資源準備失敗</string>
+  <string name="systemizer_install_failed">模組安裝失敗</string>
+  <string name="systemizer_command_timeout">命令執行逾時</string>
 </resources>
