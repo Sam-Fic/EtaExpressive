@@ -300,8 +300,9 @@ internal fun Material3ComposerBody(
         isCompressingContext = isCompressingContext,
     )
     val conversationKey = conversationId.orEmpty()
-    // 生成 / 压缩中不再允许改助手与模型（与旧按钮组相同的可用性规则）。
-    val pickerEnabled = (!isStreaming || isPaused) && !isCompressingContext
+    // 「模型与助手」入口在生成中保持可点：运行配置按轮冻结，改选只登记待生效绑定，本轮不变。
+    // 编辑态输入区承载的是另一条消息，才收起入口。
+    val pickerSheetEnabled = !isEditingMessage
 
     // 重新进入该会话时，如果输入框还是空的，就恢复上次「保存草稿」存下的内容。
     LaunchedEffect(conversationKey) {
@@ -312,9 +313,10 @@ internal fun Material3ComposerBody(
             textFieldState.setTextAndPlaceCursorAtEnd(saved)
         }
     }
-    // 生成开始或进入编辑态时收起选择弹窗，避免弹窗内容与当前状态脱节。
-    LaunchedEffect(pickerEnabled, isEditingMessage) {
-        if (!pickerEnabled || isEditingMessage) showPickerSheet = false
+    // 进入编辑态时收起弹窗：此时输入框承载的是另一条消息，改选没有意义。
+    // 压缩中不收起——面板仍可点开查看，只是改选会被 owner 拒绝并给出提示。
+    LaunchedEffect(pickerSheetEnabled) {
+        if (!pickerSheetEnabled) showPickerSheet = false
     }
     // 输入栏进出场动效统一取官方 Expressive 弹簧规格（与输入区其它动效同一来源）。
     // 淡化属 Effects（临界阻尼、无过冲），宽度展开收缩属 Spatial（轻微过冲）。
@@ -458,7 +460,7 @@ internal fun Material3ComposerBody(
                         if (showModelPicker) {
                             Spacer(modifier = Modifier.width(ComposerToolbarGap))
                             M3ComposerPickerButton(
-                                enabled = pickerEnabled,
+                                enabled = pickerSheetEnabled,
                                 onClick = { showPickerSheet = true },
                                 onOpenSubAgentSettings = onOpenSubAgentSettings,
                             )
@@ -635,7 +637,7 @@ internal fun Material3ComposerBody(
     }
 
     M3ComposerPickerSheet(
-        // 浮层不显示选择按钮，弹窗也一并屏蔽（按钮已无法点亮 showPickerSheet，这里只是兜底）。
+        // 语音浮层不显示选择按钮，弹窗也一并屏蔽（点不到入口，这里只是兜底）。
         show = showPickerSheet && showModelPicker,
         onDismiss = { showPickerSheet = false },
         assistantId = assistantId,
@@ -646,6 +648,7 @@ internal fun Material3ComposerBody(
         modelPickerState = modelPickerState,
         isStreaming = isStreaming,
         isPaused = isPaused,
+        isCompressingContext = isCompressingContext,
         onModelSelected = onModelSelected,
         usage = usage,
         contextSendBlocked = contextSendBlocked,

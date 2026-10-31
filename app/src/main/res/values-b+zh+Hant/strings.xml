@@ -2045,6 +2045,11 @@
   <string name="composer_scheduled_toast">已安排在 %1$s 傳送</string>
   <string name="composer_schedule_cancel">取消定時傳送</string>
   <string name="composer_schedule_none">暫無定時訊息</string>
+  <string name="composer_pending_selection_hint">本輪仍用 %1$s，%2$s 將從下一輪對話開始生效</string>
+  <string name="composer_pending_selection_toast">「%1$s」將從下一輪對話開始生效</string>
+  <string name="composer_picker_compressing_locked">上下文壓縮中，暫不能改選模型或助手</string>
+  <string name="composer_current_turn_badge">本輪</string>
+  <string name="composer_next_turn_badge">下一輪</string>
   <string name="markdown_code_block">程式碼</string>
   <string name="markdown_alert_note">注意</string>
   <string name="markdown_alert_tip">提示</string>

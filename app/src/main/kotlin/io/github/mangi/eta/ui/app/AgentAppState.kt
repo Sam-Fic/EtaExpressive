@@ -755,6 +755,19 @@ internal class AgentAppState(
     var modelPickerState by mutableStateOf(AgentModelPickerUiState())
         private set
 
+    /**
+     * 生成中改选的「待生效」绑定，按会话隔离。运行配置在发起时已冻结成本轮专属快照，
+     * 所以这里只登记选择、不动会话绑定：本轮继续用原模型/助手，终态提交后下一轮生效。
+     * key 是选中会话 id，首页未落库的草稿用空串。
+     */
+    private val pendingSelectionByKey = mutableMapOf<String, PendingSelection>()
+
+    private data class PendingSelection(
+        val providerId: String = "",
+        val modelId: String = "",
+        val assistantId: String? = null,
+    )
+
     var conversationPaneState by mutableStateOf(
         ConversationPaneUiState(
             conversations = emptyList(),
@@ -1141,6 +1154,26 @@ internal class AgentAppState(
             if (conversationId == null) homeState = speedNext else updateConversation(conversationId, speedNext, updateTimestamp = false)
         }
         refreshRequestOverhead()
+        // 换会话 / 换服务商都会重跑这里：待生效投影必须跟着选中会话重新解析。
+        publishPendingSelection()
+    }
+
+    /**
+     * 把选中会话的待生效绑定投影给弹窗：与已绑定选择一样按精确 modelId 投影，
+     * 目标已被删除 / 禁用时直接不落影，等终态提交时静默丢弃。
+     */
+    private fun publishPendingSelection() {
+        val pending = pendingSelectionByKey[selectedConversationId.orEmpty()]
+        val providerId = pending?.providerId.orEmpty()
+        val modelId = pending?.modelId.orEmpty()
+        val provider = selectionProviders.singleOrNull { it.id == providerId }?.takeIf { it.isEnabled }
+        val model = provider?.models?.singleOrNull { it.id == modelId }?.takeIf { it.isEnabled }
+        val option = if (provider != null && model != null) {
+            AgentModelPickerProjector.project(listOf(provider.withModels(listOf(model))), provider.id, model.id).selectedModel
+        } else null
+        val assistantId = pending?.assistantId?.takeIf { AssistantRepository.profile(it) != null }
+        if (modelPickerState.pendingModel == option && modelPickerState.pendingAssistantId == assistantId) return
+        modelPickerState = modelPickerState.copy(pendingModel = option, pendingAssistantId = assistantId)
     }
 
     private fun rejectSendIfModelUnavailable(): Boolean {
@@ -1931,10 +1964,54 @@ internal class AgentAppState(
 
     fun selectModel(modelId: String, providerId: String = "") {
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) return
-        if (homeState.isStreaming && !homeState.isPaused) return
+        if (homeState.isCompressingContext) {
+            Toast.makeText(appContext, appContext.getString(R.string.composer_picker_compressing_locked), Toast.LENGTH_LONG).show()
+            return
+        }
         val provider = selectionProviders.filter { it.isEnabled && (providerId.isBlank() || it.id == providerId) && it.models.any { m -> m.id == modelId && m.isEnabled } }.singleOrNull() ?: return
         if (selectionProviders.count { it.id == provider.id } != 1) return
         val model = provider.models.singleOrNull { it.id == modelId }?.takeIf { it.isEnabled } ?: return
+        if (homeState.providerId == provider.id && homeState.modelId == model.id) {
+            // 点回本轮正在用的模型，等于撤销这条待生效选择。
+            cancelPendingModelSelection()
+            return
+        }
+        // 生成中改选只登记待生效绑定：本轮仍按发起时冻结的配置跑，终态提交后下一轮生效。
+        if (homeState.isStreaming && !homeState.isPaused) {
+            stagePendingModelSelection(provider, model)
+            return
+        }
+        applyModelSelection(provider, model)
+    }
+
+    private fun cancelPendingModelSelection() {
+        val key = selectedConversationId.orEmpty()
+        val pending = pendingSelectionByKey[key] ?: return
+        if (pending.providerId.isBlank()) return
+        pendingSelectionByKey[key] = pending.copy(providerId = "", modelId = "")
+        publishPendingSelection()
+    }
+
+    private fun stagePendingModelSelection(
+        provider: io.github.mangi.eta.data.model.ProviderSetting,
+        model: io.github.mangi.eta.data.model.Model,
+    ) {
+        val key = selectedConversationId.orEmpty()
+        pendingSelectionByKey[key] = (pendingSelectionByKey[key] ?: PendingSelection())
+            .copy(providerId = provider.id, modelId = model.id)
+        publishPendingSelection()
+        Toast.makeText(
+            appContext,
+            appContext.getString(R.string.composer_pending_selection_toast, model.displayName.ifBlank { model.modelId }),
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    /** 把模型绑定落到选中会话：档位与速度按目标模型自己的记忆恢复，不沿用上一个模型的偏好。 */
+    private fun applyModelSelection(
+        provider: io.github.mangi.eta.data.model.ProviderSetting,
+        model: io.github.mangi.eta.data.model.Model,
+    ) {
         if (homeState.providerId == provider.id && homeState.modelId == model.id) return
         val replacedRun = activeRunIdForSelectedConversation().takeIf { homeState.isPaused }
         modelBindingGeneration++
@@ -1951,6 +2028,55 @@ internal class AgentAppState(
             appContext.getString(R.string.appst_reasoning_tier_adjusted), Toast.LENGTH_SHORT).show()
         if (selectedConversationId != null) persistConversations()
         replacedRun?.let { stopRun(it, reason = AgentChildControlPolicy.Reason.SETTINGS_CHANGED) }
+    }
+
+    private fun resolvePendingSelection(pending: PendingSelection): Pair<io.github.mangi.eta.data.model.ProviderSetting, io.github.mangi.eta.data.model.Model>? {
+        val provider = pending.providerId.takeIf { it.isNotBlank() }
+            ?.let { id -> selectionProviders.singleOrNull { it.id == id }?.takeIf { it.isEnabled } } ?: return null
+        val model = provider.models.singleOrNull { it.id == pending.modelId }?.takeIf { it.isEnabled } ?: return null
+        return provider to model
+    }
+
+    /**
+     * 本轮终态：把待生效选择落到会话。走的是即时路径同样的绑定写入，因此提交之后
+     * [updateConversationProjected] 的 modelChanged 分支重置圆环与回执本就是期望行为。
+     */
+    private fun commitPendingSelection(conversationKey: String) {
+        val pending = pendingSelectionByKey.remove(conversationKey) ?: return
+        val assistantId = pending.assistantId?.takeIf { AssistantRepository.profile(it) != null }
+        if (conversationKey == selectedConversationId.orEmpty()) {
+            assistantId?.let { applyConversationAssistant(it, persist = false) }
+            if (pending.providerId.isNotBlank() && pending.modelId.isNotBlank()) {
+                resolvePendingSelection(pending)?.let { (provider, model) -> applyModelSelection(provider, model) }
+            }
+            publishPendingSelection()
+            return
+        }
+        // 后台会话终态：只改它自己的绑定，不碰选中会话，也不提前改全局活动助手。
+        val state = conversationState(conversationKey) ?: return
+        val targetModel = if (pending.providerId.isNotBlank() && pending.modelId.isNotBlank()) {
+            resolvePendingSelection(pending)
+        } else null
+        val next = if (targetModel != null) {
+            val (provider, model) = targetModel
+            val config = RuntimeConfigRepository.buildRuntimeConfig(provider, model, assistant = null)
+            val nextEffort = ConversationReasoningPolicy.resolve(
+                rememberedModelReasoningEffort(provider.id, model.id, model.preferredReasoningEffort),
+                config.reasoningCapabilities,
+            )
+            state.copy(
+                providerId = provider.id,
+                modelId = model.id,
+                gptSpeedMode = rememberedGptSpeedMode(provider.id, model.id),
+                reasoningEffort = nextEffort,
+                thinkingEnabled = nextEffort.enablesReasoning,
+                livePromptTokens = null,
+                livePromptIsProjected = false,
+            )
+        } else state
+        val withAssistant = assistantId?.let { next.copy(assistantId = it) } ?: next
+        if (withAssistant == state) return
+        updateConversation(conversationKey, withAssistant)
     }
 
     fun updateSearchQuery(query: String) {
@@ -2263,6 +2389,7 @@ internal class AgentAppState(
             selectNextConversationAfterDeletion(excludeId = conversationId)
         }
         conversationDeletedAt = conversationDeletedAt + (conversationId to System.currentTimeMillis())
+        pendingSelectionByKey.remove(conversationId)
         conversationPaneState = conversationPaneState.copy(selectedConversationId = selectedConversationId)
         refreshConversationSummaries()
         persistConversations()
@@ -2286,6 +2413,7 @@ internal class AgentAppState(
             retainDeletedConversation(state.messages, conversationUpdatedAt[conversationId])
         }
         conversationDrafts.remove(conversationId)
+        pendingSelectionByKey.remove(conversationId)
         pendingConversationTitles.remove(conversationId)
         titleRequestSeq.remove(conversationId)
         manuallyRenamedDuringTitleRequest -= conversationId
@@ -2911,6 +3039,9 @@ internal class AgentAppState(
         conversationId: String,
         preserveDraft: Boolean = false,
     ) {
+        // 兜底：上一轮若没走到终态收口（异常 / 重连路径），发下一轮前先把待生效选择落地，
+        // 否则下面的发送期校验会拿旧绑定判定模型可用性。
+        commitPendingSelection(conversationId)
         if (conversationId != selectedConversationId || rejectSendIfModelUnavailable()) return
         if (rejectSendIfCompressing()) return
         val runtimePrompt = AgentFileReferencePromptCodec.format(
@@ -4938,12 +5069,41 @@ internal class AgentAppState(
 
     fun selectAssistant(id: String) {
         if (rejectConversationArchiveMutation()) return
-        if (homeState.isStreaming && !homeState.isPaused) return
+        if (homeState.isCompressingContext) {
+            Toast.makeText(appContext, appContext.getString(R.string.composer_picker_compressing_locked), Toast.LENGTH_LONG).show()
+            return
+        }
         if (AssistantRepository.profile(id) == null) return
-        if (homeState.assistantId == id) return
+        if (homeState.assistantId == id) {
+            cancelPendingAssistantSelection()
+            return
+        }
+        // 与模型同一套待生效语义：system prompt 已在发起时烘进本轮配置，助手也只到下一轮换。
+        if (homeState.isStreaming && !homeState.isPaused) {
+            stagePendingAssistant(id)
+            return
+        }
         val replacedRun = activeRunIdForSelectedConversation().takeIf { homeState.isPaused }
         applyConversationAssistant(id, persist = true)
         replacedRun?.let { stopRun(it, reason = AgentChildControlPolicy.Reason.SETTINGS_CHANGED) }
+    }
+
+    private fun cancelPendingAssistantSelection() {
+        val key = selectedConversationId.orEmpty()
+        val pending = pendingSelectionByKey[key]?.takeIf { it.assistantId != null } ?: return
+        pendingSelectionByKey[key] = pending.copy(assistantId = null)
+        publishPendingSelection()
+    }
+
+    private fun stagePendingAssistant(id: String) {
+        val key = selectedConversationId.orEmpty()
+        pendingSelectionByKey[key] = (pendingSelectionByKey[key] ?: PendingSelection()).copy(assistantId = id)
+        publishPendingSelection()
+        Toast.makeText(
+            appContext,
+            appContext.getString(R.string.composer_pending_selection_toast, AssistantRepository.profile(id)?.name.orEmpty()),
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 
     private fun abortActiveRunForRevision() {
@@ -5050,6 +5210,8 @@ internal class AgentAppState(
                 )
             }
         }
+        // 这条路径绕过 setConversationStreaming 直写 isStreaming=false，待生效选择要在这里落地。
+        commitPendingSelection(conversationId.orEmpty())
         persistConversations()
         if (startPendingCompress && pendingManualCompress != null) {
             conversationId?.let { onConversationRunSettled(it, flushQueue = false) }
@@ -7011,6 +7173,9 @@ internal class AgentAppState(
                 },
             ),
         )
+        // 本轮终态（正常结束 / 停止 / 失败）都收口在这里：此时提交待生效选择，
+        // 圆环按新模型的窗口重置正是期望行为，队列续发的下一轮也就用上了新绑定。
+        if (state.isStreaming && !isStreaming) commitPendingSelection(conversationId)
     }
 
     private fun conversationIdForRun(runId: String): String? = runConversationIds[runId]

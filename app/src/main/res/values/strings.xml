@@ -2067,6 +2067,11 @@
   <string name="composer_scheduled_toast">Scheduled for %1$s</string>
   <string name="composer_schedule_cancel">Cancel scheduled send</string>
   <string name="composer_schedule_none">No scheduled message</string>
+  <string name="composer_pending_selection_hint">This turn still uses %1$s; %2$s applies from the next turn</string>
+  <string name="composer_pending_selection_toast">“%1$s” will apply from the next conversation turn</string>
+  <string name="composer_picker_compressing_locked">Can\'t change model or assistant while compressing context</string>
+  <string name="composer_current_turn_badge">This turn</string>
+  <string name="composer_next_turn_badge">Next turn</string>
   <string name="sas_groups_title">Sub-agent groups</string>
   <string name="sas_add_group">Add sub-agent group</string>
   <string name="sas_group_hint">Presets can be copied for different conversations; editing a preset does not change conversations that already applied it</string>

@@ -19,6 +19,9 @@ internal data class AgentModelPickerUiState(
     val providerGroups: List<AgentModelProviderGroupUi> = emptyList(),
     val selectedModel: AgentModelOptionUi? = null,
     val isChanging: Boolean = false,
+    // 生成中改选的目标：正在跑的这一轮仍用 [selectedModel]（运行配置按轮冻结），本项在终态后才落到会话。
+    val pendingModel: AgentModelOptionUi? = null,
+    val pendingAssistantId: String? = null,
 )
 
 @Immutable

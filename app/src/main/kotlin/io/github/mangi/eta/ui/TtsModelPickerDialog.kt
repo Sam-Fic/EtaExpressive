@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -163,6 +164,8 @@ internal fun ModelPickerCheckRow(
     title: String,
     selected: Boolean,
     onClick: () -> Unit,
+    // 行尾短标签：输入区弹窗用它标出「本轮」与「下一轮」生效的目标。
+    badge: String? = null,
 ) {
     // 显式类型：if 分支里的可组合 lambda 需要标注，避免推断落到 Nothing?。
     val trailing: (@Composable () -> Unit)? = if (selected) {
@@ -175,7 +178,21 @@ internal fun ModelPickerCheckRow(
         choiceRow = true,
         onClick = onClick,
         trailingContent = trailing,
-        content = { Text(text = title) },
+        content = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(text = title)
+                if (badge != null) {
+                    Text(
+                        text = badge,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        },
     )
 }
 

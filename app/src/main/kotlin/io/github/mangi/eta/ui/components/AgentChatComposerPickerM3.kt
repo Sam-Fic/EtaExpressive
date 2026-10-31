@@ -79,6 +79,9 @@ import kotlinx.coroutines.withContext
  *    - 助手页签：官方搜索框 + KernelSU 式分段列表（行尾三点菜单提供复制 / 编辑 / 删除）。
  * 3. 底部固定两行「思考档位」「上下文用量」，复用输入区原有的两个控件（含各自弹窗 /
  *    长按语义），替代旧布局里的两个独立按钮。
+ *
+ * 生成中同样可以改选：新选择由 owner 登记为「下一轮生效」的待生效绑定（本轮仍用发起时冻结的
+ * 配置），此时底部多出一行待生效说明，列表里当前行标注「本轮」、目标行标注「下一轮」。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,6 +96,7 @@ internal fun M3ComposerPickerSheet(
     modelPickerState: AgentModelPickerUiState,
     isStreaming: Boolean,
     isPaused: Boolean,
+    isCompressingContext: Boolean,
     onModelSelected: (String, String) -> Unit,
     usage: AgentContextUsageUi,
     contextSendBlocked: Boolean,
@@ -106,6 +110,8 @@ internal fun M3ComposerPickerSheet(
 ) {
     if (!show) return
     var tabIndex by remember { mutableIntStateOf(0) }
+    val assistantProfiles by AssistantRepository.profiles.collectAsState()
+    val repositoryActiveId by AssistantRepository.activeId.collectAsState()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberBottomSheetState(
@@ -176,8 +182,6 @@ internal fun M3ComposerPickerSheet(
                 if (tabIndex == 0) {
                     M3ModelPickerTab(
                         state = modelPickerState,
-                        isStreaming = isStreaming,
-                        isPaused = isPaused,
                         onModelSelected = onModelSelected,
                     )
                 } else {
@@ -210,13 +214,30 @@ internal fun M3ComposerPickerSheet(
                         effort = reasoningEffort,
                         options = availableReasoningEfforts,
                         // 模型切换（isChanging）期间 owner 会 no-op，禁用以免出现“假动画”。
-                        enabled = (!isStreaming || isPaused) && !modelPickerState.isChanging,
+                        // 压缩中同样禁用：档位不进 pending，此时改档位会与压缩写回的会话状态相互覆盖。
+                        enabled = (!isStreaming || isPaused) && !isCompressingContext &&
+                            !modelPickerState.isChanging,
                         gptSpeedMode = gptSpeedMode,
                         gptSpeedSupported = gptSpeedSupported,
                         onCycleGptSpeedMode = onCycleGptSpeedMode,
                         onEffortChange = onReasoningEffortChange,
                     )
                 }
+            }
+            // 待生效提示：生成中改选只登记下一轮的目标，本轮仍按发起时冻结的配置跑完。
+            val boundModel = modelPickerState.selectedModel
+            val pendingModel = modelPickerState.pendingModel
+            if (boundModel != null && pendingModel != null &&
+                (pendingModel.id != boundModel.id || pendingModel.providerId != boundModel.providerId)) {
+                PendingSelectionHint(currentName = boundModel.displayName, nextName = pendingModel.displayName)
+            }
+            val currentAssistantId = assistantId.ifBlank { repositoryActiveId }
+            val pendingAssistantId = modelPickerState.pendingAssistantId
+            if (pendingAssistantId != null && pendingAssistantId != currentAssistantId) {
+                PendingSelectionHint(
+                    currentName = assistantNameOf(assistantProfiles, currentAssistantId),
+                    nextName = assistantNameOf(assistantProfiles, pendingAssistantId),
+                )
             }
             // 上下文用量：直接写在页面上，不再用「点击弹窗」承载详情。
             ContextUsageRow(
@@ -381,23 +402,28 @@ private fun M3AssistantPickerTab(
  * 模型页签：官方搜索框 + 按服务商分类平铺的分段单选列表（与辅助视觉模型等弹窗同款）。
  *
  * 不再按服务商折叠：服务商只作为分类标题，所有模型直接列在下方。
- * 选中模型时的可用性判断与旧入口一致（切换中或列表为空时不派发）。
+ * 生成中同样可点：owner 只会登记「下一轮生效」的待生效绑定，本轮仍用发起时冻结的配置；
+ * 压缩中的拒绝也归 owner（弹提示），这里不再自建门禁。
  */
 @Composable
 private fun M3ModelPickerTab(
     state: AgentModelPickerUiState,
-    isStreaming: Boolean,
-    isPaused: Boolean,
     onModelSelected: (String, String) -> Unit,
 ) {
     var modelQuery by remember { mutableStateOf("") }
-    val pickerAvailable = (!isStreaming || isPaused) && state.providerGroups.isNotEmpty()
+    val pickerAvailable = state.providerGroups.isNotEmpty()
     val balanceStates = rememberProviderBalanceStates()
     val needle = modelQuery.trim()
     val groups = remember(state.providerGroups, needle) {
         filterModelProviderGroups(state.providerGroups, needle)
     }
     val selected = state.selectedModel
+    val pending = state.pendingModel
+    val hasPending = pending != null && (selected == null ||
+        pending.id != selected.id || pending.providerId != selected.providerId)
+    val pendingTarget = pending?.takeIf { hasPending }
+    val currentTurnBadge = if (hasPending) stringResource(R.string.composer_current_turn_badge) else null
+    val nextTurnBadge = if (hasPending) stringResource(R.string.composer_next_turn_badge) else null
     ModelSearchField(query = modelQuery, onQueryChange = { modelQuery = it })
     if (groups.isEmpty()) {
         Text(
@@ -423,11 +449,18 @@ private fun M3ModelPickerTab(
                 EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {
                     group.models.forEach { model ->
                         item(key = "${model.providerId}/${model.id}") {
+                            val isCurrent = selected != null &&
+                                model.id == selected.id &&
+                                model.providerId == selected.providerId
                             ModelPickerCheckRow(
                                 title = model.displayName,
-                                selected = selected != null &&
-                                    model.id == selected.id &&
-                                    model.providerId == selected.providerId,
+                                selected = isCurrent,
+                                badge = when {
+                                    pendingTarget != null && model.id == pendingTarget.id &&
+                                        model.providerId == pendingTarget.providerId -> nextTurnBadge
+                                    isCurrent && pendingTarget != null -> currentTurnBadge
+                                    else -> null
+                                },
                                 onClick = {
                                     if (!state.isChanging && pickerAvailable) {
                                         onModelSelected(model.providerId, model.id)
@@ -468,3 +501,16 @@ private fun ModelProviderGroupHeader(name: String, balance: ProviderBalanceState
         }
     }
 }
+
+/** 待生效说明行：次级字阶 + 弱化配色，与「上下文用量」同一套；固定在弹窗底部，不随列表滚动。 */
+@Composable
+private fun PendingSelectionHint(currentName: String, nextName: String) {
+    Text(
+        text = stringResource(R.string.composer_pending_selection_hint, currentName, nextName),
+        style = etaTextStyle(EtaType.Secondary),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+private fun assistantNameOf(profiles: List<AssistantProfile>, id: String): String =
+    profiles.firstOrNull { it.id == id }?.name.orEmpty()
