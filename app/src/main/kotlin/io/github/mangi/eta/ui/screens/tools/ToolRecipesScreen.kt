@@ -51,7 +51,6 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolRecipeStore
@@ -407,20 +406,16 @@ private fun RecipeRow(
             M3Text(
                 text = recipe.name,
                 style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (recipe.description.isNotBlank()) {
-                    // 与技能行一致：摘要最多两行，完整描述在编辑页里看。
+                    // 描述完整显示不省略；想看步骤细节再进编辑页。
                     M3Text(
                         text = recipe.description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 M3Text(

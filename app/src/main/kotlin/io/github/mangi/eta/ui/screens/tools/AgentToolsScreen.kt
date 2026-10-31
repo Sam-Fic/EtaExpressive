@@ -29,7 +29,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
@@ -156,9 +155,9 @@ private fun toolRowEnabled(capability: ToolCapabilityUi, tool: ToolItemUi): Bool
 /**
  * 卡片父行：M3 expand & collapse 的父条目。
  *
- * 前导图标与设置页同名条目同源（[ToolCapabilities]）；标题下挂一行摘要——设置页不再
- * 露组开关、也不再写组摘要，这里是用户唯一能看到「这组装了什么」的地方，因此截断到一行，
- * 不抢占工具行的空间。
+ * 前导图标与设置页同名条目同源（[ToolCapabilities]）；标题下挂摘要——设置页不再
+ * 露组开关、也不再写组摘要，这里是用户唯一能看到「这组装了什么」的地方，因此
+ * 不截断（摘要换行占多少就给多少，与工具行的说明文字同一待遇）。
  *
  * 整行点击切换展开/收起；行尾开关只切换能力启停，不触发展开（开关自己消费点击）。
  * 无障碍：行播报展开/收起状态（stateDescription），开关带独立的 contentDescription。
@@ -187,12 +186,11 @@ private fun ToolCapabilityHeaderRow(
             Icon(imageVector = toolCapabilityIcon(capability.id), contentDescription = null)
         },
         supportingContent = {
+            // 摘要完整显示，不省略：卡片头是「这组工具是什么」的唯一说明处。
             M3Text(
                 text = capability.summary,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         },
         content = { M3Text(text = capability.title) },
