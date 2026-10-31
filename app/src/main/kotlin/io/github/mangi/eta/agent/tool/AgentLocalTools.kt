@@ -318,8 +318,8 @@ internal class AgentLocalTools(
         AgentToolGroups.WEB_GROUP.id -> browserToolsEnabled()
         AgentToolGroups.TERMINAL_GROUP.id -> terminalToolsEnabled()
         AgentToolGroups.DEVICE_GROUP.id -> deviceToolsEnabled()
-        // 日程写入组没有独立开关：沿用「设备控制」开关门禁，避免新增键与迁移。
-        AgentToolGroups.CALENDAR_GROUP.id -> deviceToolsEnabled()
+        // 日程跟随「个人数据」开关，不再借用设备开关。
+        AgentToolGroups.CALENDAR_GROUP.id -> personalToolsEnabled()
         AgentToolGroups.PERSONAL_GROUP.id -> personalToolsEnabled()
         // 设备状态读取组同样没有独立开关：沿用「个人数据」总开关门禁。
         AgentToolGroups.DEVICE_STATE_GROUP.id -> personalToolsEnabled()
@@ -754,15 +754,12 @@ internal class AgentLocalTools(
             AgentToolGroups.DEVICE_GROUP.id ->
                 if (deviceToolsEnabled()) null else
                     "DEVICE_TOOLS_DISABLED" to "设备控制工具已在设置中关闭，本次未执行"
+            // 个人内容、设备状态与日程同受「个人数据」开关：界面侧也是同一张卡。
+            AgentToolGroups.PERSONAL_GROUP.id,
+            AgentToolGroups.DEVICE_STATE_GROUP.id,
             AgentToolGroups.CALENDAR_GROUP.id ->
-                if (deviceToolsEnabled()) null else
-                    "DEVICE_TOOLS_DISABLED" to "设备控制工具已在设置中关闭，本次未执行"
-            AgentToolGroups.PERSONAL_GROUP.id ->
                 if (personalToolsEnabled()) null else
-                    "PERSONAL_TOOLS_DISABLED" to "个人信息读取已在设置中关闭，本次未执行"
-            AgentToolGroups.DEVICE_STATE_GROUP.id ->
-                if (personalToolsEnabled()) null else
-                    "PERSONAL_TOOLS_DISABLED" to "个人信息读取已在设置中关闭，本次未执行"
+                    "PERSONAL_TOOLS_DISABLED" to "个人数据工具已在设置中关闭，本次未执行"
             else -> null
         } ?: return null
         return AgentModelClient.ToolResult(

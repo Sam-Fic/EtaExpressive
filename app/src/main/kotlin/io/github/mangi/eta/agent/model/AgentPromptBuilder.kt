@@ -150,7 +150,7 @@ internal object AgentPromptBuilder {
                 AgentToolGroups.WEB_GROUP.id -> config.browserTools
                 AgentToolGroups.TERMINAL_GROUP.id -> config.terminalTools
                 AgentToolGroups.DEVICE_GROUP.id -> config.deviceTools
-                AgentToolGroups.CALENDAR_GROUP.id -> config.deviceTools
+                AgentToolGroups.CALENDAR_GROUP.id -> config.personalTools
                 AgentToolGroups.PERSONAL_GROUP.id -> config.personalTools
                 AgentToolGroups.DEVICE_STATE_GROUP.id -> config.personalTools
                 AgentToolGroups.EXTENSIONS_GROUP.id ->
@@ -170,8 +170,8 @@ internal object AgentPromptBuilder {
         val webActive = active(AgentToolGroups.WEB_GROUP.id)
         val terminalActive = active(AgentToolGroups.TERMINAL_GROUP.id)
         // 日程写入独立成组，但指引与设备块共用一份文案：只开日程组时也要看到写入规则。
-        val deviceActive = active(AgentToolGroups.DEVICE_GROUP.id) ||
-            active(AgentToolGroups.CALENDAR_GROUP.id)
+        val calendarActive = active(AgentToolGroups.CALENDAR_GROUP.id)
+        val deviceActive = active(AgentToolGroups.DEVICE_GROUP.id) || calendarActive
         val personalActive = active(AgentToolGroups.PERSONAL_GROUP.id)
         val deviceStateActive = active(AgentToolGroups.DEVICE_STATE_GROUP.id)
         val extensionsActive = active(AgentToolGroups.EXTENSIONS_GROUP.id)
@@ -260,7 +260,7 @@ internal object AgentPromptBuilder {
                             "launch_app 与 open_uri 只能打开界面，打开后你看不到也无法操作它。" +
                             "任务需要界面交互时，先说明该能力已在设置中关闭，再给出用户可照做的逐步手动指引。"
                     } else "") +
-                    (if (terminalActive || personalActive || deviceStateActive) {
+                    (if (terminalActive || personalActive || deviceStateActive || calendarActive) {
                     "用户要求‘了解我’、分析最近状态或活动、总结习惯与偏好、判断工作生活情况，" +
                     "或请求个性化建议时，应主动选择相册、日历、联系人、通话、短信、便签、录音、系统记忆、文件、通知和聊天图片等当前可用来源。" +
                     "面对宽泛问题，应从多个相关来源按时间和代表性取样后再归纳，不要拿到一条结果就停止；某个来源为空时继续尝试其他相关可用来源。"

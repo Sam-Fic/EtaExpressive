@@ -59,4 +59,42 @@ class ToolCapabilityTaxonomyTest {
             assertEquals(owner.switchKey, ToolGroupSwitch.keyFor(group.id))
         }
     }
+
+    /**
+     * 模型侧的门禁必须与界面归属一致：只打开某个能力的开关时，它名下的模型组全部可用，
+     * 其余组全部不可用。这条能同时抓住两类漂移——界面把某组并进了这张卡，
+     * 但 `groupEnabled` 还在看另一张卡的开关；或者反过来。
+     */
+    @Test
+    fun modelGateMatchesCapabilityOwnership() {
+        ToolCapabilities.all.forEach { capability ->
+            val switches = switchesWithOnly(capability.switchKey)
+            capability.groupIds.forEach { groupId ->
+                assertTrue(
+                    "${capability.id} 的开关应能让 $groupId 可用",
+                    AgentToolGroups.groupEnabled(switches, groupId),
+                )
+            }
+            (AgentToolGroups.allIds - capability.groupIds.toSet()).forEach { groupId ->
+                assertFalse(
+                    "$groupId 不该被 ${capability.id} 的开关打开",
+                    AgentToolGroups.groupEnabled(switches, groupId),
+                )
+            }
+        }
+    }
+
+    /** 只把 [key] 对应的组开关打开，其余全关；子开关与委派保持开启，避免干扰判定。 */
+    private fun switchesWithOnly(key: String) = AgentToolGroups.ToolSwitchState(
+        basicTools = key == Prefs.Keys.AGENT_BASIC_TOOLS,
+        screenTools = key == Prefs.Keys.AGENT_SCREEN_TOOLS,
+        browserTools = key == Prefs.Keys.AGENT_BROWSER_TOOLS,
+        terminalTools = key == Prefs.Keys.AGENT_TERMINAL_TOOLS,
+        shellTools = true,
+        deviceTools = key == Prefs.Keys.AGENT_DEVICE_TOOLS,
+        personalTools = key == Prefs.Keys.AGENT_PERSONAL_TOOLS,
+        extensionsTools = key == Prefs.Keys.AGENT_EXTENSIONS_TOOLS,
+        mediaSearchTools = true,
+        delegationTools = true,
+    )
 }

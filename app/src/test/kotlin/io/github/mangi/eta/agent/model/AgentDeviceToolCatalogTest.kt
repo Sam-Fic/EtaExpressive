@@ -8,51 +8,71 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 设备侧工具的组归属：直达 + 敏感写 = 设备控制组，个人内容读 + 设备状态读 = 个人数据组。
+ * 设备侧工具的组归属：直达 + 敏感写 = 设备控制组；个人内容读 + 设备状态读 + 日程 = 个人数据组。
  *
  * 断言的是**集合级**归属而不是逐个工具名：组成员由 [AgentToolGroups] 单点定义，目录必须与
- * 它完全一致，否则设置页会宣传一个目录里根本不存在的工具（或者反过来漏掉一个）。
+ * 它完全一致，否则工具能力页会宣传一个目录里根本不存在的工具（或者反过来漏掉一个）。
  */
 class AgentDeviceToolCatalogTest {
     @Test fun deviceGroupIsExactlyDirectToolsPlusSensitiveActions() {
+        // 日程写工具虽然声明在 ACTION_NAMES 里，但归属日历组、跟随个人数据开关，
+        // 因此设备开关独自打开时不该出现在目录里。
         assertEquals(
-            AgentToolGroups.DEVICE_GROUP.toolNames + AgentToolGroups.CALENDAR_GROUP.toolNames,
+            AgentToolGroups.DEVICE_GROUP.toolNames,
             names(deviceTools = true, personalTools = false),
         )
     }
 
-    @Test fun calendarWritesAreWithheldUntilTheirOwnGroupOpens() {
-        val deferred = AgentToolCatalog.build(
+    /**
+     * 日程组跟随「个人数据」开关：设备开关对它无效，个人数据开关才是它的闸门，
+     * 打开与否仍由 tools_use_group 决定（延迟组语义不变）。
+     */
+    @Test fun calendarToolsFollowThePersonalSwitchAndTheirOwnGroup() {
+        val personalOnly = AgentToolCatalog.build(
             basicTools = false, terminalTools = false, browserTools = false, screenTools = false,
-            deviceTools = true, personalTools = false, extensionsTools = false,
+            deviceTools = false, personalTools = true, extensionsTools = false,
             capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
-            openedToolGroups = setOf(AgentToolGroups.DEVICE_GROUP.id),
+            openedToolGroups = setOf(
+                AgentToolGroups.PERSONAL_GROUP.id,
+                AgentToolGroups.DEVICE_STATE_GROUP.id,
+            ),
         ).toolNames()
-        // 日程组的工具本体被延迟，但设备开关开着，所以目录里留一个 tools_use_group
-        // 供模型打开它（枚举应只含 calendar）。少了这个入口，日程能力就永远开不出来。
+        // 日程组的工具本体被延迟，但个人数据开关开着，所以目录里留一个 tools_use_group
+        // 供模型打开它。少了这个入口，日程能力就永远开不出来。
         assertEquals(
-            AgentToolGroups.DEVICE_GROUP.toolNames + AgentToolGroupCatalog.USE_GROUP,
-            deferred,
+            AgentDeviceToolCatalog.personalReadToolNames() +
+                AgentDeviceToolCatalog.deviceStateReadToolNames() +
+                AgentToolGroupCatalog.USE_GROUP,
+            personalOnly,
         )
 
-        val opened = AgentToolCatalog.build(
+        val everythingOpen = AgentToolCatalog.build(
             basicTools = false, terminalTools = false, browserTools = false, screenTools = false,
-            deviceTools = true, personalTools = false, extensionsTools = false,
+            deviceTools = false, personalTools = true, extensionsTools = false,
             capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
             openedToolGroups = AgentToolGroups.allIds,
         ).toolNames()
         assertEquals(
             AgentToolGroups.CALENDAR_GROUP.toolNames,
-            opened - AgentToolGroups.DEVICE_GROUP.toolNames,
+            everythingOpen - personalOnly,
+        )
+    }
+
+    @Test fun calendarDisappearsWithThePersonalSwitch() {
+        val deviceOnly = names(deviceTools = true, personalTools = false)
+        assertTrue(
+            "设备开关不该放出任何日程工具",
+            deviceOnly.none { it in AgentToolGroups.CALENDAR_GROUP.toolNames },
         )
     }
 
     @Test fun personalGroupIsExactlyThePersonalContentTier() {
-        // 个人数据开关同时门禁「个人内容」与「设备状态」两个延迟组；目录用 allIds（视为全部打开），
-        // 因此这里断言的是两组并集，而不是只有个人内容——设备状态组的成员不混进设备控制组。
+        // 个人数据开关同时门禁「个人内容」「设备状态」「日程」三个延迟组；目录用 allIds
+        // （视为全部打开），因此这里断言的是三者并集——设备状态与日程都不混进设备控制组。
         assertEquals(
             AgentDeviceToolCatalog.personalReadToolNames() +
-                AgentDeviceToolCatalog.deviceStateReadToolNames(),
+                AgentDeviceToolCatalog.deviceStateReadToolNames() +
+                AgentToolGroups.CALENDAR_GROUP.toolNames,
             names(deviceTools = false, personalTools = true),
         )
     }
@@ -99,7 +119,9 @@ class AgentDeviceToolCatalogTest {
             openedToolGroups = AgentToolGroups.allIds,
         ).toolNames()
         assertEquals(
-            AgentToolGroups.PERSONAL_GROUP.toolNames + AgentToolGroups.DEVICE_STATE_GROUP.toolNames,
+            AgentToolGroups.PERSONAL_GROUP.toolNames +
+                AgentToolGroups.DEVICE_STATE_GROUP.toolNames +
+                AgentToolGroups.CALENDAR_GROUP.toolNames,
             withMedia,
         )
     }

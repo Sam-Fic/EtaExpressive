@@ -98,13 +98,11 @@ internal class AgentLoop(
         if (!config.screenTools) add(AgentToolGroups.SCREEN_GROUP.id)
         if (!config.browserTools) add(AgentToolGroups.WEB_GROUP.id)
         if (!config.terminalTools) add(AgentToolGroups.TERMINAL_GROUP.id)
-        if (!config.deviceTools) {
-            add(AgentToolGroups.DEVICE_GROUP.id)
-            add(AgentToolGroups.CALENDAR_GROUP.id)
-        }
+        if (!config.deviceTools) add(AgentToolGroups.DEVICE_GROUP.id)
         if (!config.personalTools) {
             add(AgentToolGroups.PERSONAL_GROUP.id)
             add(AgentToolGroups.DEVICE_STATE_GROUP.id)
+            add(AgentToolGroups.CALENDAR_GROUP.id)
         }
     }
     private var toolCallValidator = AgentToolCallValidator(tools, unavailableToolGroups)

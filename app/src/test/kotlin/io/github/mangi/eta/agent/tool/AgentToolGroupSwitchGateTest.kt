@@ -119,6 +119,30 @@ class AgentToolGroupSwitchGateTest {
     }
 
     @Test
+    fun calendarGroupFollowsThePersonalSwitchNotTheDeviceSwitch() {
+        // 日程跟「个人数据」走：设备开关关掉不影响它，个人数据关掉才拒绝。
+        val deviceOff = tools(device = false, personal = true)
+        try {
+            assertTrue(
+                "日程不该被设备开关挡住",
+                open(deviceOff, AgentToolGroups.CALENDAR_GROUP.id).getBoolean("ok"),
+            )
+        } finally {
+            deviceOff.close()
+        }
+
+        val personalOff = tools(device = true, personal = false)
+        try {
+            assertEquals(
+                "TOOL_GROUP_DISABLED",
+                open(personalOff, AgentToolGroups.CALENDAR_GROUP.id).getString("code"),
+            )
+        } finally {
+            personalOff.close()
+        }
+    }
+
+    @Test
     fun residentBasicGroupIsNotOpenable() {
         // 基础交互组常驻，不是延迟组：对它调用 tools_use_group 是「没有这个组」。
         val tools = tools()

@@ -87,8 +87,10 @@ internal object AgentToolGroups {
     /**
      * 日程写入：四个工具的字面量描述很长（无 Root 降级、歧义候选、重复规则），
      * 合在 device 里时组 schema 达 7.9k token，且每轮请求都要重发。
-     * 单独成组后，日历任务只付约 1.6k，其余设备能力不参与。
-     * 组开关沿用 [DEVICE_DIRECT_NAMES] 所在的设备写开关（开组仍受它门禁）。
+     * 单独成组后，日历任务只付约 1.6k，其余能力不参与。
+     *
+     * 组开关跟随「个人数据」（[PERSONAL_GROUP] 的开关）：日程是用户自己的内容，
+     * 不是设备控制。界面侧它也在个人数据卡里，不出独立卡片——模型侧的拆分纯为省 token。
      */
     val CALENDAR_WRITE_NAMES: Set<String> = setOf(
         "create_calendar_event", "create_calendar_events",
@@ -274,7 +276,9 @@ internal object AgentToolGroups {
         WEB_GROUP.id -> switches.browserTools
         TERMINAL_GROUP.id -> switches.terminalTools
         DEVICE_GROUP.id -> switches.deviceTools
-        CALENDAR_GROUP.id -> switches.deviceTools
+        // 日程跟随「个人数据」，不跟设备：日程是用户自己的内容，不是设备控制，
+        // 界面侧也归在个人数据卡里（见 ToolCapabilities.PERSONAL）。
+        CALENDAR_GROUP.id -> switches.personalTools
         PERSONAL_GROUP.id -> switches.personalTools
         DEVICE_STATE_GROUP.id -> switches.personalTools
         EXTENSIONS_GROUP.id -> switches.extensionsTools
@@ -338,14 +342,13 @@ internal object AgentToolGroups {
             labels += "命令执行（文件读写仍可用）"
         }
         if (!switches.deviceTools) {
-            // 日程组与设备组同受设备开关门禁：只列「设备控制」会让模型以为仍能建日程。
             labels += label(DEVICE_GROUP.id) + "（闹钟、计时器、音量、媒体、修改设置、应用与网络管理等）"
-            labels += label(CALENDAR_GROUP.id)
         }
         if (!switches.personalTools) {
-            // 日历事件属日程组（受设备开关），不在个人数据里；这里不再把它列进来。
+            // 日程组与设备状态组都挂在个人数据开关上：只列个人内容会让模型以为仍能建日程。
             labels += label(PERSONAL_GROUP.id) + "（通讯录、短信、通话、账单、便签等）"
             labels += label(DEVICE_STATE_GROUP.id) + "（设置项、通知、位置、日志、网络与显示状态等）"
+            labels += label(CALENDAR_GROUP.id)
         } else if (!switches.mediaSearchTools) {
             labels += "媒体语义搜索"
         }

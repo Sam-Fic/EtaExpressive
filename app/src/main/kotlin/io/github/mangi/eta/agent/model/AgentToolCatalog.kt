@@ -44,7 +44,9 @@ internal object AgentToolCatalog {
                 AgentToolGroups.WEB_GROUP.id -> browserTools
                 AgentToolGroups.TERMINAL_GROUP.id -> terminalTools
                 AgentToolGroups.DEVICE_GROUP.id -> deviceTools
-                AgentToolGroups.CALENDAR_GROUP.id -> deviceTools
+                // 日程跟随个人数据开关，与 AgentToolGroups.groupEnabled / AgentPromptBuilder
+                // / AgentLocalTools 的执行侧闸门保持同一套映射。
+                AgentToolGroups.CALENDAR_GROUP.id -> personalTools
                 AgentToolGroups.PERSONAL_GROUP.id -> personalTools
                 AgentToolGroups.DEVICE_STATE_GROUP.id -> personalTools
                 AgentToolGroups.EXTENSIONS_GROUP.id -> extensionsTools
@@ -65,7 +67,7 @@ internal object AgentToolCatalog {
             directTools = deviceTools,
             sensitiveReadTools = personalTools,
             sensitiveActionTools = deviceTools,
-            calendarReadTools = deviceTools,
+            calendarReadTools = personalTools,
         )
         if (browserTools) {
             AgentWebToolCatalog.appendTo(emitted, includeSearch = localWebSearch)
