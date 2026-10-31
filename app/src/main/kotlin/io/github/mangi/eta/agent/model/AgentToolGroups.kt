@@ -30,7 +30,7 @@ internal object AgentToolGroups {
         summary = "Ask the user, current context, app search/launch, speech, core memory and " +
             "skills reading, sub-agent delegation.",
         toolNames = setOf(
-            "ask_user", "get_current_context", "search_apps", "launch_app", "open_uri",
+            "ask_user", "get_current_context", "search_apps", "launch_app", "present_to_user", "open_uri",
             "text_to_speech",
             "memory_get",
             "skills_list", "skills_read", "skills_read_resource", "skills_list_curated",

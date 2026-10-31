@@ -93,6 +93,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private val requestExecutor = AgentRequestExecutor()
 
     private val sessions = AgentRuntimeSessionRegistry()
+    // 准入：同会话单飞、并发容量、外部替换前任排空；GUI：手机操作权按动作阶段互斥。
+    private val runs = RuntimeRunRegistry()
+    private val guiControl = GuiControlCoordinator()
     private val questionLedger by lazy { io.github.mangi.eta.agent.question.AgentQuestionLedgerAndroid.forContext(applicationContext) }
     private val stopWorker = AgentRuntimeStopWorker { failure ->
         AndroidAgentLogger.warn("Runtime stop failed: type=${failure.safeLogType()}")
@@ -227,6 +230,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         failPendingStarts("Agent Runtime 服务已停止")
         overlaySession = null
         mainHandler.removeCallbacksAndMessages(null)
+        io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController.release(this)
         resultCardView?.let { view -> runCatching { windowManager?.removeView(view) } }
         bubbleView?.let { view -> runCatching { windowManager?.removeView(view) } }
         orbView?.let { view -> runCatching { windowManager?.removeView(view) } }
@@ -584,25 +588,39 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         request: AgentRuntimeWire.RunRequest,
         replyTo: Messenger? = null,
     ) {
-        sessions.get(request.runId)?.let { previous ->
-            previous.signalStop()
-            stopWorker.submit(previous) {
-                previous.controller.cancel()
-                try { AgentChildRunControl.terminate(previous, AgentChildControlPolicy.Reason.SETTINGS_CHANGED) }
-                finally { previous.cancel("已被同一任务的新请求替换") }
+        // 准入：同 runId 在跑 → 把新客户端挂到现有 run；同会话已有任务 → 拒绝（CONVERSATION_BUSY）；
+        // 外部归档替换同会话前任 → 接受并取消前任，由 run 线程等前任排空后再执行。
+        val accepted = when (val admission = runs.admit(request) {
+            lateinit var session: AgentRuntimeSession
+            session = AgentRuntimeSession(
+                runId = request.runId,
+                questionLedger = questionLedger,
+                terminalWork = { action ->
+                    if (Looper.myLooper() == Looper.getMainLooper()) thread(name = "eta-question-seal", block = action)
+                    else action()
+                    Unit
+                },
+                beforeTerminalPublish = { runs.finish(request.runId, session) },
+                eventSink = { event -> sendEventTo(replyTo, event, request.runId) },
+                resultSink = { result -> sendResultTo(replyTo, result) },
+            )
+            RuntimeRunRegistry.Run(request, session)
+        }) {
+            is RuntimeRunRegistry.Admission.Accepted -> admission
+            is RuntimeRunRegistry.Admission.Duplicate -> {
+                sendRequestIngestedTo(replyTo, request.runId)
+                attachRun(request.runId, replyTo)
+                return
+            }
+            is RuntimeRunRegistry.Admission.Rejected -> {
+                AndroidAgentLogger.debug { "Agent runtime request rejected: code=${admission.code}" }
+                finishWithFailure(admission.message, replyTo)
+                return
             }
         }
-        val session = AgentRuntimeSession(
-            runId = request.runId,
-            questionLedger = questionLedger,
-            terminalWork = { action ->
-                if (Looper.myLooper() == Looper.getMainLooper()) thread(name = "eta-question-seal", block = action)
-                else action()
-                Unit
-            },
-            eventSink = { event -> sendEventTo(replyTo, event, request.runId) },
-            resultSink = { result -> sendResultTo(replyTo, result) },
-        )
+        accepted.replacedRuns.forEach { previous -> cancelRun(previous.runId) }
+        val run = accepted.run
+        val session = run.session
         // Root 入口保留原有绑定服务生命周期；新增 FGS 不能成为厂商后台入口的新前置权限。
         val allowBoundFallback = RootAccess.isGranted
         val runLease = AgentRuntimeRunLease.create(request.runId)
@@ -673,16 +691,30 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
 
         try {
+            run.prepared(request)
             thread(name = "agent-runtime") {
-                try {
-                    executeRun(session, request)
-                } finally {
-                    // run 结束即撤销状态栏胶囊，避免残留的状态投送。
-                    AgentExecutionService.updateRunStatus(this, null)
+                // 外部归档替换时等已取消的前任排空；等待中被取消则直接落终态，不再发模型请求。
+                val drained = runCatching { run.awaitPredecessors() }
+                if (drained.isFailure) {
+                    AgentExecutionService.updateRunStatus(this@AgentRuntimeService, null)
                     AgentChildRunControl.finish(session)
                     AgentExecutionService.release(runLease.id)
                     screenOnBindings.forEach { it.close() }
                     postKeepScreenOnUpdate()
+                    session.cancel("已停止")
+                    return@thread
+                }
+                try {
+                    executeRun(session, request)
+                } finally {
+                    // run 结束即撤销状态栏胶囊，避免残留的状态投送。
+                    AgentExecutionService.updateRunStatus(this@AgentRuntimeService, null)
+                    AgentChildRunControl.finish(session)
+                    AgentExecutionService.release(runLease.id)
+                    screenOnBindings.forEach { it.close() }
+                    postKeepScreenOnUpdate()
+                    // 兜底注销：终态发布钩子被跳过时（如存储失败路径）也要释放会话名额。
+                    runs.finish(request.runId, session)
                 }
             }
         } catch (failure: Throwable) {
@@ -707,6 +739,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             context = this,
             currentPermissions = ::currentRuntimePermissions,
             snapshotRequest = { it.withActiveSupplements() },
+            guiControl = guiControl,
             onAcceptedEvent = { event, entrySurfaceGuard ->
                 handleAcceptedRunEvent(session, event, entrySurfaceGuard)
             },
@@ -733,6 +766,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         event: AgentEvent,
         entrySurfaceGuard: EntrySurfaceGuard?,
     ) {
+        // 操作权状态与悬浮窗策略无关，先于叠加层早退分支登记，供 run 快照读取。
+        if (event is AgentEvent.GuiControlChanged) {
+            runs.get(session.runId)?.guiStatus = event.status
+        }
         if (!sessions.contains(session)) return
         if (!AgentOverlayVisibilityPolicy.allowsOverlay(session.taskSurfaceMode)) return
         val revealsForegroundOperation =
@@ -1128,6 +1165,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         if (runId.isBlank()) return
         val session = sessions.get(runId)?.takeUnless { it.isTerminal || it.controller.isCancelled } ?: return
         AgentChildRunControl.pause(session)
+        // 用户暂停期间保留接管权：冻结该 run 等待中/后续的手机操作，恢复时统一放行。
+        guiControl.pauseForUser(runId)
         if (overlaySession === session) {
             state.value = state.value.copy(
                 phase = AgentOverlayPhase.PAUSED,
@@ -1154,6 +1193,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         if (runId.isBlank()) return
         val session = sessions.get(runId)?.takeUnless { it.isTerminal || it.controller.isCancelled } ?: return
         AgentChildRunControl.resume(session)
+        guiControl.resumeForUser()
         if (overlaySession === session) {
             state.value = state.value.copy(
                 phase = AgentOverlayPhase.RUNNING,

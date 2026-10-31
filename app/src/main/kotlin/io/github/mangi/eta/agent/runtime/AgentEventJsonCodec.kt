@@ -69,6 +69,7 @@ internal object AgentEventJsonCodec {
 
     /** Drop only payloads that are not needed to reconstruct the visible recovery trace. */
     private fun AgentEvent.checkpointSizeSafeProjection(): AgentEvent? = when (this) {
+        is AgentEvent.GuiControlChanged -> this
         is AgentEvent.RunStarted -> this
         is AgentEvent.RoundStarted -> copy(historySnapshotId = "")
         is AgentEvent.ModelRetryScheduled -> copy(reasonDetail = "")

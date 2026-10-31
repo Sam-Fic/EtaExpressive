@@ -307,6 +307,8 @@ internal object AgentPromptBuilder {
                     "禁止把新截图与旧节点混用；树被截断但节点语义仍有效时，优先提高 max_nodes，不要仅因截断请求截图；" +
                     "点击可见控件优先用 tap_element/tap_area；坐标工具必须写明 coordinate_space：看截图定位用 normalized（0–999），坐标来自 ui_nodes 用 screen，" +
                     "调用节点工具时必须把该节点与同一次观察的 observation_id 一起传回，过期就重新观察；" +
+                    "launch_app 与 open_uri 默认使用智能画布分流（display=auto）：目标应用已在物理主屏前台时直接操作主屏，跨应用任务优先在后台虚拟屏静默执行（observe_screen 返回 canvas=virtual）；" +
+                    "仅当用户明确要求直接把应用打开在眼前主屏时才设 display=main；在后台虚拟屏完成前置操作、到达付款确认/二维码/目标结果页，或遇到安全窗口需要用户本人接管时，调用 present_to_user 将画面无缝投射到物理主屏；" +
                     "scroll 的方向表示要显示的内容方向，例如 down 显示下方内容；" +
                     "任何工具返回 ACTION_OUTCOME_UNKNOWN 或 DIRECTION_MISMATCH 时，必须先重新观察，禁止直接重放动作；" +
                     "输入文本优先用 type_text：默认整体替换，append 在光标处插入，submit=true 写入后回车，指定 index 时无需先点击；" +

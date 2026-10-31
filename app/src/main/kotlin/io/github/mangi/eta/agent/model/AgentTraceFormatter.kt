@@ -400,6 +400,8 @@ internal class AgentTraceFormatter(
                 json?.let(::summarizeSearchAppsResult) ?: localizedText(R.string.trace_result_done, "完成")
             "launch_app" ->
                 json?.let(::summarizeLaunchAppResult) ?: localizedText(R.string.trace_result_opened, "已打开")
+            // 虚拟屏移交摘要暂用字面量：上游 UI 文案尚未定稿，等虚拟屏界面调优时一并入 strings。
+            "present_to_user" -> json?.let(::summarizePresentToUserResult) ?: "已呈现到主屏"
             else ->
                 json?.let { summarizeGenericResult(it, result) }
                     ?: localizedText(R.string.trace_result_done, "完成")
@@ -555,7 +557,14 @@ internal class AgentTraceFormatter(
     private fun summarizeLaunchAppResult(json: JSONObject): String {
         val appName = sanitizeSummaryValue(json.optString("app_name"))
         val opened = localizedText(R.string.trace_result_opened, "已打开")
-        return if (appName.isNotBlank()) "$opened · $appName" else opened
+        val virtual = json.optString("canvas") == "virtual"
+        val base = if (appName.isNotBlank()) "$opened · $appName" else opened
+        return if (virtual) "$base · 虚拟屏" else base
+    }
+
+    private fun summarizePresentToUserResult(json: JSONObject): String {
+        val appName = sanitizeSummaryValue(json.optString("app_name"))
+        return if (appName.isNotBlank()) "已呈现到主屏 · $appName" else "已呈现到主屏"
     }
 
     /**

@@ -49,6 +49,7 @@ internal object StreamUiEventDiagnostics {
             AgentEvent.AssistantBlockKind.TOOL_CALL -> "ui.event.end.toolCall"
         }
         is AgentEvent.RunStarted -> "ui.event.runStarted"
+        is AgentEvent.GuiControlChanged -> "ui.event.guiControl"
         is AgentEvent.RoundStarted -> "ui.event.roundStarted"
         is AgentEvent.ModelRetryScheduled -> "ui.event.modelRetry"
         is AgentEvent.ErrorReconnectChanged -> "ui.event.reconnect"

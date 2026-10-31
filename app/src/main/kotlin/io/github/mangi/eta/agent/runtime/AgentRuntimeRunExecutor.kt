@@ -49,6 +49,7 @@ internal class AgentRuntimeRunExecutor(
     context: Context,
     private val currentPermissions: () -> AgentRuntimePolicy.Permissions,
     private val snapshotRequest: (AgentRuntimeWire.RunRequest) -> AgentRuntimeWire.RunRequest,
+    private val guiControl: GuiControlCoordinator,
     private val onAcceptedEvent: (AgentEvent, EntrySurfaceGuard?) -> Unit,
     private val persistArtifacts: (AgentRuntimeWire.RunRequest, AgentRuntimeWire.RunResult, List<AgentEvent>) -> Unit,
 ) {
@@ -71,6 +72,7 @@ internal class AgentRuntimeRunExecutor(
         var modelCompleted = false
         var virtualDeliveryCompleted = false
         var toolsBinding: AgentRunController.ResourceBinding? = null
+        var guiRun: GuiControlCoordinator.RunControl? = null
         var toolsOwner: AgentChildToolOwnership? = null
         var groupGeneration: String? = null
         var replacementGeneration: String? = null
@@ -146,8 +148,13 @@ internal class AgentRuntimeRunExecutor(
                 session.taskSurfaceMode == io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.BACKGROUND
             }
             val mcpTools = JSONArray().also(mcpSnapshot::appendModelTools)
+            // 手机操作权按 run 登记：状态变化经 GuiControlChanged 投送给服务，run 结束即释放。
+            guiRun = guiControl.openRun(request.runId, runController) { status ->
+                acceptEvent(session, AgentEvent.GuiControlChanged(status), archivedEvents, entrySurfaceGuard, checkpointRecorder)
+            }
             val executor = AgentLocalTools(
                 context = appContext, logger = AndroidAgentLogger, browserRunId = request.runId,
+                guiControl = guiRun,
                 browserConversationId = request.handoff?.takeIf {
                     it.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE
                 }?.let { AgentUiHandoffPayload.from(it.payload).conversationId }.orEmpty(),
@@ -176,6 +183,7 @@ internal class AgentRuntimeRunExecutor(
                 terminalToolsEnabled = { allowTerminal && currentPermissions().terminalTools },
                 deviceToolsEnabled = { allowDevice && currentPermissions().deviceTools },
                 personalToolsEnabled = { allowPersonal && currentPermissions().personalTools },
+                virtualDisplayEnabled = { currentPermissions().virtualDisplay },
                 memoryToolsEnabled = { AgentMemoryRepository.isEnabled(assistant.id) },
                 screenshotExcludedPackages = { entrySurfaceGuard?.consumeScreenshotExcludedPackages().orEmpty() },
                 // 危险操作逐次确认：未确认时拒绝本次调用，用户同意后重发即可通过。
@@ -530,6 +538,7 @@ internal class AgentRuntimeRunExecutor(
             registeredChildGenerations.forEach(AgentChildTaskGroups::detach)
             runCatching { toolsBinding?.close() }
             runCatching { toolsOwner?.release() }
+            runCatching { guiRun?.close() }
             unownedSkillRoot?.let { root -> runCatching { SkillRuntime.releaseRunSkills(appContext, root) } }
         }
         deliveryFailure?.let { code ->
@@ -576,7 +585,8 @@ internal class AgentRuntimeRunExecutor(
                 }
             }) return
         }
-        archivedEvents += event
+        // 操作权状态只做投送与检查点，不属于会话轨迹，不能进入归档。
+        if (event !is AgentEvent.GuiControlChanged) archivedEvents += event
         if (event is AgentEvent.ModelRetryScheduled) AndroidAgentLogger.warn("Agent runtime event: ${event.toLogLine()}")
         else if (event !is AgentEvent.AssistantBlockDelta) AndroidAgentLogger.debug { "Agent runtime event: ${event.toLogLine()}" }
         runCatching { onAcceptedEvent(event, entrySurfaceGuard) }.onFailure { throwable ->

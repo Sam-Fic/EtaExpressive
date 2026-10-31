@@ -54,7 +54,7 @@ internal object AgentContextAppToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "launch_app",
-                    description = "Launch an installed Android app. Prefer package_name; a bare app name allows fuzzy matching, and multiple matches return candidates without launching. An app already open in this run's virtual display switches back to its original task (reused=true). When the resolved target is Eta itself (io.github.mangi.eta) it opens in the main screen foreground without triggering ASK; later Eta GUI segments are also self-foreground and do not change the ASK/background preference of other apps. Never start a virtual display for Eta itself or ask where to execute.",
+                    description = "Launch an installed Android app. Prefer package_name; a bare app name allows fuzzy matching, and multiple matches return candidates without launching. An app already open in this run's virtual display switches back to its original task (reused=true). When the resolved target is Eta itself (io.github.mangi.eta) it opens in the main screen foreground without triggering ASK; later Eta GUI segments are also self-foreground and do not change the ASK/background preference of other apps. Never start a virtual display for Eta itself or ask where to execute. By default (display=auto) cross-app tasks are silently executed on the background virtual display when available; the app is opened on the main screen when it is already in the main-display foreground.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -72,7 +72,37 @@ internal object AgentContextAppToolCatalog {
                                         .put("type", "string")
                                         .put("description", "App display name, for example QQ")
                                 )
+                                .put(
+                                    "display",
+                                    JSONObject()
+                                        .put("type", "string")
+                                        .put("enum", JSONArray().put("auto").put("virtual").put("main"))
+                                        .put("default", "auto")
+                                        .put(
+                                            "description",
+                                            "启动目标画布：auto（默认，跨应用任务优先在后台虚拟屏执行，不打断用户当前主屏）、virtual（显式在后台虚拟屏启动）、main（显式在物理主屏前台打开）。"
+                                        )
+                                )
                         )
+                )
+            )
+            .put(
+                AgentToolSchema.function(
+                    name = "present_to_user",
+                    description = "将后台虚拟屏中已经准备就绪的应用画面无缝放大并移交到物理主屏前台，供用户直接查看、完成验证或确认付款。当任务在虚拟屏内已完成前置操作、到达收银台/二维码/结果页，或遇到安全窗口需要用户本人操作时调用。",
+                    parameters = JSONObject()
+                        .put("type", "object")
+                        .put(
+                            "properties",
+                            JSONObject()
+                                .put(
+                                    "reason",
+                                    JSONObject()
+                                        .put("type", "string")
+                                        .put("description", "可选，向用户呈现画面的简短原因，例如“已到达支付确认页”")
+                                )
+                        )
+                        .put("additionalProperties", false),
                 )
             )
             .put(

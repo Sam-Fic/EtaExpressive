@@ -36,6 +36,7 @@ class AgentRuntimePolicyTest {
                 browserTools = false,
                 screenTools = false,
                 thinking = false,
+                virtualDisplay = false,
             ),
             AgentRuntimePolicy.permissions(null),
         )
@@ -53,6 +54,7 @@ class AgentRuntimePolicyTest {
                 deviceTools = true,
                 personalTools = true,
                 thinking = true,
+                virtualDisplay = true,
             ),
             AgentRuntimePolicy.permissions(preferences),
         )
@@ -68,6 +70,7 @@ class AgentRuntimePolicyTest {
                 browserTools = false,
                 screenTools = false,
                 thinking = false,
+                virtualDisplay = false,
             ),
             AgentRuntimePolicy.permissions(preferences),
         )

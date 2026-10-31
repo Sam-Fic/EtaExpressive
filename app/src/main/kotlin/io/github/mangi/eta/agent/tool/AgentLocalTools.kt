@@ -31,6 +31,9 @@ import io.github.mangi.eta.agent.model.AgentToolGroup
 import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
+import io.github.mangi.eta.agent.runtime.GuiControlCoordinator
+import io.github.mangi.eta.agent.virtualdisplay.CanvasRoutingPolicy
+import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
 import io.github.mangi.eta.agent.overlay.GestureIndicator
 import io.github.mangi.eta.agent.runtime.AgentAppContext
 import io.github.mangi.eta.agent.skill.SkillArchiveInspectionResult
@@ -84,6 +87,8 @@ internal class AgentLocalTools(
     private val logger: AgentLogger,
     private val browserRunId: String = java.util.UUID.randomUUID().toString(),
     private val browserConversationId: String = "",
+    /** 本 run 的手机操作权；为空时（子任务等）主屏操作阶段不做跨 run 协调。 */
+    private val guiControl: GuiControlCoordinator.RunControl? = null,
     private val browserToolsEnabled: () -> Boolean = {
         Prefs.isEnabled(Prefs.Keys.AGENT_BROWSER_TOOLS)
     },
@@ -132,6 +137,12 @@ internal class AgentLocalTools(
     private val runSkillsRoot: File? = null,
     pendingSkillConflict: PendingSkillConflictCapability? = null,
     private val rootAvailable: () -> Boolean = { RootAccess.isGranted },
+    private val virtualDisplayEnabled: () -> Boolean = {
+        Prefs.isEnabled(Prefs.Keys.AGENT_VIRTUAL_DISPLAY_ENABLED)
+    },
+    private val lsposedAvailable: () -> Boolean = {
+        io.github.mangi.eta.EtaApp.serviceInstance != null
+    },
     frozenSurface: io.github.mangi.eta.agent.device.AgentTaskSurfaceMode = runCatching {
         io.github.mangi.eta.agent.device.AgentTaskSurface.stored()
     }.getOrDefault(io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.ASK),
@@ -162,6 +173,13 @@ internal class AgentLocalTools(
         (name in virtualLifecycle || (route == AgentSelfAppSurface.Route.BASE &&
             io.github.mangi.eta.agent.device.AgentTaskSurface.isTraditionalScreenGuiTool(name)))
     private val closed = AtomicBoolean(false)
+
+    /**
+     * 单一活动画布：launch_app/open_uri 分流到虚拟屏后记录其 displayId，
+     * 后续 GUI 工具自动路由到该屏，模型无需感知多屏参数；回到主屏时复位。
+     */
+    @Volatile
+    private var activeDisplayId: Int = Display.DEFAULT_DISPLAY
     /**
      * 本次 run 里已按需打开的工具域。AgentModelClient 在下一轮重建目录时读取它，
      * 与技能安装的 next_turn 语义一致：打开后最早下一轮生效。
@@ -486,7 +504,10 @@ internal class AgentLocalTools(
         }
         foregroundAdmissionError(ForegroundExclusiveGate.acquire(browserRunId) { closed.get() })
             ?.let { return it }
-        return executeInternal(toolCall, route, prepared)
+        // 主屏操作阶段经协调器登记（Waiting/Acquired/Released 状态投送、用户暂停期间冻结）；
+        // 主屏独占本身仍由 ForegroundExclusiveGate 裁决，协调器不改变其「拒绝不排队」契约。
+        val control = guiControl ?: return executeInternal(toolCall, route, prepared)
+        return control.withAction { executeInternal(toolCall, route, prepared) }
     }
 
     private fun foregroundAdmissionError(admission: ForegroundExclusiveGate.Admission): AgentModelClient.ToolResult? =
@@ -571,9 +592,13 @@ internal class AgentLocalTools(
                 "get_current_context" -> textResult(DeviceContextTool.current(context))
                 "text_to_speech" -> textResult(textToSpeech(args))
                 "search_apps" -> textResult(searchApps(args))
-                "launch_app" -> textResult(launchApp(prepared ?: prepareLaunchApp(args), route == AgentSelfAppSurface.Route.SELF_LAUNCH))
+                "launch_app" -> textResult(launchApp(prepared ?: prepareLaunchApp(args), route == AgentSelfAppSurface.Route.SELF_LAUNCH, args))
                 "inspect_virtual_backend" -> textResult(io.github.mangi.eta.agent.device.VirtualDisplayBackendBridge.inspect(context).toString())
                 "keep_virtual_result" -> textResult(keepVirtualResult(args))
+                "present_to_user" -> {
+                    publishedObservation.set(PublishedObservation())
+                    textResult(presentToUser(args))
+                }
                 "open_uri" -> textResult(openUri(args))
                 "browser_use" -> browserUse(args, toolCall.id)
                 "web_search", "fetch_url" -> {
@@ -587,7 +612,7 @@ internal class AgentLocalTools(
                 "long_press" -> afterAction(longPress(args))
                 "long_press_element" -> afterAction(longPressElement(args))
                 "swipe" -> afterAction(swipe(args))
-                "scroll" -> afterAction(deviceController.scroll(args.optString("direction"), args.optString("amount")))
+                "scroll" -> afterAction(deviceController.scroll(args.optString("direction"), args.optString("amount"), currentActiveDisplayId()))
                 "scroll_element" -> afterAction(scrollElement(args))
                 "type_text" -> afterAction(typeText(args))
                 "input_text" -> afterAction(inputText(args))
@@ -596,11 +621,15 @@ internal class AgentLocalTools(
                 "set_clipboard" -> textResult(setClipboard(args))
                 "get_clipboard" -> textResult(getClipboard())
                 "paste_text" -> afterAction(pasteText(args))
-                "press_key" -> afterAction(deviceController.pressKey(args.optString("button")))
+                "press_key" -> afterAction(deviceController.pressKey(args.optString("button"), currentActiveDisplayId()))
                 "wait" -> textResult(deviceController.waitMs(args.optInt("duration_ms", 1_000)))
                 "wait_for_text" -> textResult(waitForText(args))
                 "wait_for_package" -> textResult(waitForPackage(args))
-                "open_system_panel" -> textResult(deviceController.openSystemPanel(args.optString("panel")))
+                "open_system_panel" -> {
+                    // 系统面板（通知/快捷设置）只存在于物理主屏：执行后画布复位。
+                    activeDisplayId = Display.DEFAULT_DISPLAY
+                    textResult(deviceController.openSystemPanel(args.optString("panel")))
+                }
                 in DEVICE_TOOL_NAMES ->
                     structuredDeviceTools.execute(toolCall.name, args)
                         ?: textResult(errorResult("UNKNOWN_TOOL", "未知设备工具"))
@@ -895,15 +924,30 @@ internal class AgentLocalTools(
         )
     }
 
+    /** 活动画布已失效（虚拟屏已释放）时自动回退主屏，避免把手势打到已销毁的 displayId 上。 */
+    private fun currentActiveDisplayId(): Int {
+        val id = activeDisplayId
+        if (!CanvasRoutingPolicy.isVirtualDisplay(id)) return Display.DEFAULT_DISPLAY
+        val vd = VirtualDisplayController.snapshots.value
+        return if (vd.active && vd.displayId == id) {
+            id
+        } else {
+            activeDisplayId = Display.DEFAULT_DISPLAY
+            Display.DEFAULT_DISPLAY
+        }
+    }
+
     private fun observeScreen(args: JSONObject): AgentModelClient.ToolResult {
         publishedObservation.set(PublishedObservation())
         val startedAt = SystemClock.elapsedRealtime()
         val options = AgentScreenObservationContract.resolve(args)
+        val displayId = currentActiveDisplayId()
         val observation = screenObservationProvider?.invoke(options)
             ?: deviceController.observe(
                 includeScreenshot = options.includeScreenshot,
                 includeUiTree = options.includeUiTree,
                 maxNodes = options.maxNodes,
+                displayId = displayId,
             )
         publishedObservation.set(
             PublishedObservation(
@@ -913,7 +957,7 @@ internal class AgentLocalTools(
         )
         logger.debug {
             "Agent local tool action=observe_screen outcome=completed " +
-                "observation=${observation.elementObservation?.id} " +
+                "display=$displayId observation=${observation.elementObservation?.id} " +
                 "nodes=${observation.elementObservation?.nodes?.size ?: 0} " +
                 "image=${observation.image?.bytes ?: 0} elapsed_ms=${SystemClock.elapsedRealtime() - startedAt} " +
                 "coordinate=${observation.coordinateSpace?.summary()}"
@@ -933,12 +977,14 @@ internal class AgentLocalTools(
         val result = runCatching { JSONObject(raw) }.getOrNull()
         if (result == null || !result.optBoolean("ok")) return textResult(raw)
         val before = publishedObservation.get().elements
+        val displayId = currentActiveDisplayId()
         val after = runCatching {
             screenObservationProvider?.invoke(AFTER_ACTION_OPTIONS)
                 ?: deviceController.observe(
                     includeScreenshot = false,
                     includeUiTree = true,
                     maxNodes = AFTER_ACTION_OPTIONS.maxNodes,
+                    displayId = displayId,
                 )
         }.getOrElse { throwable ->
             logger.debug { "Agent local tool after-action observation failed: type=${throwable.javaClass.simpleName}" }
@@ -952,34 +998,42 @@ internal class AgentLocalTools(
     }
 
     private fun tap(args: JSONObject): String {
+        val displayId = currentActiveDisplayId()
         val point = convertPoint(
             x = args.optInt("x"),
             y = args.optInt("y"),
-            coordinateSpace = args.optString("coordinate_space")
+            coordinateSpace = args.optString("coordinate_space"),
+            displayId = displayId,
         )
-        AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
-        showTap(point.x, point.y)
-        return deviceController.tap(point.x, point.y)
+        if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
+        }
+        showTap(point.x, point.y, displayId)
+        return deviceController.tap(point.x, point.y, displayId)
     }
 
     private fun tapArea(args: JSONObject): String {
+        val displayId = currentActiveDisplayId()
         val x1 = args.optInt("x1")
         val y1 = args.optInt("y1")
         val x2 = args.optInt("x2")
         val y2 = args.optInt("y2")
         val coordinateSpace = args.optString("coordinate_space")
-        val first = convertPoint(x1, y1, coordinateSpace)
-        val second = convertPoint(x2, y2, coordinateSpace)
+        val first = convertPoint(x1, y1, coordinateSpace, displayId)
+        val second = convertPoint(x2, y2, coordinateSpace, displayId)
         val point = ScreenPoint(
             x = ((first.x.toLong() + second.x.toLong()) / 2L).toInt(),
             y = ((first.y.toLong() + second.y.toLong()) / 2L).toInt(),
         )
-        AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
-        showTap(point.x, point.y)
-        return deviceController.tap(point.x, point.y)
+        if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
+        }
+        showTap(point.x, point.y, displayId)
+        return deviceController.tap(point.x, point.y, displayId)
     }
 
     private fun tapElement(args: JSONObject): String {
+        val displayId = currentActiveDisplayId()
         val index = args.optInt("index", -1)
         val observation = requireElementObservation(args) ?: return observationError(args)
         val node = observation.nodes.firstOrNull { it.index == index }
@@ -988,13 +1042,16 @@ internal class AgentLocalTools(
         }
         val result = deviceController.tapElement(observation, index)
         if (result.isOkJson()) {
-            AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
-            showTap(node.centerX, node.centerY)
+            if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+                AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
+            }
+            showTap(node.centerX, node.centerY, displayId)
         }
         return result
     }
 
     private fun longPressElement(args: JSONObject): String {
+        val displayId = currentActiveDisplayId()
         val index = args.optInt("index", -1)
         val observation = requireElementObservation(args) ?: return observationError(args)
         val node = observation.nodes.firstOrNull { it.index == index }
@@ -1004,44 +1061,56 @@ internal class AgentLocalTools(
         }
         val result = deviceController.longPressElement(observation, index, durationMs)
         if (result.isOkJson()) {
-            AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.LONG_PRESS)
-            showLongPress(node.centerX, node.centerY, durationMs)
+            if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+                AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.LONG_PRESS)
+            }
+            showLongPress(node.centerX, node.centerY, durationMs, displayId)
         }
         return result
     }
 
     private fun longPress(args: JSONObject): String {
+        val displayId = currentActiveDisplayId()
         val point = convertPoint(
             x = args.optInt("x"),
             y = args.optInt("y"),
-            coordinateSpace = args.optString("coordinate_space")
+            coordinateSpace = args.optString("coordinate_space"),
+            displayId = displayId,
         )
         val durationMs = args.optInt("duration_ms", 800)
-        AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.LONG_PRESS)
-        showLongPress(point.x, point.y, durationMs)
-        return deviceController.longPress(point.x, point.y, durationMs)
+        if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.LONG_PRESS)
+        }
+        showLongPress(point.x, point.y, durationMs, displayId)
+        return deviceController.longPress(point.x, point.y, durationMs, displayId)
     }
 
     private fun swipe(args: JSONObject): String {
+        val displayId = currentActiveDisplayId()
         val start = convertPoint(
             x = args.optInt("x1"),
             y = args.optInt("y1"),
-            coordinateSpace = args.optString("coordinate_space")
+            coordinateSpace = args.optString("coordinate_space"),
+            displayId = displayId,
         )
         val end = convertPoint(
             x = args.optInt("x2"),
             y = args.optInt("y2"),
-            coordinateSpace = args.optString("coordinate_space")
+            coordinateSpace = args.optString("coordinate_space"),
+            displayId = displayId,
         )
         val durationMs = args.optInt("duration_ms", 500)
-        AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.SWIPE)
-        showSwipe(start.x, start.y, end.x, end.y, durationMs)
+        if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.SWIPE)
+        }
+        showSwipe(start.x, start.y, end.x, end.y, durationMs, displayId)
         return deviceController.swipe(
             start.x,
             start.y,
             end.x,
             end.y,
-            durationMs
+            durationMs,
+            displayId,
         )
     }
 
@@ -1063,7 +1132,7 @@ internal class AgentLocalTools(
         return when (args.optString("mode", "append").lowercase(Locale.ROOT)) {
             "replace" -> replaceText(args)
             "paste" -> pasteText(args)
-            else -> deviceController.inputText(text)
+            else -> deviceController.inputText(text, currentActiveDisplayId())
         }
     }
 
@@ -1075,6 +1144,7 @@ internal class AgentLocalTools(
     private fun typeText(args: JSONObject): String {
         val text = args.optString("text")
         val mode = args.optString("mode", "replace").trim().lowercase(Locale.ROOT).ifBlank { "replace" }
+        val displayId = currentActiveDisplayId()
         val written = when (mode) {
             "replace" -> replaceText(args)
             "append" -> {
@@ -1083,14 +1153,14 @@ internal class AgentLocalTools(
                     return errorResult("INVALID_ARGUMENT", "append 只作用于当前输入焦点；要写入指定输入框请用 mode=replace")
                 }
                 // 长文本走选区插入加粘贴回退，比逐字键入更稳定。
-                if (text.length > TYPE_TEXT_INCREMENTAL_CHARS) pasteText(args) else deviceController.inputText(text)
+                if (text.length > TYPE_TEXT_INCREMENTAL_CHARS) pasteText(args) else deviceController.inputText(text, displayId)
             }
             else -> return errorResult("INVALID_ARGUMENT", "mode 只能是 replace 或 append")
         }
         val json = runCatching { JSONObject(written) }.getOrNull() ?: return written
         json.put("tool", "type_text").put("mode", mode)
         if (!json.optBoolean("ok") || !args.optBoolean("submit")) return json.toString()
-        val submitted = runCatching { JSONObject(deviceController.pressKey("ENTER")) }.getOrNull()
+        val submitted = runCatching { JSONObject(deviceController.pressKey("ENTER", displayId)) }.getOrNull()
         json.put("submitted", submitted?.optBoolean("ok") == true)
         if (submitted?.optBoolean("ok") != true) {
             // 文本已写入但提交失败：整体仍算成功，避免模型重复输入；由 submitted=false 提示单独补按回车或点按钮。
@@ -1110,6 +1180,7 @@ internal class AgentLocalTools(
             text = args.optString("text"),
             index = index,
             observation = observation,
+            displayId = currentActiveDisplayId(),
         )
     }
 
@@ -1120,7 +1191,7 @@ internal class AgentLocalTools(
         } else {
             null
         }
-        return deviceController.clearText(index = index, observation = observation)
+        return deviceController.clearText(index = index, observation = observation, displayId = currentActiveDisplayId())
     }
 
     private fun setClipboard(args: JSONObject): String =
@@ -1130,27 +1201,34 @@ internal class AgentLocalTools(
         deviceController.clipboardGet(requireContext())
 
     private fun pasteText(args: JSONObject): String =
-        deviceController.pasteText(args.optString("text"))
+        deviceController.pasteText(args.optString("text"), currentActiveDisplayId())
 
     private fun waitForText(args: JSONObject): String =
         deviceController.waitForText(
             text = args.optString("text"),
             timeoutMs = args.optInt("timeout_ms", 10_000),
             includeDesc = args.optBoolean("include_desc", true),
-            matchMode = args.optString("match", "contains")
+            matchMode = args.optString("match", "contains"),
+            displayId = currentActiveDisplayId(),
         )
 
     private fun waitForPackage(args: JSONObject): String =
         deviceController.waitForPackage(
             packageName = args.optString("package_name"),
-            timeoutMs = args.optInt("timeout_ms", 10_000)
+            timeoutMs = args.optInt("timeout_ms", 10_000),
+            displayId = currentActiveDisplayId(),
         )
 
     /**
      * 坐标系必须显式声明。旧版按"上一次观察是否带截图"隐式切换默认值，模型无从得知，
      * 经常把截图像素当成屏幕像素；缺省时直接报参数错误，让模型在下一步改正。
      */
-    private fun convertPoint(x: Int, y: Int, coordinateSpace: String): ScreenPoint {
+    private fun convertPoint(
+        x: Int,
+        y: Int,
+        coordinateSpace: String,
+        displayId: Int = Display.DEFAULT_DISPLAY,
+    ): ScreenPoint {
         val space = publishedObservation.get().coordinateSpace
         val requestedSpace = coordinateSpace.trim().lowercase(Locale.ROOT)
         if (requestedSpace.isBlank()) {
@@ -1163,7 +1241,7 @@ internal class AgentLocalTools(
                 throw InvalidToolArgumentException("normalized 坐标必须在 0–$NORMALIZED_MAX 之间：($x,$y)")
             }
             val (width, height) = space?.let { it.screenWidth to it.screenHeight }
-                ?: deviceController.screenDimensions()
+                ?: deviceController.screenDimensions(displayId)
             return ScreenPoint(
                 x = (x.toLong() * (width - 1) / NORMALIZED_MAX).toInt(),
                 y = (y.toLong() * (height - 1) / NORMALIZED_MAX).toInt(),
@@ -1171,7 +1249,7 @@ internal class AgentLocalTools(
         }
         if (requestedSpace == "screen") {
             val (width, height) = space?.let { it.screenWidth to it.screenHeight }
-                ?: deviceController.screenDimensions()
+                ?: deviceController.screenDimensions(displayId)
             if (x !in 0 until width || y !in 0 until height) {
                 throw InvalidToolArgumentException(
                     "屏幕坐标超出范围：($x,$y) not in ${width}x$height",
@@ -1260,24 +1338,101 @@ internal class AgentLocalTools(
         return PreparedLaunch(app, launchIntent)
     }
 
-    private fun launchApp(prepared: PreparedLaunch, selfLaunch: Boolean): String {
+    private fun launchApp(prepared: PreparedLaunch, selfLaunch: Boolean, args: JSONObject): String {
         prepared.error?.let { return it }
         val app = checkNotNull(prepared.app)
         val launchIntent = Intent(checkNotNull(prepared.intent))
         val context = requireContext()
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        val requestedDisplay = CanvasRoutingPolicy.RequestedDisplay.parse(
+            args.optString("display", "auto"),
+        ) ?: return errorResult("INVALID_ARGUMENT", "display 仅支持 auto、virtual 或 main")
+
         if (selfLaunch) {
+            activeDisplayId = Display.DEFAULT_DISPLAY
             val options = ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY)
             context.startActivity(launchIntent, options.toBundle())
-        } else {
-            context.startActivity(launchIntent)
+            logger.info("Agent local tool action=launch_app outcome=started canvas=main self_launch=true")
+            return JSONObject()
+                .put("ok", true)
+                .put("tool", "launch_app")
+                .put("app_name", app.appName)
+                .put("package_name", app.packageName)
+                .put("canvas", CanvasRoutingPolicy.CanvasTarget.MAIN_DISPLAY.wireName)
+                .put("display_id", Display.DEFAULT_DISPLAY)
+                .toString()
         }
-        logger.info("Agent local tool action=launch_app outcome=started")
+
+        val mainForegroundPkg = AgentAccessibilityService.current()?.currentPackageName(Display.DEFAULT_DISPLAY)
+        val targetCanvas = CanvasRoutingPolicy.decideLaunchTarget(
+            virtualDisplayEnabled = virtualDisplayEnabled(),
+            backendAvailable = VirtualDisplayController.isBackendAvailable(rootAvailable(), lsposedAvailable()),
+            requested = requestedDisplay,
+            targetPackage = app.packageName,
+            foregroundPackageOnMainDisplay = mainForegroundPkg,
+            ownPackage = context.packageName,
+        )
+
+        val launchedVirtualId = if (targetCanvas == CanvasRoutingPolicy.CanvasTarget.VIRTUAL_DISPLAY) {
+            VirtualDisplayController.launchAppOnVirtualDisplay(
+                context = context,
+                packageName = app.packageName,
+                appName = app.appName,
+                launchIntent = launchIntent,
+                rootAvailable = rootAvailable,
+            )
+        } else {
+            null
+        }
+
+        val finalDisplayId = if (launchedVirtualId != null && CanvasRoutingPolicy.isVirtualDisplay(launchedVirtualId)) {
+            activeDisplayId = launchedVirtualId
+            launchedVirtualId
+        } else {
+            activeDisplayId = Display.DEFAULT_DISPLAY
+            context.startActivity(launchIntent)
+            Display.DEFAULT_DISPLAY
+        }
+        val finalCanvas = if (CanvasRoutingPolicy.isVirtualDisplay(finalDisplayId)) {
+            CanvasRoutingPolicy.CanvasTarget.VIRTUAL_DISPLAY.wireName
+        } else {
+            CanvasRoutingPolicy.CanvasTarget.MAIN_DISPLAY.wireName
+        }
+
+        logger.info("Agent local tool action=launch_app outcome=started canvas=$finalCanvas display=$finalDisplayId")
         return JSONObject()
             .put("ok", true)
             .put("tool", "launch_app")
             .put("app_name", app.appName)
             .put("package_name", app.packageName)
+            .put("canvas", finalCanvas)
+            .put("display_id", finalDisplayId)
+            .toString()
+    }
+
+    /** 将虚拟屏中已就绪的画面破壁移交到物理主屏（收银台、安全窗口或模型显式要求时）。 */
+    private fun presentToUser(args: JSONObject): String {
+        val context = requireContext()
+        val reason = args.optString("reason").trim()
+        val vdSnapshot = VirtualDisplayController.snapshots.value
+        val wasVirtual = vdSnapshot.active || CanvasRoutingPolicy.isVirtualDisplay(activeDisplayId)
+        val presented = if (wasVirtual) {
+            VirtualDisplayController.handoffToMainDisplay(context, rootAvailable)
+        } else {
+            true
+        }
+        activeDisplayId = Display.DEFAULT_DISPLAY
+        return JSONObject()
+            .put("ok", true)
+            .put("tool", "present_to_user")
+            .put("canvas", CanvasRoutingPolicy.CanvasTarget.MAIN_DISPLAY.wireName)
+            .put("display_id", Display.DEFAULT_DISPLAY)
+            .put("presented", presented)
+            .apply {
+                if (vdSnapshot.appName.isNotBlank()) put("app_name", vdSnapshot.appName)
+                if (vdSnapshot.packageName.isNotBlank()) put("package_name", vdSnapshot.packageName)
+                if (reason.isNotBlank()) put("reason", reason)
+            }
             .toString()
     }
 
@@ -1296,12 +1451,46 @@ internal class AgentLocalTools(
         if (!HookSupport.resolvesActivity(context, intent)) {
             return errorResult("NO_ACTIVITY", "没有应用可以处理该 URI")
         }
-        context.startActivity(intent)
-        logger.info("Agent local tool action=open_uri outcome=started")
+        val resolvedPkg = context.packageManager.resolveActivity(intent, 0)?.activityInfo?.packageName
+        val mainForegroundPkg = AgentAccessibilityService.current()?.currentPackageName(Display.DEFAULT_DISPLAY)
+        val targetCanvas = CanvasRoutingPolicy.decideLaunchTarget(
+            virtualDisplayEnabled = virtualDisplayEnabled(),
+            backendAvailable = VirtualDisplayController.isBackendAvailable(rootAvailable(), lsposedAvailable()),
+            requested = CanvasRoutingPolicy.RequestedDisplay.AUTO,
+            targetPackage = resolvedPkg,
+            foregroundPackageOnMainDisplay = mainForegroundPkg,
+            ownPackage = context.packageName,
+        )
+        val virtualId = if (targetCanvas == CanvasRoutingPolicy.CanvasTarget.VIRTUAL_DISPLAY) {
+            VirtualDisplayController.openUriOnVirtualDisplay(
+                context = context,
+                intent = intent,
+                targetLabel = uri.host ?: uri.scheme.orEmpty(),
+                rootAvailable = rootAvailable,
+            )
+        } else {
+            null
+        }
+        val finalDisplayId = if (virtualId != null && CanvasRoutingPolicy.isVirtualDisplay(virtualId)) {
+            activeDisplayId = virtualId
+            virtualId
+        } else {
+            activeDisplayId = Display.DEFAULT_DISPLAY
+            context.startActivity(intent)
+            Display.DEFAULT_DISPLAY
+        }
+        val finalCanvas = if (CanvasRoutingPolicy.isVirtualDisplay(finalDisplayId)) {
+            CanvasRoutingPolicy.CanvasTarget.VIRTUAL_DISPLAY.wireName
+        } else {
+            CanvasRoutingPolicy.CanvasTarget.MAIN_DISPLAY.wireName
+        }
+        logger.info("Agent local tool action=open_uri outcome=started canvas=$finalCanvas display=$finalDisplayId")
         return JSONObject()
             .put("ok", true)
             .put("tool", "open_uri")
             .put("scheme", uri.scheme?.lowercase(Locale.ROOT))
+            .put("canvas", finalCanvas)
+            .put("display_id", finalDisplayId)
             .also { result ->
                 if (uri.scheme.equals("https", true)) {
                     result.put("display_uri", uriText)
@@ -2173,16 +2362,29 @@ internal class AgentLocalTools(
         val candidatesByPath: Map<String, String>,
     )
 
-    private fun showTap(x: Int, y: Int) {
-        GestureIndicator.showTap(context, x, y)
+    private fun showTap(x: Int, y: Int, displayId: Int = Display.DEFAULT_DISPLAY) {
+        if (CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            // 虚拟屏内的动作光效画在虚拟屏画布上（供后续 UI 订阅），不扰动物理主屏。
+            VirtualDisplayController.emitTapEffect(x, y, longPress = false)
+        } else {
+            GestureIndicator.showTap(context, x, y)
+        }
     }
 
-    private fun showLongPress(x: Int, y: Int, durationMs: Int) {
-        GestureIndicator.showLongPress(context, x, y, durationMs)
+    private fun showLongPress(x: Int, y: Int, durationMs: Int, displayId: Int = Display.DEFAULT_DISPLAY) {
+        if (CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            VirtualDisplayController.emitTapEffect(x, y, longPress = true)
+        } else {
+            GestureIndicator.showLongPress(context, x, y, durationMs)
+        }
     }
 
-    private fun showSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int) {
-        GestureIndicator.showSwipe(context, x1, y1, x2, y2, durationMs)
+    private fun showSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int, displayId: Int = Display.DEFAULT_DISPLAY) {
+        if (CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
+            VirtualDisplayController.emitSwipeEffect(x1, y1, x2, y2, durationMs)
+        } else {
+            GestureIndicator.showSwipe(context, x1, y1, x2, y2, durationMs)
+        }
     }
 
     private data class AppInfo(

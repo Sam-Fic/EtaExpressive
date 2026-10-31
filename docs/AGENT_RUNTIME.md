@@ -113,6 +113,8 @@ MCP 地址由用户直接配置，HTTP、HTTPS、局域网与本机地址使用�
 
 Root 探测在 IO 线程执行：存在 `su` 时首次自动请求一次，最多等待 30 秒，仅 UID 0 视为可用；拒绝和超时不会反复弹出请求，用户可在“系统增强”手动重试。LSPosed 连接独立判断，不代替 Root 授权。
 
+后台虚拟屏执行：`launch_app`/`open_uri` 默认走智能画布分流（`CanvasRoutingPolicy`），目标应用已在物理主屏前台或属于桌面/SystemUI 时留在主屏，跨应用任务在受信任虚拟屏静默执行，GUI 工具经 `activeDisplayId` 自动路由到目标屏；`present_to_user` 将虚拟屏任务原位迁移回主屏。虚拟屏创建有三条通道：API 33+ 进程内受信任创建、Root `app_process` 特权桥（`VirtualDisplayCommandMain`）、LSPosed system_server 授权；全部不可用时自动回退物理主屏，模型无感知。开关为 `agent_virtual_display_enabled`，默认开启。
+
 ## 终端环境
 
 `terminal` 的 `environment` 明确区分设备控制与通用 Linux 工具，默认值为 `android`：

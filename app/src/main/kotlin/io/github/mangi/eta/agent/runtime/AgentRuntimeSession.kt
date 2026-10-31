@@ -33,6 +33,8 @@ internal class AgentRuntimeSession(
     val questionOwnerGeneration: String = UUID.randomUUID().toString(),
     // Android queues Main's terminal work; plain JVM sessions retain synchronous semantics.
     private val terminalWork: ((() -> Unit) -> Unit) = { it() },
+    // 终态发布前的最后一刻：仍在提交窗口内、订阅者尚未收到结果。运行登记在这里注销。
+    private val beforeTerminalPublish: () -> Unit = {},
 ) {
     /** “每次询问”在用户选定后改成前台或后台一次，之后不再变。 */
     @Volatile
@@ -166,6 +168,10 @@ internal class AgentRuntimeSession(
 
     val isTerminal: Boolean
         get() = state == State.TERMINAL
+
+    /** 终态提交窗口：结果已定、尚未发布；准入用它把同会话后来者继续挡在门外。 */
+    val isCommitting: Boolean
+        get() = state == State.COMMITTING
 
     /** Main may signal stop without competing with callbacks or worker persistence. */
     fun signalStop() { stopSignalled = true }
@@ -493,6 +499,7 @@ internal class AgentRuntimeSession(
                     withSessionLock { sealTerminal(result.copy(ok = false, error = AgentQuestionInterruptedException().message)) }
                 } else {
                     val commitFailure = runCatching { beforePublish(result) }.exceptionOrNull()
+                    runCatching { beforeTerminalPublish() }
                     withSessionLock { sealTerminal(result) }
                     commitFailure?.let { throw it }
                 }

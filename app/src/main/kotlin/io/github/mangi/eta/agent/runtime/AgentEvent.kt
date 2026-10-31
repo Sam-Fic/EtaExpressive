@@ -15,6 +15,11 @@ internal sealed interface AgentEvent {
         TOOL_CALL,
     }
 
+    /** 手机操作权在 run 之间的转移；只做状态投送，不进入归档与恢复轨迹。 */
+    data class GuiControlChanged(val status: GuiControlStatus) : AgentEvent {
+        override fun toLogLine(): String = "gui_control_changed status=${status.wireValue}"
+    }
+
     companion object {
         /**
          * 协议标记：compressorLabel 取该值表示「仅修剪、非摘要」。

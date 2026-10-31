@@ -27,6 +27,7 @@ internal object AgentRuntimePolicy {
         val deviceTools: Boolean = false,
         val personalTools: Boolean = false,
         val thinking: Boolean,
+        val virtualDisplay: Boolean = Prefs.Keys.BOOLEAN_DEFAULTS.getValue(Prefs.Keys.AGENT_VIRTUAL_DISPLAY_ENABLED),
     )
 
     fun permissions(preferences: SharedPreferences?): Permissions =
@@ -37,6 +38,7 @@ internal object AgentRuntimePolicy {
             deviceTools = preferences.allowed(Prefs.Keys.AGENT_DEVICE_TOOLS),
             personalTools = preferences.allowed(Prefs.Keys.AGENT_PERSONAL_TOOLS),
             thinking = preferences.allowed(Prefs.Keys.AGENT_THINKING_ENABLED),
+            virtualDisplay = preferences.allowed(Prefs.Keys.AGENT_VIRTUAL_DISPLAY_ENABLED),
         )
 
     fun withoutOptionalThinking(config: AgentModelClient.ModelConfig): AgentModelClient.ModelConfig {

@@ -771,6 +771,11 @@ internal object AgentRuntimeWire {
     /** 将 [AgentEvent] 打包为可跨进程传递的 [Bundle]。 */
     fun eventToBundle(event: AgentEvent, historyDescriptor: ParcelFileDescriptor? = null): Bundle = Bundle().apply {
         when (event) {
+            is AgentEvent.GuiControlChanged -> {
+                putString(KEY_TYPE, "gui_control_changed")
+                putString("status", event.status.wireValue)
+            }
+
             is AgentEvent.RunStarted -> {
                 putString(KEY_TYPE, "run_started")
                 putInt("initial_images", event.initialImages)
@@ -977,6 +982,9 @@ internal object AgentRuntimeWire {
 
     /** 将 [Bundle] 还原为 [AgentEvent]，无法识别时返回 null。 */
     fun eventFromBundle(bundle: Bundle): AgentEvent? = when (bundle.getString(KEY_TYPE)) {
+        "gui_control_changed" -> GuiControlStatus.fromWireValue(bundle.getString("status").orEmpty())
+            ?.let { AgentEvent.GuiControlChanged(it) }
+
         "run_started" -> AgentEvent.RunStarted(
             initialImages = bundle.getInt("initial_images"),
             initialImageBytes = bundle.getInt("initial_image_bytes"),
