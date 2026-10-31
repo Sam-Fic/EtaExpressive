@@ -148,3 +148,53 @@ private fun utf8SequenceLength(leadByte: Int): Int = when {
     leadByte and 0xF8 == 0xF0 -> 4
     else -> 1
 }
+
+/**
+ * 流式 UTF-8 解码器：读线程按任意字节边界切块，多字节字符可能被劈在两块里，
+ * 每块直接 String(chunk) 会在汉字/emoji 处解出替换字符（控制台中文输出乱码）。
+ * 只解以完整字符结尾的前缀，残缺尾部（至多 3 字节）扣到下一块与它拼接。
+ */
+internal class Utf8StreamDecoder {
+    private val lock = Any()
+    private var pending = ByteArray(0)
+    private var pendingSize = 0
+
+    /** 解码 [chunk]（连同上一次扣下的残缺尾部）中完整可解的部分。 */
+    fun decode(chunk: ByteArray): String = synchronized(lock) {
+        if (pendingSize == 0) {
+            decodeComplete(chunk, 0, chunk.size)
+        } else {
+            val merged = ByteArray(pendingSize + chunk.size)
+            System.arraycopy(pending, 0, merged, 0, pendingSize)
+            System.arraycopy(chunk, 0, merged, pendingSize, chunk.size)
+            pendingSize = 0
+            decodeComplete(merged, 0, merged.size)
+        }
+    }
+
+    private fun decodeComplete(bytes: ByteArray, start: Int, end: Int): String {
+        if (start >= end) return ""
+        val cut = completeLength(bytes, end)
+        if (cut < end) {
+            carry(bytes, cut, end)
+            return if (cut > start) bytes.decodeToString(start, cut) else ""
+        }
+        return bytes.decodeToString(start, end)
+    }
+
+    private fun carry(bytes: ByteArray, from: Int, to: Int) {
+        val length = to - from
+        if (pending.size < length) pending = ByteArray(length)
+        System.arraycopy(bytes, from, pending, 0, length)
+        pendingSize = length
+    }
+
+    /** [end] 之前完整 UTF-8 序列的截止长度；末尾残缺序列不计入。 */
+    private fun completeLength(bytes: ByteArray, end: Int): Int {
+        var lead = end - 1
+        while (lead >= 0 && (bytes[lead].toInt() and 0xC0) == 0x80) lead--
+        // 首字节不在本段内（首块就从字符中间开始）：按完整解码，由解码器替换坏字节，不会卡死。
+        if (lead < 0) return end
+        return if (end - lead >= utf8SequenceLength(bytes[lead].toInt() and 0xFF)) end else lead
+    }
+}

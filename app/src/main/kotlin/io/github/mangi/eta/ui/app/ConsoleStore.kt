@@ -10,6 +10,7 @@ import io.github.mangi.eta.agent.terminal.ShellProcessSupervisor
 import io.github.mangi.eta.agent.terminal.TerminalEnvironment
 import io.github.mangi.eta.agent.terminal.TerminalRuntime
 import io.github.mangi.eta.agent.terminal.TerminalScreenBuffer
+import io.github.mangi.eta.agent.terminal.Utf8StreamDecoder
 import io.github.mangi.eta.agent.terminal.isLinux
 import io.github.mangi.eta.agent.terminal.ptySupported
 import io.github.mangi.eta.agent.terminal.terminalEnvironment
@@ -88,8 +89,13 @@ internal class ConsoleStore(
     private val initialLinuxEnvironment =
         LinuxEnvironmentSettingsRepository.current(appContext).terminalEnvironment
 
-    /** 每个会话独立的屏幕缓冲区；写入只能在 IO 线程持锁进行，UI 线程持锁读快照。 */
-    private val buffers = mutableMapOf<String, TerminalScreenBuffer>()
+    /** 每个会话独立的屏幕缓冲与流式解码器；写入只能在 IO 线程持锁进行，UI 线程持锁读快照。 */
+    private class SessionScreen(val buffer: TerminalScreenBuffer) {
+        /** PTY 读块按字节边界切，多字节字符可能劈开，解码交给 [Utf8StreamDecoder] 扣尾拼接。 */
+        val decoder = Utf8StreamDecoder()
+    }
+
+    private val buffers = mutableMapOf<String, SessionScreen>()
     /** 会话网格尺寸；与 [buffers] 共用一把锁，避免主线程读、IO 线程写的裸 HashMap 竞争。 */
     private val sessionSizes = mutableMapOf<String, Pair<Int, Int>>()
 
@@ -105,7 +111,11 @@ internal class ConsoleStore(
     )
     val uiState: StateFlow<ConsoleUiState> = _uiState.asStateFlow()
 
+    // 节流状态在 PTY 读线程与主线程两边读写；@Volatile 防止 32 位机上 Long 写撕裂。
+    @Volatile
     private var lastFlushMs = 0L
+
+    @Volatile
     private var flushScheduled = false
     private var lastCols = 0
     private var lastRows = 0
@@ -304,7 +314,7 @@ internal class ConsoleStore(
                         }
                     }
                     synchronized(bufferLock) {
-                        buffers[result.sessionId] = TerminalScreenBuffer(cols, rows, SCROLLBACK_LINES)
+                        buffers[result.sessionId] = SessionScreen(TerminalScreenBuffer(cols, rows, SCROLLBACK_LINES))
                         sessionSizes[result.sessionId] = cols to rows
                     }
                     _uiState.update { state ->
@@ -328,7 +338,7 @@ internal class ConsoleStore(
 
     private fun onOutput(sessionId: String, chunk: ByteArray) {
         synchronized(bufferLock) {
-            buffers[sessionId]?.process(String(chunk, Charsets.UTF_8))
+            buffers[sessionId]?.let { it.buffer.process(it.decoder.decode(chunk)) }
         }
         if (sessionId != _uiState.value.activeSessionId) return
         val now = System.currentTimeMillis()
@@ -351,7 +361,7 @@ internal class ConsoleStore(
 
     private fun flushFrame(sessionId: String) {
         val frame = synchronized(bufferLock) {
-            val current = buffers[sessionId] ?: return
+            val current = buffers[sessionId]?.buffer ?: return
             ConsoleFrame(
                 lines = current.lines(),
                 screenRows = current.rows,
