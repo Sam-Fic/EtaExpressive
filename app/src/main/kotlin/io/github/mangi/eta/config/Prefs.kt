@@ -111,7 +111,13 @@ internal object Prefs {
          */
         @Deprecated("迁移用；由 AGENT_EXTENSIONS_TOOLS 取代")
         const val AGENT_SELF_SETTINGS_TOOLS = "agent_self_settings_tools"
-        /** 媒体语义搜索工具（semantic_search_media）：只做本机离线索引检索，默认关闭。 */
+        /**
+         * @deprecated 媒体语义搜索（semantic_search_media）已没有独立开关：
+         * 是否下发改由「个人数据」开关 + 单工具禁用集裁决，见
+         * [ToolGroupPrefsMigration.migrateMediaSearchSwitchOnce] 的一次性迁移。
+         * 键只为读旧值保留，不要再读写它。
+         */
+        @Deprecated("由 AGENT_DISABLED_TOOLS 取代；仅迁移读取")
         const val AGENT_MEDIA_SEARCH_TOOLS = "agent_media_search_tools"
 
         /**
@@ -191,7 +197,6 @@ internal object Prefs {
             AGENT_DEVICE_TOOLS to true,
             AGENT_PERSONAL_TOOLS to true,
             AGENT_EXTENSIONS_TOOLS to true,
-            AGENT_MEDIA_SEARCH_TOOLS to false,
             AGENT_SUBAGENT_TOOLS to true,
             AGENT_CONFIRM_DANGEROUS_TOOLS to false,
             AGENT_THINKING_ENABLED to true,
@@ -222,7 +227,6 @@ internal object Prefs {
             AGENT_DEVICE_TOOLS,
             AGENT_PERSONAL_TOOLS,
             AGENT_EXTENSIONS_TOOLS,
-            AGENT_MEDIA_SEARCH_TOOLS,
             AGENT_SUBAGENT_TOOLS,
             AGENT_CONFIRM_DANGEROUS_TOOLS,
             AGENT_THINKING_ENABLED,
@@ -293,6 +297,7 @@ internal object Prefs {
         // 一次性迁移必须在任何 Agent 偏好读取之前完成；固定标记保证只跑一次。
         AgentTaskSurface.migrateAskToForegroundOnce()
         ToolGroupPrefsMigration.runOnce(localAgent)
+        ToolGroupPrefsMigration.migrateMediaSearchSwitchOnce(localAgent)
     }
 
     /** Hook 进程调用：缓存框架提供的只读 SharedPreferences。 */
@@ -386,6 +391,7 @@ internal object Prefs {
         // 无标记的旧备份若存过 ASK 则补做一次迁移。
         AgentTaskSurface.migrateAskToForegroundOnce()
         ToolGroupPrefsMigration.runOnce(localAgent)
+        ToolGroupPrefsMigration.migrateMediaSearchSwitchOnce(localAgent)
     }
 
     /** 被用户单独禁用的工具名集合；组开关之下的细粒度控制。 */

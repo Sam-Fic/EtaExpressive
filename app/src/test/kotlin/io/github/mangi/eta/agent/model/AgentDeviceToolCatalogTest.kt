@@ -114,7 +114,6 @@ class AgentDeviceToolCatalogTest {
             screenTools = false,
             personalTools = true,
             extensionsTools = false,
-            mediaSearchTools = true,
             capabilities = AgentToolCapabilities(rootAvailable = true, lsposedAvailable = true),
             openedToolGroups = AgentToolGroups.allIds,
         ).toolNames()

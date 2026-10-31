@@ -52,7 +52,6 @@ internal class AgentSelfSettingsTools {
         Prefs.Keys.AGENT_SCREEN_TOOLS,
         Prefs.Keys.AGENT_DEVICE_TOOLS,
         Prefs.Keys.AGENT_PERSONAL_TOOLS,
-        Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
     )
 
     private val settings: List<EtaSetting> = listOf(
@@ -61,7 +60,6 @@ internal class AgentSelfSettingsTools {
         EtaSetting(Prefs.Keys.AGENT_SCREEN_TOOLS, "屏幕观察与 GUI 操作", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_DEVICE_TOOLS, "设备控制", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_PERSONAL_TOOLS, "个人数据", Kind.SWITCH, Area.TOOLS),
-        EtaSetting(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS, "媒体语义搜索", Kind.SWITCH, Area.TOOLS),
         EtaSetting(Prefs.Keys.AGENT_TTS_AUTO_READ, "回复自动朗读", Kind.SWITCH, Area.SPEECH),
         EtaSetting(
             Prefs.Keys.AGENT_TTS_STREAM_SYNTH, "边生成边朗读", Kind.SWITCH, Area.SPEECH,

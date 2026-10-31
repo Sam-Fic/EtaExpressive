@@ -39,7 +39,6 @@ internal object AgentRequestOverhead {
             skillGitHubDiscovery = true,
             skillGitHubInstall = true,
             memoryTools = memoryContext.enabled,
-            mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
             capabilities = capabilities,
             localWebSearch = !config.usesHostedWebSearch,
             disabledTools = Prefs.disabledTools(),

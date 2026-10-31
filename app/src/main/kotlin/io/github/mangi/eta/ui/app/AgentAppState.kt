@@ -163,7 +163,6 @@ import io.github.mangi.eta.ui.model.ToolCapabilities
 import io.github.mangi.eta.ui.model.ToolCapabilityUi
 import io.github.mangi.eta.ui.model.ToolGroupSwitch
 import io.github.mangi.eta.ui.model.ToolItemUi
-import io.github.mangi.eta.ui.model.ToolSubSwitchUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.fullImageSourceAt
 import io.github.mangi.eta.ui.model.isVideoAt
@@ -915,12 +914,12 @@ internal class AgentAppState(
         scope.launch(Dispatchers.Main.immediate) {
             val compression = autoCompressPreference.observe { autoCompressEnabled = it }
             val prefs = Prefs.localAgentPreferences()
-            // 会影响常驻开销的开关都从界面能力定义派生（含组内子开关）：新增/改名一个
-            // 能力开关时这里自动跟上，否则用户改了开关而界面上的估算不动。
+            // 会影响常驻开销的开关都从界面能力定义派生（含外部闸门）：新增/改名一个
+            // 开关时这里自动跟上，否则用户改了开关而界面上的估算不动。
             // 单工具禁用集也直接改变下发的 schema，一并监听。
-            val overheadKeys = ToolCapabilities.all.flatMapTo(mutableSetOf()) { capability ->
-                listOfNotNull(capability.switchKey, capability.subSwitch?.switchKey)
-            } + Prefs.Keys.AGENT_DISABLED_TOOLS
+            val overheadKeys = ToolCapabilities.all.mapTo(mutableSetOf()) { it.switchKey } +
+                ToolCapabilities.externalGates.mapTo(mutableSetOf()) { it.switchKey } +
+                Prefs.Keys.AGENT_DISABLED_TOOLS
             val overheadListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
                 if (key == null || key in overheadKeys) {
                     scope.launch(Dispatchers.Main.immediate) { refreshRequestOverhead() }
@@ -7987,6 +7986,15 @@ private fun stableArchiveId(value: String): String =
 internal fun buildToolsState(context: Context): AgentToolsUiState {
     val disabled = Prefs.disabledTools()
     val catalog = toolItemCatalog(context)
+    // 外部闸门（设置页里的执行策略开关）：关掉时卡内对应工具行置灰并指路，
+    // 避免行还亮着、点了开关却没有任何反应。
+    val blockedBy = ToolCapabilities.externalGates
+        .filter { !ToolGroupSwitch.isEnabled(it.switchKey) }
+        .flatMap { gate -> gate.gatedTools.map { it to context.getString(gate.labelRes) } }
+        .toMap()
+    val blockedTemplate = if (blockedBy.isNotEmpty()) {
+        context.getString(R.string.tools_row_blocked_by_setting)
+    } else null
     return AgentToolsUiState(
         capabilities = ToolCapabilities.all.map { capability ->
             // 按 groupIds 的顺序逐组取工具：groupIds 表达的是卡内语义先后。
@@ -7996,7 +8004,13 @@ internal fun buildToolsState(context: Context): AgentToolsUiState {
                 val names = AgentToolGroups.toolsOfGroup(groupId)
                 catalog.filter { io.github.mangi.eta.ui.model.actualToolName(it.id) in names }
             }.map {
-                it.copy(enabled = io.github.mangi.eta.ui.model.actualToolName(it.id) !in disabled)
+                val name = io.github.mangi.eta.ui.model.actualToolName(it.id)
+                it.copy(
+                    enabled = name !in disabled,
+                    blockedReason = blockedBy[name]?.let { label ->
+                        blockedTemplate?.format(label)
+                    },
+                )
             }
             ToolCapabilityUi(
                 id = capability.id,
@@ -8005,16 +8019,6 @@ internal fun buildToolsState(context: Context): AgentToolsUiState {
                 tools = tools,
                 switchKey = capability.switchKey,
                 switchEnabled = ToolGroupSwitch.isEnabled(capability.switchKey),
-                subSwitch = capability.subSwitch?.let { sub ->
-                    ToolSubSwitchUi(
-                        id = sub.id,
-                        title = context.getString(sub.titleRes),
-                        summary = context.getString(sub.summaryRes),
-                        switchKey = sub.switchKey,
-                        enabled = ToolGroupSwitch.isEnabled(sub.switchKey),
-                        gatedTools = sub.gatedTools,
-                    )
-                },
             )
         },
     )

@@ -3,6 +3,7 @@ package io.github.mangi.eta.config
 import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
 import io.github.mangi.eta.agent.model.AgentDeviceToolCatalog
+import io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -147,6 +148,39 @@ class ToolGroupPrefsMigrationTest {
         // 用户迁移后又自己打开了那批工具：旧档位值仍是 false，重跑绝不能把它们再关回去。
         prefs.edit().putString(Prefs.Keys.AGENT_DISABLED_TOOLS, "").apply()
         ToolGroupPrefsMigration.runOnce(prefs)
+        assertTrue(prefs.disabled().isEmpty())
+    }
+
+    @Test
+    fun mediaSearchSwitchOffBecomesADisabledTool() {
+        // 旧开关默认关闭：无论用户碰没碰过，false 都要翻译成「semantic_search_media 禁用」，
+        // 否则迁移会把原本不下发的工具静默放开。
+        val prefs = prefs()
+        ToolGroupPrefsMigration.migrateMediaSearchSwitchOnce(prefs)
+        assertTrue(
+            AgentMediaSearchToolCatalog.SEARCH_MEDIA in prefs.disabled(),
+        )
+    }
+
+    @Test
+    fun mediaSearchSwitchOnLeavesTheToolEnabled() {
+        val prefs = prefs().apply {
+            edit().putBoolean(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS, true).apply()
+        }
+        ToolGroupPrefsMigration.migrateMediaSearchSwitchOnce(prefs)
+        assertTrue(
+            "开过媒体搜索的用户迁移后不能被静默禁用",
+            AgentMediaSearchToolCatalog.SEARCH_MEDIA !in prefs.disabled(),
+        )
+    }
+
+    @Test
+    fun mediaSearchMigrationRunsOnlyOnce() {
+        val prefs = prefs()
+        ToolGroupPrefsMigration.migrateMediaSearchSwitchOnce(prefs)
+        // 迁移后用户自己打开了该工具：旧键仍是 false，重跑绝不能把它禁回去。
+        prefs.edit().putString(Prefs.Keys.AGENT_DISABLED_TOOLS, "").apply()
+        ToolGroupPrefsMigration.migrateMediaSearchSwitchOnce(prefs)
         assertTrue(prefs.disabled().isEmpty())
     }
 }

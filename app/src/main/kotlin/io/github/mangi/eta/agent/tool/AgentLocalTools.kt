@@ -110,9 +110,6 @@ internal class AgentLocalTools(
     private val extensionsToolsEnabled: () -> Boolean = {
         Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
     },
-    private val mediaSearchToolsEnabled: () -> Boolean = {
-        Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS)
-    },
     private val memoryToolsEnabled: (() -> Boolean)? = null,
     private val screenshotExcludedPackages: () -> Set<String> = { emptySet() },
     private val screenObservationProvider: (
@@ -657,7 +654,8 @@ internal class AgentLocalTools(
                 AgentSelfSettingsToolCatalog.MANAGE_SUBAGENTS -> textResult(selfSettingsTool { selfSubAgentTools.execute(args) })
                 AgentSelfSettingsToolCatalog.MANAGE_HISTORY -> textResult(selfSettingsTool { selfHistoryTools.execute(args) })
                 AgentSelfSettingsToolCatalog.CONFIGURE_MCP -> textResult(selfSettingsTool { selfMcpTools.execute(args) })
-                AgentMediaSearchToolCatalog.SEARCH_MEDIA -> textResult(mediaSearchTool { mediaSearchTools.execute(args) })
+                // 是否被禁用由 groupToolPermissionError 的单工具兜底统一裁决，无需专用门禁。
+                AgentMediaSearchToolCatalog.SEARCH_MEDIA -> textResult(mediaSearchTools.execute(args))
                 AgentSelfAuthorTools.AUTHOR_TOOL -> textResult(selfAuthorTool { selfAuthorTools.execute(AgentSelfAuthorTools.AUTHOR_TOOL, args) ?: "" })
                 AgentSelfAuthorTools.LIST_TOOLS -> textResult(selfAuthorTool { selfAuthorTools.execute(AgentSelfAuthorTools.LIST_TOOLS, args) ?: "" })
                 else -> textResult(
@@ -772,14 +770,6 @@ internal class AgentLocalTools(
     private fun selfSettingsTool(block: () -> String): String {
         if (!extensionsToolsEnabled()) {
             return errorResult("SELF_SETTINGS_TOOLS_DISABLED", "应用自身配置工具已关闭，本次未执行")
-        }
-        return block()
-    }
-
-    /** 媒体语义搜索工具的统一门禁：关闭开关后模型重放旧调用也直接拒绝。 */
-    private fun mediaSearchTool(block: () -> String): String {
-        if (!mediaSearchToolsEnabled()) {
-            return errorResult("MEDIA_SEARCH_TOOLS_DISABLED", "媒体语义搜索工具已关闭，本次未执行")
         }
         return block()
     }

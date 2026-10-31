@@ -49,8 +49,7 @@ class ContextOverheadBudgetTest {
                     deviceTools = false,
                     personalTools = false,
                     extensionsTools = false,
-                    mediaSearchTools = false,
-                    delegationTools = false,
+                            delegationTools = false,
                 )
             } else {
                 null
@@ -69,7 +68,6 @@ class ContextOverheadBudgetTest {
             skillGitHubDiscovery = true,
             skillGitHubInstall = true,
             memoryTools = false,
-            mediaSearchTools = false,
             capabilities = capabilities,
             localWebSearch = true,
             openedToolGroups = openedToolGroups,

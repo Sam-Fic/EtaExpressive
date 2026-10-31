@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.SmartToy
@@ -546,8 +547,20 @@ internal fun SettingsScreen(
                     }
                 }
 
-                // 下面三个不是能力分组，而是执行行为：关掉不会让某一组工具消失，
-                // 只改变「怎么执行」。因此留在设置页，与工具页的卡片开关互不重复。
+                // 下面几项不是能力分组，而是执行行为：关掉不会让某一组工具消失，
+                // 只改变「怎么执行 / 允许执行到什么程度」。因此留在设置页，
+                // 与工具页的卡片开关互不重复；被它们挡住的工具行会在工具页置灰并指到这里。
+                row(key = SettingsKeys.TOOL_SHELL) {
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.settings_shell_tools),
+                        summary = stringResource(R.string.settings_shell_tools_summary),
+                        key = Prefs.Keys.AGENT_SHELL_TOOLS,
+                        icon = Icons.Rounded.Code,
+                    )
+                }
+
                 row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
                     SwitchPref(
                         context = context,
@@ -978,11 +991,11 @@ private fun SettingsRowHighlight(
 
 // ── 工具能力入口行的状态摘要 ────────────────────────────────────────────────
 
-/** 影响工具能力入口摘要的全部键：7 个能力开关 + 2 个子开关 + 单工具禁用集。 */
+/** 影响工具能力入口摘要的全部键：7 个能力开关 + 外部闸门 + 单工具禁用集。 */
 private val toolPreferenceKeys: Set<String> =
-    ToolCapabilities.all.flatMapTo(mutableSetOf()) { capability ->
-        listOfNotNull(capability.switchKey, capability.subSwitch?.switchKey)
-    } + Prefs.Keys.AGENT_DISABLED_TOOLS
+    ToolCapabilities.all.mapTo(mutableSetOf()) { it.switchKey } +
+        ToolCapabilities.externalGates.mapTo(mutableSetOf()) { it.switchKey } +
+        Prefs.Keys.AGENT_DISABLED_TOOLS
 
 /**
  * 「工具能力」入口行的一行摘要。

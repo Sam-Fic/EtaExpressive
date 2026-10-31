@@ -28,7 +28,6 @@ class AgentDisabledCapabilitiesPromptTest {
         device: Boolean = true,
         personal: Boolean = true,
         extensions: Boolean = true,
-        mediaSearch: Boolean = true,
         delegation: Boolean = true,
     ) = AgentToolGroups.ToolSwitchState(
         basicTools = basic,
@@ -39,7 +38,6 @@ class AgentDisabledCapabilitiesPromptTest {
         deviceTools = device,
         personalTools = personal,
         extensionsTools = extensions,
-        mediaSearchTools = mediaSearch,
         delegationTools = delegation,
     )
 
@@ -115,16 +113,12 @@ class AgentDisabledCapabilitiesPromptTest {
         assertTrue("日历事件属日程组，不该列进个人数据", !personalOff.contains("日历"))
     }
 
-    @Test fun subSwitchesAreReportedAsTheNarrowerLoss() {
+    @Test fun shellIsReportedAsTheNarrowerLossThanTheWholeTerminalGroup() {
         // 终端开着、只关命令执行：说明必须精确到子项，不能谎称整个终端没了。
         val shellOff = requireNotNull(disabledNotice(switches(shell = false)))
         assertTrue(shellOff.contains("命令执行"))
         assertFalse("终端本身没关，不该列进去", shellOff.contains("终端与文件读写"))
-
-        // 个人数据开着、只关媒体搜索：同理。
-        val mediaOff = requireNotNull(disabledNotice(switches(mediaSearch = false)))
-        assertTrue(mediaOff.contains("媒体语义搜索"))
-        assertFalse(mediaOff.contains("个人数据读取"))
+        // 媒体搜索没有组级开关：被单工具禁用时工具本就不在目录里，关闭说明不再提它。
 
         // 整组关掉时只列组，不再列组内子项。
         val terminalOff = requireNotNull(disabledNotice(switches(terminal = false, shell = false)))
@@ -204,7 +198,6 @@ class AgentDisabledCapabilitiesPromptTest {
             switches(shell = false) to "命令执行",
             switches(device = false) to "设备控制",
             switches(personal = false) to "个人数据读取",
-            switches(mediaSearch = false) to "媒体语义搜索",
             switches(extensions = false) to "Eta 自身配置",
             switches(delegation = false) to "子代理委派",
         )

@@ -21,19 +21,6 @@ data class ToolCapabilityUi(
     /** 该能力的开关；每个能力恰好一个，不再有「两组共用一个键」。 */
     val switchKey: String,
     val switchEnabled: Boolean = true,
-    /** 组内子开关（shell / 媒体搜索）；显示在卡片头之后、工具行之前。 */
-    val subSwitch: ToolSubSwitchUi? = null,
-)
-
-@Immutable
-data class ToolSubSwitchUi(
-    val id: String,
-    val title: String,
-    val summary: String,
-    val switchKey: String,
-    val enabled: Boolean = true,
-    /** 被它门禁的工具；关闭时这些行置灰。 */
-    val gatedTools: Set<String> = emptySet(),
 )
 
 @Immutable
@@ -43,4 +30,9 @@ data class ToolItemUi(
     val summary: String,
     /** 单工具开关：false 表示用户已在工具清单页单独禁用它（见 [io.github.mangi.eta.config.Prefs.disabledTools]）。 */
     val enabled: Boolean = true,
+    /**
+     * 被外部闸门（设置页里的执行策略开关）挡住时的说明；非 null 时该行置灰且开关不可用。
+     * 与 [enabled] 正交：外部闸门说了算，单工具开关此时没有意义。
+     */
+    val blockedReason: String? = null,
 )

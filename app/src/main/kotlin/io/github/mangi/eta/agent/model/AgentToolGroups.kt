@@ -119,7 +119,8 @@ internal object AgentToolGroups {
     )
 
     /**
-     * 个人内容读取 + 媒体语义搜索。semantic_search_media 额外受媒体搜索开关门禁。
+     * 个人内容读取 + 媒体语义搜索。semantic_search_media 没有组级开关，
+     * 是否下发只看个人数据开关与单工具禁用集。
      *
      * 设备状态读取曾与此组合并（两档旧开关退役时并为一组），但两者的数据来源与使用场景
      * 没有交集：查联系人和看 logcat 是两件事。33 个工具的合组会让一次「找联系人」
@@ -320,7 +321,6 @@ internal object AgentToolGroups {
         val deviceTools: Boolean,
         val personalTools: Boolean,
         val extensionsTools: Boolean,
-        val mediaSearchTools: Boolean,
         val delegationTools: Boolean,
     )
 
@@ -349,8 +349,6 @@ internal object AgentToolGroups {
             labels += label(PERSONAL_GROUP.id) + "（通讯录、短信、通话、账单、便签等）"
             labels += label(DEVICE_STATE_GROUP.id) + "（设置项、通知、位置、日志、网络与显示状态等）"
             labels += label(CALENDAR_GROUP.id)
-        } else if (!switches.mediaSearchTools) {
-            labels += "媒体语义搜索"
         }
         if (!switches.extensionsTools) labels += label(EXTENSIONS_GROUP.id)
         if (!switches.delegationTools) labels += "子代理委派"

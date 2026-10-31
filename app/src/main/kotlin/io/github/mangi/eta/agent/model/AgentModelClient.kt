@@ -178,7 +178,6 @@ internal object AgentModelClient {
                 skillGitHubDiscovery = true,
                 skillGitHubInstall = true,
                 memoryTools = memoryEnabled,
-                mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
                 capabilities = capabilities,
                 localWebSearch = !config.usesHostedWebSearch,
                 openedToolGroups = openedToolGroups,
@@ -545,7 +544,6 @@ internal object AgentModelClient {
         val deviceTools: Boolean,
         val personalTools: Boolean,
         val extensionsTools: Boolean,
-        val mediaSearchTools: Boolean,
         val disabledToolsDigest: String,
     ) {
         companion object {
@@ -558,7 +556,6 @@ internal object AgentModelClient {
                 deviceTools = true,
                 personalTools = true,
                 extensionsTools = true,
-                mediaSearchTools = true,
                 disabledToolsDigest = "",
             )
 
@@ -571,7 +568,6 @@ internal object AgentModelClient {
                 deviceTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS),
                 personalTools = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS),
                 extensionsTools = Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS),
-                mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
                 disabledToolsDigest = Prefs.disabledTools().sorted().joinToString(","),
             )
         }
@@ -594,7 +590,6 @@ internal object AgentModelClient {
         val deviceTools: Boolean,
         val personalTools: Boolean,
         val extensionsTools: Boolean,
-        val mediaSearchTools: Boolean,
         val delegationTools: Boolean,
     ) {
         companion object {
@@ -611,7 +606,6 @@ internal object AgentModelClient {
                 deviceTools = Prefs.isEnabled(Prefs.Keys.AGENT_DEVICE_TOOLS),
                 personalTools = Prefs.isEnabled(Prefs.Keys.AGENT_PERSONAL_TOOLS),
                 extensionsTools = Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS),
-                mediaSearchTools = Prefs.isEnabled(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS),
                 // 独立开关：不能用 delegationAvailable，那是「本轮是否真的下发了 delegate_task」，
                 // 入口未附带委派工具时它为 false，会被误报成「用户关闭了子代理」。
                 delegationTools = Prefs.isEnabled(Prefs.Keys.AGENT_SUBAGENT_TOOLS),
@@ -627,7 +621,6 @@ internal object AgentModelClient {
             deviceTools = deviceTools,
             personalTools = personalTools,
             extensionsTools = extensionsTools,
-            mediaSearchTools = mediaSearchTools,
             delegationTools = delegationTools,
         )
     }

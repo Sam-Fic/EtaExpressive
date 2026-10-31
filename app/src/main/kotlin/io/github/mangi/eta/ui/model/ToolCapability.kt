@@ -13,7 +13,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.model.AgentFileSystemTier
-import io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.config.Prefs
 
@@ -44,22 +43,21 @@ internal data class ToolCapability(
     val switchKey: String,
     /** 覆盖的模型组 id；顺序即卡内分组顺序（决定工具在卡里的先后）。 */
     val groupIds: List<String>,
-    /** 组内子开关；有则工具页卡片里多一行开关。 */
-    val subSwitch: ToolSubSwitch? = null,
 )
 
 /**
- * 组内子开关：不属于分组粒度，但确实会整类屏蔽组里的工具（shell 屏蔽命令执行、
- * 媒体搜索屏蔽 semantic_search_media）。放在所属卡片内部，而不是设置页外面——
- * 它是这张卡的细节，不该和能力开关并列。
+ * 外部闸门：不属于任何卡片、但会挡住卡内某些工具的开关（执行策略，开关本体在设置页）。
+ *
+ * 为什么不是卡内子开关：它管辖的工具行自己就有单工具开关，再插一行会造成
+ * 「同一行工具被两层开关管」。工具页只消费它做**置灰与说明**，不产生开关行。
  */
 @Immutable
-internal data class ToolSubSwitch(
-    val id: String,
-    @StringRes val titleRes: Int,
-    @StringRes val summaryRes: Int,
+internal data class ToolExternalGate(
+    /** 开关键；开关本体在设置页（与破坏性确认同类）。 */
     val switchKey: String,
-    /** 被它直接门禁的工具；关闭时这些工具行置灰，避免「开关关着、工具行却亮着」。 */
+    /** 设置页里这项开关的标题；工具行说明用它指路。 */
+    @StringRes val labelRes: Int,
+    /** 被它挡住的工具名（实际名，非 UI 卡 id）。 */
     val gatedTools: Set<String>,
 )
 
@@ -102,13 +100,6 @@ internal object ToolCapabilities {
         icon = Icons.Rounded.Terminal,
         switchKey = Prefs.Keys.AGENT_TERMINAL_TOOLS,
         groupIds = listOf(AgentToolGroups.TERMINAL_GROUP.id),
-        subSwitch = ToolSubSwitch(
-            id = "shell",
-            titleRes = R.string.settings_shell_tools,
-            summaryRes = R.string.settings_shell_tools_summary,
-            switchKey = Prefs.Keys.AGENT_SHELL_TOOLS,
-            gatedTools = AgentFileSystemTier.shellTools,
-        ),
     )
 
     val DEVICE: ToolCapability = ToolCapability(
@@ -139,13 +130,6 @@ internal object ToolCapabilities {
             AgentToolGroups.DEVICE_STATE_GROUP.id,
             AgentToolGroups.CALENDAR_GROUP.id,
         ),
-        subSwitch = ToolSubSwitch(
-            id = "media_search",
-            titleRes = R.string.settings_media_search_tools,
-            summaryRes = R.string.settings_media_search_tools_summary,
-            switchKey = Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
-            gatedTools = setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA),
-        ),
     )
 
     val EXTENSIONS: ToolCapability = ToolCapability(
@@ -161,4 +145,17 @@ internal object ToolCapabilities {
     val all: List<ToolCapability> = listOf(BASIC, SCREEN, WEB, TERMINAL, DEVICE, PERSONAL, EXTENSIONS)
 
     fun forGroup(groupId: String): ToolCapability? = all.firstOrNull { groupId in it.groupIds }
+
+    /**
+     * 外部闸门注册表。命令执行（shell）是安全策略：关掉后 run_command/terminal
+     * 整类不可用，但文件读写仍可用——它不是「终端与文件」卡内部的取舍，
+     * 开关本体在设置页，这里只负责让工具页如实反映「为什么这两行是灰的」。
+     */
+    val externalGates: List<ToolExternalGate> = listOf(
+        ToolExternalGate(
+            switchKey = Prefs.Keys.AGENT_SHELL_TOOLS,
+            labelRes = R.string.settings_shell_tools,
+            gatedTools = AgentFileSystemTier.shellTools,
+        ),
+    )
 }

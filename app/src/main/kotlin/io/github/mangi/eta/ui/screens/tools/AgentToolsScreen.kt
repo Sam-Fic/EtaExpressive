@@ -46,8 +46,6 @@ import io.github.mangi.eta.ui.model.AgentToolsUiState
 import io.github.mangi.eta.ui.model.ToolCapabilities
 import io.github.mangi.eta.ui.model.ToolCapabilityUi
 import io.github.mangi.eta.ui.model.ToolItemUi
-import io.github.mangi.eta.ui.model.ToolSubSwitchUi
-import io.github.mangi.eta.ui.model.actualToolName
 import io.github.mangi.eta.ui.model.projectToolCapabilities
 import androidx.compose.material3.Text as M3Text
 
@@ -110,8 +108,9 @@ fun AgentToolsScreen(
  *
  * - 父条目是卡片标题行（官方 [EtaSegmentedRow]）：整行点击展开/收起，行尾是能力开关，
  *   开关就地可及，不用展开也能整卡收放；标题下带一行摘要，说明这组装了什么。
- * - 子条目先是对应的组内子开关（shell / 媒体搜索），再是工具行，经 [EtaSegmentedColumn]
- *   的 `visible` 机制折叠，末段圆角让给父行（M3 的 parent-child transition）。
+ * - 子条目是工具行，经 [EtaSegmentedColumn] 的 `visible` 机制折叠，末段圆角让给父行
+ *   （M3 的 parent-child transition）。设置页里的执行策略开关（如命令执行）在这里
+ *   只表现为置灰与指路说明，不产生开关行。
  *
  * 空卡不渲染，避免留下孤立标题。
  */
@@ -135,20 +134,11 @@ private fun ToolCapabilityCard(
                 onAction = onAction,
             )
         }
-        capability.subSwitch?.let { sub ->
-            item(key = "sub-${sub.id}", visible = expanded) {
-                ToolSubSwitchRow(
-                    sub = sub,
-                    capabilityEnabled = capability.switchEnabled,
-                    onAction = onAction,
-                )
-            }
-        }
         capability.tools.forEach { tool ->
             item(key = tool.id, visible = expanded) {
                 ToolListRow(
                     tool = tool,
-                    // 能力关闭、或所在子开关关闭时，该行进入禁用态：再逐个开关没有意义。
+                    // 能力关闭、或被设置页的外部闸门（命令执行等）挡住时，该行进入禁用态。
                     groupEnabled = toolRowEnabled(capability, tool),
                     rootGranted = rootGranted,
                     capabilities = capabilities,
@@ -159,17 +149,9 @@ private fun ToolCapabilityCard(
     }
 }
 
-/**
- * 工具行是否可操作：能力与子开关都要放行。
- *
- * 子开关关掉时，被它门禁的工具（run_command/terminal、semantic_search_media）必须跟着变灰，
- * 否则会出现「开关明明关着、工具行却亮着、点了还没反应」。
- */
-private fun toolRowEnabled(capability: ToolCapabilityUi, tool: ToolItemUi): Boolean {
-    if (!capability.switchEnabled) return false
-    val sub = capability.subSwitch ?: return true
-    return sub.enabled || actualToolName(tool.id) !in sub.gatedTools
-}
+/** 工具行是否可操作：卡片开关放行、且没有被设置页的外部闸门挡住。 */
+private fun toolRowEnabled(capability: ToolCapabilityUi, tool: ToolItemUi): Boolean =
+    capability.switchEnabled && tool.blockedReason == null
 
 /**
  * 卡片父行：M3 expand & collapse 的父条目。
@@ -232,45 +214,6 @@ private fun ToolCapabilityHeaderRow(
                 )
             }
         },
-    )
-}
-
-/**
- * 组内子开关行（命令执行 / 媒体语义搜索）。
- *
- * 放在所属卡片内部而不是设置页外面：它是这张卡的细节，不是并列的能力开关。
- * 只给行尾开关，不做整行点击——整行点击会让「展开卡片」和「翻转开关」两种意图打架。
- */
-@Composable
-private fun ToolSubSwitchRow(
-    sub: ToolSubSwitchUi,
-    capabilityEnabled: Boolean,
-    onAction: (AgentToolsAction) -> Unit,
-) {
-    val view = LocalView.current
-    EtaSegmentedRow(
-        choiceRow = true,
-        supportingContent = {
-            M3Text(
-                text = sub.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        trailingContent = {
-            EtaSwitch(
-                checked = sub.enabled,
-                // 能力整体关闭时子开关无从谈起，与工具行同样置灰。
-                enabled = capabilityEnabled,
-                onCheckedChange = { enabled ->
-                    TouchHaptics.toggle(view, enabled)
-                    onAction(AgentToolsAction.ToggleGroup(sub.switchKey, enabled))
-                },
-            )
-        },
-        content = { M3Text(text = sub.title) },
     )
 }
 

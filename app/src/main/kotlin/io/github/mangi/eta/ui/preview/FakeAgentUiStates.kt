@@ -17,7 +17,6 @@ import io.github.mangi.eta.ui.model.ToolActivityMessageUi
 import io.github.mangi.eta.ui.model.ToolActivityStatusUi
 import io.github.mangi.eta.ui.model.ToolCapabilityUi
 import io.github.mangi.eta.ui.model.ToolItemUi
-import io.github.mangi.eta.ui.model.ToolSubSwitchUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 
@@ -217,13 +216,6 @@ internal object FakeAgentUiStates {
                 title = "终端与文件",
                 summary = "执行命令，读写、编辑与搜索文件",
                 switchKey = Prefs.Keys.AGENT_TERMINAL_TOOLS,
-                subSwitch = ToolSubSwitchUi(
-                    id = "shell",
-                    title = "允许执行命令",
-                    summary = "关闭后保留文件读写，但屏蔽 run_command 与终端",
-                    switchKey = Prefs.Keys.AGENT_SHELL_TOOLS,
-                    gatedTools = setOf("terminal", "run_command"),
-                ),
                 tools = listOf(
                     ToolItemUi("terminal", "终端命令", "Android/Alpine/Debian 环境执行 shell"),
                 ),

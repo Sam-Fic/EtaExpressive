@@ -761,11 +761,10 @@
   <string name="settings_screen_tools">螢幕觀察與 GUI 操作</string>
   <string name="settings_screen_tools_summary">允許模型讀取介面節點並點擊、滑動、輸入與按鍵。關閉後不再下發任何無障礙介面工具</string>
   <string name="settings_shell_tools">允許執行命令</string>
+  <string name="tools_row_blocked_by_setting">已被設定中的「%1$s」關閉</string>
   <string name="settings_shell_tools_summary">允許模型執行 Shell 命令。關閉後將保留檔案讀寫，但會屏蔽 run_command 與終端</string>
   <string name="settings_self_settings_tools">應用自身配置工具</string>
   <string name="settings_self_settings_tools_summary">允許模型讀取並修改 Eta 自身的設定、模型與供應商</string>
-  <string name="settings_media_search_tools">媒體語義搜尋工具</string>
-  <string name="settings_media_search_tools_summary">允許模型按語義檢索本機的圖片、影片和檔案</string>
   <string name="tool_status_running">執行中</string>
   <string name="tool_status_success">已完成</string>
   <string name="tool_status_failed">失敗</string>

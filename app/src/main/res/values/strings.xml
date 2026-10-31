@@ -749,11 +749,10 @@
   <string name="settings_screen_tools">Screen observation and GUI</string>
   <string name="settings_screen_tools_summary">Let the model read UI nodes and tap, swipe, type and press keys. Turn this off to remove every accessibility GUI tool</string>
   <string name="settings_shell_tools">Allow command execution</string>
+  <string name="tools_row_blocked_by_setting">Turned off by the "%1$s" switch in Settings</string>
   <string name="settings_shell_tools_summary">Let the model run shell commands. Turn this off to keep file reading and writing but block run_command and terminal</string>
   <string name="settings_self_settings_tools">Eta self-configuration tools</string>
   <string name="settings_self_settings_tools_summary">Let the model read and change Eta\'s own settings, models and providers</string>
-  <string name="settings_media_search_tools">Media semantic search tool</string>
-  <string name="settings_media_search_tools_summary">Let the model search this device\'s photos, videos and files by meaning</string>
   <string name="tool_status_running">Running</string>
   <string name="tool_status_success">Completed</string>
   <string name="tool_status_failed">Failed</string>

@@ -2,6 +2,7 @@ package io.github.mangi.eta.config
 
 import android.content.SharedPreferences
 import io.github.mangi.eta.agent.model.AgentDeviceToolCatalog
+import io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
 
 /**
@@ -56,6 +57,35 @@ internal object ToolGroupPrefsMigration {
         }
 
         editor.putBoolean(MARKER, true)
+        editor.apply()
+    }
+
+    private const val MEDIA_SEARCH_MARKER = "media_search_switch_merged_v1"
+
+    /**
+     * 媒体搜索独立开关（agent_media_search_tools）并入单工具禁用集的一次性迁移。
+     *
+     * 旧键默认关闭，因此**无论用户碰没碰过它**都要执行：
+     * - 关闭（含从未设置）→ semantic_search_media 写入禁用集，保持「默认不下发」的旧语义；
+     * - 开启 → 不动禁用集（默认就不在），此后由工具行的单工具开关接管。
+     *
+     * 与 [runOnce] 分开标记：v1 已跑过的老用户也要能进到这一步。
+     */
+    fun migrateMediaSearchSwitchOnce(prefs: SharedPreferences?) {
+        prefs ?: return
+        if (prefs.getBoolean(MEDIA_SEARCH_MARKER, false)) return
+        val editor = prefs.edit()
+        // 这里是唯一还在读退役开关的地方，deprecation 警告对它没有意义。
+        @Suppress("DEPRECATION")
+        val mediaSearchEnabled = prefs.getBoolean(Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS, false)
+        if (!mediaSearchEnabled) {
+            val disabled = prefs.getString(Prefs.Keys.AGENT_DISABLED_TOOLS, "")
+                .orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                .toMutableSet()
+            disabled += AgentMediaSearchToolCatalog.SEARCH_MEDIA
+            editor.putString(Prefs.Keys.AGENT_DISABLED_TOOLS, disabled.sorted().joinToString(","))
+        }
+        editor.putBoolean(MEDIA_SEARCH_MARKER, true)
         editor.apply()
     }
 }

@@ -42,12 +42,17 @@ class ToolCapabilityTaxonomyTest {
     }
 
     @Test
-    fun subSwitchesAreDistinctFromGroupSwitches() {
+    fun externalGatesShadowNoCapabilitySwitchAndGateRealTools() {
         val groupKeys = ToolCapabilities.all.map { it.switchKey }.toSet()
-        ToolCapabilities.all.mapNotNull { it.subSwitch }.forEach { sub ->
-            assertFalse("子开关 ${sub.switchKey} 撞了某个能力开关", sub.switchKey in groupKeys)
-            assertTrue(sub.switchKey in Prefs.Keys.LOCAL_AGENT_KEYS)
-            assertTrue("子开关必须门禁至少一个工具", sub.gatedTools.isNotEmpty())
+        val allTools = AgentToolGroups.groups.flatMap { it.toolNames }.toSet()
+        ToolCapabilities.externalGates.forEach { gate ->
+            // 外部闸门如果撞了某个能力开关，工具页就会对同一行同时挂两层开关。
+            assertFalse("闸门 ${gate.switchKey} 撞了某个能力开关", gate.switchKey in groupKeys)
+            assertTrue(gate.switchKey in Prefs.Keys.LOCAL_AGENT_KEYS)
+            assertTrue("闸门必须至少挡住一个工具", gate.gatedTools.isNotEmpty())
+            gate.gatedTools.forEach { tool ->
+                assertTrue("闸门挡住了不存在的工具 $tool", tool in allTools)
+            }
         }
     }
 
@@ -94,7 +99,6 @@ class ToolCapabilityTaxonomyTest {
         deviceTools = key == Prefs.Keys.AGENT_DEVICE_TOOLS,
         personalTools = key == Prefs.Keys.AGENT_PERSONAL_TOOLS,
         extensionsTools = key == Prefs.Keys.AGENT_EXTENSIONS_TOOLS,
-        mediaSearchTools = true,
         delegationTools = true,
     )
 }

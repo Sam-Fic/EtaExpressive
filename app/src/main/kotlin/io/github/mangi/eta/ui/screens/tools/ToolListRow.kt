@@ -80,6 +80,15 @@ internal fun ToolListRow(
                         color = secondaryColor,
                     )
                 }
+                // 外部闸门（设置页里的执行策略开关）关着时指路：不说明原因的话，
+                // 用户会以为这行的开关坏了。
+                tool.blockedReason?.let {
+                    M3Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = secondaryColor,
+                    )
+                }
             }
         },
         trailingContent = {
@@ -101,7 +110,8 @@ internal fun ToolListRow(
                 }
                 // 单工具开关：组开关之下的细粒度取舍。关掉后该工具不再下发给模型，
                 // 但仍在清单里可见，用户随时能恢复。说明卡（browser_read 等）按实际工具归一。
-                // 所在分组关闭时开关禁用变灰：组已整体失效，先开分组才有意义。
+                // 所在分组关闭、或被设置页的外部闸门（命令执行等）挡住时禁用变灰：
+                // 先解决上层的关闭原因，这一档开关才有意义。
                 EtaSwitch(
                     checked = tool.enabled,
                     enabled = groupEnabled,

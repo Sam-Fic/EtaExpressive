@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Compress
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
@@ -84,6 +85,7 @@ internal object SettingsKeys {
     // Agent 工具能力
     const val TOOLS = "tools"
     const val AGENT_TASK_PREFERENCE = "agent_task_preference"
+    const val TOOL_SHELL = "tool_shell"
     const val TOOL_CONFIRM_DANGEROUS = "tool_confirm_dangerous"
     const val TOOL_SUBAGENT = "tool_subagent"
     const val MEDIA_INDEX = "media_index"
@@ -435,6 +437,17 @@ internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry
                 ),
             )
         }
+        add(
+            SettingsEntry(
+                key = SettingsKeys.TOOL_SHELL,
+                title = stringResource(R.string.settings_shell_tools),
+                summary = stringResource(R.string.settings_shell_tools_summary),
+                keywords = "shell command 命令 执行 终端 run_command terminal 安全",
+                icon = Icons.Rounded.Code,
+                group = groupToolCapabilities,
+                destination = SettingsDestination.Inline,
+            ),
+        )
         add(
             SettingsEntry(
                 key = SettingsKeys.TOOL_CONFIRM_DANGEROUS,
