@@ -525,6 +525,7 @@ private fun ProviderListItem(
                 if (selectionMode) onToggleChecked() else onEnterSelection()
             }
         },
+        onLongClickLabel = stringResource(R.string.action_enter_selection),
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { alpha = opacity },

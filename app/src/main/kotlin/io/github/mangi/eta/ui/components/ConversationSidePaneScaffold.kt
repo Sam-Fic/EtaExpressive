@@ -1400,6 +1400,7 @@ private fun Material3ConversationRow(
                     },
                     onClick = onClick,
                     onLongClick = { showActionMenu = true },
+                    onLongClickLabel = stringResource(R.string.action_conversation_menu),
                     modifier = Modifier.fillMaxWidth(),
                     trailingContent = {
                         Row(

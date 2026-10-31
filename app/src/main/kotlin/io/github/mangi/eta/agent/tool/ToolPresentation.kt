@@ -217,7 +217,7 @@ internal object ToolPresentation {
         "eta_manage_subagents" -> R.string.tool_eta_manage_subagents
         "eta_manage_history" -> R.string.tool_eta_manage_history
         "eta_configure_mcp" -> R.string.tool_eta_configure_mcp
-        AgentToolGroupCatalog.USE_GROUP -> R.string.tool_eta_get_settings
+        AgentToolGroupCatalog.USE_GROUP -> R.string.tool_load_tool_group
         "eta_author_tool" -> R.string.tool_eta_author_tool
         "eta_list_recipes" -> R.string.tool_eta_list_recipes
         "semantic_search_media" -> R.string.tool_semantic_search_media

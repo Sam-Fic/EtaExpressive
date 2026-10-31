@@ -3000,6 +3000,9 @@
   <string name="tool_ui_wait_for_the_specified_app_to_come_to_the_foreground">等待指定应用进入前台</string>
   <string name="tool_ui_copy_text_to_the_system_clipboard">把文字写入系统剪贴板</string>
   <string name="tool_ui_read_the_current_system_clipboard">读取系统剪贴板的当前内容</string>
+  <string name="tool_load_tool_group">加载工具组</string>
+  <string name="action_conversation_menu">会话操作</string>
+  <string name="action_enter_selection">进入多选</string>
   <string name="appst_history_create_folder_need_name">新建文件夹需要提供 name</string>
   <string name="appst_history_rename_folder_need_name">重命名文件夹需要提供 name</string>
   <string name="appst_history_rename_conversation_need_name">重命名对话需要提供 name</string>

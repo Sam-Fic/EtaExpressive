@@ -434,6 +434,9 @@ fun EtaSegmentedRow(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    // 官方 SegmentedListItem 原生带 onLongClickLabel：长按是某功能唯一入口的行必须给出标签，
+    // 否则 TalkBack 读不到这个功能，普通用户也不知道长按有菜单。
+    onLongClickLabel: String? = null,
     enabled: Boolean = true,
     selected: Boolean = false,
     // 选中态容器色覆盖：不传时保持官方 segmentedColors 默认。仅个别列表（如会话抽屉）
@@ -464,6 +467,7 @@ fun EtaSegmentedRow(
             selected = true,
             onClick = hapticClick ?: {},
             onLongClick = onLongClick,
+            onLongClickLabel = onLongClickLabel,
             enabled = enabled,
             shapes = shapes,
             colors = colors,
@@ -480,6 +484,7 @@ fun EtaSegmentedRow(
             verticalAlignment = Alignment.CenterVertically,
             onClick = hapticClick,
             onLongClick = onLongClick,
+            onLongClickLabel = onLongClickLabel,
             enabled = enabled,
             shapes = shapes,
             colors = colors,

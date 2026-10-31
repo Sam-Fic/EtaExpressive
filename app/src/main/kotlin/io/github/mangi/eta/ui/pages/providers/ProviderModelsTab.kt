@@ -789,6 +789,7 @@ private fun ModelListItem(
         selected = isSelected,
         onClick = onClick,
         onLongClick = onLongClick,
+        onLongClickLabel = stringResource(R.string.action_enter_selection),
         enabled = enabled,
         modifier = modifier.fillMaxWidth(),
         shapes = ListItemDefaults.segmentedShapes(index = itemIndex, count = itemCount),

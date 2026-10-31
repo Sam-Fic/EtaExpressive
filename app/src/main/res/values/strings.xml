@@ -3034,6 +3034,9 @@
   <string name="tool_ui_wait_for_the_specified_app_to_come_to_the_foreground">Wait for the specified app to come to the foreground</string>
   <string name="tool_ui_copy_text_to_the_system_clipboard">Copy text to the system clipboard</string>
   <string name="tool_ui_read_the_current_system_clipboard">Read the current system clipboard</string>
+  <string name="tool_load_tool_group">Load tool group</string>
+  <string name="action_conversation_menu">Conversation actions</string>
+  <string name="action_enter_selection">Enter selection mode</string>
   <string name="appst_history_create_folder_need_name">Creating a folder requires a name</string>
   <string name="appst_history_rename_folder_need_name">Renaming a folder requires a name</string>
   <string name="appst_history_rename_conversation_need_name">Renaming a conversation requires a name</string>
