@@ -1568,6 +1568,7 @@
   <string name="chat_stop">停止</string>
   <string name="chat_send">发送</string>
   <string name="chat_queue_steer_now">立即发送</string>
+  <string name="chat_queue_remove">移除排队消息</string>
   <string name="tool_web_search">搜索网页</string>
   <string name="tool_web_search_description">未使用 Provider 托管搜索时检索公开网页，返回标题、链接与摘要，可在网页工具服务中切换内置、DeepSeek 或自定义接口</string>
   <string name="tool_fetch_url">读取网页正文</string>

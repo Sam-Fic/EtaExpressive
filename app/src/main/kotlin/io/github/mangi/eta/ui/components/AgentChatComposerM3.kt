@@ -243,6 +243,7 @@ internal fun Material3ComposerBody(
     queuedMessages: List<QueuedMessageUi> = emptyList(),
     onSteerQueuedMessage: (String) -> Unit = {},
     onRecallQueuedMessage: (String) -> Unit = {},
+    onRemoveQueuedMessage: (String) -> Unit = {},
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
     onStopVoiceMode: () -> Unit,
     onCancelMessageEdit: () -> Unit,
@@ -369,6 +370,7 @@ internal fun Material3ComposerBody(
             canSteerNow = isStreaming && !isPaused,
             onSteer = onSteerQueuedMessage,
             onRecall = onRecallQueuedMessage,
+            onRemove = onRemoveQueuedMessage,
             modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
         )
         HorizontalFloatingToolbar(
@@ -1257,7 +1259,8 @@ private fun M3ComposerSendButton(
 
 /**
  * 输入栏上方的排队消息胶囊：每条显示正文摘要。
- * 点击正文把该条合并回主输入框继续编辑；生成中点击闪电图标立即插话送进当前运行。
+ * 点击正文把该条合并回主输入框继续编辑；生成中点击闪电图标立即插话送进当前运行；
+ * 点击关闭图标把该条直接丢弃。
  */
 @Composable
 private fun M3ComposerQueueStrip(
@@ -1265,6 +1268,7 @@ private fun M3ComposerQueueStrip(
     canSteerNow: Boolean,
     onSteer: (String) -> Unit,
     onRecall: (String) -> Unit,
+    onRemove: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -1315,8 +1319,21 @@ private fun M3ComposerQueueStrip(
                                     modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                                 )
                             }
-                        } else {
-                            Spacer(modifier = Modifier.width(16.dp))
+                        }
+                        IconButton(
+                            onClick = {
+                                TouchHaptics.click(view)
+                                onRemove(item.id)
+                            },
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(IconButtonDefaults.smallContainerSize()),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = stringResource(R.string.chat_queue_remove),
+                                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                            )
                         }
                     }
                 }

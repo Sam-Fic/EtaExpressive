@@ -1576,6 +1576,7 @@
   <string name="chat_stop">停止</string>
   <string name="chat_send">傳送</string>
   <string name="chat_queue_steer_now">立即傳送</string>
+  <string name="chat_queue_remove">移除排隊訊息</string>
   <string name="tool_web_search">搜尋網頁</string>
   <string name="tool_web_search_description">未使用 Provider 託管搜尋時檢索公開網頁，返回標題、連結與摘要，可在網頁工具服務中切換內建、DeepSeek 或自訂介面</string>
   <string name="tool_fetch_url">讀取網頁正文</string>

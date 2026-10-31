@@ -202,6 +202,7 @@ internal fun AgentChatInputBar(
     queuedMessages: List<QueuedMessageUi> = emptyList(),
     onSteerQueuedMessage: (String) -> Unit = {},
     onRecallQueuedMessage: (String) -> Unit = {},
+    onRemoveQueuedMessage: (String) -> Unit = {},
     isEditingMessage: Boolean,
     collaborationConversationId: String? = null,
     assistantId: String = "",
@@ -497,6 +498,7 @@ internal fun AgentChatInputBar(
             queuedMessages = queuedMessages,
             onSteerQueuedMessage = onSteerQueuedMessage,
             onRecallQueuedMessage = onRecallQueuedMessage,
+            onRemoveQueuedMessage = onRemoveQueuedMessage,
             onStartVoiceMode = onStartVoiceMode,
             onStopVoiceMode = onStopVoiceMode,
             onCancelMessageEdit = onCancelMessageEdit,
@@ -923,7 +925,9 @@ internal fun PendingImageStrip(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(4.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            // 同心：角标贴图框 BottomStart 角、内缩 4dp，圆角 = 图框 13dp − 4dp = 9dp，
+                            // 弧心与图框圆角圆心重合（与图框同一套「半径差 = 间距」的同心规则）。
+                            .clip(RoundedCornerShape(9.dp))
                             .background(Color.Black.copy(alpha = 0.62f))
                             .padding(horizontal = 4.dp, vertical = 2.dp),
                     ) {

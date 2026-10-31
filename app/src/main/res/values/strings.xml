@@ -1559,6 +1559,7 @@
   <string name="chat_stop">Stop</string>
   <string name="chat_send">Send</string>
   <string name="chat_queue_steer_now">Send now</string>
+  <string name="chat_queue_remove">Remove from queue</string>
   <string name="tool_web_search">Search the web</string>
   <string name="tool_web_search_description">Search public web pages when provider-hosted search is not used; returns titles, links and snippets. Builtin, DeepSeek and custom endpoints are configurable in web tools settings</string>
   <string name="tool_fetch_url">Read page content</string>
