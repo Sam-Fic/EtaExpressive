@@ -1966,6 +1966,8 @@
   <string name="model_feature_custom">使用自定义模型</string>
   <string name="model_feature_select">选择模型</string>
   <string name="model_feature_missing">未选择或模型不可用</string>
+  <string name="model_feature_title_follow">每轮回复后刷新标题</string>
+  <string name="model_feature_title_follow_summary">每轮助手回复结束后，结合本轮消息、本轮回复与当前标题重新生成标题；主题没有明显变化时保持原标题。手动改过的标题不会再被自动覆盖</string>
   <string name="vision_feature_description">主模型不支持图片时，将图片及相关问题交给所选视觉模型，并把分析结果以文字返回。支持聊天图片、工具截图和视频封面；主模型支持视觉时直接看图。图片会发送到所选提供商，额外请求可能产生费用</string>
   <string name="title_feature_description">为新会话自动生成简短标题。未开启自定义时使用当前会话模型；失败时保留本地标题，不覆盖手动修改的标题</string>
   <string name="revision_history_unavailable">无法定位这条消息对应的原始上下文，已取消操作并保留现有历史；这不代表会话已压缩</string>
@@ -2997,4 +2999,15 @@
   <string name="tool_ui_wait_for_the_specified_app_to_come_to_the_foreground">等待指定应用进入前台</string>
   <string name="tool_ui_copy_text_to_the_system_clipboard">把文字写入系统剪贴板</string>
   <string name="tool_ui_read_the_current_system_clipboard">读取系统剪贴板的当前内容</string>
+  <string name="appst_history_create_folder_need_name">新建文件夹需要提供 name</string>
+  <string name="appst_history_rename_folder_need_name">重命名文件夹需要提供 name</string>
+  <string name="appst_history_rename_conversation_need_name">重命名对话需要提供 name</string>
+  <string name="appst_history_folder_name_taken">已存在同名文件夹：%1$s</string>
+  <string name="appst_history_folder_create_failed">新建文件夹失败</string>
+  <string name="appst_history_folder_not_found">找不到文件夹：%1$s</string>
+  <string name="appst_history_conversation_not_found">找不到对话：%1$s</string>
+  <string name="appst_history_busy">当前有对话归档任务在执行，请稍后再试</string>
+  <string name="appst_history_not_in_trash_restore">该对话不在回收站中，无需恢复</string>
+  <string name="appst_history_not_in_trash_purge">该对话不在回收站中；请先删除再永久清理</string>
+  <string name="appst_summary_failed">摘要失败</string>
 </resources>

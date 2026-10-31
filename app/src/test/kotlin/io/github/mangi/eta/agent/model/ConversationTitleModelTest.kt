@@ -61,4 +61,37 @@ class ConversationTitleModelTest {
         assertFalse(content.contains("助手的第一条回复"))
         assertTrue(content.endsWith("请只输出标题："))
     }
+
+    @Test fun refreshRequestCarriesPreviousTitleAfterTheTurnMaterial() {
+        val content = ConversationTitleModel.buildMessages("这版配色再冷一点", "好的，已调低色温。", "界面配色讨论")
+            .getJSONObject(1).getString("content")
+        assertTrue(content.contains("【当前标题】"))
+        assertTrue(content.contains("界面配色讨论"))
+        assertTrue(content.contains("原样输出"))
+        assertTrue(content.endsWith("请只输出标题："))
+        // 当前标题段落必须排在素材之后，否则"保持不变"指向不明。
+        assertTrue(content.indexOf("已调低色温") < content.indexOf("【当前标题】"))
+    }
+
+    @Test fun firstTurnRequestHasNoPreviousTitleSection() {
+        val content = ConversationTitleModel.buildMessages("帮我看下这张图", "这是一只橘猫。")
+            .getJSONObject(1).getString("content")
+        assertFalse(content.contains("【当前标题】"))
+        assertTrue(content.endsWith("请只输出标题："))
+    }
+
+    @Test fun previousTitleIsBounded() {
+        val content = ConversationTitleModel.buildMessages("q", "a", "长".repeat(200))
+            .getJSONObject(1).getString("content")
+        assertFalse(content.contains("长".repeat(65)))
+    }
+
+    @Test fun refreshedTitleNeedsLiveConversationLatestRequestAndUnchangedTitle() {
+        assertTrue(ConversationTitleModel.mayApplyRefresh(true, false, "旧标题", "旧标题", true))
+        assertFalse(ConversationTitleModel.mayApplyRefresh(false, false, "旧标题", "旧标题", true))
+        assertFalse(ConversationTitleModel.mayApplyRefresh(true, true, "旧标题", "旧标题", true))
+        assertFalse(ConversationTitleModel.mayApplyRefresh(true, false, "用户标题", "旧标题", true))
+        // 已有更晚的一轮登记：上一轮的结果必须丢弃。
+        assertFalse(ConversationTitleModel.mayApplyRefresh(true, false, "旧标题", "旧标题", false))
+    }
 }

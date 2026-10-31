@@ -7,6 +7,8 @@ import org.json.JSONObject
 internal object ConversationTitleModel {
     private const val QUESTION_LIMIT = 4000
     private const val ANSWER_LIMIT = 4000
+    /** 当前标题本来就短（normalize 上限 24），留余量即可，避免把脏数据整段塞进提示词。 */
+    private const val PREVIOUS_TITLE_LIMIT = 64
 
     /**
      * 标题生成器提示词：只允许输出一行标题。
@@ -30,8 +32,9 @@ internal object ConversationTitleModel {
             ?: error("自定义标题模型不可用，保留本地标题")
 
     /**
-     * 生成标题。question 是用户首条消息的可见正文；firstAnswer 是首轮回复的最终回答正文，
+     * 生成标题。question 是用户本轮消息的可见正文；firstAnswer 是本轮回复的最终回答正文，
      * 为空时退化为仅依据问题生成（首轮失败、被用户停止等没有回答的场景）。
+     * [previousTitle] 非空表示「每轮刷新」模式：把当前标题交给模型，主题未明显变化时要求原样返回。
      */
     fun generate(
         config: AgentModelClient.ModelConfig,
@@ -39,18 +42,23 @@ internal object ConversationTitleModel {
         firstAnswer: String,
         controller: AgentRunController,
         conversationId: String = "",
+        previousTitle: String = "",
     ): String {
-        val messages = buildMessages(question, firstAnswer)
+        val messages = buildMessages(question, firstAnswer, previousTitle)
         return normalize(ModelFeatureCompletion.complete(config, messages, controller,
             "title-${java.util.UUID.randomUUID()}", timeoutMs = 30_000, outputLimit = 512, usageConversationId = conversationId))
     }
 
-    internal fun buildMessages(question: String, firstAnswer: String): JSONArray =
+    internal fun buildMessages(
+        question: String,
+        firstAnswer: String,
+        previousTitle: String = "",
+    ): JSONArray =
         JSONArray()
             .put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
-            .put(JSONObject().put("role", "user").put("content", buildUserPrompt(question, firstAnswer)))
+            .put(JSONObject().put("role", "user").put("content", buildUserPrompt(question, firstAnswer, previousTitle)))
 
-    private fun buildUserPrompt(question: String, firstAnswer: String): String = buildString {
+    private fun buildUserPrompt(question: String, firstAnswer: String, previousTitle: String): String = buildString {
         appendLine("请根据下面的对话内容生成一个会话标题。")
         appendLine()
         appendLine("【用户的问题】")
@@ -58,8 +66,18 @@ internal object ConversationTitleModel {
         val answer = firstAnswer.take(ANSWER_LIMIT).trim()
         if (answer.isNotBlank()) {
             appendLine()
-            appendLine("【助手的第一条回复】")
+            // 首轮与后续轮共用同一段素材，标签不能写成"第一条"。
+            appendLine("【助手的回复】")
             appendLine(answer)
+        }
+        val previous = previousTitle.take(PREVIOUS_TITLE_LIMIT).trim()
+        if (previous.isNotBlank()) {
+            appendLine()
+            appendLine("【当前标题】")
+            appendLine(previous)
+            appendLine()
+            appendLine("如果上面的当前标题仍然能准确概括这段对话的主题，请原样输出该标题；")
+            appendLine("只有对话主题已经明显变化时才输出新标题。不要解释你的判断。")
         }
         appendLine()
         append("请只输出标题：")
@@ -81,4 +99,13 @@ internal object ConversationTitleModel {
     internal fun mayApply(exists: Boolean, renamed: Boolean, currentTitle: String?, expected: String,
         currentFirstMessage: String?, expectedFirstMessage: String): Boolean =
         exists && !renamed && currentTitle == expected && currentFirstMessage == expectedFirstMessage
+
+    /**
+     * 每轮刷新模式的回写守卫。与 [mayApply] 的区别：历史必然变化，不再比较首条消息 ID，
+     * 改用「本轮请求仍是最新」+「标题未被改过」。
+     * [latestRequest] 为 false 说明已有更晚的一轮登记，本轮结果属过期数据，必须丢弃。
+     */
+    internal fun mayApplyRefresh(exists: Boolean, renamed: Boolean, currentTitle: String?,
+        expected: String, latestRequest: Boolean): Boolean =
+        exists && !renamed && latestRequest && currentTitle == expected
 }

@@ -1995,6 +1995,8 @@
   <string name="model_feature_custom">Use a custom model</string>
   <string name="model_feature_select">Select model</string>
   <string name="model_feature_missing">Not selected or unavailable</string>
+  <string name="model_feature_title_follow">Refresh the title every turn</string>
+  <string name="model_feature_title_follow_summary">After each reply, regenerate the title from that turn\'s message, the reply and the current title. The title stays unchanged when the topic has not clearly changed. Manually renamed titles are never overwritten</string>
   <string name="vision_feature_description">For text-only chat models, send images and the relevant question to the selected vision model. Its description is returned as text. Screenshots and video cover frames are supported. Native vision models continue to read images directly. Extra requests may incur charges</string>
   <string name="title_feature_description">Generate a short title for new conversations. When custom selection is off, use the current conversation model. On failure, keep the local title. Manually renamed titles are never overwritten</string>
   <string name="revision_history_unavailable">Cannot locate the original context for this message. The operation was cancelled; existing history is preserved. This does not mean the conversation was compressed</string>
@@ -3031,4 +3033,15 @@
   <string name="tool_ui_wait_for_the_specified_app_to_come_to_the_foreground">Wait for the specified app to come to the foreground</string>
   <string name="tool_ui_copy_text_to_the_system_clipboard">Copy text to the system clipboard</string>
   <string name="tool_ui_read_the_current_system_clipboard">Read the current system clipboard</string>
+  <string name="appst_history_create_folder_need_name">Creating a folder requires a name</string>
+  <string name="appst_history_rename_folder_need_name">Renaming a folder requires a name</string>
+  <string name="appst_history_rename_conversation_need_name">Renaming a conversation requires a name</string>
+  <string name="appst_history_folder_name_taken">A folder named %1$s already exists</string>
+  <string name="appst_history_folder_create_failed">Failed to create the folder</string>
+  <string name="appst_history_folder_not_found">Folder not found: %1$s</string>
+  <string name="appst_history_conversation_not_found">Conversation not found: %1$s</string>
+  <string name="appst_history_busy">A conversation archive task is running; try again later</string>
+  <string name="appst_history_not_in_trash_restore">The conversation is not in the trash; nothing to restore</string>
+  <string name="appst_history_not_in_trash_purge">The conversation is not in the trash; delete it before purging</string>
+  <string name="appst_summary_failed">Summarization failed</string>
 </resources>

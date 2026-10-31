@@ -7,6 +7,7 @@ import io.github.mangi.eta.agent.delegation.ConversationSubAgentPreferences
 import io.github.mangi.eta.agent.delegation.SubAgentConfigKey
 import io.github.mangi.eta.agent.runtime.AgentChildTaskGroups
 import io.github.mangi.eta.agent.runtime.AgentChildControlPolicy
+import io.github.mangi.eta.agent.runtime.localizedText
 import io.github.mangi.eta.ui.components.AgentStopSelection
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
 import android.content.ContentResolver
@@ -2286,6 +2287,9 @@ internal class AgentAppState(
         }
         conversationDrafts.remove(conversationId)
         pendingConversationTitles.remove(conversationId)
+        titleRequestSeq.remove(conversationId)
+        manuallyRenamedDuringTitleRequest -= conversationId
+        io.github.mangi.eta.agent.model.ModelFeaturePreferences.forgetManuallyRenamed(conversationId)
         conversationsById = conversationsById - conversationId
         conversationTitles = conversationTitles - conversationId
         conversationUpdatedAt = conversationUpdatedAt - conversationId
@@ -2370,13 +2374,21 @@ internal class AgentAppState(
         }
     }
 
-    private val manuallyRenamedDuringTitleRequest = mutableSetOf<String>()
+    /**
+     * 手动改过标题的会话：永久不再被自动标题覆盖（含首轮生成与每轮刷新）。
+     * 持久化到 Prefs，否则重启后「每轮刷新」会把用户手改的标题重新盖掉。
+     */
+    private val manuallyRenamedDuringTitleRequest: MutableSet<String> by lazy {
+        io.github.mangi.eta.agent.model.ModelFeaturePreferences.manuallyRenamedConversations()
+            .toMutableSet()
+    }
 
     fun renameConversation(conversationId: String, title: String) {
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) return
         val trimmed = title.trim()
         if (trimmed.isBlank()) return
         manuallyRenamedDuringTitleRequest += conversationId
+        io.github.mangi.eta.agent.model.ModelFeaturePreferences.markManuallyRenamed(conversationId)
         conversationTitles = conversationTitles + (conversationId to trimmed)
         conversationUpdatedAt = conversationUpdatedAt + (conversationId to System.currentTimeMillis())
         refreshConversationSummaries()
@@ -2415,6 +2427,11 @@ internal class AgentAppState(
     )
 
     private fun historyFailure(code: String, message: String) = HistoryMutation(ok = false, code = code, message = message)
+
+    // 失败文案真源在资源（三语），中文串只是纯 JVM 单测无 Context 时的兜底（同 StopSealNotices 模式）；
+    // code 是模型解析用的机器语义，message 本地化不影响工具结果解析。
+    private fun historyFailure(code: String, resId: Int, fallback: String, vararg args: Any) =
+        HistoryMutation(ok = false, code = code, message = localizedText(resId, fallback, *args))
 
     private fun historyFolderSnapshot(folder: ConversationFolderUi): HistoryFolder = HistoryFolder(
         id = folder.id,
@@ -2490,31 +2507,31 @@ internal class AgentAppState(
     internal suspend fun agentHistoryCreateFolder(name: String): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         val trimmed = name.trim()
-        if (trimmed.isBlank()) return@withContext historyFailure("INVALID_ARGUMENT", "新建文件夹需要提供 name")
+        if (trimmed.isBlank()) return@withContext historyFailure("INVALID_ARGUMENT", R.string.appst_history_create_folder_need_name, "新建文件夹需要提供 name")
         if (conversationFolders.any { it.name.equals(trimmed, ignoreCase = true) }) {
-            return@withContext historyFailure("NAME_TAKEN", "已存在同名文件夹：$trimmed")
+            return@withContext historyFailure("NAME_TAKEN", R.string.appst_history_folder_name_taken, "已存在同名文件夹：%1\$s", trimmed)
         }
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         val before = conversationFolders.mapTo(mutableSetOf()) { it.id }
         createFolder(trimmed)
         val created = conversationFolders.firstOrNull { it.id !in before }
-            ?: return@withContext historyFailure("WRITE_FAILED", "新建文件夹失败")
+            ?: return@withContext historyFailure("WRITE_FAILED", R.string.appst_history_folder_create_failed, "新建文件夹失败")
         HistoryMutation(ok = true, folder = historyFolderSnapshot(created))
     }
 
     internal suspend fun agentHistoryRenameFolder(folderId: String, name: String): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         val folder = conversationFolders.firstOrNull { it.id == folderId }
-            ?: return@withContext historyFailure("FOLDER_NOT_FOUND", "找不到文件夹：$folderId")
+            ?: return@withContext historyFailure("FOLDER_NOT_FOUND", R.string.appst_history_folder_not_found, "找不到文件夹：%1\$s", folderId)
         val trimmed = name.trim()
-        if (trimmed.isBlank()) return@withContext historyFailure("INVALID_ARGUMENT", "重命名文件夹需要提供 name")
+        if (trimmed.isBlank()) return@withContext historyFailure("INVALID_ARGUMENT", R.string.appst_history_rename_folder_need_name, "重命名文件夹需要提供 name")
         if (conversationFolders.any { it.id != folderId && it.name.equals(trimmed, ignoreCase = true) }) {
-            return@withContext historyFailure("NAME_TAKEN", "已存在同名文件夹：$trimmed")
+            return@withContext historyFailure("NAME_TAKEN", R.string.appst_history_folder_name_taken, "已存在同名文件夹：%1\$s", trimmed)
         }
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         renameFolder(folderId, trimmed)
         HistoryMutation(ok = true, folder = historyFolderSnapshot(folder.copy(name = trimmed)))
@@ -2523,9 +2540,9 @@ internal class AgentAppState(
     internal suspend fun agentHistoryDeleteFolder(folderId: String): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         val folder = conversationFolders.firstOrNull { it.id == folderId }
-            ?: return@withContext historyFailure("FOLDER_NOT_FOUND", "找不到文件夹：$folderId")
+            ?: return@withContext historyFailure("FOLDER_NOT_FOUND", R.string.appst_history_folder_not_found, "找不到文件夹：%1\$s", folderId)
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         val moved = conversationFolderIds.count { it.value == folderId }
         deleteFolder(folderId)
@@ -2535,12 +2552,12 @@ internal class AgentAppState(
     internal suspend fun agentHistoryRenameConversation(conversationId: String, name: String): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         if (conversationId !in conversationsById) {
-            return@withContext historyFailure("CONVERSATION_NOT_FOUND", "找不到对话：$conversationId")
+            return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
         }
         val trimmed = name.trim()
-        if (trimmed.isBlank()) return@withContext historyFailure("INVALID_ARGUMENT", "重命名对话需要提供 name")
+        if (trimmed.isBlank()) return@withContext historyFailure("INVALID_ARGUMENT", R.string.appst_history_rename_conversation_need_name, "重命名对话需要提供 name")
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         renameConversation(conversationId, trimmed)
         HistoryMutation(ok = true, conversation = historyConversationSnapshot(conversationId))
@@ -2550,13 +2567,13 @@ internal class AgentAppState(
     internal suspend fun agentHistoryMoveConversation(conversationId: String, folderId: String?): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         if (conversationId !in conversationsById) {
-            return@withContext historyFailure("CONVERSATION_NOT_FOUND", "找不到对话：$conversationId")
+            return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
         }
         if (folderId != null && conversationFolders.none { it.id == folderId }) {
-            return@withContext historyFailure("FOLDER_NOT_FOUND", "找不到文件夹：$folderId")
+            return@withContext historyFailure("FOLDER_NOT_FOUND", R.string.appst_history_folder_not_found, "找不到文件夹：%1\$s", folderId)
         }
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         moveConversationToFolder(conversationId, folderId)
         HistoryMutation(ok = true, conversation = historyConversationSnapshot(conversationId))
@@ -2565,10 +2582,10 @@ internal class AgentAppState(
     internal suspend fun agentHistorySetConversationPinned(conversationId: String, pinned: Boolean): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         if (conversationId !in conversationsById) {
-            return@withContext historyFailure("CONVERSATION_NOT_FOUND", "找不到对话：$conversationId")
+            return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
         }
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         // 门面是「直接设值」，只有在当前状态与目标不一致时才触发既有的翻转方法。
         if ((conversationId in conversationPinned) != pinned) toggleConversationPinned(conversationId)
@@ -2578,9 +2595,9 @@ internal class AgentAppState(
     internal suspend fun agentHistoryDeleteConversation(conversationId: String): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         val snapshot = historyConversationSnapshot(conversationId)
-            ?: return@withContext historyFailure("CONVERSATION_NOT_FOUND", "找不到对话：$conversationId")
+            ?: return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
         if (rejectConversationArchiveMutation()) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         // 软删除进回收站：可恢复，真正清理资源要再走永久删除。
         if (snapshot.deletedAt != null) {
@@ -2594,12 +2611,12 @@ internal class AgentAppState(
     internal suspend fun agentHistoryRestoreConversation(conversationId: String): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         val snapshot = historyConversationSnapshot(conversationId)
-            ?: return@withContext historyFailure("CONVERSATION_NOT_FOUND", "找不到对话：$conversationId")
+            ?: return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
         if (snapshot.deletedAt == null) {
-            return@withContext historyFailure("NOT_IN_TRASH", "该对话不在回收站中，无需恢复")
+            return@withContext historyFailure("NOT_IN_TRASH", R.string.appst_history_not_in_trash_restore, "该对话不在回收站中，无需恢复")
         }
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         restoreConversationFromTrash(conversationId)
         HistoryMutation(ok = true, conversation = historyConversationSnapshot(conversationId) ?: snapshot.copy(deletedAt = null))
@@ -2609,12 +2626,12 @@ internal class AgentAppState(
     internal suspend fun agentHistoryDeleteConversationForever(conversationId: String): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         val snapshot = historyConversationSnapshot(conversationId)
-            ?: return@withContext historyFailure("CONVERSATION_NOT_FOUND", "找不到对话：$conversationId")
+            ?: return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
         if (snapshot.deletedAt == null) {
-            return@withContext historyFailure("NOT_IN_TRASH", "该对话不在回收站中；请先删除再永久清理")
+            return@withContext historyFailure("NOT_IN_TRASH", R.string.appst_history_not_in_trash_purge, "该对话不在回收站中；请先删除再永久清理")
         }
         if (rejectConversationArchiveMutation()) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         deleteConversationForever(conversationId)
         HistoryMutation(ok = true, conversation = snapshot)
@@ -2624,7 +2641,7 @@ internal class AgentAppState(
     internal suspend fun agentHistoryEmptyTrash(): HistoryMutation = withContext(Dispatchers.Main.immediate) {
         awaitConversationsHydrated()
         if (rejectConversationArchiveMutation()) {
-            return@withContext historyFailure("BUSY", "当前有对话归档任务在执行，请稍后再试")
+            return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
         val count = conversationDeletedAt.size
         if (count == 0) return@withContext HistoryMutation(ok = true, deletedConversations = 0)
@@ -2839,6 +2856,14 @@ internal class AgentAppState(
         if (!homeState.isStreaming || homeState.isPaused) return
         queuedMessagesByConversation[conversationId] = queue.filterNot { it.id == id }
         steerCurrentRun(item.content)
+    }
+
+    /** 丢弃排队消息：直接从队列移除，不撤回输入框。 */
+    fun removeQueuedMessage(id: String) {
+        val conversationId = selectedConversationId ?: return
+        val queue = queuedMessagesByConversation[conversationId].orEmpty()
+        if (queue.none { it.id == id }) return
+        queuedMessagesByConversation[conversationId] = queue.filterNot { it.id == id }
     }
 
     /**
@@ -3421,6 +3446,8 @@ internal class AgentAppState(
                         reasoningEffort = homeState.reasoningEffort,
                         skipAutoCompress = ignoreCompression,
                         logicalTurnId = boundary.logicalTurnId,
+                        // 重生成不是用户新发一轮，不按每轮刷新改写标题。
+                        refreshTitleAfterTurn = false,
                     )
                 }
             }
@@ -3443,6 +3470,8 @@ internal class AgentAppState(
             reasoningEffort = homeState.reasoningEffort,
             skipAutoCompress = ignoreCompression,
             logicalTurnId = boundary.logicalTurnId,
+            // 重生成不是用户新发一轮，不按每轮刷新改写标题。
+            refreshTitleAfterTurn = false,
         )
     }
 
@@ -3619,7 +3648,7 @@ internal class AgentAppState(
                         failure is io.github.mangi.eta.agent.runtime.AgentRunCancelledException ||
                         Thread.currentThread().isInterrupted) throw failure
                     if (working.sumOf { AgentContextBudget.countMessage(it).toLong() } < history.sumOf { AgentContextBudget.countMessage(it).toLong() }) {
-                        summaryFailure = failure.message ?: "摘要失败"
+                        summaryFailure = failure.message ?: localizedText(R.string.appst_summary_failed, "摘要失败")
                         AndroidAgentLogger.warn("摘要失败，已保留工具修剪结果：${failure.javaClass.simpleName}: ${failure.message}")
                         return@runInterruptible working
                     }
@@ -3690,6 +3719,8 @@ internal class AgentAppState(
         skipAutoCompress: Boolean = false,
         logicalTurnId: String = runId,
         consumeDraft: Boolean = false,
+        /** 重生成/失败重试/压缩后续写不是「用户新发一轮」，关闭后不按每轮刷新登记标题。 */
+        refreshTitleAfterTurn: Boolean = true,
     ) {
         val preparedAt = SystemClock.elapsedRealtime()
         val runProvider = selectionProviders.singleOrNull { it.id == state.providerId }?.takeIf { it.isEnabled }
@@ -4022,34 +4053,56 @@ internal class AgentAppState(
         }
         if (mediaController != null) preparationJob.invokeOnCompletion { directMediaRuns.cancel(runId) }
         preparationJob.start()
-        if (history.isEmpty() && !generateImage && !generateVideo) {
-            // 标题不在这里生成：等首轮回复结束后，把用户问题与助手最终回答一起交给标题模型，
-            // 比只用第一句话更能概括对话主题。这里只登记请求，实际生成在 applyRunResult 收尾时触发。
-            registerPendingConversationTitle(conversationId, state, prompt, messages.lastOrNull()?.id)
+        val followTitle = refreshTitleAfterTurn &&
+            io.github.mangi.eta.agent.model.ModelFeaturePreferences.titleFollowsConversation()
+        if (!generateImage && !generateVideo && (history.isEmpty() || followTitle)) {
+            // 标题不在这里生成：等本轮回复结束后，把本轮用户问题与助手最终回答一起交给标题模型。
+            // 首轮用「问题 + 首轮回答」定初始标题；开关打开后，后续每轮都带当前标题再刷一遍，
+            // 主题没有明显变化时标题模型会原样返回，落库前还会做同值判断。
+            registerPendingConversationTitle(
+                conversationId = conversationId,
+                state = state,
+                prompt = prompt,
+                firstMessageId = messages.lastOrNull()?.id,
+                follow = !history.isEmpty(),
+            )
         }
     }
 
-    /** 新会话首轮发送时登记的待生成标题请求，等该轮回复结束后消费。 */
+    /** 标题请求登记：首轮一次性生成，或每轮刷新。 */
     private class PendingConversationTitle(
         val question: String,
         val firstMessageId: String,
         val expectedTitle: String,
         val providerId: String,
         val modelId: String,
+        /** 该会话标题请求的单调序号，用于「最新一轮胜出」。 */
+        val seq: Int,
+        /** true = 每轮刷新（后续轮）；false = 首轮一次性生成，沿用旧回写守卫。 */
+        val follow: Boolean,
     )
 
     private val pendingConversationTitles = mutableMapOf<String, PendingConversationTitle>()
+
+    /**
+     * 每个会话的标题请求单调序号：登记时自增并写进 pending，回写前要求仍是该序号，
+     * 避免上一轮晚到的结果覆盖本轮更新。只在主线程读写（登记在主线程，回写在 Main 协程）。
+     */
+    private val titleRequestSeq = mutableMapOf<String, Int>()
 
     private fun registerPendingConversationTitle(
         conversationId: String,
         state: AgentChatHomeUiState,
         prompt: String,
         firstMessageId: String?,
+        follow: Boolean,
     ) {
         if (firstMessageId == null || conversationId in manuallyRenamedDuringTitleRequest) return
         val expectedTitle = conversationTitles[conversationId] ?: return
         // Only send the visible question, never hidden tool snapshots, file bytes or system prompts.
         val question = AgentFileReferencePromptCodec.parse(prompt).request.ifBlank { expectedTitle }
+        val seq = (titleRequestSeq[conversationId] ?: 0) + 1
+        titleRequestSeq[conversationId] = seq
         // 只保留标题模型回退需要的绑定信息，不持有整个会话快照。
         pendingConversationTitles[conversationId] = PendingConversationTitle(
             question = question,
@@ -4057,20 +4110,19 @@ internal class AgentAppState(
             expectedTitle = expectedTitle,
             providerId = state.providerId,
             modelId = state.modelId,
+            seq = seq,
+            follow = follow,
         )
     }
 
     /**
-     * 首轮回复收尾后生成标题：标题模型同时拿到用户问题与助手最终回答的正文，
-     * 主题概括比只用第一句话准确得多。首轮失败/被停止而没有回答时，退化为仅依据问题生成。
+     * 本轮回复收尾后生成标题：[answer] 是本轮 run 自己的最终正文，为空的场景见 [runTitleAnswer]。
+     * 首轮失败/被停止而没有回答时，退化为仅依据问题生成；每轮刷新模式则直接跳过。
      */
-    private fun consumePendingConversationTitle(conversationId: String) {
+    private fun consumePendingConversationTitle(conversationId: String, answer: String) {
         val pending = pendingConversationTitles.remove(conversationId) ?: return
-        val firstAnswer = conversationState(conversationId)?.messages
-            ?.filterIsInstance<AgentMessageUi>()
-            ?.lastOrNull { it.content.isNotBlank() }
-            ?.content
-            .orEmpty()
+        // 每轮刷新只在真的产生了本轮回复时才调标题模型，避免拿空回答或上一轮旧内容生成垃圾标题。
+        if (pending.follow && answer.isBlank()) return
         scope.launch {
             try {
                 val title = withContext(Dispatchers.IO) {
@@ -4082,15 +4134,38 @@ internal class AgentAppState(
                         current)
                     kotlinx.coroutines.runInterruptible {
                         io.github.mangi.eta.agent.model.ConversationTitleModel.generate(
-                            config, pending.question, firstAnswer,
-                            io.github.mangi.eta.agent.runtime.AgentRunController(), conversationId)
+                            config = config,
+                            question = pending.question,
+                            firstAnswer = answer,
+                            controller = io.github.mangi.eta.agent.runtime.AgentRunController(),
+                            conversationId = conversationId,
+                            previousTitle = if (pending.follow) pending.expectedTitle else "",
+                        )
                     }
                 } ?: return@launch
+                if (pending.follow &&
+                    !io.github.mangi.eta.agent.model.ModelFeaturePreferences.titleFollowsConversation()) {
+                    // 请求在飞时用户关掉了开关：本轮结果作废。
+                    return@launch
+                }
                 val current = conversationState(conversationId)
-                if (conversationArchiveBusy || !io.github.mangi.eta.agent.model.ConversationTitleModel.mayApply(
+                val applied = if (pending.follow) {
+                    io.github.mangi.eta.agent.model.ConversationTitleModel.mayApplyRefresh(
+                        exists = current != null,
+                        renamed = conversationId in manuallyRenamedDuringTitleRequest,
+                        currentTitle = conversationTitles[conversationId],
+                        expected = pending.expectedTitle,
+                        latestRequest = titleRequestSeq[conversationId] == pending.seq,
+                    )
+                } else {
+                    io.github.mangi.eta.agent.model.ConversationTitleModel.mayApply(
                         current != null, conversationId in manuallyRenamedDuringTitleRequest,
                         conversationTitles[conversationId], pending.expectedTitle,
-                        current?.messages?.firstOrNull()?.id, pending.firstMessageId)) return@launch
+                        current?.messages?.firstOrNull()?.id, pending.firstMessageId)
+                }
+                if (conversationArchiveBusy || !applied) return@launch
+                // 主题未变时模型会原样返回当前标题：不写内存、不刷新摘要、不落库。
+                if (title == pending.expectedTitle) return@launch
                 conversationTitles = conversationTitles + (conversationId to title)
                 refreshConversationSummaries()
                 persistConversations()
@@ -4101,6 +4176,25 @@ internal class AgentAppState(
                 AndroidAgentLogger.warn("标题生成失败，保留本地标题")
             }
         }
+    }
+
+    /**
+     * 只取本轮 run 自己产生的最终正文。失败/被停止且本轮没有任何输出时返回空串，
+     * 绝不回退到上一轮回答——否则标题模型会把过期内容当成本轮素材。
+     * 本轮 UI 投影缺失时用 Runtime 的最终文本兜底。
+     */
+    private fun runTitleAnswer(
+        conversationId: String,
+        runId: String,
+        result: AgentRuntimeWire.RunResult,
+    ): String {
+        val prefix = assistantMessagePrefix(runId)
+        val fromUi = conversationState(conversationId)?.messages
+            ?.filterIsInstance<AgentMessageUi>()
+            ?.lastOrNull { it.id.startsWith(prefix) && it.content.isNotBlank() }
+            ?.content
+            .orEmpty()
+        return fromUi.ifBlank { result.content }
     }
 
     private fun selectedModelGeneratesImages(): Boolean =
@@ -5016,6 +5110,8 @@ internal class AgentAppState(
             skipAutoCompress = true,
             // 失败那一轮已经结束并保留。点击重试是新开一轮继续，不再复用旧 turnId。
             logicalTurnId = runId,
+            // 续写用的 prompt 是占位串，不能当成本轮用户素材改写标题。
+            refreshTitleAfterTurn = false,
         )
     }
 
@@ -6478,8 +6574,8 @@ internal class AgentAppState(
             }
         )
         if (conversationId != null) {
-            // 首轮回复已收尾：此刻对话里同时有用户问题与助手最终回答，才生成标题。
-            consumePendingConversationTitle(conversationId)
+            // 本轮回复已收尾：此刻对话里同时有本轮用户问题与助手最终回答，才生成/刷新标题。
+            consumePendingConversationTitle(conversationId, runTitleAnswer(conversationId, runId, result))
             // 用户主动停止（含重试等待中停止）时保留队列，不自动续发。
             onConversationRunSettled(conversationId, flushQueue = stoppedDuringRetry == null)
         }
@@ -7741,6 +7837,8 @@ internal class AgentAppState(
             reasoningEffort = state.reasoningEffort,
             skipAutoCompress = true,
             logicalTurnId = continuedHistory.lastOrNull { it.turnId.isNotBlank() }?.turnId ?: runId,
+            // 压缩后续写的 prompt 是占位串，不能当成本轮用户素材改写标题。
+            refreshTitleAfterTurn = false,
         )
     }
 

@@ -1974,6 +1974,8 @@
   <string name="model_feature_custom">使用自訂模型</string>
   <string name="model_feature_select">選擇模型</string>
   <string name="model_feature_missing">未選擇或模型不可用</string>
+  <string name="model_feature_title_follow">每輪回覆後重新整理標題</string>
+  <string name="model_feature_title_follow_summary">每輪助手回覆結束後，結合本輪訊息、本輪回覆與目前標題重新產生標題；主題沒有明顯變化時保持原標題。手動改過的標題不會再被自動覆蓋</string>
   <string name="vision_feature_description">主模型不支援圖片時，將圖片及相關問題交給所選視覺模型，並把分析結果以文字傳回。支援聊天圖片、工具截圖及影片封面；主模型支援視覺時直接看圖。圖片會傳送至所選提供商，額外請求可能產生費用</string>
   <string name="title_feature_description">為新會話自動產生簡短標題。未開啟自訂時使用目前會話模型；失敗時保留本機標題，不覆蓋手動修改的標題</string>
   <string name="revision_history_unavailable">無法定位這則訊息對應的原始上下文，已取消操作並保留現有歷史；這不代表會話已壓縮</string>
@@ -2997,4 +2999,15 @@
   <string name="tool_ui_wait_for_the_specified_app_to_come_to_the_foreground">等待指定應用程式進入前景</string>
   <string name="tool_ui_copy_text_to_the_system_clipboard">將文字寫入系統剪貼簿</string>
   <string name="tool_ui_read_the_current_system_clipboard">讀取系統剪貼簿的目前內容</string>
+  <string name="appst_history_create_folder_need_name">新建資料夾需要提供 name</string>
+  <string name="appst_history_rename_folder_need_name">重新命名資料夾需要提供 name</string>
+  <string name="appst_history_rename_conversation_need_name">重新命名對話需要提供 name</string>
+  <string name="appst_history_folder_name_taken">已存在同名資料夾：%1$s</string>
+  <string name="appst_history_folder_create_failed">新建資料夾失敗</string>
+  <string name="appst_history_folder_not_found">找不到資料夾：%1$s</string>
+  <string name="appst_history_conversation_not_found">找不到對話：%1$s</string>
+  <string name="appst_history_busy">目前有對話歸檔任務在執行，請稍後再試</string>
+  <string name="appst_history_not_in_trash_restore">該對話不在回收站中，無需還原</string>
+  <string name="appst_history_not_in_trash_purge">該對話不在回收站中；請先刪除再永久清理</string>
+  <string name="appst_summary_failed">摘要失敗</string>
 </resources>

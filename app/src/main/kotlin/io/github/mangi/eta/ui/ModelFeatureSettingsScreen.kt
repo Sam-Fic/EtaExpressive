@@ -20,6 +20,10 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 @Composable
 internal fun ModelFeatureSettingsScreen(feature: ModelFeature, onBack: () -> Unit) {
     var selection by remember(feature) { mutableStateOf(ModelFeaturePreferences.selection(feature)) }
+    // 标题跟随刷新只属于标题模型页；辅助视觉页没有"每轮刷新"的概念。
+    var followTitle by remember(feature) {
+        mutableStateOf(ModelFeaturePreferences.titleFollowsConversation())
+    }
     var picker by remember { mutableStateOf(false) }
     val providers by remember { ProviderRepository.providersFlow() }.collectAsState(initial = emptyList())
     val vision = feature == ModelFeature.VISION
@@ -48,6 +52,17 @@ internal fun ModelFeatureSettingsScreen(feature: ModelFeature, onBack: () -> Uni
                         onCheckedChange = {
                             selection = selection.copy(custom = it)
                             ModelFeaturePreferences.save(feature, selection)
+                        },
+                    )
+                }
+                item(key = "title_follow", visible = feature == ModelFeature.TITLE) {
+                    EtaSwitchRow(
+                        title = stringResource(R.string.model_feature_title_follow),
+                        summary = stringResource(R.string.model_feature_title_follow_summary),
+                        checked = followTitle,
+                        onCheckedChange = {
+                            followTitle = it
+                            ModelFeaturePreferences.saveTitleFollowsConversation(it)
                         },
                     )
                 }
