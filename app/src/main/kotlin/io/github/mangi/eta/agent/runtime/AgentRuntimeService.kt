@@ -590,22 +590,21 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     ) {
         // 准入：同 runId 在跑 → 把新客户端挂到现有 run；同会话已有任务 → 拒绝（CONVERSATION_BUSY）；
         // 外部归档替换同会话前任 → 接受并取消前任，由 run 线程等前任排空后再执行。
-        val accepted = when (val admission = runs.admit(request) {
-            lateinit var session: AgentRuntimeSession
-            session = AgentRuntimeSession(
-                runId = request.runId,
-                questionLedger = questionLedger,
-                terminalWork = { action ->
-                    if (Looper.myLooper() == Looper.getMainLooper()) thread(name = "eta-question-seal", block = action)
-                    else action()
-                    Unit
-                },
-                beforeTerminalPublish = { runs.finish(request.runId, session) },
-                eventSink = { event -> sendEventTo(replyTo, event, request.runId) },
-                resultSink = { result -> sendResultTo(replyTo, result) },
-            )
-            RuntimeRunRegistry.Run(request, session)
-        }) {
+        lateinit var newSession: AgentRuntimeSession
+        newSession = AgentRuntimeSession(
+            runId = request.runId,
+            questionLedger = questionLedger,
+            terminalWork = { action ->
+                if (Looper.myLooper() == Looper.getMainLooper()) thread(name = "eta-question-seal", block = action)
+                else action()
+                Unit
+            },
+            beforeTerminalPublish = { runs.finish(request.runId, newSession) },
+            eventSink = { event -> sendEventTo(replyTo, event, request.runId) },
+            resultSink = { result -> sendResultTo(replyTo, result) },
+        )
+        val admission = runs.admit(request) { RuntimeRunRegistry.Run(request, newSession) }
+        val accepted = when (admission) {
             is RuntimeRunRegistry.Admission.Accepted -> admission
             is RuntimeRunRegistry.Admission.Duplicate -> {
                 sendRequestIngestedTo(replyTo, request.runId)

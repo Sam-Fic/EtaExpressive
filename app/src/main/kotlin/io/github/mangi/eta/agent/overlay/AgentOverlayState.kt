@@ -163,6 +163,8 @@ internal fun AgentOverlayState.applyEvent(event: AgentEvent): AgentOverlayState 
 
     is AgentEvent.ChildContextUpdated -> this
 
+    is AgentEvent.GuiControlChanged -> this
+
     is AgentEvent.AutoCompactWaiting -> this
 
     is AgentEvent.ContextCompactionStarted -> copy(

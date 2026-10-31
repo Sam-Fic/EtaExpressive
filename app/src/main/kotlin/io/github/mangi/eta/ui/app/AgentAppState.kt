@@ -6314,6 +6314,7 @@ internal class AgentAppState(
             }
             is AgentEvent.ProviderResponseStarted,
             is AgentEvent.ToolImagesAttached,
+            is AgentEvent.GuiControlChanged,
             -> Unit
         }
     }

@@ -390,8 +390,12 @@ internal class RootShellDeviceController(
         return errorJson("ACCESSIBILITY_UNAVAILABLE", "replace_text 需要先启用 Eta Agent 无障碍服务")
     }
 
-    fun clearText(index: Int?, observation: ElementObservation?): String =
-        replaceText("", index, observation).let { result ->
+    fun clearText(
+        index: Int?,
+        observation: ElementObservation?,
+        displayId: Int = Display.DEFAULT_DISPLAY,
+    ): String =
+        replaceText("", index, observation, displayId = displayId).let { result ->
             val json = JSONObject(result)
             json.put("tool", "clear_text").toString()
         }
