@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.terminal.AlpineEnvironmentInstaller
 import io.github.mangi.eta.agent.terminal.AlpineEnvironmentState
+import io.github.mangi.eta.agent.terminal.AlpineEnvironmentStatus
 import io.github.mangi.eta.agent.terminal.AlpineInstallProgress
 import io.github.mangi.eta.agent.terminal.AlpineInstallResult
 import io.github.mangi.eta.agent.terminal.AlpineInstallStage
@@ -40,6 +41,7 @@ import io.github.mangi.eta.agent.terminal.ApkAnalysisInstallResult
 import io.github.mangi.eta.agent.terminal.ApkAnalysisInstallStage
 import io.github.mangi.eta.agent.terminal.DebianEnvironmentInstaller
 import io.github.mangi.eta.agent.terminal.DebianEnvironmentState
+import io.github.mangi.eta.agent.terminal.DebianEnvironmentStatus
 import io.github.mangi.eta.agent.terminal.DebianInstallProgress
 import io.github.mangi.eta.agent.terminal.DebianInstallResult
 import io.github.mangi.eta.agent.terminal.DebianInstallStage
@@ -185,19 +187,25 @@ internal fun LinuxEnvironmentScreen(
             )
         }
     }
-    var status by remember(installer) { mutableStateOf(installer.status()) }
-    var debianStatus by remember(debianInstaller) { mutableStateOf(debianInstaller.status()) }
+    // 组合期不读盘：状态初值一律「未安装 / 未就绪」，进页面由下方 LaunchedEffect 在 IO 校正。
+    // 校正完成前状态卡按 busy 呈现，不闪现「未安装 + 安装按钮」的错误结论。
+    // status 不以 installer 为 key：换运行方式只会重建实例，status() 的语义与 backend 无关。
+    var status by remember {
+        mutableStateOf(AlpineEnvironmentStatus(AlpineEnvironmentState.NOT_INSTALLED))
+    }
+    var debianStatus by remember {
+        mutableStateOf(DebianEnvironmentStatus(DebianEnvironmentState.NOT_INSTALLED))
+    }
+    var statusesLoaded by remember { mutableStateOf(false) }
     var busyTarget by remember { mutableStateOf<InstallTarget?>(null) }
     var progress by remember { mutableStateOf<AlpineInstallProgress?>(null) }
     var debianProgress by remember { mutableStateOf<DebianInstallProgress?>(null) }
     var profileProgressSummary by remember { mutableStateOf<String?>(null) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
     var profileReady by remember(selectedDistribution, backend) {
-        mutableStateOf(packageProfileUis.associate { it.target to profileInstallers.getValue(it.target).isReady() })
+        mutableStateOf(emptyMap<InstallTarget, Boolean>())
     }
-    var apkAnalysisReady by remember(selectedDistribution, backend) {
-        mutableStateOf(apkAnalysisInstaller.isReady())
-    }
+    var apkAnalysisReady by remember(selectedDistribution, backend) { mutableStateOf(false) }
     var apkAnalysisProgress by remember { mutableStateOf<ApkAnalysisInstallProgress?>(null) }
     var kimiWebLaunching by remember { mutableStateOf(false) }
     var kimiWebRunning by remember(selectedDistribution, backend) { mutableStateOf(false) }
@@ -217,10 +225,19 @@ internal fun LinuxEnvironmentScreen(
         )
     }
     LaunchedEffect(selectedDistribution, backend, installer, debianInstaller) {
-        status = installer.status()
-        debianStatus = debianInstaller.status()
-        profileReady = packageProfileUis.associate { it.target to profileInstallers.getValue(it.target).isReady() }
-        apkAnalysisReady = apkAnalysisInstaller.isReady()
+        // 读盘全部放 IO；读完后一口气落地再翻 statusesLoaded，状态卡从 busy 直接翻到真实状态。
+        val (alpine, debian) = withContext(Dispatchers.IO) {
+            installer.status() to debianInstaller.status()
+        }
+        val profiles = withContext(Dispatchers.IO) {
+            packageProfileUis.associate { it.target to profileInstallers.getValue(it.target).isReady() }
+        }
+        val apkReady = withContext(Dispatchers.IO) { apkAnalysisInstaller.isReady() }
+        status = alpine
+        debianStatus = debian
+        profileReady = profiles
+        apkAnalysisReady = apkReady
+        statusesLoaded = true
     }
     LaunchedEffect(selectedDistribution, backend, kimiWebLaunching) {
         if (!kimiWebLaunching) {
@@ -284,8 +301,12 @@ internal fun LinuxEnvironmentScreen(
                     withContext(Dispatchers.Main.immediate) { debianProgress = update }
                 }.toMessage(context)
             }
-            status = installer.status()
-            debianStatus = debianInstaller.status()
+            // 安装完成后的状态读盘同样放 IO，落回主线程再写状态。
+            val (alpine, debian) = withContext(Dispatchers.IO) {
+                installer.status() to debianInstaller.status()
+            }
+            status = alpine
+            debianStatus = debian
             progress = null
             debianProgress = null
             busyTarget = null
@@ -305,12 +326,17 @@ internal fun LinuxEnvironmentScreen(
                     withContext(Dispatchers.Main.immediate) { debianProgress = update }
                 }.toMessage(context)
             }
-            status = installer.status()
-            debianStatus = debianInstaller.status()
-            profileReady = packageProfileUis.associate {
-                it.target to profileInstallers.getValue(it.target).isReady()
+            val (alpine, debian) = withContext(Dispatchers.IO) {
+                installer.status() to debianInstaller.status()
             }
-            apkAnalysisReady = apkAnalysisInstaller.isReady()
+            val profiles = withContext(Dispatchers.IO) {
+                packageProfileUis.associate { it.target to profileInstallers.getValue(it.target).isReady() }
+            }
+            val apkReady = withContext(Dispatchers.IO) { apkAnalysisInstaller.isReady() }
+            status = alpine
+            debianStatus = debian
+            profileReady = profiles
+            apkAnalysisReady = apkReady
             progress = null
             debianProgress = null
             busyTarget = null
@@ -366,6 +392,8 @@ internal fun LinuxEnvironmentScreen(
                     requiresRoot -> stringResource(R.string.capability_linux_root_lost)
                     kimiWebLaunching -> stringResource(R.string.linux_kimi_web_starting)
                     busyTarget != null -> activeProgress ?: stringResource(R.string.linux_installing)
+                    // 状态校正完成前不给结论，busy 指示器表达「检查中」。
+                    !statusesLoaded -> ""
                     selectedToolsReady -> stringResource(R.string.linux_environment_tools_ready)
                     selectedBaseReady -> stringResource(R.string.linux_environment_base_ready)
                     else -> stringResource(R.string.linux_not_installed) + "\n" + stringResource(
@@ -376,10 +404,13 @@ internal fun LinuxEnvironmentScreen(
                         },
                     )
                 },
-                busy = busyTarget != null || kimiWebLaunching,
+                // requiresRoot 是同步事实（capabilities + backend），root 丢失的呈现不依赖读盘。
+                busy = (!statusesLoaded && !requiresRoot) || busyTarget != null || kimiWebLaunching,
                 message = resultMessage,
                 actionText = when {
                     requiresRoot -> stringResource(R.string.capability_enhancements)
+                    // 校正完成前不出安装动作，避免闪现「安装基础环境」。
+                    !statusesLoaded -> null
                     selectedToolsReady -> null
                     busyTarget != null -> stringResource(R.string.linux_installing)
                     selectedBaseReady -> stringResource(R.string.linux_install_base_tools)
@@ -507,8 +538,8 @@ internal fun LinuxEnvironmentScreen(
                                                             )
                                                         }
                                                     }
-                                                    profileReady = profileReady +
-                                                    (profileUi.target to profileInstaller.isReady())
+                                                    val ready = withContext(Dispatchers.IO) { profileInstaller.isReady() }
+                                                    profileReady = profileReady + (profileUi.target to ready)
                                                     profileProgressSummary = null
                                                     busyTarget = null
                                                     resultMessage = result.toMessage(context, profileTitle)
@@ -553,7 +584,7 @@ internal fun LinuxEnvironmentScreen(
                                                         apkAnalysisProgress = update
                                                     }
                                                 }
-                                                apkAnalysisReady = apkAnalysisInstaller.isReady()
+                                                apkAnalysisReady = withContext(Dispatchers.IO) { apkAnalysisInstaller.isReady() }
                                                 apkAnalysisProgress = null
                                                 busyTarget = null
                                                 resultMessage = result.toMessage(context)

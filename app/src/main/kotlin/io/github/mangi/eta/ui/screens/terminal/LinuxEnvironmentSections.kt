@@ -148,6 +148,14 @@ internal fun LinuxEnvironmentConfiguration(
     onBackendSelected: (LinuxExecutionBackend) -> Unit,
 ) {
     val distributions = LinuxDistribution.entries
+    val distributionSummaries = distributions.map {
+        stringResource(
+            when (it) {
+                LinuxDistribution.ALPINE -> R.string.linux_distribution_alpine_summary
+                LinuxDistribution.DEBIAN -> R.string.linux_distribution_debian_summary
+            },
+        )
+    }
     val backends = listOf(LinuxExecutionBackend.PROOT, LinuxExecutionBackend.CHROOT)
     val backendSummaries = backends.map {
         stringResource(
@@ -170,6 +178,8 @@ internal fun LinuxEnvironmentConfiguration(
             // 点击后从按下位置弹出带分段形状与勾选图标的表达性菜单。
             EtaSegmentedDropdownRow(
                 title = stringResource(R.string.linux_distribution_title),
+                // 取值由行尾以 primary 色呈现，副标题补发行版之间的定位差异。
+                summary = distributionSummaries[distributions.indexOf(distribution)],
                 items = distributions.map { it.displayName() },
                 selectedIndex = distributions.indexOf(distribution),
                 onItemSelected = { onDistributionSelected(distributions[it]) },
