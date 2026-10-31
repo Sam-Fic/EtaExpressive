@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.preview
 
+import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentChatUiState
@@ -14,8 +15,9 @@ import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.TokenUsageUi
 import io.github.mangi.eta.ui.model.ToolActivityMessageUi
 import io.github.mangi.eta.ui.model.ToolActivityStatusUi
-import io.github.mangi.eta.ui.model.ToolGroupUi
+import io.github.mangi.eta.ui.model.ToolCapabilityUi
 import io.github.mangi.eta.ui.model.ToolItemUi
+import io.github.mangi.eta.ui.model.ToolSubSwitchUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 
@@ -185,10 +187,12 @@ internal object FakeAgentUiStates {
     )
 
     val tools = AgentToolsUiState(
-        groups = listOf(
-            ToolGroupUi(
+        capabilities = listOf(
+            ToolCapabilityUi(
                 id = "screen",
                 title = "屏幕操作",
+                summary = "读取界面节点并在屏幕上点击、滑动、输入",
+                switchKey = Prefs.Keys.AGENT_SCREEN_TOOLS,
                 tools = listOf(
                     ToolItemUi("observe_screen", "观察屏幕", "读取界面节点，必要时附原图"),
                     ToolItemUi("tap_element", "点击", "点击指定坐标或元素"),
@@ -196,18 +200,11 @@ internal object FakeAgentUiStates {
                     ToolItemUi("swipe", "滑动", "滑动、滚动、返回等手势"),
                 ),
             ),
-            ToolGroupUi(
-                id = "input",
-                title = "输入与按键",
-                tools = listOf(
-                    ToolItemUi("input_text", "输入文字", "在焦点处输入文本"),
-                    ToolItemUi("paste_text", "粘贴文本", "使用剪贴板写入文本"),
-                    ToolItemUi("wait_for_text", "等待文本", "等待界面出现指定文字"),
-                ),
-            ),
-            ToolGroupUi(
+            ToolCapabilityUi(
                 id = "web",
                 title = "网页浏览",
+                summary = "搜索网页、阅读页面、驱动内置离屏浏览器",
+                switchKey = Prefs.Keys.AGENT_BROWSER_TOOLS,
                 tools = listOf(
                     ToolItemUi("browser_use", "Agent 浏览器", "离屏浏览并保持可接管会话"),
                     ToolItemUi("browser_read", "阅读网页", "提取渲染后的网页正文"),
@@ -215,18 +212,18 @@ internal object FakeAgentUiStates {
                     ToolItemUi("browser_screenshot", "页面截图", "把网页视口交给视觉模型"),
                 ),
             ),
-            ToolGroupUi(
-                id = "app",
-                title = "App 与 URI",
-                tools = listOf(
-                    ToolItemUi("get_current_context", "时间与位置", "读取系统时间与最近位置"),
-                    ToolItemUi("launch_app", "打开 App", "通过包名启动应用"),
-                    ToolItemUi("open_uri", "用应用打开", "显式交给外部应用处理"),
-                ),
-            ),
-            ToolGroupUi(
+            ToolCapabilityUi(
                 id = "terminal",
                 title = "终端与文件",
+                summary = "执行命令，读写、编辑与搜索文件",
+                switchKey = Prefs.Keys.AGENT_TERMINAL_TOOLS,
+                subSwitch = ToolSubSwitchUi(
+                    id = "shell",
+                    title = "允许执行命令",
+                    summary = "关闭后保留文件读写，但屏蔽 run_command 与终端",
+                    switchKey = Prefs.Keys.AGENT_SHELL_TOOLS,
+                    gatedTools = setOf("terminal", "run_command"),
+                ),
                 tools = listOf(
                     ToolItemUi("terminal", "终端命令", "Android/Alpine/Debian 环境执行 shell"),
                 ),

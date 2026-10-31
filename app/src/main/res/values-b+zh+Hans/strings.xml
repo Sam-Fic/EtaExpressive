@@ -205,6 +205,10 @@
   <string name="route_new_provider">新建提供商</string>
   <string name="settings_general">通用</string>
   <string name="settings_tool_capabilities">Agent 工具能力</string>
+  <string name="settings_tools_summary_all_enabled">全部启用</string>
+  <string name="settings_tools_summary_all_off">全部已关闭</string>
+  <string name="settings_tools_summary_groups_off">已关闭 %1$d 组：%2$s</string>
+  <string name="settings_tools_summary_tools_off">另有 %1$d 个工具被单独禁用</string>
   <string name="settings_runtime_environment">运行环境</string>
   <string name="settings_system_takeover">系统接管</string>
   <string name="settings_system_takeover_summary">默认助手、电源键目标、厂商助手兼容（小布／小爱）、Gemini 与一圈即搜</string>
@@ -702,10 +706,8 @@
   <string name="settings_terminal_tools">终端与文件</string>
   <string name="settings_terminal_tools_summary">在 Android 与 Linux 环境中执行命令，读取、写入、编辑和检索文件</string>
   <string name="settings_device_tools">设备控制</string>
-  <string name="settings_calendar_tools">日程写入</string>
   <string name="settings_device_tools_summary">闹钟、计时器、音量与媒体播放，以及修改设置、网络、显示、电源、应用和便签</string>
   <string name="settings_personal_tools">个人数据</string>
-  <string name="settings_device_state_tools">设备状态</string>
   <string name="settings_personal_tools_summary">读取你的个人内容（通讯录、短信、通话、日历、便签、账单、行程、录音、文件）与设备状态（设置、闹钟、位置、应用使用）</string>
   <string name="settings_extensions_tools">Eta 配置与扩展</string>
   <string name="settings_extensions_tools_summary">允许模型管理 Eta 自身（模型、子代理、历史、MCP、设置）、编写自己的配方工具、安装 Skills 并写入长期记忆</string>

@@ -915,6 +915,9 @@ fun AgentAppRoot(
                 )
             }
             composable<AppRoute.Tools> {
+                // 工具页状态是快照：进页必须重读一次，否则从设置页改完开关再进来，
+                // 看到的是上次构建时的旧快照（这就是「两处开关不同步」的来源）。
+                LaunchedEffect(Unit) { agentState.refreshToolsState() }
                 AgentToolsScreen(
                     state = agentState.toolsState,
                     onAction = { action ->
@@ -925,6 +928,8 @@ fun AgentAppRoot(
                             AgentToolsAction.OpenPermissions -> pushRoute(AppRoute.Permissions)
                             AgentToolsAction.OpenWebToolsSettings -> pushRoute(AppRoute.WebToolsSettings)
                             is AgentToolsAction.ToggleGroup -> {
+                                // 写失败（commit 落盘失败）也照样重建：状态从 Prefs 重读，
+                                // 开关自然弹回原位，用户不会看到「显示已关、实际没关」。
                                 ToolGroupSwitch.setEnabled(action.key, action.enabled)
                                 agentState.refreshToolsState()
                             }

@@ -159,9 +159,11 @@ import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.TokenUsageUi
 import io.github.mangi.eta.ui.model.ToolActivityMessageUi
-import io.github.mangi.eta.ui.model.ToolGroupUi
+import io.github.mangi.eta.ui.model.ToolCapabilities
+import io.github.mangi.eta.ui.model.ToolCapabilityUi
 import io.github.mangi.eta.ui.model.ToolGroupSwitch
 import io.github.mangi.eta.ui.model.ToolItemUi
+import io.github.mangi.eta.ui.model.ToolSubSwitchUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.fullImageSourceAt
 import io.github.mangi.eta.ui.model.isVideoAt
@@ -913,19 +915,18 @@ internal class AgentAppState(
         scope.launch(Dispatchers.Main.immediate) {
             val compression = autoCompressPreference.observe { autoCompressEnabled = it }
             val prefs = Prefs.localAgentPreferences()
-            // 会影响常驻开销的开关都从分组定义派生：新增/改名一个组开关时这里自动跟上，
-            // 否则用户改了开关而界面上的估算不动。shell 与媒体搜索是组内子开关，
-            // 单工具禁用集也直接改变下发的 schema，因此一并监听。
-            val overheadKeys = AgentToolGroups.groups.mapNotNullTo(mutableSetOf()) {
-                ToolGroupSwitch.keyFor(it.id)
-            } + setOf(
-                Prefs.Keys.AGENT_SHELL_TOOLS,
-                Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
-                Prefs.Keys.AGENT_DISABLED_TOOLS,
-            )
+            // 会影响常驻开销的开关都从界面能力定义派生（含组内子开关）：新增/改名一个
+            // 能力开关时这里自动跟上，否则用户改了开关而界面上的估算不动。
+            // 单工具禁用集也直接改变下发的 schema，一并监听。
+            val overheadKeys = ToolCapabilities.all.flatMapTo(mutableSetOf()) { capability ->
+                listOfNotNull(capability.switchKey, capability.subSwitch?.switchKey)
+            } + Prefs.Keys.AGENT_DISABLED_TOOLS
             val overheadListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
                 if (key == null || key in overheadKeys) {
                     scope.launch(Dispatchers.Main.immediate) { refreshRequestOverhead() }
+                    // 同一批键也是工具页唯一的状态来源。工具页可能还留在返回栈里
+                    // （设置页改完再返回），这里重建一次，避免它拿着一份旧快照。
+                    scope.launch(Dispatchers.Main.immediate) { refreshToolsState() }
                 }
             }
             prefs?.registerOnSharedPreferenceChangeListener(overheadListener)
@@ -7976,16 +7977,43 @@ private fun stableArchiveId(value: String): String =
         .take(12)
         .joinToString(separator = "") { byte -> "%02x".format(byte) }
 
+/**
+ * 工具页状态：按**界面能力**（[ToolCapabilities]）分卡，不是按模型组。
+ *
+ * 一张卡恰好一个开关，`switchEnabled` 直接读那个键。模型侧 [AgentToolGroups] 拆得更细
+ * （日历、设备状态各有独立延迟组），这里只在卡片层面合并——两者不再是 1:1，这正是
+ * 「关掉日历卡、设备控制也跟着关」那个 bug 的根源。
+ */
 internal fun buildToolsState(context: Context): AgentToolsUiState {
     val disabled = Prefs.disabledTools()
+    val catalog = toolItemCatalog(context)
     return AgentToolsUiState(
-        groups = buildToolGroups(context).map { group ->
-            val key = io.github.mangi.eta.ui.model.ToolGroupSwitch.keyFor(group.id)
-            group.copy(
-                switchKey = key,
-                switchEnabled = key?.let(io.github.mangi.eta.ui.model.ToolGroupSwitch::isEnabled) ?: true,
-                tools = group.tools.map {
-                    it.copy(enabled = io.github.mangi.eta.ui.model.actualToolName(it.id) !in disabled)
+        capabilities = ToolCapabilities.all.map { capability ->
+            // 按 groupIds 的顺序逐组取工具：groupIds 表达的是卡内语义先后。
+            // 若直接按目录的全局顺序过滤，日历写工具（目录里排在 device 段）会跑到
+            // 个人数据卡的最前面，看起来像是设备能力。
+            val tools = capability.groupIds.flatMap { groupId ->
+                val names = AgentToolGroups.toolsOfGroup(groupId)
+                catalog.filter { io.github.mangi.eta.ui.model.actualToolName(it.id) in names }
+            }.map {
+                it.copy(enabled = io.github.mangi.eta.ui.model.actualToolName(it.id) !in disabled)
+            }
+            ToolCapabilityUi(
+                id = capability.id,
+                title = context.getString(capability.titleRes),
+                summary = context.getString(capability.summaryRes),
+                tools = tools,
+                switchKey = capability.switchKey,
+                switchEnabled = ToolGroupSwitch.isEnabled(capability.switchKey),
+                subSwitch = capability.subSwitch?.let { sub ->
+                    ToolSubSwitchUi(
+                        id = sub.id,
+                        title = context.getString(sub.titleRes),
+                        summary = context.getString(sub.summaryRes),
+                        switchKey = sub.switchKey,
+                        enabled = ToolGroupSwitch.isEnabled(sub.switchKey),
+                        gatedTools = sub.gatedTools,
+                    )
                 },
             )
         },
@@ -7993,42 +8021,9 @@ internal fun buildToolsState(context: Context): AgentToolsUiState {
 }
 
 /**
- * 分节一律取自统一 taxonomy（[AgentToolGroups]）：设置首页的组开关、模型侧的常驻/延迟下发、
- * 助手级收窄与这里是同一份定义。工具的标题与摘要按 [toolItemCatalog] 的展示顺序维护，
- * 「属于哪一组」由 taxonomy 决定，避免 UI 分组与模型分组各自漂移。
- *
- * 没有卡片的成员（例如委派族工具）不会出现在清单页：它们的开关在设置首页，
- * 且 [io.github.mangi.eta.agent.tool.AgentToolRequirements] 里没有对应条目，
- * 硬造卡片会让工具页在 requireNotNull 处直接崩。
+ * 工具清单页的展示顺序与文案。「属于哪张卡」由 [ToolCapabilities] 的 groupIds 决定，
+ * 这里只管顺序与措辞，避免 UI 归属与文案共用一个函数后各自漂移。
  */
-private fun buildToolGroups(context: Context): List<ToolGroupUi> {
-    val catalog = toolItemCatalog(context)
-    return AgentToolGroups.groups.map { group ->
-        ToolGroupUi(
-            id = group.id,
-            title = context.getString(toolGroupTitleRes(group.id)),
-            // browser_read/interact/screenshot 是 browser_use 的说明卡，按实际工具归组。
-            tools = catalog.filter {
-                io.github.mangi.eta.ui.model.actualToolName(it.id) in group.toolNames
-            },
-        )
-    }
-}
-
-private fun toolGroupTitleRes(groupId: String): Int = when (groupId) {
-    AgentToolGroups.BASIC_GROUP.id -> R.string.settings_basic_tools
-    AgentToolGroups.SCREEN_GROUP.id -> R.string.settings_screen_tools
-    AgentToolGroups.WEB_GROUP.id -> R.string.settings_web_tools
-    AgentToolGroups.TERMINAL_GROUP.id -> R.string.settings_terminal_tools
-    AgentToolGroups.DEVICE_GROUP.id -> R.string.settings_device_tools
-    AgentToolGroups.CALENDAR_GROUP.id -> R.string.settings_calendar_tools
-    AgentToolGroups.PERSONAL_GROUP.id -> R.string.settings_personal_tools
-    AgentToolGroups.DEVICE_STATE_GROUP.id -> R.string.settings_device_state_tools
-    AgentToolGroups.EXTENSIONS_GROUP.id -> R.string.settings_extensions_tools
-    else -> R.string.settings_tools_list
-}
-
-/** 工具清单页的展示顺序与文案；分组归属见 [buildToolGroups]。 */
 private fun toolItemCatalog(context: Context): List<ToolItemUi> = listOf(
     // ── basic ──
         ToolItemUi("search_apps", context.getString(R.string.tool_ui_search_apps_897fdf), context.getString(R.string.tool_ui_query_installed_applications_by_name_or_package__32b004)),

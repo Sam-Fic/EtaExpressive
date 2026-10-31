@@ -3,6 +3,7 @@ package io.github.mangi.eta.ui.model
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.agent.tool.AgentToolRequirements
 import io.github.mangi.eta.agent.tool.RootRequirement
+import io.github.mangi.eta.config.Prefs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -11,19 +12,29 @@ import org.junit.Test
 class ToolCapabilityProjectionTest {
     private fun card(id: String) = ToolItemUi(id, id, id)
 
+    private fun capability(id: String, tools: List<ToolItemUi>) = ToolCapabilityUi(
+        id = id,
+        title = id,
+        summary = id,
+        tools = tools,
+        switchKey = Prefs.Keys.AGENT_DEVICE_TOOLS,
+    )
+
     @Test fun currentDeviceRetainsPartialCapabilitiesAndHidesRootOnlyTools() {
-        val groups = listOf(ToolGroupUi("device", "设备", listOf(card("terminal"), card("wifi_credentials"), card("observe_screen"))))
+        val capabilities = listOf(
+            capability("device", listOf(card("terminal"), card("wifi_credentials"), card("observe_screen"))),
+        )
         assertEquals(listOf("terminal", "observe_screen"),
-            projectToolGroups(groups, false, false, true).single().tools.map { it.id })
-        assertEquals(groups, projectToolGroups(groups, true, false, true))
-        assertEquals(groups, projectToolGroups(groups, false, true, true))
+            projectToolCapabilities(capabilities, false, false, true).single().tools.map { it.id })
+        assertEquals(capabilities, projectToolCapabilities(capabilities, true, false, true))
+        assertEquals(capabilities, projectToolCapabilities(capabilities, false, true, true))
     }
 
     @Test fun viewingAllDoesNotMutateSourceOrChangeToolOrder() {
-        val groups = listOf(ToolGroupUi("root", "增强", listOf(card("wifi_credentials"))))
-        assertTrue(projectToolGroups(groups, false, false, false).isEmpty())
-        assertEquals(groups, projectToolGroups(groups, true, false, false))
-        assertTrue(projectToolGroups(groups, false, false, false).isEmpty())
+        val capabilities = listOf(capability("root", listOf(card("wifi_credentials"))))
+        assertTrue(projectToolCapabilities(capabilities, false, false, false).isEmpty())
+        assertEquals(capabilities, projectToolCapabilities(capabilities, true, false, false))
+        assertTrue(projectToolCapabilities(capabilities, false, false, false).isEmpty())
     }
 
     @Test fun browserCardsReferToTheRealBrowserTool() {

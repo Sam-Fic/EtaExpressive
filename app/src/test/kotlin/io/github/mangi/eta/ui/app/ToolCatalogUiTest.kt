@@ -11,7 +11,7 @@ import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.agent.tool.RootRequirement
 import io.github.mangi.eta.agent.tool.ToolPresentation
-import io.github.mangi.eta.ui.model.projectToolGroups
+import io.github.mangi.eta.ui.model.projectToolCapabilities
 import io.github.mangi.eta.ui.model.toolCardRequirement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -41,7 +41,7 @@ class ToolCatalogUiTest {
         val runtimeNames = (0 until tools.length()).map {
             tools.getJSONObject(it).getJSONObject("function").getString("name")
         }
-        val cardIds = buildToolsState(RuntimeEnvironment.getApplication()).groups
+        val cardIds = buildToolsState(RuntimeEnvironment.getApplication()).capabilities
             .flatMap { it.tools }.map { it.id }
         (runtimeNames + cardIds).distinct().forEach { name ->
             assertNotEquals(name, Icons.Rounded.Build, ToolPresentation.icon(name))
@@ -70,14 +70,14 @@ class ToolCatalogUiTest {
 
     @Test
     fun everyDisplayedCardHasExplicitMetadataAndKeepsItsOriginalOrder() {
-        val groups = buildToolsState(RuntimeEnvironment.getApplication()).groups
-        val allCards = groups.flatMap { it.tools }
+        val capabilities = buildToolsState(RuntimeEnvironment.getApplication()).capabilities
+        val allCards = capabilities.flatMap { it.tools }
         allCards.forEach { toolCardRequirement(it.id) }
         assertEquals(allCards.size, allCards.map { it.id }.distinct().size)
-        assertEquals(groups, projectToolGroups(groups, true, false, false))
-        assertEquals(groups, projectToolGroups(groups, false, true, true))
+        assertEquals(capabilities, projectToolCapabilities(capabilities, true, false, false))
+        assertEquals(capabilities, projectToolCapabilities(capabilities, false, true, true))
 
-        val ordinaryCards = projectToolGroups(groups, false, false, false).flatMap { it.tools }
+        val ordinaryCards = projectToolCapabilities(capabilities, false, false, false).flatMap { it.tools }
         assertTrue(ordinaryCards.isNotEmpty())
         assertEquals(allCards.filter { card ->
             val requirement = toolCardRequirement(card.id)

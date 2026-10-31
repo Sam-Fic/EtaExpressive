@@ -9,23 +9,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 工具页分组开关：分组 id 取自 [AgentToolGroups]，这里断言「组 → 用户开关」的映射。
- * 每个组恰好由一个全局开关控制；组内的细粒度收紧由单工具禁用集承接。
+ * 模型组 → 用户开关的映射。
+ *
+ * 注意单位不同：**开关属于能力，不属于模型组**。模型侧为了省 token 拆得比用户心智细，
+ * 于是多个组共享一个开关（日程、设备状态都归「个人数据」）。这里断言的是「每个模型组
+ * 都能找到它所属能力的开关」，而不是「每个组有自己的开关」——后者是曾经的错误假设，
+ * 正是它让日历卡和设备控制卡共用一个键、关一张另一张跟着变。
  */
 class ToolGroupSwitchTest {
-    @Test fun everyGroupMapsToItsOwnSwitch() {
+    @Test fun everyGroupMapsToItsOwningCapabilitySwitch() {
         val expected = mapOf(
             "basic" to Prefs.Keys.AGENT_BASIC_TOOLS,
             "screen" to Prefs.Keys.AGENT_SCREEN_TOOLS,
             "web" to Prefs.Keys.AGENT_BROWSER_TOOLS,
             "terminal" to Prefs.Keys.AGENT_TERMINAL_TOOLS,
             "device" to Prefs.Keys.AGENT_DEVICE_TOOLS,
-            "calendar" to Prefs.Keys.AGENT_DEVICE_TOOLS,
+            // 日程与个人数据同开关：界面侧它是个人数据卡里的一部分。
+            "calendar" to Prefs.Keys.AGENT_PERSONAL_TOOLS,
             "personal" to Prefs.Keys.AGENT_PERSONAL_TOOLS,
             "device_state" to Prefs.Keys.AGENT_PERSONAL_TOOLS,
             "extensions" to Prefs.Keys.AGENT_EXTENSIONS_TOOLS,
         )
-        // 分组定义是唯一来源：新增一个组而忘了给开关，这条会先失败。
+        // 分组定义是唯一来源：新增一个组而忘了归到某个能力，这条会先失败。
         assertEquals(AgentToolGroups.groups.map { it.id }.toSet(), expected.keys)
         expected.forEach { (group, key) ->
             assertEquals("$group 的开关", key, ToolGroupSwitch.keyFor(group))

@@ -8,17 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material.icons.rounded.Extension
-import androidx.compose.material.icons.rounded.Forum
-import androidx.compose.material.icons.rounded.Language
-import androidx.compose.material.icons.rounded.Smartphone
-import androidx.compose.material.icons.rounded.Terminal
-import androidx.compose.material.icons.rounded.TouchApp
-import androidx.compose.material.icons.rounded.Troubleshoot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -38,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
@@ -51,8 +43,12 @@ import io.github.mangi.eta.ui.app.rememberDeviceCapabilities
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentToolsAction
 import io.github.mangi.eta.ui.model.AgentToolsUiState
-import io.github.mangi.eta.ui.model.ToolGroupUi
-import io.github.mangi.eta.ui.model.projectToolGroups
+import io.github.mangi.eta.ui.model.ToolCapabilities
+import io.github.mangi.eta.ui.model.ToolCapabilityUi
+import io.github.mangi.eta.ui.model.ToolItemUi
+import io.github.mangi.eta.ui.model.ToolSubSwitchUi
+import io.github.mangi.eta.ui.model.actualToolName
+import io.github.mangi.eta.ui.model.projectToolCapabilities
 import androidx.compose.material3.Text as M3Text
 
 @Composable
@@ -65,7 +61,12 @@ fun AgentToolsScreen(
     var showAll by rememberSaveable { mutableStateOf(false) }
     val currentListState = rememberLazyListState()
     val allListState = rememberLazyListState()
-    val groups = projectToolGroups(state.groups, showAll, capabilities.root.isGranted, capabilities.tools.colorOs)
+    val cards = projectToolCapabilities(
+        state.capabilities,
+        showAll,
+        capabilities.root.isGranted,
+        capabilities.tools.colorOs,
+    )
     EtaScaffoldPage(
         title = stringResource(R.string.ui_tool_ability_9f0f80),
         onBack = { onAction(AgentToolsAction.NavigateBack) },
@@ -90,10 +91,10 @@ fun AgentToolsScreen(
                 )
             }
         }
-        groups.forEach { group ->
-            item(key = "${group.id}-list") {
-                ToolGroupCard(
-                    group = group,
+        cards.forEach { capability ->
+            item(key = "${capability.id}-card") {
+                ToolCapabilityCard(
+                    capability = capability,
                     rootGranted = capabilities.root.isGranted,
                     capabilities = capabilities.tools,
                     onAction = onAction,
@@ -104,45 +105,51 @@ fun AgentToolsScreen(
 }
 
 /**
- * 一个工具分组的可展开分段卡（Material 3 Lists 的 expand & collapse）：
+ * 一张卡 = 一个界面能力（[ToolCapabilityUi]）。这里的「卡」与模型侧的工具组不是一一对应：
+ * 个人数据卡里就装着个人内容、设备状态、日程三个模型组，因为它们共用一个开关。
  *
- * - 父条目是组标题行（官方 [EtaSegmentedRow]，即 `SegmentedListItem`）：整行点击
- *   展开/收起，行尾是随展开状态旋转的官方 `ExpandMore` 箭头（曲线取官方
- *   `motionScheme`），与 Provider 页的展开行同一套官方写法；带开关的组，
- *   开关就放在父行行尾——域级开关就地可及，不用展开也能整组收放。
- * - 子条目是组内工具行，经 [EtaSegmentedColumn] 的 `visible` 机制折叠：
- *   收起时以分段 spring 收缩高度、淡出，并把末段圆角让给父行——即 M3 规范的
- *   parent-child transition（folder-like，竖向展开露内容）。
+ * - 父条目是卡片标题行（官方 [EtaSegmentedRow]）：整行点击展开/收起，行尾是能力开关，
+ *   开关就地可及，不用展开也能整卡收放；标题下带一行摘要，说明这组装了什么。
+ * - 子条目先是对应的组内子开关（shell / 媒体搜索），再是工具行，经 [EtaSegmentedColumn]
+ *   的 `visible` 机制折叠，末段圆角让给父行（M3 的 parent-child transition）。
  *
- * 空组不渲染，避免留下孤立组标题。折叠态按组记忆（条目键稳定），滚出屏幕、
- * 切页签后不丢。
+ * 空卡不渲染，避免留下孤立标题。
  */
 @Composable
-private fun ToolGroupCard(
-    group: ToolGroupUi,
+private fun ToolCapabilityCard(
+    capability: ToolCapabilityUi,
     rootGranted: Boolean,
     capabilities: AgentToolCapabilities,
     onAction: (AgentToolsAction) -> Unit,
 ) {
-    if (group.tools.isEmpty()) return
+    if (capability.tools.isEmpty()) return
     var expanded by rememberSaveable { mutableStateOf(true) }
     EtaSegmentedColumn(
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
     ) {
         item(key = "header") {
-            ToolGroupHeaderRow(
-                group = group,
+            ToolCapabilityHeaderRow(
+                capability = capability,
                 expanded = expanded,
                 onExpandedChange = { expanded = it },
                 onAction = onAction,
             )
         }
-        group.tools.forEach { tool ->
+        capability.subSwitch?.let { sub ->
+            item(key = "sub-${sub.id}", visible = expanded) {
+                ToolSubSwitchRow(
+                    sub = sub,
+                    capabilityEnabled = capability.switchEnabled,
+                    onAction = onAction,
+                )
+            }
+        }
+        capability.tools.forEach { tool ->
             item(key = tool.id, visible = expanded) {
                 ToolListRow(
                     tool = tool,
-                    // 分组关闭时工具开关进入禁用态：该组能力已整体失效，再逐个开关没有意义。
-                    groupEnabled = group.switchKey == null || group.switchEnabled,
+                    // 能力关闭、或所在子开关关闭时，该行进入禁用态：再逐个开关没有意义。
+                    groupEnabled = toolRowEnabled(capability, tool),
                     rootGranted = rootGranted,
                     capabilities = capabilities,
                     onAction = onAction,
@@ -153,18 +160,30 @@ private fun ToolGroupCard(
 }
 
 /**
- * 分组父行：M3 expand & collapse 的父条目。
+ * 工具行是否可操作：能力与子开关都要放行。
  *
- * 前导图标与设置首页同名分组入口保持一致（见 [toolGroupIcon]）；标题走官方
- * [EtaSegmentedRow]（`SegmentedListItem`）内容槽默认令牌，与 Google 官方示例
- * 一致，不做字阶/配色的特殊区分。整行点击切换展开/收起；行尾开关是域级控制——
- * 点击开关只切换分组启停，不触发展开（开关自己消费点击）。
- * 无障碍：行播报展开/收起状态（stateDescription），开关带独立的
- * contentDescription。
+ * 子开关关掉时，被它门禁的工具（run_command/terminal、semantic_search_media）必须跟着变灰，
+ * 否则会出现「开关明明关着、工具行却亮着、点了还没反应」。
+ */
+private fun toolRowEnabled(capability: ToolCapabilityUi, tool: ToolItemUi): Boolean {
+    if (!capability.switchEnabled) return false
+    val sub = capability.subSwitch ?: return true
+    return sub.enabled || actualToolName(tool.id) !in sub.gatedTools
+}
+
+/**
+ * 卡片父行：M3 expand & collapse 的父条目。
+ *
+ * 前导图标与设置页同名条目同源（[ToolCapabilities]）；标题下挂一行摘要——设置页不再
+ * 露组开关、也不再写组摘要，这里是用户唯一能看到「这组装了什么」的地方，因此截断到一行，
+ * 不抢占工具行的空间。
+ *
+ * 整行点击切换展开/收起；行尾开关只切换能力启停，不触发展开（开关自己消费点击）。
+ * 无障碍：行播报展开/收起状态（stateDescription），开关带独立的 contentDescription。
  */
 @Composable
-private fun ToolGroupHeaderRow(
-    group: ToolGroupUi,
+private fun ToolCapabilityHeaderRow(
+    capability: ToolCapabilityUi,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onAction: (AgentToolsAction) -> Unit,
@@ -183,22 +202,29 @@ private fun ToolGroupHeaderRow(
         onClick = { onExpandedChange(!expanded) },
         modifier = Modifier.semantics { this.stateDescription = stateText },
         leadingContent = {
-            Icon(imageVector = toolGroupIcon(group.id), contentDescription = null)
+            Icon(imageVector = toolCapabilityIcon(capability.id), contentDescription = null)
         },
-        content = { M3Text(text = group.title) },
+        supportingContent = {
+            M3Text(
+                text = capability.summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        content = { M3Text(text = capability.title) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                group.switchKey?.let { switchKey ->
-                    EtaSwitch(
-                        checked = group.switchEnabled,
-                        onCheckedChange = { enabled ->
-                            TouchHaptics.toggle(view, enabled)
-                            onAction(AgentToolsAction.ToggleGroup(switchKey, enabled))
-                        },
-                        modifier = Modifier.semantics { contentDescription = switchLabel },
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
+                EtaSwitch(
+                    checked = capability.switchEnabled,
+                    onCheckedChange = { enabled ->
+                        TouchHaptics.toggle(view, enabled)
+                        onAction(AgentToolsAction.ToggleGroup(capability.switchKey, enabled))
+                    },
+                    modifier = Modifier.semantics { contentDescription = switchLabel },
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Icon(
                     imageVector = Icons.Rounded.ExpandMore,
                     contentDescription = null,
@@ -210,23 +236,50 @@ private fun ToolGroupHeaderRow(
 }
 
 /**
- * 分组父行的前导图标：设置首页同名分组入口用什么，这里就用什么
- * （见 `SettingsCatalog` 的 groupToolCapabilities 条目），两处不各画一套。
- * calendar 与 device_state 是设置首页还没有条目的新组，按组内工具的语义取
- * 官方 rounded 图标；未知组兜底用工具能力入口的 Dashboard。
+ * 组内子开关行（命令执行 / 媒体语义搜索）。
+ *
+ * 放在所属卡片内部而不是设置页外面：它是这张卡的细节，不是并列的能力开关。
+ * 只给行尾开关，不做整行点击——整行点击会让「展开卡片」和「翻转开关」两种意图打架。
  */
-private fun toolGroupIcon(groupId: String): ImageVector = when (groupId) {
-    "basic" -> Icons.Rounded.Forum
-    "screen" -> Icons.Rounded.TouchApp
-    "web" -> Icons.Rounded.Language
-    "terminal" -> Icons.Rounded.Terminal
-    "device" -> Icons.Rounded.Smartphone
-    "calendar" -> Icons.Rounded.Event
-    "personal" -> Icons.Rounded.Badge
-    "device_state" -> Icons.Rounded.Troubleshoot
-    "extensions" -> Icons.Rounded.Extension
-    else -> Icons.Rounded.Dashboard
+@Composable
+private fun ToolSubSwitchRow(
+    sub: ToolSubSwitchUi,
+    capabilityEnabled: Boolean,
+    onAction: (AgentToolsAction) -> Unit,
+) {
+    val view = LocalView.current
+    EtaSegmentedRow(
+        choiceRow = true,
+        supportingContent = {
+            M3Text(
+                text = sub.summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        trailingContent = {
+            EtaSwitch(
+                checked = sub.enabled,
+                // 能力整体关闭时子开关无从谈起，与工具行同样置灰。
+                enabled = capabilityEnabled,
+                onCheckedChange = { enabled ->
+                    TouchHaptics.toggle(view, enabled)
+                    onAction(AgentToolsAction.ToggleGroup(sub.switchKey, enabled))
+                },
+            )
+        },
+        content = { M3Text(text = sub.title) },
+    )
 }
+
+/**
+ * 卡片前导图标：设置页、搜索目录、工具页共用 [ToolCapabilities] 的那一份，
+ * 不再各自画一套。未知 id 兜底用工具能力入口的 Dashboard。
+ */
+private fun toolCapabilityIcon(capabilityId: String): ImageVector =
+    ToolCapabilities.all.firstOrNull { it.id == capabilityId }?.icon ?: Icons.Rounded.Dashboard
 
 /**
  * 工具页顶部分段切换。

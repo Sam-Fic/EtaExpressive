@@ -22,8 +22,6 @@ import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Extension
-import androidx.compose.material.icons.rounded.Badge
-import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.Groups
@@ -32,7 +30,6 @@ import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.TouchApp
@@ -45,8 +42,6 @@ import androidx.compose.material.icons.rounded.Psychology
 import io.github.mangi.eta.ui.icons.SubAgents
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.Smartphone
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Vibration
@@ -76,6 +71,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.accessibility.AccessibilityProtectionClient
 import io.github.mangi.eta.config.PowerAssistantTarget
 import io.github.mangi.eta.config.Prefs
+import io.github.mangi.eta.ui.model.ToolCapabilities
 import io.github.mangi.eta.core.AppFileLogger
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.repository.AppUpdateRepository
@@ -521,6 +517,9 @@ internal fun SettingsScreen(
             }
 
             // ── Agent 工具能力 ──────────────────────────────────────────
+            // 分组开关**不在这里**：它们在「工具能力」页里，一张卡一个开关。
+            // 设置首页只留入口和与安全/行为有关的开关——十几个能力开关平铺在这里，
+            // 用户看不出「关掉这一组会失去什么」，还得和维护两处分组的一致性打交道。
             settingsGroup(
                 title = { stringResource(R.string.settings_tool_capabilities) },
                 sectionModifier = Modifier.settingsSectionDiagnostics("tools"),
@@ -530,6 +529,8 @@ internal fun SettingsScreen(
                 row(key = SettingsKeys.TOOLS) {
                     EtaClickableRow(
                         title = stringResource(R.string.settings_tools_list),
+                        // 组开关撤走后，不进页就不知道关了什么，这里给一行实时摘要。
+                        summary = toolsCapabilitySummary(context, agentPrefs),
                         leading = { PreferenceIcon(Icons.Rounded.Dashboard) },
                         onClick = { onNavigate(AppRoute.Tools) },
                     )
@@ -545,97 +546,8 @@ internal fun SettingsScreen(
                     }
                 }
 
-                // 七个分组开关与模型侧的延迟工具组、工具清单页的分节是同一份定义
-                // （AgentToolGroups）。关掉一组＝这组工具既不下发也不执行，
-                // 单个工具的取舍在「工具清单」页里做。
-                row(key = SettingsKeys.TOOL_BASIC) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_basic_tools),
-                        summary = stringResource(R.string.settings_basic_tools_summary),
-                        key = Prefs.Keys.AGENT_BASIC_TOOLS,
-                        icon = Icons.Rounded.Forum,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_SCREEN) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_screen_tools),
-                        summary = stringResource(R.string.settings_screen_tools_summary),
-                        key = Prefs.Keys.AGENT_SCREEN_TOOLS,
-                        icon = Icons.Rounded.TouchApp,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_WEB) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_web_tools),
-                        summary = stringResource(R.string.settings_web_tools_summary),
-                        key = Prefs.Keys.AGENT_BROWSER_TOOLS,
-                        icon = Icons.Rounded.Language,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_TERMINAL) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_terminal_tools),
-                        summary = stringResource(R.string.settings_terminal_tools_summary),
-                        key = Prefs.Keys.AGENT_TERMINAL_TOOLS,
-                        icon = Icons.Rounded.Terminal,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_SHELL) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_shell_tools),
-                        summary = stringResource(R.string.settings_shell_tools_summary),
-                        key = Prefs.Keys.AGENT_SHELL_TOOLS,
-                        icon = Icons.Rounded.Terminal,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_DEVICE) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_device_tools),
-                        summary = stringResource(R.string.settings_device_tools_summary),
-                        key = Prefs.Keys.AGENT_DEVICE_TOOLS,
-                        icon = Icons.Rounded.Smartphone,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_PERSONAL) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_personal_tools),
-                        summary = stringResource(R.string.settings_personal_tools_summary),
-                        key = Prefs.Keys.AGENT_PERSONAL_TOOLS,
-                        icon = Icons.Rounded.Badge,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_EXTENSIONS) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_extensions_tools),
-                        summary = stringResource(R.string.settings_extensions_tools_summary),
-                        key = Prefs.Keys.AGENT_EXTENSIONS_TOOLS,
-                        icon = Icons.Rounded.Extension,
-                    )
-                }
-
+                // 下面三个不是能力分组，而是执行行为：关掉不会让某一组工具消失，
+                // 只改变「怎么执行」。因此留在设置页，与工具页的卡片开关互不重复。
                 row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
                     SwitchPref(
                         context = context,
@@ -655,17 +567,6 @@ internal fun SettingsScreen(
                         summary = stringResource(R.string.settings_subagent_tools_summary),
                         key = Prefs.Keys.AGENT_SUBAGENT_TOOLS,
                         icon = Icons.Rounded.Groups,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_MEDIA_SEARCH) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_media_search_tools),
-                        summary = stringResource(R.string.settings_media_search_tools_summary),
-                        key = Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
-                        icon = Icons.Rounded.TravelExplore,
                     )
                 }
 
@@ -1073,6 +974,59 @@ private fun SettingsRowHighlight(
         LocalEtaSegmentedRowContainerColor provides color,
         content = content,
     )
+}
+
+// ── 工具能力入口行的状态摘要 ────────────────────────────────────────────────
+
+/** 影响工具能力入口摘要的全部键：7 个能力开关 + 2 个子开关 + 单工具禁用集。 */
+private val toolPreferenceKeys: Set<String> =
+    ToolCapabilities.all.flatMapTo(mutableSetOf()) { capability ->
+        listOfNotNull(capability.switchKey, capability.subSwitch?.switchKey)
+    } + Prefs.Keys.AGENT_DISABLED_TOOLS
+
+/**
+ * 「工具能力」入口行的一行摘要。
+ *
+ * 分组开关全部搬进工具能力页之后，设置首页看不出「我到底关了什么」——用户得点进去逐个找。
+ * 这里读同一批 Prefs 键给个结论，并挂监听实时刷新：在工具页改完开关返回，摘要立刻变。
+ *
+ * 措辞只陈述现状，不劝开也不劝关（与工具页、模型侧关闭说明的口径一致）。
+ */
+@Composable
+private fun toolsCapabilitySummary(context: Context, prefs: SharedPreferences?): String {
+    var revision by remember { mutableStateOf(0) }
+    DisposableEffect(prefs) {
+        val target = prefs ?: return@DisposableEffect onDispose {}
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key in toolPreferenceKeys) revision++
+        }
+        target.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { target.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    // revision 只用来让 remember 失效：真实取值一律从 Prefs 现读。
+    return remember(revision, prefs) { buildToolsCapabilitySummary(context, prefs) }
+}
+
+private fun buildToolsCapabilitySummary(context: Context, prefs: SharedPreferences?): String {
+    val off = ToolCapabilities.all.filter { capability ->
+        val default = Prefs.Keys.BOOLEAN_DEFAULTS[capability.switchKey] ?: true
+        !(prefs?.getBoolean(capability.switchKey, default)
+            ?: Prefs.isEnabled(capability.switchKey))
+    }
+    val groups = when {
+        off.isEmpty() -> context.getString(R.string.settings_tools_summary_all_enabled)
+        off.size == ToolCapabilities.all.size ->
+            context.getString(R.string.settings_tools_summary_all_off)
+        else -> context.getString(
+            R.string.settings_tools_summary_groups_off,
+            off.size,
+            off.joinToString("、") { context.getString(it.titleRes) },
+        )
+    }
+    val disabledTools = Prefs.disabledTools().size
+    if (disabledTools == 0) return groups
+    return groups + "；" +
+        context.getString(R.string.settings_tools_summary_tools_off, disabledTools)
 }
 
 // ── 带图标的布尔开关 ─────────────────────────────────────────────────────────

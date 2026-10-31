@@ -22,9 +22,22 @@ internal fun actualToolName(id: String): String = when (id) {
     else -> id
 }
 
-internal fun projectToolGroups(groups: List<ToolGroupUi>, showAll: Boolean, rootGranted: Boolean, colorOs: Boolean): List<ToolGroupUi> =
-    groups.map { group ->
-        group.copy(tools = group.tools.filter { showAll || visibleOnCurrentDevice(it.id, rootGranted, colorOs) })
+/**
+ * 「当前设备 / 全部」两个页签的投影：按本机能力过滤工具行，再丢掉过滤后没有行的卡片。
+ * 只剩子开关、没有工具的卡片也一并丢掉——留一张空卡会让用户以为还能开什么。
+ */
+internal fun projectToolCapabilities(
+    capabilities: List<ToolCapabilityUi>,
+    showAll: Boolean,
+    rootGranted: Boolean,
+    colorOs: Boolean,
+): List<ToolCapabilityUi> =
+    capabilities.map { capability ->
+        capability.copy(
+            tools = capability.tools.filter {
+                showAll || visibleOnCurrentDevice(it.id, rootGranted, colorOs)
+            },
+        )
     }.filter { it.tools.isNotEmpty() }
 
 /** 普通权限的缺失优先给出可执行的授权入口，查看增强说明本身不会请求 Root。 */

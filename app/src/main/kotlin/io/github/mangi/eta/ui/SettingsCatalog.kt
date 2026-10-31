@@ -4,7 +4,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessibilityNew
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Compress
@@ -13,7 +12,6 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Handyman
 import androidx.compose.material.icons.rounded.HealthAndSafety
@@ -31,8 +29,6 @@ import androidx.compose.material.icons.rounded.RemoveRedEye
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SmartToy
-import androidx.compose.material.icons.rounded.Smartphone
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Vibration
@@ -88,17 +84,8 @@ internal object SettingsKeys {
     // Agent 工具能力
     const val TOOLS = "tools"
     const val AGENT_TASK_PREFERENCE = "agent_task_preference"
-    const val TOOL_BASIC = "tool_basic"
-    const val TOOL_SCREEN = "tool_screen"
-    const val TOOL_WEB = "tool_web"
-    const val TOOL_TERMINAL = "tool_terminal"
-    const val TOOL_SHELL = "tool_shell"
-    const val TOOL_DEVICE = "tool_device"
-    const val TOOL_PERSONAL = "tool_personal"
-    const val TOOL_EXTENSIONS = "tool_extensions"
     const val TOOL_CONFIRM_DANGEROUS = "tool_confirm_dangerous"
     const val TOOL_SUBAGENT = "tool_subagent"
-    const val TOOL_MEDIA_SEARCH = "tool_media_search"
     const val MEDIA_INDEX = "media_index"
 
     // 运行环境
@@ -425,7 +412,11 @@ internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry
                 key = SettingsKeys.TOOLS,
                 title = stringResource(R.string.settings_tools_list),
                 summary = null,
-                keywords = "tools 工具 清单 列表 开关 能力 权限 启用 停用",
+                // 分组开关搬进工具能力页后，这里要接住原来的搜索词：用户搜「设备控制」
+                // 「日历」「命令执行」仍然是找这页，落到同一个入口比散落 9 条结果更好用。
+                keywords = "tools 工具 清单 列表 开关 能力 权限 启用 停用 " +
+                    "基础交互 屏幕 网页 浏览器 终端 命令执行 shell 设备控制 个人数据 " +
+                    "扩展 日历 日程 通讯录 媒体搜索",
                 icon = Icons.Rounded.Dashboard,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Route(AppRoute.Tools),
@@ -446,94 +437,6 @@ internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry
         }
         add(
             SettingsEntry(
-                key = SettingsKeys.TOOL_BASIC,
-                title = stringResource(R.string.settings_basic_tools),
-                summary = stringResource(R.string.settings_basic_tools_summary),
-                keywords = "basic 基础工具 会话 消息 对话 发送",
-                icon = Icons.Rounded.Forum,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_SCREEN,
-                title = stringResource(R.string.settings_screen_tools),
-                summary = stringResource(R.string.settings_screen_tools_summary),
-                keywords = "screen 屏幕 截图 界面 控件 无障碍操作 点击",
-                icon = Icons.Rounded.TouchApp,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_WEB,
-                title = stringResource(R.string.settings_web_tools),
-                summary = stringResource(R.string.settings_web_tools_summary),
-                keywords = "web browser 网页 联网 浏览 搜索 抓取",
-                icon = Icons.Rounded.Language,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_TERMINAL,
-                title = stringResource(R.string.settings_terminal_tools),
-                summary = stringResource(R.string.settings_terminal_tools_summary),
-                keywords = "terminal 终端 命令行 命令 控制台",
-                icon = Icons.Rounded.Terminal,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_SHELL,
-                title = stringResource(R.string.settings_shell_tools),
-                summary = stringResource(R.string.settings_shell_tools_summary),
-                keywords = "shell 脚本 命令 bash 执行",
-                icon = Icons.Rounded.Terminal,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_DEVICE,
-                title = stringResource(R.string.settings_device_tools),
-                summary = stringResource(R.string.settings_device_tools_summary),
-                keywords = "device 设备 手机 系统信息 电量 剪贴板 应用",
-                icon = Icons.Rounded.Smartphone,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_PERSONAL,
-                title = stringResource(R.string.settings_personal_tools),
-                summary = stringResource(R.string.settings_personal_tools_summary),
-                keywords = "personal 个人数据 通讯录 联系人 短信 日程 日历 隐私",
-                icon = Icons.Rounded.Badge,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_EXTENSIONS,
-                title = stringResource(R.string.settings_extensions_tools),
-                summary = stringResource(R.string.settings_extensions_tools_summary),
-                keywords = "extension 扩展 xposed hook 模块 lsposed 注入",
-                icon = Icons.Rounded.Extension,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
                 key = SettingsKeys.TOOL_CONFIRM_DANGEROUS,
                 title = stringResource(R.string.settings_confirm_dangerous_tools),
                 summary = stringResource(R.string.settings_confirm_dangerous_tools_summary),
@@ -550,17 +453,6 @@ internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry
                 summary = stringResource(R.string.settings_subagent_tools_summary),
                 keywords = "subagent 子代理工具 委派 并行 分身工具",
                 icon = Icons.Rounded.Groups,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_MEDIA_SEARCH,
-                title = stringResource(R.string.settings_media_search_tools),
-                summary = stringResource(R.string.settings_media_search_tools_summary),
-                keywords = "media 媒体 图片 视频 相册 文件 语义检索 搜索",
-                icon = Icons.Rounded.TravelExplore,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Inline,
             ),
