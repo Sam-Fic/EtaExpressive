@@ -71,7 +71,9 @@ class ChatTailRecoveryContractTest(unittest.TestCase):
         draw = reveal.split('override fun ContentDrawScope.draw() {', 1)[1].split('private fun ContentDrawScope.drawInsideMeasuredHeight', 1)[0]
         self.assertIn('clipRect(left = 0f, top = 0f, right = size.width, bottom = size.height)', draw)
         card = (COMPONENTS / 'AgentWorkProcessCard.kt').read_text()
-        self.assertIn('clipPath(borderPath) { this@onDrawWithContent.drawContent() }', card)
+        # 卡片改用官方 clip(shape) 收边：旧 borderPath 自绘裁切会把贴边文字切掉，属有 bug 的实现。
+        self.assertIn('.clip(shape)', card)
+        self.assertNotIn('clipPath(borderPath) { this@onDrawWithContent.drawContent() }', card)
         self.assertNotIn('clipPath(fillPath) { this@onDrawWithContent.drawContent() }', card)
 
     def test_rest_line_clip_is_a_layer_above_the_follow_translation(self):

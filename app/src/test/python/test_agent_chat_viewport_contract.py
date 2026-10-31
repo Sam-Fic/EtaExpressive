@@ -150,7 +150,7 @@ class AgentChatViewportContractTest(unittest.TestCase):
             buttons[0],
             r"\.align\s*\(\s*Alignment\.BottomEnd\s*\)\s*"
             r"\.padding\s*\(\s*bottom\s*=\s*bottomInset\s*\+\s*TurnNavigationCenterAboveBottom\s*-\s*"
-            r"IconButtonDefaults\.smallContainerSize\(\)\.height\s*/\s*2\s*,\s*end\s*=\s*16\.dp\s*,?\s*\)",
+            r"IconButtonDefaults\.smallContainerSize\(\)\.height\s*/\s*2\s*,\s*end\s*=\s*16\.dp(?:\s*\+\s*horizontalPadding)?\s*,?\s*\)",
         )
         self.assertRegex(self.source, r"private\s+val\s+TurnNavigationCenterAboveBottom\s*=\s*39\.dp")
 

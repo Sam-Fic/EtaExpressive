@@ -20,7 +20,7 @@ class ContextPrecisionContractTest(unittest.TestCase):
         self.assertIn('AgentRequestTokenEstimate.filtered(filteredMessages, roundTools)', code)
         self.assertRegex(code,
             r'ProviderRequest\(requestConfigForRound\(\),\s*'
-            r'filteredMessages,\s*roundTools,\s*sessionId'
+            r'snapshot\.filteredMessages,\s*roundTools,\s*sessionId'
             r',\s*toolDiagnostics\s*=\s*toolDiagnostics,\s*'
             r'reconnectLocalToolsOnly\s*=\s*localOnlyRecovery\)')
         self.assertRegex(code,
@@ -28,7 +28,7 @@ class ContextPrecisionContractTest(unittest.TestCase):
             r'val filteredMessages = AgentRequestMediaPolicy\.filter\(')
         self.assertIn('var preparedRequestTokens: Int? = null', code)
         self.assertIn('preparedRequestTokens = providerEvent.tokens', code)
-        self.assertIn('if (publishLocalEstimate && !hasDisplayCloudReceipt && providerEvent.tokens > 0)', code)
+        self.assertIn('if (snapshot.publishLocalEstimate && !hasDisplayCloudReceipt && providerEvent.tokens > 0)', code)
 
     def test_calibration_does_not_mix_prepared_tokens_with_boundary_tokens(self):
         code = self.read('agent/model/AgentLoop.kt')

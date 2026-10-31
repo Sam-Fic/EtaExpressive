@@ -63,7 +63,7 @@ class ContextCompressionSettingsColorsTest(unittest.TestCase):
             with self.subTest(resource=resource):
                 self.assertIn(f"R.string.{resource}", self.source)
         self.assertIn(
-            "supportingContentColor = MaterialTheme.colorScheme.onSurfaceVariant",
+            "supportingContentColor = contentColor ?: MaterialTheme.colorScheme.onSurfaceVariant",
             self.segmented,
         )
         row = self.rows.split("fun EtaSwitchRow(", 1)[1].split("fun EtaClickableRow(", 1)[0]
