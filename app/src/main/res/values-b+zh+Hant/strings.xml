@@ -94,7 +94,6 @@
   <string name="haptics_title">震動</string>
   <string name="haptics_group_interface">介面震動</string>
   <string name="haptics_group_generation">生成震動</string>
-  <string name="haptics_group_background">背景震動</string>
   <string name="haptics_list">震動回饋</string>
   <string name="haptics_touch_feedback">觸控回饋</string>
   <string name="haptics_touch_feedback_summary">下面所有介面觸感項的總開關</string>
@@ -185,7 +184,7 @@
   <string name="shared_folders_error_name_duplicate">掛載名稱已被使用</string>
   <string name="shared_folders_error_limit">最多設定 %1$d 個共享資料夾</string>
   <string name="shared_folders_error_save">儲存失敗，請重試</string>
-  <string name="shared_folders_footer">共享資料夾在新的 Linux 終端工作階段建立時掛載到 /workspace/mounts/ 下，設定變更對下一條指令或新工作階段生效；/sdcard 等模擬儲存在 Linux 中不支援修改權限位元</string>
+  <string name="shared_folders_footer">共享資料夾在新的 Linux 終端工作階段建立時掛載，設定變更對下一條指令或新工作階段生效；/sdcard 等模擬儲存在 Linux 中不支援修改權限位元</string>
   <string name="route_linux_files">Linux 檔案</string>
   <string name="linux_files_title">Linux 檔案</string>
   <string name="linux_files_entry_title">檔案瀏覽</string>
@@ -508,7 +507,7 @@
   <string name="ui_enforce_accessibility_55e838">強制維持無障礙</string>
   <string name="ui_current_25e74d">目前</string>
   <string name="ui_restore_automatic_8d4e1e">恢復自動</string>
-  <string name="ui_maintain_hey_google_detection_after_screen_rest_9d6877">息屏後維持 Hey Google 檢測</string>
+  <string name="ui_maintain_hey_google_detection_after_screen_rest_9d6877">息屏後維持 Hey Google 偵測</string>
   <string name="ui_floating_window_permissions_076b77">懸浮窗權限</string>
   <string name="ui_manually_fill_in_the_display_name_and_model_id_077a7b">手動填寫展示名稱與 Model ID</string>
   <string name="ui_long_press_on_the_gesture_bar_triggers_a_circle_to_s_b80117">長按手勢列啟動圈選搜尋</string>
@@ -599,7 +598,7 @@
   <string name="ui_memory_b55ff5">記憶</string>
   <string name="ui_set_up_7debf9">設定</string>
   <string name="ui_access_7f5641">存取</string>
-  <string name="ui_this_value_is_used_for_session_clipping_and_context__c3f9e7">此值用於對話裁剪與內容預算；留空時使用遠端或官方目錄提供的值</string>
+  <string name="ui_this_value_is_used_for_session_clipping_and_context__c3f9e7">此值用於對話裁剪與上下文預算；留空時使用遠端或官方目錄提供的值</string>
   <string name="ui_input_file_path_36d474">輸入檔路徑</string>
   <string name="ui_return_11d024">返回</string>
   <string name="ui_connection_configuration_7d057b">連線設定</string>
@@ -748,15 +747,15 @@
   <string name="tool_ui_search_notes">搜尋便條</string>
   <string name="tool_ui_search_notes_summary">依標題與正文內容檢索便條</string>
   <string name="settings_personal_data_reads">個人資料讀取</string>
-  <string name="settings_personal_data_reads_summary">通訊錄、簡訊、通話、健康、帳單、訂單、便簽與日曆內容</string>
+  <string name="settings_personal_data_reads_summary">通訊錄、簡訊、通話、健康、帳單、訂單、便條與日曆內容</string>
   <string name="settings_device_state_reads">裝置狀態讀取</string>
   <string name="settings_device_state_reads_summary">設定、系統狀態、鬧鐘、定位與應用使用情況。風險低於個人資料</string>
   <string name="aes_tool_groups_title">該助理的工具分組</string>
   <string name="aes_tool_group_globally_off">已被總開關關閉</string>
   <string name="settings_confirm_dangerous_tools">執行破壞性操作前確認</string>
-  <string name="settings_confirm_dangerous_tools_summary">在執行重啟、卸載應用、清除資料或刪除使用者前先詢問。唯讀工具不會被打斷</string>
+  <string name="settings_confirm_dangerous_tools_summary">在執行重啟、解除安裝應用程式、清除資料或刪除使用者前先詢問。唯讀工具不會被打斷</string>
   <string name="settings_subagent_tools">子代理委派</string>
-  <string name="settings_subagent_tools_summary">允許模型將獨立任務交給已配置的工作進程。每次委派運行在另一個模型上，並單獨計費</string>
+  <string name="settings_subagent_tools_summary">允許模型將獨立任務交給已配置的處理程序。每次委派都在另一個模型上執行，並單獨計費</string>
   <string name="settings_screen_tools">螢幕觀察與 GUI 操作</string>
   <string name="settings_screen_tools_summary">允許模型讀取介面節點並點擊、滑動、輸入與按鍵。關閉後不再下發任何無障礙介面工具</string>
   <string name="settings_shell_tools">允許執行命令</string>
@@ -851,13 +850,13 @@
   <string name="page_jadx_apktool_smali_and_baksmali_are_ready_apktool_do_14eaf8">JADX、Apktool、smali 與 baksmali 已就緒；Apktool 暫時不支援回編譯</string>
   <string name="page_linux_tool_environment_is_ready_9b845b">Linux 工具環境已經就緒</string>
   <string name="page_root_environment_is_missing_available_busybox_or_nec_76f454">Root 環境缺少可用的 BusyBox 或必要 applet</string>
-  <string name="page_ready_7cca0c">} 已就緒</string>
+  <string name="page_ready_7cca0c">已就緒</string>
   <string name="page_context_unknown_b6ae7b">內容長度未知</string>
   <string name="page_the_context_length_must_be_a_positive_integer_06ca7a">內容長度上限必須是正整數</string>
   <string name="page_download_the_alpine_base_environment_8433ea">下載 Alpine 基礎環境</string>
   <string name="page_download_and_install_f4df99">下載並安裝</string>
   <string name="page_not_supported_ef8274">不支援</string>
-  <string name="page_import_from_zip_41cc5e">從 ZIP 導入</string>
+  <string name="page_import_from_zip_41cc5e">從 ZIP 匯入</string>
   <string name="page_automatically_pull_from_remote_f883d0">從遠端自動拉取</string>
   <string name="page_you_are_taking_over_the_current_session_and_the_agen_2347ef">你正在接管目前的工作階段，Agent 的網頁操作已暫停；返回後可讓 Agent 繼續</string>
   <string name="page_save_fadf24">儲存</string>
@@ -922,16 +921,16 @@
   <string name="page_requires_root_and_magisk_kernelsu_or_apatch_busybox_47166a">需要 Root 與 Magisk、KernelSU 或 APatch BusyBox</string>
   <string name="page_abnormal_5caf27">例外</string>
   <string name="page_accessibility_protection_request_was_denied_by_the_s_34c699">無障礙保護請求被系統拒絕</string>
-  <string name="page_add_to_94191c">添加</string>
+  <string name="page_add_to_94191c">新增</string>
   <string name="page_authorized_284cc0">已授權</string>
   <string name="page_base_url_must_be_a_valid_http_s_address_0e7d58">Base URL 必須是有效的 HTTP(S) 位址</string>
-  <string name="page_can_t_open_default_assistant_settings_02c66f">無法開啟預設助理設置</string>
+  <string name="page_can_t_open_default_assistant_settings_02c66f">無法開啟預設助理設定</string>
   <string name="page_choose_eta_as_your_default_digital_assistant_4a73a9">選擇 Eta 作為預設數位助理</string>
   <string name="page_configuration_d7d7ce">設定</string>
   <string name="page_configuration_write_failed_8c2554">無法寫入設定</string>
-  <string name="page_create_fcbd09">創建</string>
+  <string name="page_create_fcbd09">建立</string>
   <string name="page_create_new_provider_36cab9">新供應商</string>
-  <string name="page_created_62cfc5">已創建</string>
+  <string name="page_created_62cfc5">已建立</string>
   <string name="page_created_and_set_as_current_lsposed_service_is_not_co_baa03d">已建立並設為目前使用；LSPosed 服務未連線</string>
   <string name="page_created_set_current_and_synced_a99010">已建立、設為目前並同步</string>
   <string name="page_didn_t_get_root_permissions_23efb3">未取得 root 權限</string>
@@ -1134,7 +1133,7 @@
   <string name="tool_ui_screen_action">螢幕電源動作</string>
   <string name="tool_ui_screen_action_summary">鎖定螢幕、息屏、開啟電源選單或重新啟動裝置</string>
   <string name="tool_ui_manage_app">應用管理</string>
-  <string name="tool_ui_manage_app_summary">安裝、卸載、清除資料與授予或撤銷執行階段權限</string>
+  <string name="tool_ui_manage_app_summary">安裝、解除安裝、清除資料與授予或撤銷執行階段權限</string>
   <string name="tool_ui_manage_file">檔案管理</string>
   <string name="tool_ui_manage_file_summary">複製、移動、刪除、重新命名檔案與目錄，免 Root 優先，Root 保底</string>
   <string name="tool_ui_system_property">系統屬性</string>
@@ -1150,7 +1149,7 @@
   <string name="tool_ui_appops_control">應用權限行為</string>
   <string name="tool_ui_appops_control_summary">讀取並設定應用的逐操作（AppOps）權限</string>
   <string name="tool_ui_power_control">電源策略</string>
-  <string name="tool_ui_power_control_summary">省電模式、充電保持喚醒、電池優化白名單與重開機</string>
+  <string name="tool_ui_power_control_summary">省電模式、充電保持喚醒、電池最佳化白名單與重開機</string>
   <string name="tool_ui_ime_control">輸入法管理</string>
   <string name="tool_ui_ime_control_summary">列出、檢視與切換預設輸入法</string>
   <string name="tool_ui_connect_wifi">連線 Wi-Fi</string>
@@ -1175,7 +1174,7 @@
   <string name="tool_ui_bounded_reading_and_filtering_of_recent_logs_0a268a">有界讀取並過濾最近日誌</string>
   <string name="tool_ui_find_click_and_enter_page_elements_8f102d">尋找、點擊並輸入頁面元素</string>
   <string name="tool_ui_check_application_data_and_cache_usage_837e9f">查看應用程式、資料與快取佔用</string>
-  <string name="tool_ui_view_the_currently_most_occupied_processes_8646c4">查看目前佔用最高的進程</string>
+  <string name="tool_ui_view_the_currently_most_occupied_processes_8646c4">查看目前佔用最高的處理程序</string>
   <string name="tool_ui_view_recently_opened_apps_and_times_bf9d50">查看最近開啟的應用程式和時間</string>
   <string name="tool_ui_retrieve_recent_pictures_in_qq_chat_picture_cach_b8f009">檢索 QQ 聊天圖片快取中的最近圖片</string>
   <string name="tool_ui_retrieve_notes_to_dos_and_text_content_e806d7">檢索便籤、待辦事項及內文內容</string>
@@ -1232,7 +1231,7 @@
   <string name="tool_ui_reliably_enter_long_text_with_the_clipboard_b6041e">用剪貼簿可靠輸入長文本</string>
   <string name="tool_ui_open_with_app_32c24e">用應用程式打開</string>
   <string name="tool_ui_directly_create_system_timers_up_to_24_hours_87c476">直接建立最長 24 小時的系統計時器</string>
-  <string name="tool_ui_create_a_system_alarm_directly_and_open_the_cloc_9aa214">Create a system alarm directly; open the Clock app to confirm if it fails</string>
+  <string name="tool_ui_create_a_system_alarm_directly_and_open_the_cloc_9aa214">直接建立系統鬧鐘；失敗時開啟時鐘應用程式確認</string>
   <string name="tool_ui_directly_execute_a_single_shell_command_c40cef">直接執行單一 shell 指令</string>
   <string name="tool_ui_album_pictures_23bcc2">相簿圖片</string>
   <string name="tool_ui_short_message_17e1a4">簡訊</string>
@@ -1746,7 +1745,7 @@
   <string name="settings_tool_recipes">模型自建工具</string>
   <string name="settings_tool_recipes_summary">查看、啟停、編輯、刪除並分享模型為自己寫的配方</string>
   <string name="data_backup_recipes">配方 · %1$d</string>
-  <string name="data_backup_recipes_size">占用 %1$s，勾選「應用資料」時隨備份一併匯出；也可在「設定 → 模型自建工具」裡查看、編輯或分享</string>
+  <string name="data_backup_recipes_size">佔用 %1$s，勾選「應用資料」時隨備份一併匯出；也可在「設定 → 模型自建工具」裡查看、編輯或分享</string>
   <string name="mcp_add_server">新增伺服器</string>
   <string name="mcp_configured_servers">伺服器 · %1$d</string>
   <string name="mcp_empty_title">尚無 MCP 伺服器</string>
@@ -2435,7 +2434,7 @@
   <string name="sap_save_failed">儲存失敗。草稿已保留，請重試</string>
   <string name="sap_select_model_for">為 %1$s 選擇模型</string>
   <string name="sap_draft_only_note">僅變更目前草稿；確認後儲存</string>
-  <string name="sap_tier_endpoint_note">；等級跟隨端點的明確對應</string>
+  <string name="sap_tier_endpoint_note">等級跟隨端點的明確對應</string>
   <string name="sap_role_impl">實作</string>
   <string name="sap_role_review">審查/總結</string>
   <string name="sap_role_image">圖片生成</string>
@@ -2856,7 +2855,7 @@
   <string name="media_mode_performance">全力索引</string>
   <string name="media_mode_performance_summary">GPU 優先、抽取預算滿配，最快完成索引</string>
   <string name="media_mode_power_saver">低耗後台</string>
-  <string name="media_mode_power_saver_summary">CPU 單線程並逐條限速，可長時間在背景慢慢跑完，不搶 GPU、不發熱</string>
+  <string name="media_mode_power_saver_summary">CPU 單執行緒並逐條限速，可長時間在背景慢慢跑完，不搶 GPU、不發熱</string>
   <!-- 自动更新（启动后 / 定时，固定低耗后台档） -->
   <string name="media_auto_group">自動更新</string>
   <string name="media_auto_on_launch">啟動後自動更新</string>
@@ -2943,7 +2942,7 @@
   <string name="mobile_actions_backend_cpu">CPU</string>
   <string name="mobile_actions_open">開啟裝置動作</string>
   <string name="mobile_actions_open_summary">輸入一條指令，在本機執行</string>
-  <string name="mobile_actions_note">英文指令效果最好；該模型專用於 7 類動作（手電筒、聯絡人、郵件、地圖、Wi-Fi 設定、日曆），不泛化到其他任務；執行時峰值記憶體約 500 MB</string>
+  <string name="mobile_actions_note">英文指令效果最好；模型僅支援所列動作，不泛化到其他任務；執行時峰值記憶體約 500 MB</string>
   <string name="mobile_actions_screen_title">裝置動作</string>
   <string name="mobile_actions_input_hint">開啟手電筒</string>
   <string name="mobile_actions_run">執行</string>

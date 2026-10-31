@@ -397,6 +397,7 @@ internal fun SubAgentProfileConfigDialog(
                                 val tiers = listOf<SubAgentTaskTier?>(null) + SubAgentTaskTier.entries
                                 EtaSegmentedDropdownRow(
                                     title = stringResource(R.string.sap_task_tier),
+                                    summary = stringResource(R.string.sap_tier_endpoint_note),
                                     items = tiers.map { tier ->
                                         tier?.let { stringResource(it.labelRes) } ?: stringResource(R.string.sap_tier_unset)
                                     },
@@ -426,6 +427,9 @@ internal fun SubAgentProfileConfigDialog(
                                 }
                                 EtaSegmentedDropdownRow(
                                     title = stringResource(R.string.sap_default_resolution),
+                                    summary = stringResource(R.string.spr_resolution_note) + "\n" +
+                                        if (verifiedGrok) stringResource(R.string.spr_resolution_grok)
+                                        else stringResource(R.string.spr_resolution_generic),
                                     items = tierLabels,
                                     selectedIndex = tierValues.indexOf(draft.imageResolution),
                                     onItemSelected = { index ->

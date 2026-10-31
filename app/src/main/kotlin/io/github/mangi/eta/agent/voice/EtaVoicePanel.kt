@@ -1224,6 +1224,7 @@ private fun SelectedScreenContext(
     Row(
         modifier = Modifier
             .height(60.dp)
+            // 卡片圆角 15dp：与 4dp 内边距一起给内层图片定同心基准（见下方图片 clip）。
             .background(scheme.surfaceContainerHigh, RoundedCornerShape(15.dp))
             .padding(4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1234,6 +1235,8 @@ private fun SelectedScreenContext(
                 contentDescription = stringResource(R.string.voice_screen_preview),
                 modifier = Modifier
                     .size(50.dp)
+                    // 同心：图片圆角 = 卡片圆角 15dp − 卡片内边距 4dp = 11dp，
+                    // 弧心与卡片圆角圆心重合（与输入条图框同一套「半径差 = 间距」的同心规则）。
                     .clip(RoundedCornerShape(11.dp)),
                 contentScale = ContentScale.Crop,
             )

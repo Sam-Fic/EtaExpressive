@@ -197,10 +197,8 @@ internal fun HapticsSettingsScreen(onBack: () -> Unit) {
             }
         }
         item(key = "haptics_background_group") {
-            EtaSegmentedColumn(
-                modifier = groupPadding,
-                title = stringResource(R.string.haptics_group_background),
-            ) {
+            // 组内首行标题与分组同名（后台震动），再设组标题会连读两遍，这里不设组标题。
+            EtaSegmentedColumn(modifier = groupPadding) {
                 item(key = "haptics_background") {
                     EtaSwitchRow(
                         title = stringResource(R.string.haptics_background),

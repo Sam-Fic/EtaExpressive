@@ -79,7 +79,7 @@ internal fun VoiceModeSettingsScreen(onBack: () -> Unit) {
                 EtaClickableRow(
                     title = stringResource(R.string.realtime_choose_voice),
                     summary = availableVoices.firstOrNull { it.id == voice }?.name
-                    ?: stringResource(R.string.realtime_choose_voice),
+                    ?: stringResource(R.string.dv_not_selected),
                     onClick = { voicePicker = true },
                 )
             }

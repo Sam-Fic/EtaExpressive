@@ -59,7 +59,6 @@
   <string name="haptics_title">Haptics</string>
   <string name="haptics_group_interface">Interface haptics</string>
   <string name="haptics_group_generation">Generation haptics</string>
-  <string name="haptics_group_background">Background haptics</string>
   <string name="haptics_list">Vibration feedback</string>
   <string name="haptics_touch_feedback">Touch feedback</string>
   <string name="haptics_touch_feedback_summary">Master switch for every interface haptic listed below</string>
@@ -2284,7 +2283,7 @@
   <string name="sap_save_failed">Save failed. The draft is kept; please try again</string>
   <string name="sap_select_model_for">Select model for %1$s</string>
   <string name="sap_draft_only_note">Only changes the current draft; saved after confirmation</string>
-  <string name="sap_tier_endpoint_note">; tiers follow the endpoint\'s explicit mapping</string>
+  <string name="sap_tier_endpoint_note">Tiers follow the endpoint\'s explicit mapping</string>
   <string name="sap_role_impl">Implementation</string>
   <string name="sap_role_review">Review / summarize</string>
   <string name="sap_role_image">Image generation</string>

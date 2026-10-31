@@ -70,9 +70,11 @@ class BackgroundHapticSettingsContractTest(unittest.TestCase):
     def test_reasoning_deltas_are_marked(self):
         self.assertIn("reasoning = event.kind == AgentEvent.AssistantBlockKind.THINKING", self.app_state)
 
-    def test_screen_expands_reasoning_option_under_background_switch(self):
+    def test_screen_wires_reasoning_option_under_background_switch(self):
+        # 后台页重构为分段列表后不再「展开/收起」：推理子项常驻组内第二行，
+        # 依赖关系改由行级 enabled 表达（backgroundOn = generationOn && HAPTIC_BACKGROUND）。
         self.assertIn("R.string.haptics_background", self.screen)
-        self.assertIn("bottomAction = if (showBackgroundOptions)", self.screen)
+        self.assertIn("enabled = backgroundOn", self.screen)
         self.assertIn("Prefs.Keys.HAPTIC_BACKGROUND_REASONING", self.screen)
 
 

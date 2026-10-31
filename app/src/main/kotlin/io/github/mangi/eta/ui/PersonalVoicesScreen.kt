@@ -101,19 +101,13 @@ internal fun MimoVoicesScreen(onBack: () -> Unit) {
 
     // 与兄弟语音页同一套分段列表：说明文字排在页面背景上，输入 / 动作收进分段组。
     VoiceSettingsSectionPage(title = stringResource(R.string.pv_mimo_voice), onBack = { TouchHaptics.click(view); onBack() }) {
-        item(key = "mimo-hint") {
-            VoiceNote(stringResource(R.string.pv_save_hint))
-        }
-        if (available.isEmpty()) {
-            item(key = "mimo-no-provider") {
-                VoiceNote(stringResource(R.string.pv_need_provider))
-            }
-        }
         voiceGroup(key = "mimo-form") {
             item {
                 Box {
                     EtaClickableRow(
                         title = provider?.name ?: stringResource(R.string.pv_select_provider),
+                        // 整组因缺服务商不可用时，原因写在行摘要上，不再用页外说明段解释置灰。
+                        summary = if (available.isEmpty()) stringResource(R.string.pv_need_provider) else null,
                         enabled = !busy && available.isNotEmpty(),
                         onClick = { providerMenu = true },
                     )
@@ -140,6 +134,8 @@ internal fun MimoVoicesScreen(onBack: () -> Unit) {
             item {
                 EtaClickableRow(
                     title = stringResource(if (uri == null) R.string.pv_select_audio else R.string.pv_reselect_audio),
+                    // 隐私与 10MB 体积限制直接影响选文件这一步，收进行摘要而不是页外说明。
+                    summary = stringResource(R.string.pv_import_note),
                     enabled = !busy,
                     onClick = { picker.launch(arrayOf("audio/mpeg", "audio/wav", "audio/x-wav")) },
                 )
@@ -147,14 +143,11 @@ internal fun MimoVoicesScreen(onBack: () -> Unit) {
             item {
                 EtaClickableRow(
                     title = stringResource(R.string.pv_save_reference),
-                    summary = if (busy) stringResource(R.string.pv_saving) else null,
+                    summary = if (busy) stringResource(R.string.pv_saving) else stringResource(R.string.pv_save_hint),
                     enabled = ready && !busy && uri != null && name.isNotBlank() && provider != null,
                     onClick = { importVoice() },
                 )
             }
-        }
-        item(key = "mimo-import-note") {
-            VoiceNote(stringResource(R.string.pv_import_note))
         }
         voiceGroup(key = "mimo-sample") {
             item {

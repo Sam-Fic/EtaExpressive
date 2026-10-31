@@ -39,9 +39,12 @@ import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
+import io.github.mangi.eta.data.repository.AppUpdateRepository
 import io.github.mangi.eta.ui.icons.SubAgents
 import io.github.mangi.eta.ui.navigation.AppRoute
 
@@ -704,11 +707,18 @@ internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry
         )
 
         // ── 关于（固定收尾，保持整页最后一组）─────────────────────────
+        // 与主页「关于」行同一份文案：分组标题已经是「关于」，行标题再用同一资源的话，
+        // 搜索结果的「摘要 · 分组」拼接会把「关于」渲染两遍。
+        val context = LocalContext.current
+        val versionName = remember { AppUpdateRepository.currentVersionName(context) }
         add(
             SettingsEntry(
                 key = SettingsKeys.ABOUT,
-                title = stringResource(R.string.ui_about_bed172),
-                summary = stringResource(R.string.app_name),
+                title = stringResource(R.string.app_name),
+                summary = stringResource(
+                    R.string.update_current_version,
+                    versionName.ifBlank { stringResource(R.string.update_unknown_version) },
+                ),
                 keywords = "about 关于 版本 更新 开源 许可 license 作者 github 检查更新",
                 icon = Icons.Rounded.Info,
                 group = groupAbout,

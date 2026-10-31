@@ -88,7 +88,6 @@
   <string name="haptics_title">震动</string>
   <string name="haptics_group_interface">界面震动</string>
   <string name="haptics_group_generation">生成震动</string>
-  <string name="haptics_group_background">后台震动</string>
   <string name="haptics_list">震动反馈</string>
   <string name="haptics_touch_feedback">触控反馈</string>
   <string name="haptics_touch_feedback_summary">下面所有界面触感项的总开关</string>
@@ -179,7 +178,7 @@
   <string name="shared_folders_error_name_duplicate">挂载名已被使用</string>
   <string name="shared_folders_error_limit">最多配置 %1$d 个共享文件夹</string>
   <string name="shared_folders_error_save">保存失败，请重试</string>
-  <string name="shared_folders_footer">共享文件夹在新的 Linux 终端会话建立时挂载到 /workspace/mounts/ 下，配置改动对下一条命令或新会话生效；/sdcard 等模拟存储在 Linux 中不支持修改权限位</string>
+  <string name="shared_folders_footer">共享文件夹在新的 Linux 终端会话建立时挂载，配置改动对下一条命令或新会话生效；/sdcard 等模拟存储在 Linux 中不支持修改权限位</string>
   <string name="route_linux_files">Linux 文件</string>
   <string name="linux_files_title">Linux 文件</string>
   <string name="linux_files_entry_title">文件浏览</string>
@@ -843,7 +842,7 @@
   <string name="page_jadx_apktool_smali_and_baksmali_are_ready_apktool_do_14eaf8">JADX、Apktool、smali 与 baksmali 已就绪；Apktool 暂不支持回编译</string>
   <string name="page_linux_tool_environment_is_ready_9b845b">Linux 工具环境已经就绪</string>
   <string name="page_root_environment_is_missing_available_busybox_or_nec_76f454">Root 环境缺少可用的 BusyBox 或必要 applet</string>
-  <string name="page_ready_7cca0c">} 已就绪</string>
+  <string name="page_ready_7cca0c">已就绪</string>
   <string name="page_context_unknown_b6ae7b">上下文未知</string>
   <string name="page_the_context_length_must_be_a_positive_integer_06ca7a">上下文窗口必须是正整数</string>
   <string name="page_download_the_alpine_base_environment_8433ea">下载 Alpine 基础环境</string>
@@ -1224,7 +1223,7 @@
   <string name="tool_ui_reliably_enter_long_text_with_the_clipboard_b6041e">用剪贴板可靠输入长文本</string>
   <string name="tool_ui_open_with_app_32c24e">用应用打开</string>
   <string name="tool_ui_directly_create_system_timers_up_to_24_hours_87c476">直接创建最长 24 小时的系统计时器</string>
-  <string name="tool_ui_create_a_system_alarm_directly_and_open_the_cloc_9aa214">Create a system alarm directly; open the Clock app to confirm if it fails</string>
+  <string name="tool_ui_create_a_system_alarm_directly_and_open_the_cloc_9aa214">直接创建系统闹钟；失败时打开时钟应用确认</string>
   <string name="tool_ui_directly_execute_a_single_shell_command_c40cef">直接执行单条 shell 命令</string>
   <string name="tool_ui_album_pictures_23bcc2">相册图片</string>
   <string name="tool_ui_short_message_17e1a4">短信</string>
@@ -2435,7 +2434,7 @@
   <string name="sap_save_failed">保存失败。草稿已保留，请重试</string>
   <string name="sap_select_model_for">为 %1$s 选择模型</string>
   <string name="sap_draft_only_note">仅更改当前草稿；确认后保存</string>
-  <string name="sap_tier_endpoint_note">；档位跟随端点的显式映射</string>
+  <string name="sap_tier_endpoint_note">档位跟随端点的显式映射</string>
   <string name="sap_role_impl">实现</string>
   <string name="sap_role_review">审查/总结</string>
   <string name="sap_role_image">图片生成</string>
@@ -2943,7 +2942,7 @@
   <string name="mobile_actions_backend_cpu">CPU</string>
   <string name="mobile_actions_open">打开设备动作</string>
   <string name="mobile_actions_open_summary">输入一条指令，在本机执行</string>
-  <string name="mobile_actions_note">英文指令效果最好；该模型专用于 7 类动作（手电筒、联系人、邮件、地图、Wi-Fi 设置、日历），不泛化到其他任务；运行时峰值内存约 500 MB</string>
+  <string name="mobile_actions_note">英文指令效果最好；模型仅支持所列动作，不泛化到其他任务；运行时峰值内存约 500 MB</string>
   <string name="mobile_actions_screen_title">设备动作</string>
   <string name="mobile_actions_input_hint">打开手电筒</string>
   <string name="mobile_actions_run">运行</string>
