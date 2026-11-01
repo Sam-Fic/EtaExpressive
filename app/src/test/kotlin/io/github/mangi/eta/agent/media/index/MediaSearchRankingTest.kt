@@ -112,15 +112,15 @@ class MediaSearchRankingTest {
     }
 
     @Test
-    fun rankCoercesLimitIntoOneToHundred() {
+    fun rankCoercesLimitIntoOneAndAppliesNoUpperBound() {
         val query = floatArrayOf(1f, 0f)
         val rows = (0 until 105).map { index -> row("row-$index", floatArrayOf(1f, 0f)) }
 
         // limit <= 0 收敛到 1，仍至少返回 top-1。
         assertEquals(1, MediaSearchService.rank(query, rows, limit = 0).size)
         assertEquals(1, MediaSearchService.rank(query, rows, limit = -7).size)
-        // limit 超过上限收敛到 100。
-        assertEquals(100, MediaSearchService.rank(query, rows, limit = 1_000).size)
+        // 数量上限由调用方自负（GUI 传 UNLIMITED_RESULTS）：大 limit 不截断。
+        assertEquals(105, MediaSearchService.rank(query, rows, limit = 1_000).size)
     }
 
     @Test

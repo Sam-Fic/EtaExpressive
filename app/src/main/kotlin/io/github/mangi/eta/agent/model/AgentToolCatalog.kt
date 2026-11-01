@@ -67,6 +67,7 @@ internal object AgentToolCatalog {
             sensitiveReadTools = personalTools,
             sensitiveActionTools = deviceTools,
             calendarReadTools = personalTools,
+            calendarWriteTools = personalTools,
         )
         if (browserTools) {
             AgentWebToolCatalog.appendTo(emitted, includeSearch = localWebSearch)

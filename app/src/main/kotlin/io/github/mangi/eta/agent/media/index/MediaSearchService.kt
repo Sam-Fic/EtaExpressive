@@ -74,6 +74,9 @@ internal object MediaSearchService {
                     indexGeneration.incrementAndGet()
                 }
             })
+            // 数据库实例变了：旧 rowSlice 属于另一个库（generation 不跨库推进），
+            // 必须直接作废，否则换库后的首次检索会命中带着旧数据与旧代数的缓存。
+            rowSlice = null
             hookedDatabase = db
         }
     }

@@ -143,9 +143,9 @@ class AgentInteractiveModePromptTest {
                 assertFalse(guidance.contains(if (enabled) "交互模式已关闭" else "交互模式已开启"))
                 assertQuestionDiscipline(guidance)
                 assertEquals(round != 1, guidance.contains("相关应用私有文件与数据库"))
-                // 基础/终端指引/记忆/Skills/延迟组索引各一条，再加一条「已关闭能力」说明：
-                // 媒体语义搜索的 Prefs 默认值是 false，纯 JVM 测试里它总是被如实报为已关闭。
-                assertEquals(6, messages.systemContents().size)
+                // 基础/终端指引/记忆/Skills/延迟组索引各一条，再加一条「已关闭能力」说明。
+                // 媒体语义搜索组开关已退役（并入单工具禁用），不再多出一条关闭说明。
+                assertEquals(5, messages.systemContents().size)
             }
             provider.tools.forEach { assertTrue(it.toolNames().contains("ask_user")) }
             catalogs[enabled] = provider.tools.map { it.toString() }

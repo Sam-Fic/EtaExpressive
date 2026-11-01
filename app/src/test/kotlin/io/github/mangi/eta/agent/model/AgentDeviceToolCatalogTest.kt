@@ -42,6 +42,7 @@ class AgentDeviceToolCatalogTest {
         assertEquals(
             AgentDeviceToolCatalog.personalReadToolNames() +
                 AgentDeviceToolCatalog.deviceStateReadToolNames() +
+                setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
                 AgentToolGroupCatalog.USE_GROUP,
             personalOnly,
         )
@@ -72,6 +73,7 @@ class AgentDeviceToolCatalogTest {
         assertEquals(
             AgentDeviceToolCatalog.personalReadToolNames() +
                 AgentDeviceToolCatalog.deviceStateReadToolNames() +
+                setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
                 AgentToolGroups.CALENDAR_GROUP.toolNames,
             names(deviceTools = false, personalTools = true),
         )
@@ -88,7 +90,9 @@ class AgentDeviceToolCatalogTest {
         // 设备状态组的工具本体被延迟，但个人数据开关开着，所以目录里留一个 tools_use_group
         // 供模型打开它（枚举此时应只剩 device_state）。
         assertEquals(
-            AgentDeviceToolCatalog.personalReadToolNames() + AgentToolGroupCatalog.USE_GROUP,
+            AgentDeviceToolCatalog.personalReadToolNames() +
+                setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
+                AgentToolGroupCatalog.USE_GROUP,
             withheld,
         )
 
@@ -105,8 +109,9 @@ class AgentDeviceToolCatalogTest {
         assertEquals(emptySet<String>(), names(deviceTools = false, personalTools = false))
     }
 
-    @Test fun mediaSearchStaysBehindItsOwnSwitchInsideThePersonalGroup() {
-        assertFalse(AgentMediaSearchToolCatalog.SEARCH_MEDIA in names(deviceTools = false, personalTools = true))
+    @Test fun mediaSearchFollowsThePersonalSwitchInsideThePersonalGroup() {
+        // 媒体语义搜索没有组级开关：个人数据开关放行即下发（细粒度交给单工具禁用）。
+        assertTrue(AgentMediaSearchToolCatalog.SEARCH_MEDIA in names(deviceTools = false, personalTools = true))
         val withMedia = AgentToolCatalog.build(
             basicTools = false,
             terminalTools = false,

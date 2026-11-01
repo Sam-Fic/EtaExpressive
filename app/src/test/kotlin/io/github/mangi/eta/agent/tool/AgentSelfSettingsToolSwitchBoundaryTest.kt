@@ -58,7 +58,6 @@ class AgentSelfSettingsToolSwitchBoundaryTest {
             Prefs.Keys.AGENT_SCREEN_TOOLS,
             Prefs.Keys.AGENT_DEVICE_TOOLS,
             Prefs.Keys.AGENT_PERSONAL_TOOLS,
-            Prefs.Keys.AGENT_MEDIA_SEARCH_TOOLS,
         )) {
             // 用户关掉了这个工具组。
             assertTrue(set(key to "off").getBoolean("ok"))

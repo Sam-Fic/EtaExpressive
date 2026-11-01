@@ -483,7 +483,11 @@ internal object RemoteConnectionProbe {
         val fields = lines.drop(1)
             .map { it.trim().split(WHITESPACE) }
             .firstOrNull { it.firstOrNull() == host } ?: return Arp.Missing
-        val flags = fields.getOrNull(2)?.toIntOrNull(16) ?: return Arp.Unknown
+        val flags = fields.getOrNull(2)
+            // 真实 /proc/net/arp 的 Flags 带 0x 前缀；toIntOrNull(16) 不认前缀，
+            // 不剥掉的话所有条目都会被误判成 Unknown。
+            ?.removePrefix("0x")
+            ?.toIntOrNull(16) ?: return Arp.Unknown
         return if ((flags and ARP_FLAG_COMPLETE) != 0) Arp.Complete else Arp.Incomplete
     }
 

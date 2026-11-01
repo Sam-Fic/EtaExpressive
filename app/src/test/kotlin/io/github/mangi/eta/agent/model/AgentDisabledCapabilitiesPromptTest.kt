@@ -100,16 +100,18 @@ class AgentDisabledCapabilitiesPromptTest {
     }
 
     @Test fun closingDeviceAlsoWithholdsCalendarEvents() {
-        // 日程组与设备组共用设备开关：只列「设备控制」会让模型以为日历事件仍可创建。
+        // 日程组已改随「个人数据」开关：设备开关关闭时只列「设备控制」，
+        // 不再把日程读写捎进来，也不提个人数据。
         val notice = requireNotNull(disabledNotice(switches(device = false)))
         assertTrue(notice.contains("设备控制"))
-        assertTrue(notice.contains("日程读写"))
-        // 个人数据与日程无关，不该被顺手列进设备开关的说明里。
+        assertTrue(!notice.contains("日程读写"))
         assertTrue(!notice.contains("个人数据读取"))
         // 日历事件也不属于个人数据：个人开关关闭时不能误列「日历」。
         val personalOff = requireNotNull(disabledNotice(switches(personal = false)))
         assertTrue(personalOff.contains("个人数据读取"))
         assertTrue(personalOff.contains("设备状态读取"))
+        // 日程组的开关现在也是「个人数据」：关个人开关必须连日程读写一起说明。
+        assertTrue(personalOff.contains("日程读写"))
         assertTrue("日历事件属日程组，不该列进个人数据", !personalOff.contains("日历"))
     }
 

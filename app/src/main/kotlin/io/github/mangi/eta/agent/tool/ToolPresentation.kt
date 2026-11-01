@@ -235,6 +235,8 @@ internal object ToolPresentation {
     /** 工具图标；未登记的 id 回退 FallbackIcon。 */
     fun icon(toolId: String): ImageVector = when (toolId) {
         "start_virtual_session", "keep_virtual_result", "finish_virtual_session", "inspect_virtual_backend" -> Icons.Rounded.ScreenshotMonitor
+        // present_to_user：把虚拟屏内容呈现回物理主屏（收银台/安全窗口临门一脚）。
+        "present_to_user" -> Icons.Rounded.ScreenshotMonitor
         "observe" -> Icons.Rounded.DocumentScanner
         "observe_screen" -> Icons.Rounded.DocumentScanner
         "click" -> Icons.Rounded.AdsClick

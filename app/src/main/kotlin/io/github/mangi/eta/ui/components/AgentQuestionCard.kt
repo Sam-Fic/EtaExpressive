@@ -136,10 +136,10 @@ private fun AgentQuestionCardContent(
                 if (request.allowNote) QuestionTextField(value = message.note,
                     onValueChange = { changeDraft(draft.copy(note = it.take(2000))) }, enabled = editable,
                     label = stringResource(R.string.question_note))
-                    message.error?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall)
-                    }
+                message.error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall)
+                }
                 // M3 Expressive：官方 Button 的默认形状、容器高度、内边距、
                 // primary / onPrimary 与禁用态颜色全部交给官方默认值。
                 Button(onClick = { if (editable && valid) onSubmit() },

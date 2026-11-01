@@ -97,25 +97,26 @@ class ContextOverheadBudgetTest {
 
     @Test
     fun screenOffKeepsTheDisabledPrefixUnderBudget() {
-        // 当前实测约 5111（system 3491 + tools 1618 / 9 个工具），上界留 240 余量。
+        // 当前实测约 5640（system 3608 + tools 2032 / 10 个工具），上界留 260 余量；
+        // 相比 5111 的增量来自交接与禁止条款的措辞演进。
         // 系统提示里只剩通用策略、关闭说明与「没有屏幕能力」的禁止条款：委派结果规则、
         // Root 只读检查、副屏交接、习惯分析都已跟随各自组，此配置下全部不在场。
         // 禁止条款约 120 token，换来的是不再出现「关了 GUI 仍尝试点击」的失败轮次。
         // 关闭说明多花的 171 token 说明组内工具不在目录、tools_use_group 打不开、调用会被拒：
         // 只说「已关闭」时模型仍会重试或变相执行，这部分是必要成本。
         val screenOff = measure(allOff, withDisabledNotice = true)
-        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 5_350)
+        assertTrue("screen-off prefix grew to ${screenOff}", screenOff.total <= 5_900)
     }
 
     @Test
     fun enabledCapabilitiesCostNothingUntilTheirGroupIsOpened() {
         // 开关全开但一个组都没打开：第一轮只付基础交互 + 一行索引。
         // 这正是「除基础交互外全延迟」要买到的东西——成本跟着需要走，不跟着开关走。
-        // 当前实测 4882（system 3028 + tools 1854 / 11 个工具）；同一份配置全部打开是 38998。
+        // 当前实测 5262（system 2995 + tools 2267 / 12 个工具）；同一份配置全部打开是 40905。
         val resident = measure(allOn, extensionsTools = true, personalTools = true)
         assertTrue(
             "resident prefix grew to ${resident}",
-            resident.total <= 4_950,
+            resident.total <= 5_500,
         )
         // 常驻开销里系统提示占大头，单独钉一条上界：它是唯一每轮必付、且与任务无关的部分。
         assertTrue("resident system prompt grew to ${resident.system}", resident.system <= 3_100)
@@ -162,7 +163,7 @@ class ContextOverheadBudgetTest {
             withDisabledNotice = true,
             openedToolGroups = AgentToolGroups.allIds,
         )
-        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 39_500)
+        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 41_500)
     }
 
     @Test

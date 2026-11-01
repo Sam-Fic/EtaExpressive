@@ -107,11 +107,19 @@ internal object AgentDeviceToolCatalog {
         sensitiveActionTools: Boolean,
         /** 日程读工具跟随日历组：只在设备/日历开关开启时参与下发。 */
         calendarReadTools: Boolean = directTools,
+        /** 日程写工具属日历组：跟随「个人数据」开关，不随设备敏感动作下发。 */
+        calendarWriteTools: Boolean = sensitiveActionTools,
     ) {
         if (directTools) appendDirectTools(tools)
         if (sensitiveReadTools) appendSensitiveReadTools(tools)
         if (calendarReadTools) appendCalendarReadTools(tools)
-        if (sensitiveActionTools) appendSensitiveActionTools(tools)
+        if (sensitiveActionTools || calendarWriteTools) {
+            appendSensitiveActionTools(
+                tools,
+                includeCalendarWrites = calendarWriteTools,
+                includeOtherActions = sensitiveActionTools,
+            )
+        }
     }
 
     private fun appendCalendarReadTools(tools: JSONArray) {
@@ -476,8 +484,12 @@ internal object AgentDeviceToolCatalog {
             )
     }
 
-    private fun appendSensitiveActionTools(tools: JSONArray) {
-        tools
+    private fun appendSensitiveActionTools(
+        tools: JSONArray,
+        includeCalendarWrites: Boolean,
+        includeOtherActions: Boolean,
+    ) {
+        if (includeOtherActions) tools
             .put(
                 function(
                     "set_setting",
@@ -583,6 +595,9 @@ internal object AgentDeviceToolCatalog {
                     "action",
                 ),
             )
+        // 日程写入属日历组：跟随「个人数据」开关与日历组的延迟打开，
+        // 不再随设备敏感动作一起下发（否则设备开关会漏出日程写、个人开关开时又看不到）。
+        if (includeCalendarWrites) tools
             .put(
                 function(
                     "create_calendar_event",
@@ -651,6 +666,7 @@ internal object AgentDeviceToolCatalog {
                     ),
                 ),
             )
+        if (includeOtherActions) tools
             .put(
                 function(
                     "delete_alarm",
@@ -686,6 +702,9 @@ internal object AgentDeviceToolCatalog {
                     ),
                 ),
             )
+        // 日程写入属日历组：跟随「个人数据」开关与日历组的延迟打开，
+        // 不再随设备敏感动作一起下发（否则设备开关会漏出日程写、个人开关开时又看不到）。
+        if (includeCalendarWrites) tools
             .put(
                 function(
                     "create_calendar_events",
@@ -721,6 +740,7 @@ internal object AgentDeviceToolCatalog {
                     "events",
                 ),
             )
+        if (includeOtherActions) tools
             .put(
                 function(
                     "create_note",
