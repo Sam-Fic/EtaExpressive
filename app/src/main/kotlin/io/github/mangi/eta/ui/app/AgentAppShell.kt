@@ -119,6 +119,9 @@ internal fun AgentAppShell(
     onOpenAssistants: () -> Unit = {},
     onOpenUsageStats: () -> Unit,
     onOpenSettings: () -> Unit,
+    remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
+    onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
+    onOpenRemoteSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -257,6 +260,9 @@ internal fun AgentAppShell(
                 onOpenAssistants = onOpenAssistants,
                 onOpenSettings = onOpenSettings,
                 onOpenUsageStats = onOpenUsageStats,
+                remoteSection = remoteSection,
+                onSelectRemoteSession = onSelectRemoteSession,
+                onOpenRemoteSettings = onOpenRemoteSettings,
             ) {
                 pageContent()
             }
@@ -481,6 +487,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.MediaIndexSettings -> stringResource(R.string.media_settings_title)
     is AppRoute.MobileActionsSettings -> stringResource(R.string.mobile_actions_settings_title)
     is AppRoute.MobileActions -> stringResource(R.string.mobile_actions_screen_title)
+    is AppRoute.RemoteAgents -> stringResource(R.string.route_remote_agents)
     null -> stringResource(R.string.app_name)
 }
 

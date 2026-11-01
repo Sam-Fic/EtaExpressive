@@ -76,6 +76,13 @@ internal object SettingsDataStore {
     private val RETIRED_HEATMAP_JSON = stringPreferencesKey("retired_heatmap_json")
     private val WEB_TOOLS_SETTINGS = stringPreferencesKey("web_tools_settings_v1")
     private val webToolsJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    /**
+     * 远程 agent 服务器配置列表（JSON）。authToken 随配置明文存储：它只是局域网内防陌生连接的
+     * 共享口令，不是账号凭据，且远程链路本身无加密——设置页会明示这一风险。
+     */
+    private val REMOTE_SERVERS = stringPreferencesKey("remote_servers_v1")
+    private val remoteServersJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private const val SELECTED_MODEL_BY_PROVIDER_PREFIX = "selected_model_id_by_provider."
     private const val LINUX_BACKEND_PREFIX = "linux_backend."
 
@@ -130,6 +137,27 @@ internal object SettingsDataStore {
     suspend fun setWebToolsSettings(settings: WebToolsSettings) {
         ensureInitialized()
         dataStore.edit { prefs -> prefs[WEB_TOOLS_SETTINGS] = webToolsJson.encodeToString(settings) }
+    }
+
+    fun remoteServersFlow(): Flow<List<io.github.mangi.eta.agent.remote.RemoteServerConfig>> {
+        ensureInitialized()
+        return dataStore.data
+            .map { prefs ->
+                prefs[REMOTE_SERVERS]?.let { raw ->
+                    runCatching {
+                        remoteServersJson.decodeFromString<List<io.github.mangi.eta.agent.remote.RemoteServerConfig>>(raw)
+                    }.getOrNull()
+                } ?: emptyList()
+            }
+            .distinctUntilChanged()
+    }
+
+    suspend fun remoteServers(): List<io.github.mangi.eta.agent.remote.RemoteServerConfig> =
+        remoteServersFlow().first()
+
+    suspend fun setRemoteServers(servers: List<io.github.mangi.eta.agent.remote.RemoteServerConfig>) {
+        ensureInitialized()
+        dataStore.edit { prefs -> prefs[REMOTE_SERVERS] = remoteServersJson.encodeToString(servers) }
     }
 
     suspend fun updateSettings(transform: (Settings) -> Settings) {

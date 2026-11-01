@@ -520,6 +520,7 @@ internal fun AgentChatMessageUi.withId(id: String): AgentChatMessageUi = when (t
     is ContextCompactedMessageUi -> copy(id = id)
     is ToolActivityMessageUi -> copy(id = id)
     is SuggestionChipsMessageUi -> copy(id = id)
+    is io.github.mangi.eta.ui.model.RemoteNoticeMessageUi -> copy(id = id)
 }
 
 internal fun AgentChatMessageUi.rewritePaths(rewrite: (String) -> String): AgentChatMessageUi = when (this) {

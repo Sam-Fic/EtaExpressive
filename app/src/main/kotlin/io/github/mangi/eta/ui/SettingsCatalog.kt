@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
@@ -72,6 +73,7 @@ internal object SettingsKeys {
     const val MCP_SERVERS = "mcp_servers"
     const val TOOL_RECIPES = "tool_recipes"
     const val SUB_AGENTS = "sub_agents"
+    const val REMOTE_AGENTS = "remote_agents"
 
     // 通用
     const val VOICE = "voice"
@@ -326,6 +328,17 @@ internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry
                 icon = SubAgents,
                 group = groupContextExtensions,
                 destination = SettingsDestination.Route(AppRoute.SubAgents),
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.REMOTE_AGENTS,
+                title = stringResource(R.string.route_remote_agents),
+                summary = null,
+                keywords = "remote agent 远程 远端 智能体 智慧体 局域网 lan pi opencode 电脑 同步 远程对话 远程控制 webui",
+                icon = Icons.Rounded.Lan,
+                group = groupContextExtensions,
+                destination = SettingsDestination.Route(AppRoute.RemoteAgents),
             ),
         )
 

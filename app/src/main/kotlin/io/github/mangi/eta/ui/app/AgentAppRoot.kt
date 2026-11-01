@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -67,6 +68,7 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.BoundedRootCommandExecutor
 import io.github.mangi.eta.agent.device.DeviceLocationProvider
+import io.github.mangi.eta.agent.device.LocalNetworkPermission
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.runtime.AgentRuntimeService
 import io.github.mangi.eta.core.AndroidAgentLogger
@@ -81,6 +83,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.components.LocalShellTopBarInset
+import io.github.mangi.eta.ui.components.RemoteConnectionBanner
 import io.github.mangi.eta.ui.HapticsSettingsScreen
 import io.github.mangi.eta.ui.ErrorReconnectSettingsScreen
 import io.github.mangi.eta.ui.ContextCompressionSettingsScreen
@@ -283,6 +286,11 @@ fun AgentAppRoot(
     var conversationRenameTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationDeleteTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationMoveTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
+    // pi keeps ONE active session per server, so opening a different remote session switches
+    // it on the PC (and every other client) too. Hold the pending target and confirm first.
+    var remoteSwitchTarget by remember {
+        mutableStateOf<io.github.mangi.eta.ui.remote.ChatTarget.Remote?>(null)
+    }
     var conversationExportId by rememberSaveable { mutableStateOf<String?>(null) }
 
     // 定时发送：应用在前台且正停留在目标会话时，到点的消息自动发出。
@@ -644,6 +652,21 @@ fun AgentAppRoot(
             onOpenAssistants = { pushFromDrawer(AppRoute.Assistants()) },
             onOpenUsageStats = { pushFromDrawer(AppRoute.UsageStats) },
             onOpenSettings = { pushFromDrawer(AppRoute.Settings) },
+            remoteSection = appViewModel.remoteCoordinator.paneSection(agentState.selectedTarget),
+            onSelectRemoteSession = { serverId, path ->
+                focusManager.clearFocus(force = true)
+                keyboard?.hide()
+                val target = io.github.mangi.eta.ui.remote.ChatTarget.Remote(serverId, path)
+                val remoteCoordinator = appViewModel.remoteCoordinator
+                val serverCurrent = remoteCoordinator.sessionsById[serverId]?.current
+                if (serverCurrent != null && serverCurrent != path) {
+                    remoteSwitchTarget = target
+                } else {
+                    agentState.selectRemoteTarget(target)
+                    remoteCoordinator.selectRemoteSession(target)
+                }
+            },
+            onOpenRemoteSettings = { pushFromDrawer(AppRoute.RemoteAgents) },
         ) { padding ->
             // M3 对话页让消息列表延伸到顶栏背后，滚入的部分由顶栏渐变板淡出；
             // 顶栏高度经 LocalShellTopBarInset 交给列表做顶部 contentPadding。
@@ -708,29 +731,38 @@ fun AgentAppRoot(
         predictivePopExitTransition = navigationTransition.predictivePopExitTransition,
     ) {
             composable<AppRoute.Home> {
+                val coordinator = appViewModel.remoteCoordinator
+                val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 RoutedShell(route = AppRoute.Home, underlapTopBar = true) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                     AgentHomeScreen(
-                        stateProvider = { agentState.homeState },
-                        conversationMentions = io.github.mangi.eta.ui.model.ConversationMentionInputUi(
-                            conversations = agentState.conversationPaneState.historyConversations,
-                            currentConversationId = agentState.conversationPaneState.selectedConversationId,
-                            pending = shellHomeState.pendingConversationMentions,
-                            onAttach = agentState::attachConversationMention,
-                            onRemove = agentState::removeConversationMention,
-                        ),
-                        queuedMessages = agentState.queuedMessages,
+                        stateProvider = { if (remote != null) coordinator.chatState(remote) else agentState.homeState },
+                        conversationMentions = if (remote != null) {
+                            io.github.mangi.eta.ui.model.ConversationMentionInputUi()
+                        } else {
+                            io.github.mangi.eta.ui.model.ConversationMentionInputUi(
+                                conversations = agentState.conversationPaneState.historyConversations,
+                                currentConversationId = agentState.conversationPaneState.selectedConversationId,
+                                pending = shellHomeState.pendingConversationMentions,
+                                onAttach = agentState::attachConversationMention,
+                                onRemove = agentState::removeConversationMention,
+                            )
+                        },
+                        queuedMessages = if (remote != null) emptyList() else agentState.queuedMessages,
                         onSteerQueuedMessage = agentState::steerQueuedMessage,
                         onRecallQueuedMessage = agentState::recallQueuedMessage,
                         onRemoveQueuedMessage = agentState::removeQueuedMessage,
-                        modelPickerState = agentState.modelPickerState,
-                        autoCompressEnabled = agentState.autoCompressEnabled,
-                        requestOverheadTokens = agentState.requestOverheadTokens,
-                        measuredContextTokens = { agentState.measuredContextTokens },
-                        billedOverheadTokens = agentState.billedOverheadTokens,
-                        conversationKey = agentState.conversationPaneState.selectedConversationId,
-                        draftField = agentState.currentDraftField(),
+                        modelPickerState = if (remote != null) coordinator.modelPickerState(remote) else agentState.modelPickerState,
+                        autoCompressEnabled = if (remote != null) false else agentState.autoCompressEnabled,
+                        requestOverheadTokens = if (remote != null) 0 else agentState.requestOverheadTokens,
+                        measuredContextTokens = { if (remote != null) null else agentState.measuredContextTokens },
+                        billedOverheadTokens = if (remote != null) null else agentState.billedOverheadTokens,
+                        conversationKey = if (remote != null) coordinator.conversationKey(remote) else agentState.conversationPaneState.selectedConversationId,
+                        draftField = if (remote != null) coordinator.draftFieldFor(remote) else agentState.currentDraftField(),
                         onAction = { action ->
-                            when (action) {
+                            if (remote != null) {
+                                coordinator.handleHomeAction(remote, action)
+                            } else when (action) {
                                 AgentHomeAction.CycleGptSpeedMode -> agentState.cycleGptSpeedMode()
                                 is AgentHomeAction.ReasoningEffortChanged ->
                                     agentState.updateReasoningEffort(action.effort)
@@ -784,37 +816,60 @@ fun AgentAppRoot(
                             }
                         },
                         isDrawerOpen = conversationPaneOpen,
-                        scrollToMessageId = agentState.pendingScrollToMessageId,
+                        scrollToMessageId = if (remote != null) null else agentState.pendingScrollToMessageId,
                         onScrollToMessageConsumed = agentState::consumePendingScrollToMessage,
-                        sentUserMessageEntranceId = agentState.sentUserMessageEntranceId,
+                        sentUserMessageEntranceId = if (remote != null) null else agentState.sentUserMessageEntranceId,
                         onSentUserMessageEntranceConsumed = agentState::consumeSentUserMessageEntrance,
                     )
+                    if (remote != null) {
+                        RemoteConnectionBanner(
+                            serverName = coordinator.servers.find { it.id == remote.serverId }?.name.orEmpty(),
+                            status = coordinator.statusOf(remote.serverId),
+                            onRetry = { coordinator.retry(remote.serverId) },
+                            onOpenSettings = { pushRoute(AppRoute.RemoteAgents) },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = LocalShellTopBarInset.current),
+                        )
+                    }
+                    }
                 }
             }
             composable<AppRoute.Chat> {
+                val coordinator = appViewModel.remoteCoordinator
+                val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 RoutedShell(route = AppRoute.Chat, underlapTopBar = true) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                     AgentChatScreen(
-                        stateProvider = { agentState.homeState },
-                        conversationMentions = io.github.mangi.eta.ui.model.ConversationMentionInputUi(
-                            conversations = agentState.conversationPaneState.historyConversations,
-                            currentConversationId = agentState.conversationPaneState.selectedConversationId,
-                            pending = shellHomeState.pendingConversationMentions,
-                            onAttach = agentState::attachConversationMention,
-                            onRemove = agentState::removeConversationMention,
-                        ),
-                        queuedMessages = agentState.queuedMessages,
+                        stateProvider = { if (remote != null) coordinator.chatState(remote) else agentState.homeState },
+                        conversationMentions = if (remote != null) {
+                            io.github.mangi.eta.ui.model.ConversationMentionInputUi()
+                        } else {
+                            io.github.mangi.eta.ui.model.ConversationMentionInputUi(
+                                conversations = agentState.conversationPaneState.historyConversations,
+                                currentConversationId = agentState.conversationPaneState.selectedConversationId,
+                                pending = shellHomeState.pendingConversationMentions,
+                                onAttach = agentState::attachConversationMention,
+                                onRemove = agentState::removeConversationMention,
+                            )
+                        },
+                        queuedMessages = if (remote != null) emptyList() else agentState.queuedMessages,
                         onSteerQueuedMessage = agentState::steerQueuedMessage,
                         onRecallQueuedMessage = agentState::recallQueuedMessage,
                         onRemoveQueuedMessage = agentState::removeQueuedMessage,
-                        modelPickerState = agentState.modelPickerState,
-                        autoCompressEnabled = agentState.autoCompressEnabled,
-                        requestOverheadTokens = agentState.requestOverheadTokens,
-                        measuredContextTokens = { agentState.measuredContextTokens },
-                        billedOverheadTokens = agentState.billedOverheadTokens,
-                        conversationKey = agentState.conversationPaneState.selectedConversationId,
-                        draftField = agentState.currentDraftField(),
+                        modelPickerState = if (remote != null) coordinator.modelPickerState(remote) else agentState.modelPickerState,
+                        autoCompressEnabled = if (remote != null) false else agentState.autoCompressEnabled,
+                        requestOverheadTokens = if (remote != null) 0 else agentState.requestOverheadTokens,
+                        measuredContextTokens = { if (remote != null) null else agentState.measuredContextTokens },
+                        billedOverheadTokens = if (remote != null) null else agentState.billedOverheadTokens,
+                        conversationKey = if (remote != null) coordinator.conversationKey(remote) else agentState.conversationPaneState.selectedConversationId,
+                        draftField = if (remote != null) coordinator.draftFieldFor(remote) else agentState.currentDraftField(),
                         onAction = { action ->
-                            when (action) {
+                            if (remote != null) {
+                                // Back navigation is a routing concern, not a remote command.
+                                if (action == AgentChatAction.NavigateBack) popRoute()
+                                else coordinator.handleChatAction(remote, action)
+                            } else when (action) {
                                 AgentChatAction.NavigateBack -> popRoute()
                                 AgentChatAction.CycleGptSpeedMode -> agentState.cycleGptSpeedMode()
                                 is AgentChatAction.ReasoningEffortChanged ->
@@ -862,11 +917,23 @@ fun AgentAppRoot(
                                 is AgentChatAction.SubmitQuestionAnswer -> agentState.submitQuestionAnswer(action.conversationId, action.questionId)
                             }
                         },
-                        scrollToMessageId = agentState.pendingScrollToMessageId,
+                        scrollToMessageId = if (remote != null) null else agentState.pendingScrollToMessageId,
                         onScrollToMessageConsumed = agentState::consumePendingScrollToMessage,
-                        sentUserMessageEntranceId = agentState.sentUserMessageEntranceId,
+                        sentUserMessageEntranceId = if (remote != null) null else agentState.sentUserMessageEntranceId,
                         onSentUserMessageEntranceConsumed = agentState::consumeSentUserMessageEntrance,
                     )
+                    if (remote != null) {
+                        RemoteConnectionBanner(
+                            serverName = coordinator.servers.find { it.id == remote.serverId }?.name.orEmpty(),
+                            status = coordinator.statusOf(remote.serverId),
+                            onRetry = { coordinator.retry(remote.serverId) },
+                            onOpenSettings = { pushRoute(AppRoute.RemoteAgents) },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = LocalShellTopBarInset.current),
+                        )
+                    }
+                    }
                 }
             }
             composable<AppRoute.Browser> {
@@ -1054,6 +1121,25 @@ fun AgentAppRoot(
                                                 Manifest.permission.WRITE_CALENDAR,
                                             )
                                         )
+                                    }
+                                    "local_network" -> {
+                                        // 能申请就申请（系统会弹权限对话框）；不能申请说明
+                                        // app-op 被系统按 ignore 按住，那种情况只有系统设置里有救。
+                                        if (LocalNetworkPermission.canRequest(
+                                                LocalNetworkPermission.accessState(context),
+                                            )
+                                        ) {
+                                            permissionLauncher.launch(arrayOf(LocalNetworkPermission.PERMISSION))
+                                        } else {
+                                            runCatching {
+                                                context.startActivity(
+                                                    Intent(
+                                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                        Uri.parse("package:${context.packageName}")
+                                                    )
+                                                )
+                                            }
+                                        }
                                     }
                                     "notification_history" -> {
                                         runCatching {
@@ -1405,6 +1491,12 @@ fun AgentAppRoot(
                     onBack = ::popRoute,
                 )
             }
+            composable<AppRoute.RemoteAgents> {
+                io.github.mangi.eta.ui.screens.settings.RemoteAgentsScreen(
+                    onBack = ::popRoute,
+                    coordinator = appViewModel.remoteCoordinator,
+                )
+            }
             composable<AppRoute.ModelProviderDetail> { entry ->
                 val route = entry.toRoute<AppRoute.ModelProviderDetail>()
                 ModelProviderDetailScreen(
@@ -1617,6 +1709,29 @@ fun AgentAppRoot(
             },
             onDismiss = { conversationMoveTarget = null },
         )
+    }
+
+    remoteSwitchTarget?.let { target ->
+        val serverName = appViewModel.remoteCoordinator.servers
+            .find { it.id == target.serverId }?.name.orEmpty()
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.remote_switch_title),
+            summary = stringResource(R.string.remote_switch_message, serverName),
+            onDismissRequest = { remoteSwitchTarget = null },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.remote_switch_confirm),
+                    onCancel = { remoteSwitchTarget = null },
+                    onConfirm = {
+                        agentState.selectRemoteTarget(target)
+                        appViewModel.remoteCoordinator.selectRemoteSession(target)
+                        remoteSwitchTarget = null
+                    },
+                )
+            },
+        ) {
+        }
     }
 
     messageDeleteTarget?.let { target ->

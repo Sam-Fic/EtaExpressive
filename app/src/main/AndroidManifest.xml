@@ -3,7 +3,15 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Android 17 (API 37) 起局域网访问为运行时权限；web 工具 fetch_url 指向局域网地址时需要，旧版本忽略。 -->
+    <!--
+      局域网访问（远程智能体连同网段电脑）。
+      Android 17（API 37）起它是**运行时权限**，且这条系统路径有一个很坑的形态：
+      targetSdk < 37 时系统照样按 app-op 静默丢包，却**不在权限页给开关**
+      （真机实测：targetSdk 36 的应用，应用信息 → 权限里根本没有「本地网络」这一项，
+      但发往 192.168.x.x 的包在协议栈里被吞，socket 永远 SYN-SENT）。
+      所以 targetSdk 必须提到 37 并在这里声明，用户才能在系统里自助授权；
+      应用内另有入口（权限检查页 + 远程智能体页顶部）负责申请。
+    -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -72,6 +73,7 @@ private fun PermissionItemRow(
         "model" -> Icons.Rounded.Memory
         "terminal" -> Icons.Rounded.Terminal
         "notification" -> Icons.Rounded.Notifications
+        "local_network" -> Icons.Rounded.Wifi
         "root" -> Icons.Rounded.Key
         "shizuku" -> Icons.Rounded.Memory
         "xposed" -> Icons.Rounded.AccountTree

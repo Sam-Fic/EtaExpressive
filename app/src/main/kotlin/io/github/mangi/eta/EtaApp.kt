@@ -71,6 +71,9 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
         Prefs.initLocal(this)
         io.github.mangi.eta.agent.tool.RetiredScheduleChannels.cleanup(this)
         io.github.mangi.eta.ui.haptics.AppForeground.install(this)
+        // 远程 agent 的局域网客户端要查网络才能把 socket 绑到 Wi-Fi 上；
+        // 放在早退分支之前，任何进程都用得上。
+        io.github.mangi.eta.agent.remote.RemoteHttpClient.initialize(this)
         if (!AppProcessPolicy.shouldInitializeFullRuntime(Application.getProcessName(), packageName)) {
             return
         }

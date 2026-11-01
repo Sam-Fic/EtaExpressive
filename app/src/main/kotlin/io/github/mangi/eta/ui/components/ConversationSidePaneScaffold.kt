@@ -13,6 +13,11 @@ import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
+import io.github.mangi.eta.agent.remote.RemoteSessionInfo
+import io.github.mangi.eta.ui.remote.remoteStatusLabel
+import io.github.mangi.eta.ui.model.RemotePaneServer
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -270,6 +275,9 @@ fun ConversationSidePaneScaffold(
     onOpenAssistants: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenUsageStats: () -> Unit,
+    remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
+    onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
+    onOpenRemoteSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -469,6 +477,9 @@ fun ConversationSidePaneScaffold(
                     onOpenAssistants = onOpenAssistants,
                     onOpenSettings = onOpenSettings,
                     onOpenUsageStats = onOpenUsageStats,
+                    remoteSection = remoteSection,
+                    onSelectRemoteSession = onSelectRemoteSession,
+                    onOpenRemoteSettings = onOpenRemoteSettings,
                     modifier = Modifier.fillMaxHeight(),
                 )
             }
@@ -670,6 +681,9 @@ private fun ConversationPanePanel(
     onOpenAssistants: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenUsageStats: () -> Unit,
+    remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
+    onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
+    onOpenRemoteSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val profiles by AssistantRepository.profiles.collectAsState()
@@ -700,6 +714,9 @@ private fun ConversationPanePanel(
         onOpenTrash = onOpenTrash,
         onOpenSettings = onOpenSettings,
         onOpenUsageStats = onOpenUsageStats,
+        remoteSection = remoteSection,
+        onSelectRemoteSession = onSelectRemoteSession,
+        onOpenRemoteSettings = onOpenRemoteSettings,
         modifier = modifier,
     )
 }
@@ -779,6 +796,9 @@ private fun Material3ConversationPane(
     onOpenTrash: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenUsageStats: () -> Unit,
+    remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
+    onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
+    onOpenRemoteSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 抽屉不再做标题过滤：搜索一律走与管理聊天页同一个全文搜索页（[onOpenSearchHistory]），
@@ -927,6 +947,29 @@ private fun Material3ConversationPane(
                     ),
                     overscrollEffect = null,
                 ) {
+                    remoteSection?.let { section ->
+                        if (section.servers.isNotEmpty()) {
+                            item(key = "remote-header", contentType = "drawer-section") {
+                                Material3DrawerSectionHeader(
+                                    label = stringResource(R.string.drawer_remote_section),
+                                    count = section.servers.size,
+                                )
+                            }
+                            items(
+                                items = section.servers,
+                                key = { server -> "remote-server-${server.id}" },
+                                contentType = { "drawer-remote-server" },
+                            ) { server ->
+                                RemoteServerGroup(
+                                    server = server,
+                                    selectedServerId = section.selectedServerId,
+                                    selectedPath = section.selectedPath,
+                                    onSelectSession = onSelectRemoteSession,
+                                    onOpenSettings = onOpenRemoteSettings,
+                                )
+                            }
+                        }
+                    }
                     if (visibleConversations.isEmpty()) {
                         item(contentType = "drawer-empty") {
                             Material3EmptyConversations()
@@ -1779,4 +1822,114 @@ private fun ConversationSummaryUi.drawerSection(): ConversationDrawerSection = w
     isPinned -> ConversationDrawerSection.Pinned
     isToday -> ConversationDrawerSection.Today
     else -> ConversationDrawerSection.Dated(timeLabel)
+}
+
+/**
+ * 远程分组里的一台服务器：状态头（点击进设置页管理）+ 其会话行（点击切到该远程会话）。
+ * 整组作为一个分段列表渲染，行距 / 圆角与本机会话行同一套官方分段令牌。
+ */
+@Composable
+private fun RemoteServerGroup(
+    server: RemotePaneServer,
+    selectedServerId: String?,
+    selectedPath: String?,
+    onSelectSession: (String, String) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    val rowCount = 1 + server.sessions.size
+    Column(modifier = Modifier.fillMaxWidth()) {
+        EtaSegmentedItem(index = 0, count = rowCount) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = if (rowCount == 1) EtaSegmentedGroupSpacing else EtaSegmentedGap),
+            ) {
+                EtaSegmentedRow(
+                    onClick = onOpenSettings,
+                    choiceRow = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingContent = { RemoteStatusDot(server.status) },
+                    supportingContent = {
+                        M3Text(
+                            text = remoteStatusLabel(server.status),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                ) {
+                    M3Text(
+                        text = server.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        server.sessions.forEachIndexed { index, session ->
+            val selected = selectedServerId == server.id && selectedPath == session.path
+            val isGroupLast = index == server.sessions.lastIndex
+            EtaSegmentedItem(index = index + 1, count = rowCount) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = if (isGroupLast) EtaSegmentedGroupSpacing else EtaSegmentedGap),
+                ) {
+                    EtaSegmentedRow(
+                        selected = selected,
+                        choiceRow = true,
+                        selectedContainerColor = if (selected) {
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        } else {
+                            null
+                        },
+                        onClick = { onSelectSession(server.id, session.path) },
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingContent = session.modified.takeIf { it.isNotBlank() }?.let { modified ->
+                            {
+                                M3Text(
+                                    text = modified,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        },
+                    ) {
+                        M3Text(
+                            text = remoteSessionTitle(session),
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun remoteSessionTitle(session: RemoteSessionInfo): String =
+    session.name?.takeIf { it.isNotBlank() }
+        ?: session.firstMessage.takeIf { it.isNotBlank() }
+        ?: session.path.substringAfterLast('/').ifBlank { session.path }
+
+@Composable
+private fun RemoteStatusDot(status: RemoteConnectionStatus) {
+    val color = when (status) {
+        RemoteConnectionStatus.Connected -> MaterialTheme.colorScheme.primary
+        RemoteConnectionStatus.Connecting, is RemoteConnectionStatus.Reconnecting ->
+            MaterialTheme.colorScheme.tertiary
+        is RemoteConnectionStatus.Failed -> MaterialTheme.colorScheme.error
+        RemoteConnectionStatus.Disconnected -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(color),
+    )
 }

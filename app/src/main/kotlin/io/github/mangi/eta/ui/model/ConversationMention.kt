@@ -212,7 +212,7 @@ internal object ConversationMention {
         }
         is SystemNoticeMessageUi -> "System status: ${message.code.name}"
         is ErrorReconnectMessageUi -> "Connection status: ${message.status.wireValue} (${formatReconnectElapsed(message.elapsedMs)})"
-        is RunTraceMessageUi, is SuggestionChipsMessageUi -> null
+        is RunTraceMessageUi, is SuggestionChipsMessageUi, is RemoteNoticeMessageUi -> null
     }
     }
 }

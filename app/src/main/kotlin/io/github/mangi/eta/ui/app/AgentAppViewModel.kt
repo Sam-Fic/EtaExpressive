@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 /** Activity borrows process-owned Agent state; viewModelScope still owns UI-only work. */
 internal class AgentAppViewModel(application: Application) : AndroidViewModel(application) {
     val state = AgentSessionHost.get(application).state
+    val remoteCoordinator = AgentSessionHost.get(application).remoteCoordinator
     private val terminalHost = TerminalSessionHost.get(application)
     val terminalStore = terminalHost.terminal
     val consoleStore = terminalHost.console

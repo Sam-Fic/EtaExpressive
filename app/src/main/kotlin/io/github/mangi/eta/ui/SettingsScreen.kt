@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Compress
@@ -446,6 +447,12 @@ internal fun SettingsScreen(
                     EtaClickableRow(title = stringResource(R.string.settings_subagent_title),
                         leading = { PreferenceIcon(icon = SubAgents) },
                         onClick = { onNavigate(AppRoute.SubAgents) })
+                }
+
+                row(key = SettingsKeys.REMOTE_AGENTS) {
+                    EtaClickableRow(title = stringResource(R.string.route_remote_agents),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Lan) },
+                        onClick = { onNavigate(AppRoute.RemoteAgents) })
                 }
             }
 

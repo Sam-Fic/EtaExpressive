@@ -210,6 +210,10 @@ sealed interface AppRoute {
      */
     @Serializable
     data object ToolRecipes : AppRoute
+
+    /** 远程智能体设置页：局域网 agent 服务器的增删改与连接状态。 */
+    @Serializable
+    data object RemoteAgents : AppRoute
 }
 
 @Serializable

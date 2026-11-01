@@ -218,6 +218,22 @@ internal class AgentAppState(
     fun currentDraftField() = conversationDrafts.field(selectedConversationId)
 
     /**
+     * 当前聊天视图的数据源：本机（Local）或某个远程服务器上的会话（Remote）。
+     * 选中本机会话即置回 Local；侧栏点击远程会话行置为 Remote，由 AgentAppRoot 据此切换 stateProvider/onAction。
+     */
+    var selectedTarget: io.github.mangi.eta.ui.remote.ChatTarget by
+        mutableStateOf(io.github.mangi.eta.ui.remote.ChatTarget.Local)
+        private set
+
+    fun selectRemoteTarget(target: io.github.mangi.eta.ui.remote.ChatTarget) {
+        selectedTarget = target
+    }
+
+    fun selectLocalTarget() {
+        selectedTarget = io.github.mangi.eta.ui.remote.ChatTarget.Local
+    }
+
+    /**
      * 流式期间短按发送暂存的待发消息，按会话隔离。
      * 当前运行正常结束后按顺序续发队首；用户主动停止时保留队列不自动发出。
      */
@@ -2180,6 +2196,8 @@ internal class AgentAppState(
 
     private fun applySelectedConversation(conversationId: String, state: AgentChatHomeUiState) {
         check(state.conversationContentLoaded)
+        // 选中本机会话即从远程视图切回本机数据源。
+        selectedTarget = io.github.mangi.eta.ui.remote.ChatTarget.Local
         fileAttachmentOwnerVersion += 1
         selectedConversationId = conversationId
         if (conversationId in conversationCompletionMarkers) {
@@ -8427,6 +8445,47 @@ private fun buildPermissionHealthState(context: Context): PermissionHealthUiStat
                     DeviceLocationProvider.AccessState.AVAILABLE -> null
                 },
             ),
+            // 本地网络闸门。
+            //
+            // 放在权限总览里是因为它不属于某一个功能：远程智能体、局域网 MCP、
+            // 任何连同一个网段设备的工具都会踩到它。而且它的失败形态极其误导人——
+            // 系统静默丢包，用户看到的是「连接超时」，跟服务器不回应完全一样。
+            run {
+                val lanState = io.github.mangi.eta.agent.device.LocalNetworkPermission.accessState(context)
+                PermissionHealthItemUi(
+                    id = "local_network",
+                    title = context.getString(R.string.permission_local_network_title),
+                    summary = when (lanState) {
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.DENIED ->
+                            context.getString(R.string.permission_local_network_summary_blocked)
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.NOT_GRANTED ->
+                            context.getString(R.string.permission_local_network_summary_not_granted)
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.NOT_REQUIRED ->
+                            context.getString(R.string.permission_local_network_summary_not_required)
+                        else -> context.getString(R.string.permission_local_network_summary)
+                    },
+                    status = when (lanState) {
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.GRANTED,
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.NOT_REQUIRED,
+                        -> PermissionStatusUi.Available
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.NOT_GRANTED ->
+                            PermissionStatusUi.Missing
+                        // 「权限在、但系统拦着」是警告而不是「缺失」：
+                        // 让用户去点「授权」是没用的，情况和缺权限相反。
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.DENIED,
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.UNKNOWN,
+                        -> PermissionStatusUi.Warning
+                    },
+                    primaryActionLabel = when (lanState) {
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.GRANTED,
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.NOT_REQUIRED,
+                        -> null
+                        io.github.mangi.eta.agent.device.LocalNetworkPermission.AccessState.NOT_GRANTED ->
+                            context.getString(R.string.state_ui_to_authorize_762ec4)
+                        else -> context.getString(R.string.state_ui_go_to_settings_1f2998)
+                    },
+                )
+            },
             PermissionHealthItemUi(
                 id = "calendar",
                 title = context.getString(R.string.permission_calendar_title),

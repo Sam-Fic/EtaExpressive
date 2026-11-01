@@ -76,6 +76,12 @@ internal data class AgentChatUiState(
      * 非 GPT/不可用绑定仅显示正常，不清除模型记忆；UI 只渲染并派发切换事件。
      */
     val gptSpeedMode: GptSpeedMode = GptSpeedMode.NORMAL,
+    /**
+     * True when this state is projected from a remote agent connection instead of a
+     * local run. The UI hides local-only affordances (edit/delete/regenerate/branch,
+     * reasoning effort, persistence) and renders remote notices via [RemoteNoticeMessageUi].
+     */
+    val isRemote: Boolean = false,
 )
 
 /**
@@ -149,6 +155,18 @@ data class SystemNoticeMessageUi(
     override val id: String,
     val code: SystemNoticeCode,
     val detail: String? = null,
+) : AgentChatMessageUi
+
+/**
+ * 远程 agent 的系统注记 / 错误行。不复用 [SystemNoticeMessageUi]：后者的
+ * [SystemNoticeCode.RuntimeFailed] 会触发「继续生成」等本地运行语义，而远程没有对应动作。
+ * 远程注记只展示，[isError] 决定强调样式。
+ */
+@Immutable
+data class RemoteNoticeMessageUi(
+    override val id: String,
+    val text: String,
+    val isError: Boolean = false,
 ) : AgentChatMessageUi
 
 internal fun SystemNoticeCode.isRetryableFailure(): Boolean =

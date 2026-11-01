@@ -44,7 +44,9 @@ android {
     defaultConfig {
         applicationId = "io.github.mangi.eta"
         minSdk = 34
-        targetSdk = 36
+        // 37 不是「追新」：ACCESS_LOCAL_NETWORK 只在 targetSdk ≥ 37 时进入系统权限页。
+        // 停在 36 的下场是系统照样按 app-op 静默丢包、却不给任何开关，用户无从自助。
+        targetSdk = 37
         // versionCode 规则：yyyyMMdd + 两位当日序号（01 起），发版时随 versionName 一起手动递增。
         versionCode = 2026103101
         versionName = "5.3.18"

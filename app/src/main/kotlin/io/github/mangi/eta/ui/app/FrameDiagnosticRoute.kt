@@ -66,4 +66,5 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     AppRoute.MobileActionsSettings -> FrameDiagnosticPage.Settings
     AppRoute.MobileActions -> FrameDiagnosticPage.Settings
     AppRoute.ToolRecipes -> FrameDiagnosticPage.ToolRecipes
+    AppRoute.RemoteAgents -> FrameDiagnosticPage.Settings
 }

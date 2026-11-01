@@ -564,6 +564,30 @@ internal fun ChatMessageItem(
         is ToolSummaryMessageUi -> ToolSummaryInline(message = message, modifier = modifier)
         is ContextCompactedMessageUi -> ContextCompactedDivider(message = message, modifier = modifier)
         is SuggestionChipsMessageUi -> SuggestionChipsRow(message = message, onSuggestionClick = actions.onSuggestionClick, modifier = modifier)
+        is io.github.mangi.eta.ui.model.RemoteNoticeMessageUi -> RemoteNoticeRow(
+            text = message.text,
+            isError = message.isError,
+            modifier = modifier,
+        )
+    }
+}
+
+/**
+ * 远程 agent 的系统注记 / 错误行：居中、克制的一行文案。错误走 error 色，注记走 onSurfaceVariant。
+ * 不复用 [SystemNoticeMessageUi] 的渲染，避免带上「继续生成」等本地运行语义。
+ */
+@Composable
+internal fun RemoteNoticeRow(text: String, isError: Boolean, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

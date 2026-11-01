@@ -13,6 +13,9 @@ import kotlinx.coroutines.cancel
 internal class AgentSessionHost private constructor(application: Application) {
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val state = AgentAppState(context = application.applicationContext, scope = scope)
+    val remoteCoordinator =
+        io.github.mangi.eta.ui.remote.RemoteCoordinator(application.applicationContext, scope)
+            .also { it.start() }
 
     companion object {
         @Volatile private var instance: AgentSessionHost? = null

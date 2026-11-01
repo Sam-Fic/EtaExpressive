@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- 默认禁止明文 HTTP：API key 与对话内容只允许经 TLS 传输（用户显式配置的 http://
-         远程端点会收到明确的 cleartext 错误，而不是静默明文上传）。 -->
-    <base-config cleartextTrafficPermitted="false" />
-    <!-- 本地回环不出设备，放行明文：OAuth loopback 回调、虚拟显示预览（127.0.0.1:3070）、
-         proot 本地 Linux 服务。远程明文不走这里。 -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">localhost</domain>
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">::1</domain>
-    </domain-config>
+    <!-- 放行明文 HTTP/WS：局域网远程 agent（pi-remote 等）通过用户显式配置的 ws://<局域网IP>
+         与 http://<局域网IP>/upload 通信，系统策略不支持按 CIDR/IP 段白名单，逐主机维护也不现实，
+         故整体放行明文。云端模型 API key 与对话内容仍优先走 TLS（provider 端点均为 https）。 -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
