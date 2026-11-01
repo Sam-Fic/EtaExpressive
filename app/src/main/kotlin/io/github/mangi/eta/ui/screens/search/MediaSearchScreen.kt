@@ -114,6 +114,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -143,9 +144,11 @@ private fun kindsForFilter(index: Int): Set<MediaKind> = when (index) {
  *
  * 版式沿用应用内其它搜索页（[EtaSearchScaffold]）：顶栏是「返回钮 + 透明底搜索框 +
  * 清除按钮 + 搜索按钮」，没有大标题页，搜索词就在顶栏里改；类型标签条常驻在顶栏下方，
- * 搜索前后都能切换范围；「找到 X 项」行右端是纯图标按钮——多选入口（多选态原位
+ * 搜索前后都能切换范围——切标签只对已持有的结果做本地筛选、不重跑检索，点搜索按钮
+ * 才按当前标签定界真正跑一遍；「找到 X 项」行右端是纯图标按钮——多选入口（多选态原位
  * 变为「取消」，退出并清空勾选）与匹配度阈值（始终居最右；多选态已选计数以居中
- * 点号并入行首文案）；批量操作集中在底部官方浮动图标工具栏。
+ * 点号并入行首文案）——阈值是检索时参数：拖动结束落盘并同词静默重检，结果集就是
+ * 「所有 ≥ 阈值的命中」，无数量上限；批量操作集中在底部官方浮动图标工具栏。
  *
  * 检索统一走 [MediaSearchService]（与 AI 工具 `search_media` 同一入口），全程离线；
  * 模型未下载或扫描源未确认时显示引导卡片跳设置页。
@@ -171,14 +174,17 @@ internal fun MediaSearchScreen(
     var searching by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<MediaSearchService.SearchResult?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    // 匹配度阈值：进页面恢复上次调节值（EmbeddingModelStore prefs），拖动结束落盘。
-    var minScore by rememberSaveable { mutableStateOf(0f) }
+    // 匹配度阈值：进页面恢复上次调节值（EmbeddingModelStore prefs，默认 0.7），拖动结束落盘
+    // 并同词静默重检——阈值是检索时参数，结果集就是「所有 ≥ 阈值的命中」。
+    var minScore by rememberSaveable { mutableStateOf(0.7f) }
     // 多选批量管理：勾选集合以 sourceKey 为键；操作完成或新一轮检索后退出并清空。
     var selectionMode by remember { mutableStateOf(false) }
     var selectedKeys by remember { mutableStateOf(setOf<String>()) }
     var confirmDeleteFiles by remember { mutableStateOf(false) }
     // 匹配度阈值面板：从多选工具栏的「阈值」按钮打开（官方 ModalBottomSheet）。
     var showThresholdSheet by remember { mutableStateOf(false) }
+    // 阈值滑杆松手触发的静默重检 Job：串行化换阈值重检，新检索取消在途旧检索。
+    var sliderSearchJob by remember { mutableStateOf<Job?>(null) }
     var batchBusy by remember { mutableStateOf(false) }
     // 批量移动/复制：先由目录选择器拿目标文件夹，再二次确认；两者齐备才弹确认框。
     var pendingOperation by remember { mutableStateOf<MediaFileOps.Op?>(null) }
@@ -222,33 +228,59 @@ internal fun MediaSearchScreen(
     }
 
     /**
-     * 执行一次语义检索；查询为空或索引未就绪时不动作（引导卡片负责指向设置页）。
+     * 执行一次语义检索；查询为空或显式检索进行中时不动作（引导卡片负责指向设置页）。
      * [text] 显式传入是为了「点搜索记录」这种先改词再检索的场景（state 还没重组，读 [query] 拿到的是旧值）。
+     *
+     * [fromSlider] 为 true 时是阈值滑杆松手触发的重检：同词换阈值，结果集 = 所有 ≥ 新阈值的
+     * 命中（服务端过滤、不限量），查询向量缓存命中后通常 <150ms——静默在旧结果上原位更新，
+     * 不切 loading、不重复落搜索记录；瞬时失败保持旧结果不动。
      */
-    fun runSearch(text: String = query.trim()) {
+    fun runSearch(text: String = query.trim(), fromSlider: Boolean = false) {
         if (text.isEmpty() || searching) return
-        // 真正跑过检索的词就是有效检索：落一条搜索记录。
-        recordSearch(text)
-        // 检索是显式动作：触发后立刻收起键盘，结果区不再被输入法挤成半屏。
-        focusManager.clearFocus()
+        if (!fromSlider) {
+            // 真正跑过检索的词就是有效检索：落一条搜索记录。
+            recordSearch(text)
+            // 检索是显式动作：触发后立刻收起键盘，结果区不再被输入法挤成半屏。
+            focusManager.clearFocus()
+        }
         // 换结果集先退出多选：旧结果上的勾选不延续到新结果。
         selectionMode = false
         selectedKeys = emptySet()
-        scope.launch {
-            searching = true
+        // 新检索开始前取消在途的滑杆重检，避免旧结果晚到覆盖新结果。
+        sliderSearchJob?.cancel()
+        suspend fun executeSearch() {
             errorText = null
             val outcome = runCatching {
                 MediaSearchService.search(
                     context = context,
                     query = text,
                     kinds = kindsForFilter(filterIndex),
-                    limit = 20,
+                    limit = MediaSearchService.UNLIMITED_RESULTS,
+                    minScore = minScore,
                 )
             }
-            result = outcome.getOrNull()
-            outcome.exceptionOrNull()?.let { errorText = it.message ?: "search failed" }
-            searching = false
+            if (fromSlider) {
+                outcome.getOrNull()?.let { newResult ->
+                    result = newResult
+                    errorText = null
+                }
+            } else {
+                result = outcome.getOrNull()
+                outcome.exceptionOrNull()?.let { errorText = it.message ?: "search failed" }
+            }
             status = runCatching { MediaSearchService.status(context) }.getOrNull()
+        }
+        if (fromSlider) {
+            sliderSearchJob = scope.launch { executeSearch() }
+        } else {
+            scope.launch {
+                searching = true
+                try {
+                    executeSearch()
+                } finally {
+                    searching = false
+                }
+            }
         }
     }
 
@@ -263,10 +295,14 @@ internal fun MediaSearchScreen(
 
     val ready = status?.ready == true
     val rawHits = result?.hits.orEmpty()
-    // 阈值即时过滤：低于阈值的命中不显示（0 不过滤），与服务端 MediaSearchService.applyMinScore 同口径。
-    val hits = MediaSearchService.applyMinScore(rawHits, minScore)
-    val hiddenCount = rawHits.size - hits.size
-    // 勾选按当前显示的命中取交集：阈值抬高后被隐藏的条目不再计入批量操作。
+    // 类型标签是展示层过滤：切分类只筛已持有的命中，不重跑检索（空集合 = 「全部」不过滤）。
+    // 匹配度阈值不在此过滤——它已下推到检索时（search 的 minScore），结果集本身就是
+    // 「所有 ≥ 阈值的命中」，数量不设上限。
+    val activeKinds = kindsForFilter(filterIndex)
+    val hits = if (activeKinds.isEmpty()) rawHits else rawHits.filter { it.kind in activeKinds }
+    // 阈值面板文案用：检索时 kinds 范围内低于阈值、未进入结果的候选数（服务端随结果返回）。
+    val hiddenCount = result?.belowThresholdCount ?: 0
+    // 勾选按当前显示的命中取交集：类型标签切走后被隐藏的条目不再计入批量操作。
     val selectedHits = hits.filter { it.sourceKey in selectedKeys }
 
     /** 移出索引：删 media_index 行与缩略图缓存，源文件保留。 */
@@ -394,12 +430,13 @@ internal fun MediaSearchScreen(
             },
             topContent = {
                 // 类型标签常驻顶栏下方：搜索前后都能切换范围，不用滚回页面顶部。
+                // 切标签只对当前结果集做本地筛选，不重跑检索；想在某个分类下
+                // 重新定界检索时，再点顶栏的搜索按钮即可（runSearch 按当前标签取 kinds）。
                 MediaFilterBar(
                     selectedIndex = filterIndex,
                     onSelect = { index ->
                         TouchHaptics.click(view)
                         filterIndex = index
-                        if (result != null && query.trim().isNotEmpty()) runSearch()
                     },
                 )
             },
@@ -507,8 +544,60 @@ internal fun MediaSearchScreen(
                     }
                 }
                 rawHits.isEmpty() -> {
-                    // 无结果态：索引为空时直接给「去建立索引」引导。
-                    item(key = "no-results") {
+                    // 无结果态：有候选但全部低于阈值 → 提示调低匹配度阈值（点击直达阈值面板，
+                    // 默认 0.7 后这是常见状态）；索引为空时直接给「去建立索引」引导。
+                    if ((result?.belowThresholdCount ?: 0) > 0) {
+                        item(key = "threshold-empty") {
+                            EtaSegmentedColumn(
+                                modifier = Modifier.padding(
+                                    start = EtaGroupHorizontalPadding,
+                                    end = EtaGroupHorizontalPadding,
+                                    bottom = EtaSegmentedGroupSpacing,
+                                ),
+                            ) {
+                                item {
+                                    EtaClickableRow(
+                                        title = stringResource(R.string.media_threshold_empty_hint),
+                                        onClick = { showThresholdSheet = true },
+                                        showChevron = false,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        item(key = "no-results") {
+                            EtaSegmentedColumn(
+                                modifier = Modifier.padding(
+                                    start = EtaGroupHorizontalPadding,
+                                    end = EtaGroupHorizontalPadding,
+                                    bottom = EtaSegmentedGroupSpacing,
+                                ),
+                            ) {
+                                item {
+                                    EtaClickableRow(
+                                        title = stringResource(R.string.media_search_no_results),
+                                        summary = if (result?.totalCandidates == 0) {
+                                            stringResource(R.string.media_search_empty_index)
+                                        } else {
+                                            null
+                                        },
+                                        onClick = null,
+                                        showChevron = false,
+                                    )
+                                }
+                                item(visible = result?.totalCandidates == 0) {
+                                    EtaClickableRow(
+                                        title = stringResource(R.string.media_action_build_index),
+                                        onClick = { onNavigate(AppRoute.MediaIndexSettings) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                hits.isEmpty() -> {
+                    // 分类筛空态：检索本身有结果，只是当前类型标签筛不出任何条目。
+                    item(key = "filter-empty") {
                         EtaSegmentedColumn(
                             modifier = Modifier.padding(
                                 start = EtaGroupHorizontalPadding,
@@ -518,20 +607,9 @@ internal fun MediaSearchScreen(
                         ) {
                             item {
                                 EtaClickableRow(
-                                    title = stringResource(R.string.media_search_no_results),
-                                    summary = if (result?.totalCandidates == 0) {
-                                        stringResource(R.string.media_search_empty_index)
-                                    } else {
-                                        null
-                                    },
+                                    title = stringResource(R.string.media_filter_no_hits),
                                     onClick = null,
                                     showChevron = false,
-                                )
-                            }
-                            item(visible = result?.totalCandidates == 0) {
-                                EtaClickableRow(
-                                    title = stringResource(R.string.media_action_build_index),
-                                    onClick = { onNavigate(AppRoute.MediaIndexSettings) },
                                 )
                             }
                         }
@@ -683,6 +761,8 @@ internal fun MediaSearchScreen(
             onValueChange = { minScore = it },
             onValueChangeFinished = {
                 EmbeddingModelStore.setSearchMinScore(context, minScore)
+                // 阈值是检索时参数：松手落盘后同词静默重检（向量缓存命中，近乎即时）。
+                runSearch(fromSlider = true)
             },
             onDismiss = { showThresholdSheet = false },
         )

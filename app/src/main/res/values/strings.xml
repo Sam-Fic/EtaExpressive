@@ -2853,6 +2853,7 @@
   <string name="media_filter_video">Videos</string>
   <string name="media_filter_audio">Audio</string>
   <string name="media_filter_document">Files</string>
+  <string name="media_filter_no_hits">No matches in this category</string>
   <string name="media_filter_audio_note">Audio is indexed from the first 5 minutes of each recording, in 30-second windows</string>
   <string name="media_filter_document_note">PDFs are indexed as rendered page images; DOCX files by their extracted text</string>
   <string name="media_kind_image">Image</string>
@@ -2892,6 +2893,7 @@
   <string name="media_batch_partial">Succeeded %1$d; %2$d failed: %3$s</string>
   <string name="media_threshold_label">Match threshold</string>
   <string name="media_threshold_hidden">%1$d results hidden below the threshold</string>
+  <string name="media_threshold_empty_hint">No results above the threshold — try lowering it</string>
   <string name="media_settings_title">Media semantic search</string>
   <string name="media_settings_entry_title">Media semantic search</string>
   <string name="media_settings_entry_summary">Model, scan scope and index for searching photos, videos and files by meaning</string>

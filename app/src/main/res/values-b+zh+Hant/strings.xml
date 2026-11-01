@@ -2819,6 +2819,7 @@
   <string name="media_filter_video">影片</string>
   <string name="media_filter_audio">音訊</string>
   <string name="media_filter_document">檔案</string>
+  <string name="media_filter_no_hits">該分類下沒有匹配結果</string>
   <string name="media_filter_audio_note">音訊按每段錄音前 5 分鐘內容索引（30 秒一窗）</string>
   <string name="media_filter_document_note">PDF 按整頁圖像索引，DOCX 按擷取的內文文字索引</string>
   <string name="media_kind_image">圖片</string>
@@ -2858,6 +2859,7 @@
   <string name="media_batch_partial">成功 %1$d 項，%2$d 項失敗：%3$s</string>
   <string name="media_threshold_label">匹配度閾值</string>
   <string name="media_threshold_hidden">已隱藏 %1$d 條低於閾值的結果</string>
+  <string name="media_threshold_empty_hint">當前閾值下沒有匹配結果，試試調低匹配度閾值</string>
   <string name="media_settings_title">媒體語義搜尋</string>
   <string name="media_settings_entry_title">媒體語義搜尋</string>
   <string name="media_settings_entry_summary">依語義搜尋本機圖片、影片與檔案的模型、掃描範圍與索引設定</string>
