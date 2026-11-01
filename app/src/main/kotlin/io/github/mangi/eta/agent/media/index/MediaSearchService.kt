@@ -3,11 +3,15 @@ package io.github.mangi.eta.agent.media.index
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.collection.LruCache
+import androidx.room.InvalidationTracker
 import io.github.mangi.eta.data.db.EtaDatabase
+import io.github.mangi.eta.data.db.MediaIndexDao
 import io.github.mangi.eta.data.db.MediaIndexEntity
 import io.github.mangi.eta.data.db.MediaKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 语义检索唯一入口：GUI 搜索框与 `semantic_search_media` 工具都走这里，
@@ -16,6 +20,14 @@ import kotlinx.coroutines.withContext
  * 检索实现收敛到 [vectorIndex]（当前为 [BruteForceVectorIndex] 暴力点积）：万级条目在手机上
  * 可接受；规模超过 [ANN_SWITCH_THRESHOLD] 后提示并由后续版本换 ANN（HNSW/sqlite-vec）实现，
  * 对外接口保持不变。
+ *
+ * 缓存分两级、共用一个失效信号：向量切片行缓存（免全表重读 BLOB）与检索结果缓存
+ * （同词重复搜索秒回，含精排时刻）。命中前提都是索引代数一致——media_index 表任何写入
+ * 经 Room InvalidationTracker 使代数 +1，两级缓存随之整体失效，新增/删除文件不会吃到旧结果。
+ *
+ * 匹配度阈值是检索时参数：结果集 = 所有 ≥ 阈值的命中，不设数量上限（GUI 传
+ * [UNLIMITED_RESULTS]，阈值是唯一的筛选条件）；[queryEmbeddings] 缓存让换阈值重检
+ * 只做内存重排，滑杆调档近乎即时。
  */
 internal object MediaSearchService {
     /**
@@ -24,8 +36,112 @@ internal object MediaSearchService {
      */
     const val ANN_SWITCH_THRESHOLD = 50_000
 
+    /** 向量切片行缓存的规模护栏：超过该条数（≈30MB Float16 BLOB @768dim）直接绕过缓存。 */
+    private const val ROW_CACHE_MAX_ROWS = 20_000
+
+    /** 检索结果缓存容量：条目只含字符串与标量，16 条足够覆盖反复搜索的高频词。 */
+    private const val RESULT_CACHE_SIZE = 16
+
+    /** 查询向量缓存容量：8 条 × 768 维 Float ≈ 24KB，覆盖阈值滑杆反复重检的同一关键词。 */
+    private const val QUERY_EMBEDDING_CACHE_SIZE = 8
+
+    /**
+     * 检索结果数量不设上限的标记值：结果集完全由匹配度阈值决定（结果 = 所有 ≥ 阈值的命中）。
+     * GUI 检索传此值；数量护栏由调用方自负（AI 工具层自有 1..50 限定）。
+     */
+    const val UNLIMITED_RESULTS = Int.MAX_VALUE
+
     /** 检索实现入口：当前为暴力点积；规模超阈值后在此切换 ANN 实现，调用方不变。 */
     private val vectorIndex: VectorIndex = BruteForceVectorIndex
+
+    // ── 缓存层：全部进程内内存缓存，以「索引代数一致」为命中前提 ──────────────────
+    //
+    // 索引代数：media_index 表任何写入（索引器增量轮、移出索引、删文件、move purge、
+    // 备份导入、清空）都会使代数 +1。用 Room InvalidationTracker 做表级监听而不是在
+    // 各写入方手工埋点——现有与未来的写入方自动覆盖，索引变了绝不返回旧结果。
+    private val indexGeneration = AtomicLong(0)
+
+    @Volatile
+    private var hookedDatabase: EtaDatabase? = null
+
+    /** 惰性注册 media_index 表失效监听；EtaDatabase 为进程级单例（EtaDatabase.get），注册一次即可。 */
+    private fun hookInvalidation(db: EtaDatabase) {
+        if (hookedDatabase === db) return
+        synchronized(this) {
+            if (hookedDatabase === db) return
+            db.invalidationTracker.addObserver(object : InvalidationTracker.Observer("media_index") {
+                override fun onInvalidated(invalidatedTables: Set<String>) {
+                    indexGeneration.incrementAndGet()
+                }
+            })
+            hookedDatabase = db
+        }
+    }
+
+    /**
+     * 向量切片行缓存：免去每次检索从 Room 全量重读 Float16 BLOB（1 万条 ≈ 15MB IO）。
+     * 只服务检索入口（search/findSimilar）；索引管线（MediaIndexer）必须直读数据库做
+     * 增量判断，不得消费本缓存。单槽即可——检索永远只看当前模型 + 维度这一片。
+     */
+    private data class RowSlice(
+        val modelId: String,
+        val dim: Int,
+        val generation: Long,
+        val rows: List<MediaIndexEntity>,
+    )
+
+    @Volatile
+    private var rowSlice: RowSlice? = null
+
+    /** 取当前模型 + 维度的候选行：代数与切片键全等才命中，否则重读并回填（超护栏不缓存）。 */
+    private suspend fun rowsForSearch(
+        db: EtaDatabase,
+        dao: MediaIndexDao,
+        modelId: String,
+        dim: Int,
+        generation: Long,
+    ): List<MediaIndexEntity> {
+        rowSlice?.takeIf {
+            it.modelId == modelId && it.dim == dim && it.generation == generation
+        }?.let { return it.rows }
+        val rows = dao.listForModel(modelId, dim)
+        if (rows.size <= ROW_CACHE_MAX_ROWS) {
+            rowSlice = RowSlice(modelId, dim, generation, rows)
+        } else {
+            rowSlice = null
+        }
+        return rows
+    }
+
+    /** 检索结果缓存键：除查询词与过滤条件外，模型/维度/精排参数都参与——任一变化结果不同。 */
+    private data class ResultCacheKey(
+        val query: String,
+        val modelId: String,
+        val dim: Int,
+        val kinds: List<String>,
+        val limit: Int,
+        val minScore: Float,
+        val refineMoments: Boolean,
+        val indexMode: IndexMode,
+    )
+
+    private data class ResultCacheEntry(val generation: Long, val result: SearchResult)
+
+    /**
+     * 检索结果缓存：同一 (关键词, 模型, 过滤条件) 的重复搜索直接复用上轮结果，
+     * 连同二段精排回填的命中时刻一起返回。命中前提同样是代数一致——索引任何变动后
+     * 自动重检，新增/删除/移出的文件都会反映到下一次搜索。
+     */
+    private val resultCache = LruCache<ResultCacheKey, ResultCacheEntry>(RESULT_CACHE_SIZE)
+
+    /** 查询向量缓存的键：嵌入只依赖查询词与模型/维度，与索引内容无关，故不随索引代数失效。 */
+    private data class QueryEmbeddingKey(val query: String, val modelId: String, val dim: Int)
+
+    /**
+     * 查询向量缓存：阈值滑杆松手触发的重检与上一轮同词，直接复用嵌入向量，
+     * 跳过模型推理只做内存点积（万级条目约数十毫秒），滑杆调档近乎即时。
+     */
+    private val queryEmbeddings = LruCache<QueryEmbeddingKey, FloatArray>(QUERY_EMBEDDING_CACHE_SIZE)
 
     /**
      * 检索结果一行；[contentUri] / [path] 可直接被 read_image、终端文件工具链式使用。
@@ -54,6 +170,8 @@ internal object MediaSearchService {
         val totalCandidates: Int,
         val modelId: String,
         val dim: Int,
+        /** 检索时 kinds 范围内低于匹配度阈值、未进入结果的候选数（信息性：喂给阈值面板文案）。 */
+        val belowThresholdCount: Int = 0,
     )
 
     data class Status(
@@ -96,13 +214,19 @@ internal object MediaSearchService {
     }
 
     /**
-     * 自然语言搜索：query 走 query 前缀嵌入，与库中归一化向量做点积取 top-K。
+     * 自然语言搜索：query 走 query 前缀嵌入，与库中归一化向量做点积排序。
      * 入库是「每视频一行平均向量」，命中视频后可选做二段时刻精排（[refineMoments]）：
      * 重新抽帧逐帧比对，把最高分帧的时刻回填到 [Hit.frameTimeMs]。
      * 精排条数与重抽帧预算按 [IndexModeProfile] 取值（全力档 top-5 / 低耗档 top-3）。
      *
-     * [minScore] 为匹配度阈值：rank 之后按 [applyMinScore] 过滤，低于阈值的命中不返回；
-     * 0（默认）表示不过滤。
+     * 同一 (关键词, 模型, 过滤条件) 的重复搜索在索引代数一致的前提下直接命中
+     * [resultCache]，连精排时刻一起原样返回，不再重跑嵌入与检索；查询向量本身另有
+     * [queryEmbeddings] 缓存，换阈值重检时跳过模型推理。
+     *
+     * [minScore] 为匹配度阈值：在构建 Hit 之前按分数过滤（[applyMinScore]），结果集
+     * 就是「所有 ≥ 阈值的命中」，低于阈值的候选既不进入结果也不占精排预算；
+     * 0（默认）表示不过滤。数量上限由调用方自负：GUI 传 [UNLIMITED_RESULTS] 让阈值
+     * 完全决定结果规模，AI 工具层自行限定 1..50。
      */
     suspend fun search(
         context: Context,
@@ -116,15 +240,35 @@ internal object MediaSearchService {
         require(query.isNotBlank()) { "query 不能为空" }
         val model = EmbeddingModelStore.state.value.model
         val dim = EmbeddingModelStore.vectorDim(app)
-        val queryVector = EtaEmbeddingEngine.embedQuery(app, query, dim)
-        val dao = EtaDatabase.get(app).mediaIndexDao()
-        val rows = dao.listForModel(model.id, dim)
+        val db = EtaDatabase.get(app)
+        val indexMode = EmbeddingModelStore.indexMode(app)
+        hookInvalidation(db)
+        val key = ResultCacheKey(
+            query = query.trim(),
+            modelId = model.id,
+            dim = dim,
+            kinds = kinds.map { it.wire }.sorted(),
+            limit = limit,
+            minScore = minScore,
+            refineMoments = refineMoments,
+            indexMode = indexMode,
+        )
+        // 代数在嵌入前取快照：期间若索引写入提交，代数 +1，本轮结果带着旧代数入缓存，
+        // 下次检索代数不一致自动重检（宁可多跑一次，绝不返回旧结果）。
+        val generation = indexGeneration.get()
+        resultCache.get(key)?.takeIf { it.generation == generation }?.let { return@withContext it.result }
+        val embeddingKey = QueryEmbeddingKey(query.trim(), model.id, dim)
+        val queryVector = queryEmbeddings.get(embeddingKey)
+            ?: EtaEmbeddingEngine.embedQuery(app, query, dim).also { queryEmbeddings.put(embeddingKey, it) }
+        val rows = rowsForSearch(db, db.mediaIndexDao(), model.id, dim, generation)
         val ranked = rank(queryVector, rows, kinds, limit)
+        // 阈值过滤放在 hitOf 之前：低于阈值的候选不构建 Hit（免 resolvePath 跨进程查询），
+        // 也不占精排预算；不限量检索时这里是万级候选与秒级耗时的分界。
+        val matched = applyMinScore(ranked, { it.second }, minScore)
         // 二段精排预算按索引模式取值：全力档 top-5，低耗档 top-3（逐帧嵌入较贵）。
-        val profile = IndexModeProfile.forMode(EmbeddingModelStore.indexMode(app))
+        val profile = IndexModeProfile.forMode(indexMode)
         var refined = 0
-        // 阈值过滤放在精排之前：被过滤掉的命中不占用重抽帧预算。
-        val hits = applyMinScore(ranked.map { (row, score) -> hitOf(app, row, score) }, minScore)
+        val hits = matched.map { (row, score) -> hitOf(app, row, score) }
             .map { hit ->
                 val shouldRefine = refineMoments &&
                     hit.kind == MediaKind.VIDEO &&
@@ -137,13 +281,16 @@ internal object MediaSearchService {
                     hit
                 }
             }
-        SearchResult(
+        val result = SearchResult(
             query = query.trim(),
             hits = hits,
             totalCandidates = rows.size,
             modelId = model.id,
             dim = dim,
+            belowThresholdCount = ranked.size - matched.size,
         )
+        resultCache.put(key, ResultCacheEntry(generation, result))
+        result
     }
 
     /**
@@ -200,8 +347,10 @@ internal object MediaSearchService {
         require(reference.isNotBlank()) { "reference 不能为空" }
         val model = EmbeddingModelStore.state.value.model
         val dim = EmbeddingModelStore.vectorDim(app)
-        val dao = EtaDatabase.get(app).mediaIndexDao()
-        val rows = dao.listForModel(model.id, dim)
+        val db = EtaDatabase.get(app)
+        val dao = db.mediaIndexDao()
+        hookInvalidation(db)
+        val rows = rowsForSearch(db, dao, model.id, dim, indexGeneration.get())
         val referenceRow = rows.firstOrNull { it.sourceKey == reference }
             ?: dao.findBySourceKey(reference).firstOrNull { it.modelId == model.id && it.vectorDim == dim }
             ?: throw IllegalArgumentException("找不到已索引的参考项：$reference")
@@ -229,12 +378,12 @@ internal object MediaSearchService {
     ): List<Pair<MediaIndexEntity, Float>> = vectorIndex.search(query, rows, kinds, limit)
 
     /**
-     * 纯函数：按匹配度阈值过滤命中。[minScore] <= 0 表示不过滤；等于阈值的命中保留
-     * （边界含等于）；过滤不改变原有排序。GUI 阈值滑块的即时过滤与 [search] 的
-     * 服务端过滤共用本函数，保证「用户看到的」与「AI 拿到的」口径一致。
+     * 纯函数：按匹配度阈值过滤。[minScore] <= 0 表示不过滤；等于阈值的条目保留
+     * （边界含等于）；过滤不改变原有排序。[score] 由调用方给定取分方式——检索服务
+     * 取排序对的分数，单测取 Hit 的分数字段，保证「用户看到的」与「AI 拿到的」口径一致。
      */
-    internal fun applyMinScore(hits: List<Hit>, minScore: Float): List<Hit> =
-        if (minScore <= 0f) hits else hits.filter { it.score >= minScore }
+    internal fun <T> applyMinScore(items: List<T>, score: (T) -> Float, minScore: Float): List<T> =
+        if (minScore <= 0f) items else items.filter { score(it) >= minScore }
 
     internal fun dot(a: FloatArray, b: FloatArray): Float {
         var sum = 0f
@@ -302,6 +451,8 @@ internal interface VectorIndex {
 /**
  * 暴力点积实现：全量解码 Float16 后逐条点积排序，万级条目在手机上可接受。
  * 规模超过 [MediaSearchService.ANN_SWITCH_THRESHOLD] 后仍可用，仅提示后续切换 ANN。
+ * 数量上限由调用方自负（AI 工具层 1..50；GUI 传 [MediaSearchService.UNLIMITED_RESULTS]
+ * 由阈值定界），本实现只保证非负下界。
  */
 internal object BruteForceVectorIndex : VectorIndex {
     override fun search(
@@ -310,7 +461,7 @@ internal object BruteForceVectorIndex : VectorIndex {
         kinds: Set<MediaKind>,
         limit: Int,
     ): List<Pair<MediaIndexEntity, Float>> {
-        val effectiveLimit = limit.coerceIn(1, 100)
+        val effectiveLimit = limit.coerceAtLeast(1)
         return rows.asSequence()
             .filter { row -> kinds.isEmpty() || MediaKind.from(row.kind) in kinds }
             .mapNotNull { row ->

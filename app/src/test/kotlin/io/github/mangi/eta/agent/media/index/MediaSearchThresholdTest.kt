@@ -33,9 +33,9 @@ class MediaSearchThresholdTest {
     fun zeroThresholdFiltersNothing() {
         val hits = listOf(hit("a", 0.9f), hit("b", 0.05f), hit("c", 0f))
         // 0 表示不过滤：连 0 分命中也保留。
-        assertEquals(hits, MediaSearchService.applyMinScore(hits, 0f))
+        assertEquals(hits, MediaSearchService.applyMinScore(hits, { it.score }, 0f))
         // 负值同样不过滤（调用方可能传 -0.01 之类的越界值）。
-        assertEquals(hits, MediaSearchService.applyMinScore(hits, -1f))
+        assertEquals(hits, MediaSearchService.applyMinScore(hits, { it.score }, -1f))
     }
 
     @Test
@@ -43,7 +43,7 @@ class MediaSearchThresholdTest {
         val hits = listOf(hit("a", 0.9f), hit("b", 0.3f), hit("c", 0.55f))
         assertEquals(
             listOf("a", "c"),
-            MediaSearchService.applyMinScore(hits, 0.55f).map { it.sourceKey },
+            MediaSearchService.applyMinScore(hits, { it.score }, 0.55f).map { it.sourceKey },
         )
     }
 
@@ -53,7 +53,7 @@ class MediaSearchThresholdTest {
         val hits = listOf(hit("eq", 0.55f), hit("below", 0.549f))
         assertEquals(
             listOf("eq"),
-            MediaSearchService.applyMinScore(hits, 0.55f).map { it.sourceKey },
+            MediaSearchService.applyMinScore(hits, { it.score }, 0.55f).map { it.sourceKey },
         )
     }
 
@@ -63,14 +63,17 @@ class MediaSearchThresholdTest {
         val hits = listOf(hit("a", 0.9f), hit("e", 0.7f), hit("c", 0.5f), hit("b", 0.2f), hit("d", 0.1f))
         assertEquals(
             listOf("a", "e", "c"),
-            MediaSearchService.applyMinScore(hits, 0.4f).map { it.sourceKey },
+            MediaSearchService.applyMinScore(hits, { it.score }, 0.4f).map { it.sourceKey },
         )
     }
 
     @Test
     fun returnsEmptyWhenEverythingBelowThreshold() {
         val hits = listOf(hit("a", 0.1f), hit("b", 0.2f))
-        assertEquals(emptyList<MediaSearchService.Hit>(), MediaSearchService.applyMinScore(hits, 0.9f))
-        assertEquals(emptyList<MediaSearchService.Hit>(), MediaSearchService.applyMinScore(emptyList(), 0.5f))
+        assertEquals(emptyList<MediaSearchService.Hit>(), MediaSearchService.applyMinScore(hits, { it.score }, 0.9f))
+        assertEquals(
+            emptyList<MediaSearchService.Hit>(),
+            MediaSearchService.applyMinScore(emptyList<MediaSearchService.Hit>(), { it.score }, 0.5f),
+        )
     }
 }
