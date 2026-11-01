@@ -320,7 +320,6 @@ internal fun AssistantRow(
         content = {
             M3Text(
                 text = profile.name,
-                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

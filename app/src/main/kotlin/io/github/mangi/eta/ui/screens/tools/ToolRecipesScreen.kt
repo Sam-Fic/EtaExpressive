@@ -405,17 +405,15 @@ private fun RecipeRow(
         content = {
             M3Text(
                 text = recipe.name,
-                style = MaterialTheme.typography.bodyLarge,
             )
         },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (recipe.description.isNotBlank()) {
                     // 描述完整显示不省略；想看步骤细节再进编辑页。
+                    // 描述行走槽位默认（bodyMedium + onSurfaceVariant），状态行才是更小的元数据。
                     M3Text(
                         text = recipe.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 M3Text(
@@ -657,14 +655,11 @@ private fun RecipeEditPage(
                                 content = {
                                     M3Text(
                                         text = stringResource(R.string.recipe_step_title, index + 1),
-                                        style = MaterialTheme.typography.bodyLarge,
                                     )
                                 },
                                 supportingContent = {
                                     M3Text(
                                         text = recipeStepLabel(step),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 },
                             )
@@ -741,7 +736,6 @@ private fun RecipeEditPage(
                             content = {
                                 M3Text(
                                     text = stringResource(R.string.recipe_model_name),
-                                    style = MaterialTheme.typography.bodyLarge,
                                 )
                             },
                             supportingContent = {
@@ -772,7 +766,6 @@ private fun RecipeEditPage(
                             content = {
                                 M3Text(
                                     text = stringResource(R.string.recipe_root_dependence),
-                                    style = MaterialTheme.typography.bodyLarge,
                                 )
                             },
                             supportingContent = {
@@ -784,8 +777,6 @@ private fun RecipeEditPage(
                                             R.string.recipe_state_no_root
                                         },
                                     ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             },
                         )

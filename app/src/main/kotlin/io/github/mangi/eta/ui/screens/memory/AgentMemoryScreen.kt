@@ -103,14 +103,11 @@ internal fun AgentMemoryScreen(
                                     supportingContent = {
                                         M3Text(
                                             text = stringResource(R.string.memory_global_off_notice_summary),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     },
                                     content = {
                                         M3Text(
                                             text = stringResource(R.string.memory_global_off_notice_title),
-                                            style = MaterialTheme.typography.bodyLarge,
                                             color = MaterialTheme.colorScheme.error,
                                         )
                                     },
@@ -131,14 +128,11 @@ internal fun AgentMemoryScreen(
                                 supportingContent = {
                                     M3Text(
                                         text = stringResource(R.string.memory_budget_summary, formatNumber(state.coreBudgetChars)),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 },
                                 content = {
                                     M3Text(
                                         text = stringResource(R.string.ui_core_memory_injection_budget_48b5d5),
-                                        style = MaterialTheme.typography.bodyLarge,
                                     )
                                 },
                             )

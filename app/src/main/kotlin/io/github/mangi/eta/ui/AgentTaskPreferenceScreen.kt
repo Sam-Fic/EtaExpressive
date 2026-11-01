@@ -166,10 +166,8 @@ internal fun AgentTaskPreferenceScreen(
                                             )
                                         },
                                         supportingContent = {
-                                            Text(
-                                                stringResource(mode.hintRes),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
+                                            // 字号 / 配色交给官方 supportingContent 槽位默认（bodyMedium + onSurfaceVariant）。
+                                            Text(stringResource(mode.hintRes))
                                         },
                                         trailingContent = {
                                             RadioButton(

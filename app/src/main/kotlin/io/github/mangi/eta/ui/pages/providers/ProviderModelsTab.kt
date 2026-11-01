@@ -801,7 +801,6 @@ private fun ModelListItem(
         content = {
             MaterialText(
                 text = model.displayName,
-                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -811,8 +810,6 @@ private fun ModelListItem(
             Column {
                 MaterialText(
                     text = model.modelId,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

@@ -200,7 +200,7 @@ internal fun SubAgentProfileRow(profile: SubAgentProfile, providers: List<Provid
                                 onClick = { if (currentUsable) { TouchHaptics.click(view); modelPicker = true } },
                             ),
                     ) {
-                        Text(profile.name, style = MaterialTheme.typography.bodyLarge,
+                        Text(profile.name,
                             maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(config?.let { it.modelDisplayName.ifBlank { it.model } } ?: if (profile.modelId.isBlank()) stringResource(R.string.sap_none) else stringResource(R.string.sap_model_unavailable),
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -292,7 +292,6 @@ internal fun SubAgentSettingsRow(
         supportingContent = {
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -323,7 +322,6 @@ internal fun SubAgentSettingsRow(
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodyLarge,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )

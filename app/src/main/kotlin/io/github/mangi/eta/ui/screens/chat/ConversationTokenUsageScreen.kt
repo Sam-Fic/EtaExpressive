@@ -1,7 +1,6 @@
 package io.github.mangi.eta.ui.screens.chat
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -102,11 +101,10 @@ internal fun ConversationTokenUsageScreen(
 @Composable
 private fun TokenUsageRow(label: String, value: String) {
     EtaSegmentedRow(
-        content = { Text(text = label, style = MaterialTheme.typography.bodyLarge) },
+        content = { Text(text = label) },
         trailingContent = {
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

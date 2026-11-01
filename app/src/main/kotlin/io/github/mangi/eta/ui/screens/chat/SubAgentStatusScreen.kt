@@ -72,7 +72,6 @@ private fun SubAgentStatusRow(agent: SubAgentContextStats) {
             Column {
                 Text(
                     text = agent.contextLabel(context),
-                    style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )

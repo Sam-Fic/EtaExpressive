@@ -205,7 +205,6 @@ private fun TrashRow(
                 content = {
                     M3Text(
                         text = conversation.title,
-                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -214,8 +213,6 @@ private fun TrashRow(
                 supportingContent = {
                     M3Text(
                         text = conversation.timeLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

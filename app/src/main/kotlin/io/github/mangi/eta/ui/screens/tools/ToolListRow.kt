@@ -68,10 +68,10 @@ internal fun ToolListRow(
         },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                // 描述行走 supportingContent 槽位默认（bodyMedium + onSurfaceVariant）；
+                // 下面两行是更小的元数据，才显式给 bodySmall。
                 M3Text(
                     text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = secondaryColor,
                 )
                 requirementText?.let {
                     M3Text(
@@ -123,7 +123,7 @@ internal fun ToolListRow(
             }
         },
         content = {
-            M3Text(text = tool.title, style = MaterialTheme.typography.bodyLarge)
+            M3Text(text = tool.title)
         },
     )
 }

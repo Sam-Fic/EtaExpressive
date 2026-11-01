@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,10 +40,7 @@ private fun M3PreferenceRow(
     val rowModifier = modifier.alpha(if (enabled) 1f else M3DisabledAlpha)
     val supporting: (@Composable () -> Unit)? = summary?.let { text ->
         {
-            Text(
-                text = text,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text(text = text)
         }
     }
     if (onClick != null) {

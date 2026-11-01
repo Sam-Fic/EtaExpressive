@@ -344,11 +344,10 @@ private fun OverviewStatsGroup(stats: UsageStatsSnapshot) {
 private fun StatValueRow(icon: ImageVector, label: String, value: String) {
     EtaSegmentedRow(
         leadingContent = { PreferenceIcon(icon = icon) },
-        content = { M3Text(text = label, style = MaterialTheme.typography.bodyLarge) },
+        content = { M3Text(text = label) },
         trailingContent = {
             M3Text(
                 text = value,
-                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -447,12 +446,10 @@ private fun UsageFilterGroup(
                 onClick = {
                     expanded = !expanded
                 },
-                content = { M3Text(text = titleText, style = MaterialTheme.typography.bodyLarge) },
+                content = { M3Text(text = titleText) },
                 supportingContent = {
                     M3Text(
                         text = summary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                     )
                 },
@@ -546,12 +543,10 @@ private fun UsageBoundRow(
 ) {
     EtaSegmentedRow(
         onClick = { onClick() },
-        content = { M3Text(text = label, style = MaterialTheme.typography.bodyLarge) },
+        content = { M3Text(text = label) },
         supportingContent = {
             M3Text(
                 text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         trailingContent = {
@@ -676,11 +671,10 @@ private fun modelMetricDetails(model: ModelUsageModelUi): List<Pair<Int, String>
 @Composable
 private fun MetricRow(label: String, value: String) {
     EtaSegmentedRow(
-        content = { M3Text(text = label, style = MaterialTheme.typography.bodyLarge) },
+        content = { M3Text(text = label) },
         trailingContent = {
             M3Text(
                 text = value,
-                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -708,7 +702,7 @@ private fun ProviderUsageGroup(
                         onToggle(key)
                     },
                     content = {
-                        M3Text(text = model.displayName, style = MaterialTheme.typography.bodyLarge)
+                        M3Text(text = model.displayName)
                     },
                     trailingContent = {
                         Icon(

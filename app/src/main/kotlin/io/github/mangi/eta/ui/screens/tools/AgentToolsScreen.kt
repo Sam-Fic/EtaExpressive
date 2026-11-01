@@ -189,8 +189,6 @@ private fun ToolCapabilityHeaderRow(
             // 摘要完整显示，不省略：卡片头是「这组工具是什么」的唯一说明处。
             M3Text(
                 text = capability.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         content = { M3Text(text = capability.title) },

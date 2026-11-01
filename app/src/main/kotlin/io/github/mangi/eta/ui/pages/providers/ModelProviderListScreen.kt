@@ -533,7 +533,6 @@ private fun ProviderListItem(
         content = {
             M3Text(
                 text = provider.name,
-                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -543,8 +542,6 @@ private fun ProviderListItem(
             Column {
                 M3Text(
                     text = provider.baseUrl,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

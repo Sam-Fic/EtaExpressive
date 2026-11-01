@@ -345,7 +345,6 @@ internal fun SubAgentProfileConfigDialog(
                                 ) {
                                     Text(
                                         text = session.name.ifBlank { stringResource(R.string.sap_name) },
-                                        style = MaterialTheme.typography.bodyLarge,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                     )

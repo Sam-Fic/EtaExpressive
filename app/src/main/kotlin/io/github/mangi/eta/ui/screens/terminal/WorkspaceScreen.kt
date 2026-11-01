@@ -378,8 +378,6 @@ private fun LazyListScope.materialWorkspaceItems(
                     supportingContent = {
                         M3Text(
                             text = stringResource(R.string.capability_workspace_private_summary),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
                 )
@@ -470,8 +468,6 @@ private fun LazyListScope.materialWorkspaceItems(
                         supportingContent = {
                             M3Text(
                                 text = stringResource(R.string.capability_workspace_parent),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
                     )
@@ -519,7 +515,7 @@ private fun LazyListScope.materialWorkspaceItems(
                                 )
                             },
                             content = {
-                                M3Text(text = entry.name, style = MaterialTheme.typography.bodyLarge)
+                                M3Text(text = entry.name)
                             },
                             supportingContent = {
                                 M3Text(
@@ -528,8 +524,6 @@ private fun LazyListScope.materialWorkspaceItems(
                                     } else {
                                         Formatter.formatShortFileSize(context, entry.size)
                                     },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             },
                             trailingContent = {

@@ -485,8 +485,6 @@ private fun LazyListScope.materialLinuxFileItems(
                         supportingContent = {
                             M3Text(
                                 text = stringResource(R.string.capability_workspace_parent),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
                     )
@@ -673,11 +671,7 @@ internal fun EtaFileRow(
 ) {
     val supporting: (@Composable () -> Unit)? = summary?.let {
         {
-            M3Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            M3Text(text = it)
         }
     }
     val leading: @Composable () -> Unit = {
@@ -696,7 +690,7 @@ internal fun EtaFileRow(
         leadingContent = leading,
         trailingContent = trailingActions,
         content = {
-            M3Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            M3Text(text = title)
         },
         supportingContent = supporting,
     )

@@ -197,7 +197,6 @@ private fun ManageFolderRow(
                 content = {
                     M3Text(
                         text = folder.name,
-                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -206,8 +205,6 @@ private fun ManageFolderRow(
                 supportingContent = {
                     M3Text(
                         text = countLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

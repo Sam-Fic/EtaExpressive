@@ -597,8 +597,6 @@ private fun McpDestructiveRow(
         supportingContent = {
             M3Text(
                 text = summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
     )

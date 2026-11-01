@@ -445,7 +445,6 @@ private fun SubAgentProfileHeaderRow(
     ) {
         Text(
             text = profile.name,
-            style = MaterialTheme.typography.bodyLarge,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
