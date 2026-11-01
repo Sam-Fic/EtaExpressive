@@ -83,7 +83,6 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.components.LocalShellTopBarInset
-import io.github.mangi.eta.ui.components.RemoteConnectionBanner
 import io.github.mangi.eta.ui.HapticsSettingsScreen
 import io.github.mangi.eta.ui.ErrorReconnectSettingsScreen
 import io.github.mangi.eta.ui.ContextCompressionSettingsScreen
@@ -552,6 +551,13 @@ fun AgentAppRoot(
         underlapTopBar: Boolean = false,
         content: @Composable () -> Unit,
     ) {
+        // 「+」新建远程会话的落位：服务端建好并把新会话置为 current 后，这里把聊天视图
+        // 切到新会话（不收起侧栏，与本机新建同口径；不再发 switch_session——服务端已切好）。
+        LaunchedEffect(Unit) {
+            appViewModel.remoteCoordinator.newSessionReady.collect { target ->
+                agentState.selectRemoteTarget(target)
+            }
+        }
         CompositionLocalProvider(
             // 半遮住时页面还在组合里。保持实时消息，让露出的字继续长；
             // 完全盖住后导航会把这一页移出组合，不再绘制。
@@ -571,7 +577,18 @@ fun AgentAppRoot(
             onOpenConversationPane = { conversationPaneOpen = true },
             onToggleConversationPane = { conversationPaneOpen = !conversationPaneOpen },
             onDismissConversationPane = { conversationPaneOpen = false },
-            onNewConversation = { createConversation() },
+            onNewConversation = {
+                // 「+」按胶囊分流：远程胶囊选中时新建的是那台服务器上的会话；
+                // 本机作用域（本机/未分类/文件夹）才建本机聊天。
+                val remoteServerId = agentState.selectedRemoteServerId
+                if (remoteServerId != null && appViewModel.remoteCoordinator.servers.any { it.id == remoteServerId }) {
+                    appViewModel.remoteCoordinator.requestNewSession(remoteServerId)
+                } else {
+                    // 处于远程会话时新建本机聊天须落回 Local，否则视图仍钉在远程状态上。
+                    agentState.selectLocalTarget()
+                    createConversation()
+                }
+            },
             onOpenTerminal = { pushRoute(AppRoute.Terminal) },
             onLaunchKimiWeb = {
                 requestExecutionNotifications()
@@ -658,6 +675,8 @@ fun AgentAppRoot(
                 keyboard?.hide()
                 val target = io.github.mangi.eta.ui.remote.ChatTarget.Remote(serverId, path)
                 val remoteCoordinator = appViewModel.remoteCoordinator
+                // 显式选择会话行：丢弃挂起中的新建请求，避免稍后的落位把这次选择顶掉。
+                remoteCoordinator.consumeNewSessionRequest()
                 val serverCurrent = remoteCoordinator.sessionsById[serverId]?.current
                 if (serverCurrent != null && serverCurrent != path) {
                     remoteSwitchTarget = target
@@ -667,6 +686,9 @@ fun AgentAppRoot(
                 }
             },
             onOpenRemoteSettings = { pushFromDrawer(AppRoute.RemoteAgents) },
+            // 侧栏胶囊行的远程服务器过滤器：与文件夹选中同一层——只切列表，不切聊天视图。
+            selectedRemoteServerId = agentState.selectedRemoteServerId,
+            onSelectRemoteServer = { agentState.selectRemoteServerPane(it) },
         ) { padding ->
             // M3 对话页让消息列表延伸到顶栏背后，滚入的部分由顶栏渐变板淡出；
             // 顶栏高度经 LocalShellTopBarInset 交给列表做顶部 contentPadding。
@@ -736,9 +758,14 @@ fun AgentAppRoot(
                 RoutedShell(route = AppRoute.Home, underlapTopBar = true) {
                     // 远程会话只有「服务器上那个助手」一个，本机无法切换。
                     // 把名字往下传（CompositionLocal），助手列表据此只显示这一项。
+                    // 重连/失败状态一并下传：断线期间输入框胶囊整体变成状态胶囊。
+                    val remoteComposerStatus = remoteComposerStatusOf(coordinator, remote) {
+                        pushRoute(AppRoute.RemoteAgents)
+                    }
                     androidx.compose.runtime.CompositionLocalProvider(
                         io.github.mangi.eta.ui.remote.LocalRemoteAgentName provides
                             remoteAgentNameOf(coordinator, remote),
+                        io.github.mangi.eta.ui.remote.LocalRemoteComposerStatus provides remoteComposerStatus,
                     ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     AgentHomeScreen(
@@ -827,16 +854,6 @@ fun AgentAppRoot(
                         sentUserMessageEntranceId = if (remote != null) null else agentState.sentUserMessageEntranceId,
                         onSentUserMessageEntranceConsumed = agentState::consumeSentUserMessageEntrance,
                     )
-                    if (remote != null) {
-                        RemoteConnectionBanner(
-                            serverName = coordinator.servers.find { it.id == remote.serverId }?.name.orEmpty(),
-                            status = coordinator.statusOf(remote.serverId),
-                            onRetry = { coordinator.retry(remote.serverId) },
-                            onOpenSettings = { pushRoute(AppRoute.RemoteAgents) },
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = LocalShellTopBarInset.current),
-                        )
                     }
                     }
                     }
@@ -846,11 +863,14 @@ fun AgentAppRoot(
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 RoutedShell(route = AppRoute.Chat, underlapTopBar = true) {
-                    // 远程会话只有「服务器上那个助手」一个，本机无法切换。
-                    // 把名字往下传（CompositionLocal），助手列表据此只显示这一项。
+                    // 重连/失败状态一并下传：断线期间输入框胶囊整体变成状态胶囊。
+                    val remoteComposerStatus = remoteComposerStatusOf(coordinator, remote) {
+                        pushRoute(AppRoute.RemoteAgents)
+                    }
                     androidx.compose.runtime.CompositionLocalProvider(
                         io.github.mangi.eta.ui.remote.LocalRemoteAgentName provides
                             remoteAgentNameOf(coordinator, remote),
+                        io.github.mangi.eta.ui.remote.LocalRemoteComposerStatus provides remoteComposerStatus,
                     ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     AgentChatScreen(
@@ -935,16 +955,6 @@ fun AgentAppRoot(
                         sentUserMessageEntranceId = if (remote != null) null else agentState.sentUserMessageEntranceId,
                         onSentUserMessageEntranceConsumed = agentState::consumeSentUserMessageEntrance,
                     )
-                    if (remote != null) {
-                        RemoteConnectionBanner(
-                            serverName = coordinator.servers.find { it.id == remote.serverId }?.name.orEmpty(),
-                            status = coordinator.statusOf(remote.serverId),
-                            onRetry = { coordinator.retry(remote.serverId) },
-                            onOpenSettings = { pushRoute(AppRoute.RemoteAgents) },
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = LocalShellTopBarInset.current),
-                        )
                     }
                     }
                     }
@@ -1832,6 +1842,31 @@ private fun remoteAgentNameOf(
     remote: io.github.mangi.eta.ui.remote.ChatTarget.Remote?,
 ): String? = remote?.let { target ->
     coordinator.servers.firstOrNull { it.id == target.serverId }?.name?.trim().orEmpty()
+}
+
+/**
+ * 输入框胶囊的重连/失败状态；正常连接（含首次连接中）返回 `null`。
+ * `statusOf` 读的是 Compose 状态映射，在组合里调用即随连接状态实时重组，
+ * 不需要额外的订阅管道。
+ */
+private fun remoteComposerStatusOf(
+    coordinator: io.github.mangi.eta.ui.remote.RemoteCoordinator,
+    remote: io.github.mangi.eta.ui.remote.ChatTarget.Remote?,
+    onOpenSettings: () -> Unit,
+): io.github.mangi.eta.ui.remote.RemoteComposerStatus? = remote?.let { target ->
+    val status = coordinator.statusOf(target.serverId)
+    when (status) {
+        is io.github.mangi.eta.agent.remote.RemoteConnectionStatus.Reconnecting,
+        is io.github.mangi.eta.agent.remote.RemoteConnectionStatus.Failed,
+        ->
+            io.github.mangi.eta.ui.remote.RemoteComposerStatus(
+                status = status,
+                serverName = coordinator.servers.find { it.id == target.serverId }?.name.orEmpty(),
+                onRetry = { coordinator.retry(target.serverId) },
+                onOpenSettings = onOpenSettings,
+            )
+        else -> null
+    }
 }
 
 @Composable

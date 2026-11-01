@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.remote
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
 
 /**
  * 当前聊天视图挂在哪个远程智能体上；值是用户给这台远程起的名字。
@@ -15,3 +16,20 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * 为传一个名字加五个参数不值当。
  */
 internal val LocalRemoteAgentName = staticCompositionLocalOf<String?> { null }
+
+/**
+ * 输入框胶囊的重连/失败状态变体；`null` = 正常输入框。
+ *
+ * 仅 [RemoteConnectionStatus.Reconnecting] 与 [RemoteConnectionStatus.Failed] 会走到
+ * 这里（与原顶部横幅同口径）：断线期间整颗输入框胶囊让位给状态胶囊，提示语顶替
+ * 输入框、麦克风圆位换成 LoadingIndicator / 重试。走 CompositionLocal 的理由与
+ * [LocalRemoteAgentName] 相同——隔着五层只做转发，不值得为它加五个参数。
+ */
+internal data class RemoteComposerStatus(
+    val status: RemoteConnectionStatus,
+    val serverName: String,
+    val onRetry: () -> Unit,
+    val onOpenSettings: () -> Unit,
+)
+
+internal val LocalRemoteComposerStatus = staticCompositionLocalOf<RemoteComposerStatus?> { null }

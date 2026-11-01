@@ -300,7 +300,7 @@
   <string name="drawer_greeting_afternoon">下午好 👋</string>
   <string name="drawer_greeting_evening">晚上好 👋</string>
   <string name="drawer_greeting_night">夜深了，注意休息 👋</string>
-  <string name="drawer_chats_chip">聊天</string>
+  <string name="drawer_chats_chip">本機</string>
   <string name="drawer_uncategorized_chip">未分類</string>
   <string name="drawer_new_chat">新建</string>
   <string name="drawer_manage_chats">管理聊天</string>
@@ -1717,7 +1717,6 @@
   <string name="remote_agents_status_failed">連線失敗</string>
   <string name="remote_agents_status_disconnected">未連線</string>
   <string name="remote_agents_footer">遠端智慧體透過區域網路明文連線。存取權杖只能阻擋同一網路中的陌生連線，並不會加密流量。請只新增你信任的伺服器。</string>
-  <string name="drawer_remote_section">遠端</string>
   <string name="drawer_remote_open_settings">管理遠端伺服器</string>
   <string name="remote_banner_reconnecting">正在重連 %1$s（第 %2$d 次）…</string>
   <string name="remote_banner_failed">無法連接到 %1$s</string>

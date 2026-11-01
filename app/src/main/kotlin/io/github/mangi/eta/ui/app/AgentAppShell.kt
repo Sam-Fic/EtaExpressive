@@ -122,6 +122,8 @@ internal fun AgentAppShell(
     remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
     onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
     onOpenRemoteSettings: () -> Unit = {},
+    selectedRemoteServerId: String? = null,
+    onSelectRemoteServer: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -263,6 +265,8 @@ internal fun AgentAppShell(
                 remoteSection = remoteSection,
                 onSelectRemoteSession = onSelectRemoteSession,
                 onOpenRemoteSettings = onOpenRemoteSettings,
+                selectedRemoteServerId = selectedRemoteServerId,
+                onSelectRemoteServer = onSelectRemoteServer,
             ) {
                 pageContent()
             }

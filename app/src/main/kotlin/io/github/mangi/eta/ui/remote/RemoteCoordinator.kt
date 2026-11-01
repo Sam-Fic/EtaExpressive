@@ -26,6 +26,9 @@ import io.github.mangi.eta.ui.model.RemotePaneServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -38,6 +41,12 @@ sealed interface ChatTarget {
     data object Local : ChatTarget
     data class Remote(val serverId: String, val path: String) : ChatTarget
 }
+
+/**
+ * 「+」新建远程会话的挂起请求：记录目标服务器与发出请求时的 current。
+ * sessions 帧给同一服务器带回**不同的** current，即视为服务端已建好并切到新会话。
+ */
+data class NewSessionRequest(val serverId: String, val previousCurrent: String?)
 
 /**
  * Process-singleton hub for remote agent connections, mounted on `AgentSessionHost`.
@@ -87,6 +96,16 @@ internal class RemoteCoordinator(
     /** Per-server switchable model list + current spec; drives the remote model picker. */
     val modelsById = mutableStateMapOf<String, RemoteModelsState>()
 
+    /**
+     * 「+」新建远程会话：请求中的服务器及其发出请求时的 current；解析完成后清除。
+     * 私有——解析由 [resolveNewSessionRequest] 在 sessions 流上完成，UI 只听 [newSessionReady]。
+     */
+    private var newSessionRequest: NewSessionRequest? by mutableStateOf(null)
+
+    /** 解析完成的新会话落位目标；由 AgentAppRoot 收集并切 selectedTarget（服务端已切好，无需再发 switch_session）。 */
+    private val _newSessionReady = MutableSharedFlow<ChatTarget.Remote>(extraBufferCapacity = 1)
+    val newSessionReady: SharedFlow<ChatTarget.Remote> = _newSessionReady.asSharedFlow()
+
     private val drafts = mutableMapOf<String, TextFieldState>()
     private var configJob: Job? = null
 
@@ -134,7 +153,12 @@ internal class RemoteCoordinator(
         val session = adapter.open(config, scope) { event -> holder.onEvent(event) }
         holder.attach(session)
         val statusJob = scope.launch { session.status.collect { statusById[config.id] = it } }
-        val sessionsJob = scope.launch { holder.sessions.collect { sessionsById[config.id] = it } }
+        val sessionsJob = scope.launch {
+            holder.sessions.collect {
+                sessionsById[config.id] = it
+                resolveNewSessionRequest(config.id, it.current)
+            }
+        }
         val modelsJob = scope.launch { holder.models.collect { modelsById[config.id] = it } }
         connections[config.id] = Connection(config, session, holder, statusJob, sessionsJob, modelsJob)
         statusById[config.id] = session.status.value
@@ -232,6 +256,38 @@ internal class RemoteCoordinator(
     }
 
     fun conversationKey(target: ChatTarget.Remote): String = "remote:${target.serverId}:${target.path}"
+
+    /**
+     * 「+」新建远程会话：发 new_session 帧，等服务端把新会话置为 current 后经
+     * [newSessionReady] 通知落位（服务端已切好，落位无需再发 switch_session）。
+     * 帧送不出去（断连）时清请求并在转录本上留提示；旧版服务端会静默忽略未知帧，
+     * 请求挂住无表现（两端同步升级，可接受）。
+     */
+    fun requestNewSession(serverId: String) {
+        val connection = connections[serverId] ?: return
+        newSessionRequest = NewSessionRequest(serverId, sessionsById[serverId]?.current)
+        scope.launch {
+            val delivered = runCatching { connection.session.newSession() }.getOrDefault(false)
+            if (!delivered && newSessionRequest?.serverId == serverId) {
+                newSessionRequest = null
+                connection.holder.notice("新建会话失败：与远程服务器的连接不可用", isError = true)
+            }
+        }
+    }
+
+    /** 显式点了某个会话行：丢弃挂起中的新建请求，避免稍后的落位把用户刚点的选择顶掉。 */
+    fun consumeNewSessionRequest() {
+        newSessionRequest = null
+    }
+
+    /** sessions 帧命中挂起请求且 current 已变化：清请求并广播落位目标。 */
+    private fun resolveNewSessionRequest(serverId: String, current: String?) {
+        val request = newSessionRequest ?: return
+        if (request.serverId != serverId) return
+        if (current == null || current == request.previousCurrent) return
+        newSessionRequest = null
+        _newSessionReady.tryEmit(ChatTarget.Remote(serverId, current))
+    }
 
     /**
      * Open (lazily already-connected) a remote session. pi keeps ONE active session per

@@ -677,6 +677,14 @@ internal class AgentAppState(
     private var selectedFolderId: String? = null
     private var pendingNewConversationFolderId: String? = null
 
+    /**
+     * 侧栏列表过滤器：选中的远程服务器胶囊；null = 显示本机列表。
+     * 与 [selectedTarget]（聊天视图数据源）解耦——胶囊和文件夹一样只过滤列表，
+     * 不决定当前聊天渲染谁。与 [selectedFolderId] 互斥：选远程胶囊即退出本机作用域。
+     */
+    var selectedRemoteServerId: String? by mutableStateOf(null)
+        private set
+
     var homeState by mutableStateOf(
         selectedConversationId?.let(::conversationState) ?: emptyChatState(false)
     )
@@ -1503,6 +1511,7 @@ internal class AgentAppState(
             conversationCompletionMarkers = snapshot.completionMarkerIds - listOfNotNull(snapshot.selectedConversationId)
             conversationFolders = snapshot.folders
             selectedFolderId = null
+            selectedRemoteServerId = null
             pendingNewConversationFolderId = null
             fileAttachmentOwnerVersion += 1
             homeState = selectedConversationId
@@ -2253,7 +2262,16 @@ internal class AgentAppState(
     fun selectFolder(folderId: String?) {
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) return
         selectedFolderId = folderId
+        selectedRemoteServerId = null
         refreshConversationSummaries()
+    }
+
+    /**
+     * 选中侧栏里的远程服务器胶囊。不加 rejectConversationArchiveMutation 守卫：
+     * 这里只切换列表过滤器，不触碰任何会话数据，归档保护期间选中也应照常生效。
+     */
+    fun selectRemoteServerPane(serverId: String) {
+        selectedRemoteServerId = serverId
     }
 
     fun createFolder(name: String) {

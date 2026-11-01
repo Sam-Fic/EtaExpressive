@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -56,7 +57,9 @@ import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Share
@@ -71,6 +74,7 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Surface
@@ -120,6 +124,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
 import io.github.mangi.eta.agent.voice.VoiceEntryMode
 import io.github.mangi.eta.agent.voice.VoiceModePhase
 import io.github.mangi.eta.agent.voice.VoiceModeState
@@ -137,6 +142,8 @@ import io.github.mangi.eta.ui.model.AgentContextUsageUi
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.ConversationMentionInputUi
 import io.github.mangi.eta.ui.model.PendingFileReferenceUi
+import io.github.mangi.eta.ui.remote.RemoteComposerStatus
+import io.github.mangi.eta.ui.remote.remoteFailureText
 import io.github.mangi.eta.ui.model.PendingImageUi
 import io.github.mangi.eta.ui.model.QueuedMessageUi
 import java.time.LocalTime
@@ -280,6 +287,19 @@ internal fun Material3ComposerBody(
     onContinue: () -> Unit,
     onAbortPausedRun: () -> Unit,
 ) {
+    // 远程重连 / 失败：整颗输入框胶囊让位给状态胶囊——外形不变（36dp 同心圆角、官方
+    // ContainerSize 高），整颗换成状态色，提示语顶替输入框，麦克风圆位由 LoadingIndicator
+    // （重连中）/ 重试圆钮（失败）接管。队列条一并让位：断线期间本来就发不出去。
+    // 草稿按会话键存于 ComposerQueueStore / coordinator 草稿表，恢复连接后原样回来。
+    val remoteComposerStatus = io.github.mangi.eta.ui.remote.LocalRemoteComposerStatus.current
+    if (remoteComposerStatus != null) {
+        RemoteStatusComposerPill(
+            status = remoteComposerStatus,
+            onPositionedTopPx = onPositionedTopPx,
+            onToolbarHeightPx = onToolbarHeightPx,
+        )
+        return
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var attachMenuExpanded by remember { mutableStateOf(false) }
@@ -678,6 +698,125 @@ internal fun Material3ComposerBody(
  * （进入语音）就是同一套动效，而不是让整块胶囊各自淡入淡出。
  */
 private enum class ComposerTrailing { VOICE_ENTRY, SEND, VOICE_STOP }
+
+/**
+ * 断线期间的状态胶囊（远程重连 / 失败）：与正常输入框同一外形——[ComposerOuterCornerRadius]
+ * 外圆、官方 ContainerSize 高——整颗换成状态色（重连中 secondaryContainer、失败 errorContainer）。
+ * 提示语占输入框的位置；尾部圆位与麦克风圆钮同位同径（40dp 圆 + [ComposerConcentricGap] 内缩）：
+ * 重连中放官方 ContainedLoadingIndicator（圆容器转圈），失败换重试圆钮、左端盖给「服务器设置」入口。
+ * 测量回调（[onPositionedTopPx] / [onToolbarHeightPx]）照常上报，布局消费方不感知这次替换。
+ */
+@Composable
+private fun RemoteStatusComposerPill(
+    status: RemoteComposerStatus,
+    onPositionedTopPx: (Int) -> Unit,
+    onToolbarHeightPx: (Int) -> Unit,
+) {
+    val failed = status.status is RemoteConnectionStatus.Failed
+    val title: String
+    val reason: String?
+    when (val s = status.status) {
+        is RemoteConnectionStatus.Reconnecting -> {
+            title = stringResource(R.string.remote_banner_reconnecting, status.serverName, s.attempt)
+            reason = s.kind?.let { remoteFailureText(it, s.detail) }
+        }
+        is RemoteConnectionStatus.Failed -> {
+            title = stringResource(R.string.remote_banner_failed, status.serverName)
+            reason = remoteFailureText(s.kind, s.detail)
+        }
+        // 供应处已按重连/失败过滤；真到达这里就别渲染状态胶囊（防御性空退出）。
+        else -> return
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { onPositionedTopPx(it.positionInWindow().y.toInt()) }
+            .onSizeChanged { onToolbarHeightPx(it.height) },
+        shape = RoundedCornerShape(ComposerOuterCornerRadius),
+        color = if (failed) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        contentColor = if (failed) {
+            MaterialTheme.colorScheme.onErrorContainer
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(FloatingToolbarDefaults.ContainerSize),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Spacer(modifier = Modifier.width(ComposerConcentricGap))
+                if (failed) {
+                    // 左端盖同心：40dp 图标钮 + 8dp 内缩，与右侧圆位同一套几何。
+                    IconButton(
+                        onClick = status.onOpenSettings,
+                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Settings,
+                            contentDescription = stringResource(R.string.remote_banner_settings),
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        // 尾部给 40dp 圆位 + 两侧 8dp 同心内缩让位。
+                        .padding(end = ComposerConcentricGap * 2 + IconButtonDefaults.smallContainerSize().width),
+                ) {
+                    Text(
+                        text = title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    reason?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LocalContentColor.current.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            // 尾部同心圆位：与麦克风圆钮完全同位同径（40dp 圆 + 8dp 内缩）。
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = ComposerConcentricGap, bottom = ComposerConcentricGap),
+            ) {
+                if (failed) {
+                    FilledIconButton(
+                        onClick = status.onRetry,
+                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = stringResource(R.string.remote_banner_retry),
+                        )
+                    }
+                } else {
+                    // 圆容器色取 surfaceContainer（与输入框槽底色同档）、指示器 primary：
+                    // 在状态色胶囊上读作「原来圆钮的位置在转圈」。
+                    ContainedMorphLoadingIndicator(
+                        indicatorSize = IconButtonDefaults.smallContainerSize().width,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        indicatorColor = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    }
+}
 
 /** 工具栏内图标按钮之间的间距（官方浮动工具栏的容器间隔令牌值，4dp）。 */
 private val ComposerToolbarGap = 4.dp

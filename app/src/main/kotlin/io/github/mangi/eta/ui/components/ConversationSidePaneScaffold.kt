@@ -54,7 +54,6 @@ import androidx.compose.foundation.rememberScrollState
 import io.github.mangi.eta.ui.components.streamDiagnosticDraw
 import io.github.mangi.eta.ui.components.streamDiagnosticMeasure
 import io.github.mangi.eta.ui.components.streamDiagnosticPlacement
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -278,6 +277,8 @@ fun ConversationSidePaneScaffold(
     remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
     onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
     onOpenRemoteSettings: () -> Unit = {},
+    selectedRemoteServerId: String? = null,
+    onSelectRemoteServer: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -480,6 +481,8 @@ fun ConversationSidePaneScaffold(
                     remoteSection = remoteSection,
                     onSelectRemoteSession = onSelectRemoteSession,
                     onOpenRemoteSettings = onOpenRemoteSettings,
+                    selectedRemoteServerId = selectedRemoteServerId,
+                    onSelectRemoteServer = onSelectRemoteServer,
                     modifier = Modifier.fillMaxHeight(),
                 )
             }
@@ -684,6 +687,8 @@ private fun ConversationPanePanel(
     remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
     onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
     onOpenRemoteSettings: () -> Unit = {},
+    selectedRemoteServerId: String? = null,
+    onSelectRemoteServer: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val profiles by AssistantRepository.profiles.collectAsState()
@@ -717,6 +722,8 @@ private fun ConversationPanePanel(
         remoteSection = remoteSection,
         onSelectRemoteSession = onSelectRemoteSession,
         onOpenRemoteSettings = onOpenRemoteSettings,
+        selectedRemoteServerId = selectedRemoteServerId,
+        onSelectRemoteServer = onSelectRemoteServer,
         modifier = modifier,
     )
 }
@@ -799,6 +806,8 @@ private fun Material3ConversationPane(
     remoteSection: io.github.mangi.eta.ui.model.RemotePaneSection? = null,
     onSelectRemoteSession: (String, String) -> Unit = { _, _ -> },
     onOpenRemoteSettings: () -> Unit = {},
+    selectedRemoteServerId: String? = null,
+    onSelectRemoteServer: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 抽屉不再做标题过滤：搜索一律走与管理聊天页同一个全文搜索页（[onOpenSearchHistory]），
@@ -846,13 +855,18 @@ private fun Material3ConversationPane(
         ) {
             Spacer(modifier = Modifier.height(DrawerMetrics.TopInset))
 
-            // 胶囊行：左侧可横向滚动的「聊天 / 未分类 / [文件夹…]」，右侧固定「管理文件夹」。
+            // 胶囊行：左侧可横向滚动的「本机 / [远程…] / 未分类 / [文件夹…]」，右侧固定「管理文件夹」。
             // 行内混着两类高度：官方 ToggleButton 是纯 40dp 布局；走官方 Surface 的按钮
             // （FilledTonalButton、文件夹胶囊的 Surface）自带 48dp 最小触摸目标——布局被撑到
             // 48dp、40dp 可视区在内部居中，整行随之变 48dp，全部胶囊的可视中线整体下移 4dp，
             // 比首页顶栏（状态栏下 32dp）低一截。这里把行内的最小触摸目标统一到 40dp
             // （= 官方 ToggleButton 的布局高度），整行恢复 40dp，中线回到 12 + 20 = 32dp。
-            val chipCount = 2 + folders.size
+            // 远程服务器胶囊与文件夹胶囊同排：胶囊名 = 用户起的服务器名，前导是实时状态点。
+            // 选中哪台服务器，下方列表就只显示那台的状态卡与会话；本机作用域（本机/未分类/
+            // 文件夹）与远程胶囊互斥。服务器在设置页删除后这里自然回落本机（匹配不到即视为未选中）。
+            val remoteServers = remoteSection?.servers ?: emptyList()
+            val selectedRemoteServer = remoteServers.firstOrNull { it.id == selectedRemoteServerId }
+            val chipCount = 2 + folders.size + remoteServers.size
             val chipScrollState = rememberScrollState()
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 40.dp) {
             Row(
@@ -874,26 +888,38 @@ private fun Material3ConversationPane(
                     Material3DrawerChip(
                         text = stringResource(R.string.drawer_chats_chip),
                         position = drawerGroupPosition(chipIndex++, chipCount),
-                        selected = state.selectedFolderId == null,
+                        selected = selectedRemoteServer == null && state.selectedFolderId == null,
                         selectable = true,
                         leadingIcon = null,
                         onClick = { onSelectFolder(null) },
                     )
+                    // 远程服务器胶囊紧跟「本机」：设备与设备并排，一眼看出这是两台机器。
+                    remoteServers.forEach { server ->
+                        Material3DrawerChip(
+                            text = server.name,
+                            position = drawerGroupPosition(chipIndex++, chipCount),
+                            selected = selectedRemoteServer?.id == server.id,
+                            selectable = true,
+                            leadingContent = { RemoteStatusDot(server.status) },
+                            onClick = { onSelectRemoteServer(server.id) },
+                        )
+                    }
                     Material3DrawerChip(
                         text = stringResource(R.string.drawer_uncategorized_chip),
                         position = drawerGroupPosition(chipIndex++, chipCount),
-                        selected = state.selectedFolderId == UNCATEGORIZED_FOLDER_ID,
+                        selected = selectedRemoteServer == null &&
+                            state.selectedFolderId == UNCATEGORIZED_FOLDER_ID,
                         selectable = true,
                         leadingIcon = null,
                         onClick = { onSelectFolder(UNCATEGORIZED_FOLDER_ID) },
                     )
-                    // 文件夹胶囊与「聊天 / 未分类」同款官方 ToggleButton；
+                    // 文件夹胶囊与「本机 / 未分类」同款官方 ToggleButton；
                     // 重命名 / 删除只在文件夹管理页提供，这里长按不再弹菜单。
                     folders.forEach { folder ->
                         Material3DrawerChip(
                             text = folder.name,
                             position = drawerGroupPosition(chipIndex++, chipCount),
-                            selected = state.selectedFolderId == folder.id,
+                            selected = selectedRemoteServer == null && state.selectedFolderId == folder.id,
                             selectable = true,
                             leadingIcon = Icons.Rounded.Folder,
                             onClick = { onSelectFolder(folder.id) },
@@ -947,34 +973,25 @@ private fun Material3ConversationPane(
                     ),
                     overscrollEffect = null,
                 ) {
-                    remoteSection?.let { section ->
-                        if (section.servers.isNotEmpty()) {
-                            item(key = "remote-header", contentType = "drawer-section") {
-                                Material3DrawerSectionHeader(
-                                    label = stringResource(R.string.drawer_remote_section),
-                                    count = section.servers.size,
-                                )
-                            }
-                            items(
-                                items = section.servers,
-                                key = { server -> "remote-server-${server.id}" },
-                                contentType = { "drawer-remote-server" },
-                            ) { server ->
-                                RemoteServerGroup(
-                                    server = server,
-                                    selectedServerId = section.selectedServerId,
-                                    selectedPath = section.selectedPath,
-                                    onSelectSession = onSelectRemoteSession,
-                                    onOpenSettings = onOpenRemoteSettings,
-                                )
-                            }
+                    // 远程胶囊选中时列表只显示那台服务器的会话行（设备名与状态都在胶囊上，
+                    // 不再重复一张状态头；空列表时由 RemoteServerGroup 给一行状态占位），
+                    // 本机列表与空态占位一并不渲染。不再有常驻的「远程 · N」分区：入口就是胶囊本身。
+                    selectedRemoteServer?.let { server ->
+                        item(key = "remote-server-${server.id}", contentType = "drawer-remote-server") {
+                            RemoteServerGroup(
+                                server = server,
+                                selectedServerId = remoteSection?.selectedServerId,
+                                selectedPath = remoteSection?.selectedPath,
+                                onSelectSession = onSelectRemoteSession,
+                                onOpenSettings = onOpenRemoteSettings,
+                            )
                         }
                     }
-                    if (visibleConversations.isEmpty()) {
+                    if (visibleConversations.isEmpty() && selectedRemoteServer == null) {
                         item(contentType = "drawer-empty") {
                             Material3EmptyConversations()
                         }
-                    } else {
+                    } else if (selectedRemoteServer == null) {
                         groups.forEachIndexed { groupIndex, group ->
                             val isLastGroup = groupIndex == groups.lastIndex
                             item(key = group.key, contentType = "drawer-section") {
@@ -1103,6 +1120,7 @@ private fun Material3DrawerChip(
     selected: Boolean = false,
     selectable: Boolean = false,
     leadingIcon: ImageVector? = null,
+    leadingContent: (@Composable () -> Unit)? = null,
 ) {
     // 高度不覆盖，直接落在官方 Small 档（Button 与 ToggleButton 的 MinHeight 同档）。
     // 内容排布照官方 ButtonGroupSamples.kt：Icon → Spacer(IconSpacing) → Text。
@@ -1116,6 +1134,16 @@ private fun Material3DrawerChip(
                 contentDescription = null,
                 modifier = Modifier.size(ButtonDefaults.iconSizeFor(ToggleButtonDefaults.MinHeight)),
             )
+            Spacer(Modifier.size(ToggleButtonDefaults.IconSpacing))
+        } else if (leadingContent != null) {
+            // 自定义前导槽（远程胶囊放实时状态点）：与图标路径同一 20dp 槽位、同一间距，
+            // 带点胶囊与带图标胶囊等宽等高。10dp 的点在 20dp 槽内居中。
+            Box(
+                modifier = Modifier.size(ButtonDefaults.iconSizeFor(ToggleButtonDefaults.MinHeight)),
+                contentAlignment = Alignment.Center,
+            ) {
+                leadingContent()
+            }
             Spacer(Modifier.size(ToggleButtonDefaults.IconSpacing))
         }
         M3Text(
@@ -1825,7 +1853,9 @@ private fun ConversationSummaryUi.drawerSection(): ConversationDrawerSection = w
 }
 
 /**
- * 远程分组里的一台服务器：状态头（点击进设置页管理）+ 其会话行（点击切到该远程会话）。
+ * 远程胶囊选中后的列表：这台服务器的会话行（点击切到该远程会话）。设备名与连接状态
+ * 已由胶囊本身承载（名字 + 状态点），这里不再重复一张状态头。会话列表为空（从未连上 /
+ * 刚断开）时退化为一行状态占位：只有状态文本、不带设备名，点击进远程设置页。
  * 整组作为一个分段列表渲染，行距 / 圆角与本机会话行同一套官方分段令牌。
  */
 @Composable
@@ -1836,42 +1866,28 @@ private fun RemoteServerGroup(
     onSelectSession: (String, String) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val rowCount = 1 + server.sessions.size
-    Column(modifier = Modifier.fillMaxWidth()) {
-        EtaSegmentedItem(index = 0, count = rowCount) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = if (rowCount == 1) EtaSegmentedGroupSpacing else EtaSegmentedGap),
+    if (server.sessions.isEmpty()) {
+        EtaSegmentedItem(index = 0, count = 1) {
+            EtaSegmentedRow(
+                onClick = onOpenSettings,
+                choiceRow = true,
+                modifier = Modifier.fillMaxWidth(),
+                leadingContent = { RemoteStatusDot(server.status) },
             ) {
-                EtaSegmentedRow(
-                    onClick = onOpenSettings,
-                    choiceRow = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingContent = { RemoteStatusDot(server.status) },
-                    supportingContent = {
-                        M3Text(
-                            text = remoteStatusLabel(server.status),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                ) {
-                    M3Text(
-                        text = server.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                M3Text(
+                    text = remoteStatusLabel(server.status),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
+        return
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
         server.sessions.forEachIndexed { index, session ->
             val selected = selectedServerId == server.id && selectedPath == session.path
             val isGroupLast = index == server.sessions.lastIndex
-            EtaSegmentedItem(index = index + 1, count = rowCount) {
+            EtaSegmentedItem(index = index, count = server.sessions.size) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1889,10 +1905,11 @@ private fun RemoteServerGroup(
                         modifier = Modifier.fillMaxWidth(),
                         supportingContent = session.modified.takeIf { it.isNotBlank() }?.let { modified ->
                             {
+                                // 字号 / 配色全部走官方 SegmentedListItem 槽位默认：
+                                // 标题 bodyLarge、副文本 bodyMedium + onSurfaceVariant，
+                                // 与本机会话行同一套（此前显式 bodyMedium 把标题压小了）。
                                 M3Text(
                                     text = modified,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -1901,7 +1918,6 @@ private fun RemoteServerGroup(
                     ) {
                         M3Text(
                             text = remoteSessionTitle(session),
-                            style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -1920,7 +1936,11 @@ private fun remoteSessionTitle(session: RemoteSessionInfo): String =
 @Composable
 private fun RemoteStatusDot(status: RemoteConnectionStatus) {
     val color = when (status) {
-        RemoteConnectionStatus.Connected -> MaterialTheme.colorScheme.primary
+        // 已连接不用 primary：它与胶囊选中态（primaryContainer 一族）同源，pi 胶囊
+        // 被选中时点会融进选中底色里。改用官方 vibrant FAB 容器色——即抽屉工具栏
+        // 新建按钮的绿：与选中紫拉开距离，语义上也是通行的「在线」信号色。
+        RemoteConnectionStatus.Connected ->
+            FloatingToolbarDefaults.vibrantFloatingToolbarColors().fabContainerColor
         RemoteConnectionStatus.Connecting, is RemoteConnectionStatus.Reconnecting ->
             MaterialTheme.colorScheme.tertiary
         is RemoteConnectionStatus.Failed -> MaterialTheme.colorScheme.error

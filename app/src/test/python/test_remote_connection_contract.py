@@ -57,7 +57,7 @@ class RemoteConnectionContractTest(unittest.TestCase):
 
     def test_failure_reason_reaches_every_status_surface(self):
         screen = read(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
-        banner = read(KOTLIN / "ui/components/RemoteConnectionBanner.kt")
+        composer = read(KOTLIN / "ui/components/AgentChatComposerM3.kt")
         pane = read(KOTLIN / "ui/components/ConversationSidePaneScaffold.kt")
         shared = read(KOTLIN / "ui/remote/RemoteStatusText.kt")
         # 失败性质挂在状态上，取文案只有一个入口——否则三种语言会各说各话。
@@ -67,7 +67,9 @@ class RemoteConnectionContractTest(unittest.TestCase):
         # 三个状态出口都必须经过那个入口，不能自己拼一句「连接失败」。
         self.assertIn("remoteStatusLabel(status)", screen)
         self.assertIn("remoteStatusLabel(", pane)
-        self.assertIn("remoteFailureText(", banner)
+        # 断线提示已并入输入框状态胶囊（RemoteStatusComposerPill），不再是顶部横幅。
+        self.assertIn("RemoteStatusComposerPill(", composer)
+        self.assertIn("remoteFailureText(", composer)
 
     def test_supervisor_never_lets_a_malformed_url_escape(self):
         source = read(KOTLIN / "agent/remote/RemoteConnectionSupervisor.kt")

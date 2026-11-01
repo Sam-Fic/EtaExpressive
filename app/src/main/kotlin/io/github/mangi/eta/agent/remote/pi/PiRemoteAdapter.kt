@@ -301,6 +301,13 @@ private class PiRemoteSession(
         supervisor.send(buildJsonObject { put("type", "set_model"); put("spec", spec) }.toString())
     }
 
+    // 与 pi-remote 服务端的 new_session 操作配对（协议随 Eta 扩展的一部分）：
+    // 服务端走 /new 同一条通路（cancelPendingPrompts + ctx.newSession），
+    // 随后的 reset + snapshot + sessions 帧把客户端带到新会话上。
+    override suspend fun newSession(): Boolean {
+        return supervisor.send(buildJsonObject { put("type", "new_session") }.toString())
+    }
+
     override suspend fun switchSession(path: String) {
         supervisor.send(buildJsonObject { put("type", "switch_session"); put("path", path) }.toString())
     }

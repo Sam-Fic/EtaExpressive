@@ -38,6 +38,16 @@ interface RemoteSession {
     suspend fun answerPrompt(id: String, value: String?)
     suspend fun interrupt()
     suspend fun setModel(spec: String)
+
+    /**
+     * Start a brand-new session server-side. The server answers by making it the
+     * active session: a reset + snapshot rebuild the transcript and the next
+     * `sessions` frame carries the new path as `current`.
+     *
+     * Returns false when the frame could not be handed to the socket (disconnected),
+     * like [sendMessage].
+     */
+    suspend fun newSession(): Boolean
     suspend fun switchSession(path: String)
     suspend fun deleteSession(path: String)
     suspend fun listSessions()

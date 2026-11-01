@@ -293,7 +293,7 @@
   <string name="drawer_greeting_afternoon">下午好 👋</string>
   <string name="drawer_greeting_evening">晚上好 👋</string>
   <string name="drawer_greeting_night">夜深了，注意休息 👋</string>
-  <string name="drawer_chats_chip">聊天</string>
+  <string name="drawer_chats_chip">本机</string>
   <string name="drawer_uncategorized_chip">未分类</string>
   <string name="drawer_new_chat">新建</string>
   <string name="drawer_manage_chats">管理聊天</string>
@@ -1709,7 +1709,6 @@
   <string name="remote_agents_status_failed">连接失败</string>
   <string name="remote_agents_status_disconnected">未连接</string>
   <string name="remote_agents_footer">远程智能体通过局域网明文连接。访问令牌只能拦截同一网络里的陌生连接，并不加密流量。请只添加你信任的服务器。</string>
-  <string name="drawer_remote_section">远程</string>
   <string name="drawer_remote_open_settings">管理远程服务器</string>
   <string name="remote_banner_reconnecting">正在重连 %1$s（第 %2$d 次）…</string>
   <string name="remote_banner_failed">无法连接到 %1$s</string>

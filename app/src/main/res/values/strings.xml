@@ -265,7 +265,7 @@
   <string name="drawer_greeting_afternoon">Good afternoon 👋</string>
   <string name="drawer_greeting_evening">Good evening 👋</string>
   <string name="drawer_greeting_night">It\'s late, take care 👋</string>
-  <string name="drawer_chats_chip">Chats</string>
+  <string name="drawer_chats_chip">This device</string>
   <string name="drawer_uncategorized_chip">Uncategorized</string>
   <string name="drawer_new_chat">New</string>
   <string name="drawer_manage_chats">Manage chats</string>
@@ -1701,7 +1701,6 @@
   <string name="remote_agents_status_failed">Connection failed</string>
   <string name="remote_agents_status_disconnected">Disconnected</string>
   <string name="remote_agents_footer">Remote agents connect over your local network in plaintext. The access token only blocks strangers on the same network; it does not encrypt traffic. Only add servers you trust.</string>
-  <string name="drawer_remote_section">Remote</string>
   <string name="drawer_remote_open_settings">Manage remote servers</string>
   <string name="remote_banner_reconnecting">Reconnecting to %1$s (attempt %2$d)…</string>
   <string name="remote_banner_failed">Can\'t reach %1$s</string>
