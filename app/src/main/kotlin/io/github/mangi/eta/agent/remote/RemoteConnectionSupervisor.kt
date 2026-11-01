@@ -30,7 +30,10 @@ import okio.ByteString
  * and stops. The same terminal treatment applies to failures that cannot heal
  * on their own (unresolvable host, the OS refusing LAN access); recoverable ones
  * (timeouts, refused connections) keep retrying but carry the *kind* of failure
- * so the UI can say what is actually wrong — see [RemoteFailure].
+ * so the UI can say what is actually wrong — see [RemoteFailure]. Recoverable
+ * failures give up after [MAX_RECONNECT_ATTEMPTS] attempts and surface Failed
+ * too: reviving is the user's call (manual retry, or picking a session, both
+ * re-open the whole connection with a fresh attempt counter).
  *
  * All callbacks are marshalled onto [scope] (Main.immediate) so the UI bridge
  * folds events on the main thread without its own synchronization.
@@ -117,6 +120,16 @@ internal class RemoteConnectionSupervisor(
         val currentAttempt = attempt
         if (kind != null) lastKind = kind
         if (detail != null) lastDetail = detail
+        if (currentAttempt > MAX_RECONNECT_ATTEMPTS) {
+            // 重试上限：自动重连就此收手，判成「断开」（Failed 挂着最后一次失败的性质）。
+            // 再往下只是无限转圈；复活交给用户——状态胶囊上的重试钮、或点一个会话行，
+            // 都会整颗拆掉本监管器重开连接（attempt 随之归零）。
+            reconnectJob?.cancel()
+            reconnectJob = null
+            AndroidAgentLogger.warn("Remote WS reconnect gave up after $currentAttempt attempts: $lastKind ($lastDetail)")
+            postStatus(RemoteConnectionStatus.Failed(lastKind, lastDetail))
+            return
+        }
         postStatus(RemoteConnectionStatus.Reconnecting(currentAttempt, lastKind, lastDetail))
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
@@ -212,6 +225,9 @@ internal class RemoteConnectionSupervisor(
         private const val HTTP_NOT_FOUND = 404
         private const val MIN_BACKOFF_MS = 1_000L
         private const val MAX_BACKOFF_MS = 30_000L
+
+        /** 自动重连的尝试上限；到顶判死（Failed），复活只能靠用户手动重试或切换会话。 */
+        private const val MAX_RECONNECT_ATTEMPTS = 5
 
         /** Exponential backoff capped at [MAX_BACKOFF_MS]; attempt is 1-based. */
         internal fun backoffMs(attempt: Int): Long {

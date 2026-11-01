@@ -80,6 +80,10 @@ class RemoteConnectionContractTest(unittest.TestCase):
         self.assertIn("RemoteFailure.kindOf(t)", source)
         self.assertIn("RemoteFailure.isTerminal(kind)", source)
         self.assertIn("failure.terminal", source)
+        # 可自愈的失败重试到上限也必须判死（Failed），不能无限转圈；
+        # 复活交给用户——胶囊重试钮或点会话行都会整颗重建监管器（计数归零）。
+        self.assertIn("MAX_RECONNECT_ATTEMPTS", source)
+        self.assertIn("RemoteConnectionStatus.Failed(lastKind, lastDetail)", source)
 
     def test_failure_classification_splits_connect_and_read_timeout(self):
         # 老实现把两种超时一律写成「确认手机与服务器连的是同一个局域网」，

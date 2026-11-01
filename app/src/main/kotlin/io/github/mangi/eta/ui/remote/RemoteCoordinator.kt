@@ -102,6 +102,9 @@ internal class RemoteCoordinator(
     val newSessionReady: SharedFlow<ChatTarget.Remote> = _newSessionReady.asSharedFlow()
 
     private val drafts = mutableMapOf<String, TextFieldState>()
+
+    /** 判死期间点下的目标会话（重连成功拿到 sessions 帧后补发切换，见 [resolvePendingSwitch]）。 */
+    private val pendingSwitchByServer = mutableMapOf<String, String>()
     private var configJob: Job? = null
 
     init {
@@ -154,6 +157,7 @@ internal class RemoteCoordinator(
             holder.sessions.collect {
                 sessionsById[config.id] = it
                 resolveNewSessionRequest(config.id, it.current)
+                resolvePendingSwitch(config.id, it.current)
             }
         }
         val modelsJob = scope.launch { holder.models.collect { modelsById[config.id] = it } }
@@ -168,6 +172,7 @@ internal class RemoteCoordinator(
         statusById.remove(serverId)
         sessionsById.remove(serverId)
         modelsById.remove(serverId)
+        pendingSwitchByServer.remove(serverId)
         if (connection == null) return
         connection.statusJob.cancel()
         connection.sessionsJob.cancel()
@@ -296,12 +301,28 @@ internal class RemoteCoordinator(
         _newSessionReady.tryEmit(ChatTarget.Remote(serverId, current))
     }
 
+    /** 判死期间点下的目标会话：重连成功拿到 sessions 帧后补发切换（服务端当前会话相同则免发）。 */
+    private fun resolvePendingSwitch(serverId: String, current: String?) {
+        val pending = pendingSwitchByServer.remove(serverId) ?: return
+        val connection = connections[serverId] ?: return
+        if (current != null && current != pending) {
+            scope.launch { connection.session.switchSession(pending) }
+        }
+    }
+
     /**
      * Open (lazily already-connected) a remote session. pi keeps ONE active session per
      * server, so switching is server-global; the caller shows the confirmation before this.
      */
     fun selectRemoteSession(target: ChatTarget.Remote) {
         val connection = connections[target.serverId] ?: return
+        // 自动重连到上限已判死的连接：切换会话本身就是「我要用了」的信号——重开连接，
+        // 记住目标路径，等重连成功后的 sessions 帧再补发切换（socket 没起来前发帧只会丢）。
+        if (statusById[target.serverId] is RemoteConnectionStatus.Failed) {
+            pendingSwitchByServer[target.serverId] = target.path
+            retry(target.serverId)
+            return
+        }
         if (sessionsById[target.serverId]?.current != target.path) {
             scope.launch { connection.session.switchSession(target.path) }
         }
