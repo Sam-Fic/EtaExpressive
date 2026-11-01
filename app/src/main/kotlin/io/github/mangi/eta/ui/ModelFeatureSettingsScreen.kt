@@ -10,12 +10,15 @@ import io.github.mangi.eta.agent.model.ModelFeature
 import io.github.mangi.eta.agent.model.ModelFeaturePreferences
 import io.github.mangi.eta.data.repository.ProviderRepository
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaNoticeBlockPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 
 @Composable
 internal fun ModelFeatureSettingsScreen(feature: ModelFeature, onBack: () -> Unit) {
@@ -42,9 +45,9 @@ internal fun ModelFeatureSettingsScreen(feature: ModelFeature, onBack: () -> Uni
             EtaText(
                 text = stringResource(if (vision) R.string.vision_feature_description else R.string.title_feature_description),
                 style = EtaTextStyle.Secondary,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                modifier = Modifier.padding(EtaNoticeBlockPadding),
             )
-            EtaSegmentedColumn(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp)) {
+            EtaSegmentedColumn(modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing)) {
                 item {
                     EtaSwitchRow(
                         title = stringResource(R.string.model_feature_custom),

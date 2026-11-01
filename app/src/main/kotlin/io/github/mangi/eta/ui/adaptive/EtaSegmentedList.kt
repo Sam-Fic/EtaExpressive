@@ -195,6 +195,9 @@ private val ActionRowVerticalCompensation = 4.dp
  * 纵向，左右仍取官方 16dp——否则动作行的文字起点会和勾选行错开。
  *
  * 取值随官方内边距一起走，精确指针模式下同样成立，不写死 14dp。
+ *
+ * 分段行默认已回归官方内边距，本值改为**显式补偿档**：目前只有对话流工作气泡
+ * （AgentWorkSegmentedBubble，行高锚点依赖它）在用。
  */
 internal val EtaActionRowPadding: PaddingValues
     get() = with(ListItemDefaults.ContentPadding) {
@@ -427,9 +430,9 @@ internal val EtaSegmentedGap: Dp = ListItemDefaults.SegmentedGap
  * 供需要自定义 leading/trailing/headline 的页面直接使用，避免各处重复写
  * `SegmentedListItem(shapes = …, colors = …)` 样板。
  *
- * 内边距按行类型默认分档：动作行（菜单、跳转、展开）用 [EtaActionRowPadding]；
- * 勾选 / 开关行（`choiceRow = true`）保持官方 [ListItemDefaults.ContentPadding]，
- * 不再额外补纵向留白。
+ * 内边距统一走官方 [ListItemDefaults.ContentPadding]，所有行类型一致，不再默认补偿。
+ * 需要纵向补偿的动作行（仅对话流工作气泡）显式传 [EtaActionRowPadding]。
+ * `choiceRow` 只是调用点的语义标注，不再影响布局。
  *
  * 勾选值需要反复翻转的多选行（勾选/取消勾选伴随官方选中形状 morph 与底色过渡）必须
  * 走 `checked`/`onCheckedChange`（官方 checked 变体，单调用点）；不要用 `selected`
@@ -461,10 +464,10 @@ fun EtaSegmentedRow(
     trailingContent: @Composable (() -> Unit)? = null,
     overlineContent: @Composable (() -> Unit)? = null,
     supportingContent: @Composable (() -> Unit)? = null,
-    // 勾选 / 开关行：保持官方内边距；动作行默认补一档上下留白。
+    // 语义标注：勾选 / 开关 / 单选行。内边距已统一官方默认，本参数不再影响布局；
+    // 保留参数是为了不动大量调用点，待侧栏等共用方空闲后再清理。
     choiceRow: Boolean = false,
-    contentPadding: PaddingValues =
-        if (choiceRow) ListItemDefaults.ContentPadding else EtaActionRowPadding,
+    contentPadding: PaddingValues = ListItemDefaults.ContentPadding,
     content: @Composable () -> Unit,
 ) {
     val shapes = etaSegmentedRowShapes()

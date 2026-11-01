@@ -32,8 +32,10 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.EtaText
@@ -84,7 +86,7 @@ fun AgentToolsScreen(
                 EtaText(
                     text = stringResource(R.string.tools_per_tool_switch_hint),
                     style = EtaTextStyle.Secondary,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = 8.dp),
                 )
             }
         }
@@ -123,7 +125,7 @@ private fun ToolCapabilityCard(
     if (capability.tools.isEmpty()) return
     var expanded by rememberSaveable { mutableStateOf(true) }
     EtaSegmentedColumn(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+        modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
     ) {
         item(key = "header") {
             ToolCapabilityHeaderRow(

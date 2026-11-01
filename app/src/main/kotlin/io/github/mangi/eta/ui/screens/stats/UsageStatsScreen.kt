@@ -56,8 +56,10 @@ import io.github.mangi.eta.data.repository.formatStatCount
 import io.github.mangi.eta.data.repository.formatTokenCount
 import io.github.mangi.eta.data.repository.heatmapAlpha
 import io.github.mangi.eta.data.repository.heatmapQuartiles
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
@@ -107,7 +109,7 @@ internal fun UsageStatsScreen(onBack: () -> Unit) {
                 onSelect = { selectedTab = it },
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 13.dp),
+                    .padding(bottom = EtaSegmentedGroupSpacing),
             )
         }
         if (stats.isLoading) {
@@ -230,7 +232,7 @@ private fun HeatmapCaption(
 @Composable
 private fun HeatmapGroup(conversationsPerDay: Map<LocalDate, Int>) {
     EtaSegmentedColumn(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+        modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
         title = stringResource(R.string.stats_page_heatmap_title),
     ) {
         item {
@@ -268,7 +270,7 @@ private fun HeatmapGroup(conversationsPerDay: Map<LocalDate, Int>) {
 /** 概览页统计分组：每项一行（前导图标 + 名称 + 数值），替代原来的双列卡片。 */
 @Composable
 private fun OverviewStatsGroup(stats: UsageStatsSnapshot) {
-    EtaSegmentedColumn(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp)) {
+    EtaSegmentedColumn(modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing)) {
         item(key = "conversations") {
             StatValueRow(
                 icon = Icons.Rounded.Forum,
@@ -386,11 +388,11 @@ private fun ModelUsagePane(
                         R.string.stats_model_empty
                     },
                 ),
-                modifier = Modifier.padding(bottom = 13.dp),
+                modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
             )
         } else {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(bottom = 13.dp),
+                modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.stats_model_total_title),
             ) {
                 snapshotMetrics(filtered).forEach { (labelRes, value) ->
@@ -439,7 +441,7 @@ private fun UsageFilterGroup(
     val titleText = stringResource(R.string.stats_model_filter_title)
     val expandIcon = if (expanded) Icons.Rounded.ExpandMore else Icons.Rounded.ChevronRight
 
-    EtaSegmentedColumn(modifier = Modifier.padding(bottom = 13.dp)) {
+    EtaSegmentedColumn(modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing)) {
         item(key = "header") {
             // M3：官方可点击分段行承担展开/收起，替掉「Row + clickable(无涟漪)」。
             EtaSegmentedRow(
@@ -690,7 +692,7 @@ private fun ProviderUsageGroup(
     onToggle: (String) -> Unit,
 ) {
     EtaSegmentedColumn(
-        modifier = Modifier.padding(bottom = 13.dp),
+        modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
         title = provider.name,
     ) {
         provider.models.forEach { model ->

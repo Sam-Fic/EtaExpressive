@@ -32,6 +32,7 @@ import io.github.mangi.eta.data.model.CustomWebSearchConfig
 import io.github.mangi.eta.data.model.WebHttpMethod
 import io.github.mangi.eta.data.model.WebToolBackend
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
@@ -72,7 +73,7 @@ internal fun WebToolsSettingsScreen(onBack: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                    .padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(EtaSegmentedGroupSpacing),
             ) {
                 EtaSegmentedColumn(

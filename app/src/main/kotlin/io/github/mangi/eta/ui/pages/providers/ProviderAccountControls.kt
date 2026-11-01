@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.ProviderAuthModes
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
@@ -78,14 +79,14 @@ internal fun ProviderAccountControls(
     EtaText(
         text = account?.email ?: account?.displayName ?: context.getString(R.string.provider_account_label, brand),
         style = EtaTextStyle.Body,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+        modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, top = 12.dp),
     )
     EtaText(
         text = summary,
         style = EtaTextStyle.Secondary,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+        modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, top = 4.dp, bottom = 8.dp),
     )
-    Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+    Column(modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = 12.dp)) {
         prompt?.userCode?.let { userCode ->
             SelectionContainer {
                 M3Text(

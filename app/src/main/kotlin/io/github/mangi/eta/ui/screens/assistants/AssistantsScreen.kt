@@ -24,9 +24,13 @@ import io.github.mangi.eta.data.model.AssistantProfile
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
+import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.navigation.AppRoute
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.Dispatchers
@@ -167,9 +171,9 @@ internal fun LazyListScope.assistantItems(
                     onEdit = { onEdit(profile) },
                     onDelete = { onDelete(profile) },
                     modifier = Modifier.padding(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = if (index == filtered.lastIndex) 13.dp else 2.dp,
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = if (index == filtered.lastIndex) EtaSegmentedGroupSpacing else EtaSegmentedGap,
                     ),
                 )
             }
@@ -177,12 +181,7 @@ internal fun LazyListScope.assistantItems(
     }
     if (filtered.isEmpty()) {
         item(key = "empty") {
-            M3Text(
-                text = stringResource(R.string.assistant_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-            )
+            ListEmptyState(title = stringResource(R.string.assistant_empty))
         }
     }
 }

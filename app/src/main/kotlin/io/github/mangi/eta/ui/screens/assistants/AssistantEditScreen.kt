@@ -35,8 +35,10 @@ import io.github.mangi.eta.data.repository.AgentMemoryStore
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.components.AssistantAvatar
@@ -184,7 +186,7 @@ internal fun AssistantEditScreen(
     ) {
         item(key = "preview") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.assistant_preview),
             ) {
                 item {
@@ -213,7 +215,7 @@ internal fun AssistantEditScreen(
         }
         item(key = "identity") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.assistant_identity),
             ) {
                 item(surface = false) {
@@ -228,7 +230,7 @@ internal fun AssistantEditScreen(
         }
         item(key = "prompt") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.assistant_prompt_title),
             ) {
                 item(surface = false) {
@@ -245,7 +247,7 @@ internal fun AssistantEditScreen(
         }
         item(key = "memory") {
             Column(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
             ) {
                 val memoryEnabledFlow = remember { AgentMemoryRepository.enabledFlow() }
                 val globalMemoryEnabled by memoryEnabledFlow.collectAsState(
@@ -329,7 +331,7 @@ internal fun AssistantEditScreen(
         }
         item(key = "skills") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.route_skills),
             ) {
                 item {

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,6 +45,12 @@ fun EtaSectionTitle(
         ),
     )
 }
+
+/**
+ * 页面级说明文字块的外边距：横向 24dp 与官方弹窗正文槽同档，纵向 12dp。
+ * ModelFeature / ProviderAuthMethod 等页顶说明共用，避免各写一份。
+ */
+internal val EtaNoticeBlockPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
 
 /**
  * 纯说明文字块（M3）。

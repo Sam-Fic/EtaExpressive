@@ -33,6 +33,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.components.filterModelProviderGroups
 import io.github.mangi.eta.ui.model.AgentModelOptionUi
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
@@ -166,7 +167,7 @@ internal fun CompressModelPickerDialog(
                 // KernelSU 式分段单选列表——提供商作分组标题、模型为组内单选行。
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(13.dp),
+                    verticalArrangement = Arrangement.spacedBy(EtaSegmentedGroupSpacing),
                 ) {
                     groups.forEach { group ->
                         EtaSegmentedColumn(

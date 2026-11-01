@@ -35,8 +35,10 @@ import io.github.mangi.eta.agent.model.AgentCompressionEndpoint
 import io.github.mangi.eta.config.AutoCompressPreference
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.components.PreferenceIcon
@@ -160,7 +162,7 @@ internal fun ContextCompressionSettingsScreen(
         // ① 自动压缩组
         item(key = "auto_compress") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
             ) {
                 item {
                     EtaSwitchRow(
@@ -180,7 +182,7 @@ internal fun ContextCompressionSettingsScreen(
         // ② 压缩模型组：自定义模型开关；开启后条件显示模型选择行
         item(key = "compress_model") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
             ) {
                 item {
                     EtaSwitchRow(
@@ -221,7 +223,7 @@ internal fun ContextCompressionSettingsScreen(
         // ③ 请求接口组（说明并入行内 summary）
         item(key = "compress_endpoint") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
             ) {
                 item {
                     CompressionEndpointPreference(

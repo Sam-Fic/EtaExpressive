@@ -347,7 +347,7 @@ internal fun ProviderModelsTab(
                     placeholder = stringResource(R.string.ui_search_model_df5586),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+                        .padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, top = 12.dp, bottom = 8.dp),
                 )
             }
 

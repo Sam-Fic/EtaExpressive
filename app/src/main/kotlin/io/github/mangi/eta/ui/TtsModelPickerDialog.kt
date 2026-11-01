@@ -17,6 +17,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRadioRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.filterModelProviderGroups
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -83,7 +84,7 @@ internal fun TtsModelPickerDialog(
                 .fillMaxWidth()
                 .heightIn(max = 520.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(13.dp),
+            verticalArrangement = Arrangement.spacedBy(EtaSegmentedGroupSpacing),
         ) {
             if (onClearSelection != null && query.isBlank()) {
                 EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {

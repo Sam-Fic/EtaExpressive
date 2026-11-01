@@ -1426,7 +1426,7 @@ private fun Material3ConversationRow(
                             } else if (conversation.hasCompletionMarker) {
                                 Box(
                                     modifier = Modifier
-                                        .size(DrawerMetrics.ActiveDotSize)
+                                        .size(EtaDimens.StatusDotSize)
                                         .clip(CircleShape)
                                         .border(
                                             width = 1.dp,

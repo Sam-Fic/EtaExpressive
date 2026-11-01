@@ -19,8 +19,10 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.terminal.LinuxDistribution
 import io.github.mangi.eta.agent.terminal.LinuxExecutionBackend
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaStatusDot
 import io.github.mangi.eta.ui.adaptive.EtaText
@@ -50,7 +52,7 @@ internal fun LinuxEnvironmentStatusCard(
     // hero 是分段列表里的一个条目容器（surfaceBright + 分段圆角），
     // 与下方各分组同一套容器语言，仅少了组标题。
     EtaSegmentedColumn(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 13.dp),
+        modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, top = 12.dp, bottom = EtaSegmentedGroupSpacing),
     ) {
         item {
             EtaSegmentedItemContainer {
@@ -170,7 +172,7 @@ internal fun LinuxEnvironmentConfiguration(
     val canSelectBackend = rootGranted || backend == LinuxExecutionBackend.CHROOT
 
     EtaSegmentedColumn(
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+        modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
         title = title,
     ) {
         item {

@@ -21,8 +21,10 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
@@ -89,7 +91,7 @@ fun AgentSkillsScreen(
         if (builtinInstalled.isNotEmpty()) {
             item(key = "builtin-card") {
                 EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                     title = stringResource(R.string.ui_built_in_skills_1ceedf),
                 ) {
                     builtinInstalled.forEach { skill ->
@@ -110,7 +112,7 @@ fun AgentSkillsScreen(
         if (userInstalled.isNotEmpty()) {
             item(key = "user-card") {
                 EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                     title = stringResource(R.string.ui_user_skills_748e7f),
                 ) {
                     userInstalled.forEach { skill ->
@@ -132,7 +134,7 @@ fun AgentSkillsScreen(
         if (removed.isNotEmpty()) {
             item(key = "removed-card") {
                 EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                     title = stringResource(R.string.ui_removed_4e5c49),
                 ) {
                     removed.forEach { skill ->

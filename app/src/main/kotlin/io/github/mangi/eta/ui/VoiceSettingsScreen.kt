@@ -20,9 +20,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedScope
 import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -40,7 +42,11 @@ internal enum class VoiceSubPage { DOUBAO_VOICES, MIMO_VOICES }
 internal val LocalEmbeddedVoiceSettings = staticCompositionLocalOf { false }
 
 /** 一组语音设置条目的统一左右边距与组间距。 */
-internal val VoiceGroupInsets = PaddingValues(start = 16.dp, end = 16.dp, bottom = 13.dp)
+internal val VoiceGroupInsets = PaddingValues(
+    start = EtaGroupHorizontalPadding,
+    end = EtaGroupHorizontalPadding,
+    bottom = EtaSegmentedGroupSpacing,
+)
 
 /**
  * 一组语音设置条目（KernelSU 式分段列表）。
@@ -99,7 +105,7 @@ internal fun VoiceSettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 13.dp)
+                    .padding(bottom = EtaSegmentedGroupSpacing)
                     // 两端截断淡出带：整组横向滚动时，被视口切一半的按钮用 DstIn 蒙版擦掉。
                     .horizontalScrollEdgeFade(sectionScrollState)
                     .horizontalScroll(sectionScrollState)

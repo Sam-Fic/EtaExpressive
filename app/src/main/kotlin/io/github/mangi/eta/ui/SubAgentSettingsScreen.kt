@@ -53,6 +53,7 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
@@ -170,7 +171,7 @@ internal fun SubAgentSettingsScreen(
                         modifier = Modifier.padding(
                             start = EtaGroupHorizontalPadding,
                             end = EtaGroupHorizontalPadding,
-                            bottom = 6.dp,
+                            bottom = EtaSegmentedTitleSpacing,
                         ),
                     )
                     Box(Modifier.padding(horizontal = EtaGroupHorizontalPadding)) {

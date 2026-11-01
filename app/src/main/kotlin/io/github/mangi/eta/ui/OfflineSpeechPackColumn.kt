@@ -21,6 +21,7 @@ import io.github.mangi.eta.agent.voice.offline.SpeechModelCatalog
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
@@ -106,7 +107,7 @@ internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
                     ),
                 ) {
                     val progress = (state.downloadedBytes.toFloat() / state.totalBytes).coerceIn(0f, 1f)
-                    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = 16.dp)) {
                         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
                         EtaText("${(progress * 100).toInt()}%", style = EtaTextStyle.Footnote,
                             modifier = Modifier.padding(top = 8.dp))

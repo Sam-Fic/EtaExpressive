@@ -36,9 +36,11 @@ import io.github.mangi.eta.data.repository.EtaModelBackupSummary
 import io.github.mangi.eta.agent.tool.ToolRecipePaths
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import java.io.InputStream
 import java.io.OutputStream
@@ -242,14 +244,14 @@ internal fun DataBackupScreen(
             // 纯描述性文字不套分段卡片：直接排在页面背景上，
             // 容器底色只留给下方可交互的分组，视觉层级更清楚。
             BackupNoticeRow(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.data_backup_warning_title),
                 summary = stringResource(R.string.data_backup_warning_summary),
             )
         }
         item(key = "categories") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.data_backup_actions),
             ) {
                 item {
@@ -343,7 +345,7 @@ internal fun DataBackupScreen(
             // 配方是模型自建的工具，只随「应用数据」一起进备份包；这里说明它的归属与去向，
             // 并提供去管理页查看 / 分享的指引。（系统备份已被 allowBackup=false 关掉，ZIP 是唯一载体。）
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.recipe_share_section),
             ) {
                 item {
@@ -356,7 +358,7 @@ internal fun DataBackupScreen(
         }
         item(key = "transfer") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
                 title = stringResource(R.string.data_backup_transfer),
             ) {
                 item {

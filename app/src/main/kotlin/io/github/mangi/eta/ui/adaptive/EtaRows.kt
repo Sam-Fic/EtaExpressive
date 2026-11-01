@@ -103,7 +103,8 @@ fun EtaSwitchRow(
 /**
  * 可点击 / 可展开的设置行。
  *
- * 默认内边距走 [EtaActionRowPadding]：跳转 / 展开属于动作行，纵向补一档留白。
+ * 默认内边距走官方 [ListItemDefaults.ContentPadding]，与勾选 / 开关行一致；
+ * 需要纵向补偿的动作行显式传 [EtaActionRowPadding]（仅对话流工作气泡）。
  *
  * @param showChevron 是否在尾部显示箭头（展开型条目通常自带尾部图标，可置 false）。
  * @param leading 前导内容（图标等）；走分段行的 `leadingContent`。
@@ -165,7 +166,7 @@ fun EtaClickableRow(
                 content = { Text(text = titleText) },
                 supportingContent = summaryText?.let { { Text(text = it) } },
                 trailingContent = trailingContent,
-                contentPadding = contentPadding ?: EtaActionRowPadding,
+                contentPadding = contentPadding ?: ListItemDefaults.ContentPadding,
             )
         } else {
             SegmentedListItem(
@@ -178,7 +179,7 @@ fun EtaClickableRow(
                 content = { Text(text = titleText) },
                 supportingContent = summaryText?.let { { Text(text = it) } },
                 trailingContent = trailingContent,
-                contentPadding = contentPadding ?: EtaActionRowPadding,
+                contentPadding = contentPadding ?: ListItemDefaults.ContentPadding,
             )
         }
         bottomAction?.invoke()
