@@ -141,6 +141,13 @@ android {
     }
 }
 
+// 单测 worker 的堆上限：Robolectric 用例在 SDK 36 下会加载完整 Android 框架，
+// 与真实进程类用例（PTY 终端）共用同一个 worker。Gradle 默认 512MB 在两类
+// 用例连续执行时不足，内存受限会让进程类用例无限期停滞，直到整个 job 超时。
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    maxHeapSize = "2g"
+}
+
 // CI must identify the last started test even if the worker never finishes a report.
 if (providers.environmentVariable("GITHUB_ACTIONS").orNull == "true") {
     tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
