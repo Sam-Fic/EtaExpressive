@@ -377,8 +377,15 @@ internal class RemoteCoordinator(
      * Read the picked image, upload it to the server, and stage the returned id as a pending
      * attachment so the composer shows a preview and the next send carries it. pi accepts image
      * uploads only here; files/folders/videos get an honest transcript notice instead.
+     *
+     * 先过协议能力闸：声明不支持附件的协议走同一条「不支持」提示，
+     * 而不是让 [RemoteSession.uploadAttachment] 的默认实现抛异常炸掉协程。
      */
     private fun attachImage(connection: Connection, uri: String) {
+        if (capabilitiesOf(connection.config.id)?.supportsAttachments == false) {
+            unsupportedAttachment(connection)
+            return
+        }
         scope.launch(Dispatchers.IO) {
             val image = runCatching {
                 io.github.mangi.eta.agent.media.AgentImageCodec.fromReference(appContext, uri, "user_attach")

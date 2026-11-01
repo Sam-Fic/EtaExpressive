@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.remote
 
+import io.github.mangi.eta.agent.remote.opencode.OpencodeRemoteAdapter
 import io.github.mangi.eta.agent.remote.pi.PiRemoteAdapter
 
 /**
@@ -28,8 +29,12 @@ internal object RemoteProtocols {
     /** 默认协议：老配置没有 `protocolId` 字段，反序列化时也会落到它。 */
     const val DEFAULT_ID: String = PiRemoteAdapter.PROTOCOL_ID
 
+    /** OpenCode 协议 id；设置页按协议定制提示文案时用，别在界面里散写字面量。 */
+    const val OPENCODE_ID: String = OpencodeRemoteAdapter.PROTOCOL_ID
+
     private val descriptors: List<RemoteProtocolDescriptor> = listOf(
         RemoteProtocolDescriptor(id = PiRemoteAdapter.PROTOCOL_ID, displayName = "Pi Agent"),
+        RemoteProtocolDescriptor(id = OpencodeRemoteAdapter.PROTOCOL_ID, displayName = "OpenCode"),
     )
 
     fun all(): List<RemoteProtocolDescriptor> = descriptors
@@ -63,6 +68,7 @@ internal object RemoteProtocols {
 internal object RemoteProtocolRegistry {
     private val adapters: Map<String, RemoteAgentProtocolAdapter> = listOf(
         PiRemoteAdapter(),
+        OpencodeRemoteAdapter(),
     ).associateBy { it.protocolId }
 
     fun has(id: String): Boolean = adapters.containsKey(id)

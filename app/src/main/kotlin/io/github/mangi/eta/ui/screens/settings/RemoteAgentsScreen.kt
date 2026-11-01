@@ -398,11 +398,17 @@ internal fun RemoteAgentsScreen(
                 text = stringResource(R.string.remote_agents_field_host_hint),
                 style = EtaTextStyle.Footnote,
             )
-            endpointPreview(parsedAddress, port, token)?.let { endpoint ->
+            endpointPreview(selectedProtocolId, parsedAddress, port, token)?.let { endpoint ->
                 EtaText(
                     text = stringResource(R.string.remote_agents_resolved_endpoint, endpoint),
                     style = EtaTextStyle.Footnote,
                     color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            if (selectedProtocolId == RemoteProtocols.OPENCODE_ID) {
+                EtaText(
+                    text = stringResource(R.string.remote_agents_hint_opencode),
+                    style = EtaTextStyle.Footnote,
                 )
             }
             EtaTextField(
@@ -970,8 +976,12 @@ private fun probeStepText(
 /**
  * 展示最终会连的地址，让用户确认「我填的确实被理解成了这个」。
  * 令牌只显示占位符——真正的值在令牌输入框里已经能看见。
+ *
+ * 两种协议的入口不一样：pi 是 WebSocket 端点 `/ws`（令牌走查询参数），
+ * OpenCode 是 REST 基址 `/api`（密码走 HTTP Basic，地址上看不到）。
  */
 private fun endpointPreview(
+    protocolId: String,
     address: RemoteServerAddress.Parsed?,
     port: String,
     token: String,
@@ -979,8 +989,13 @@ private fun endpointPreview(
     val parsed = address ?: return null
     val portNumber = port.trim().toIntOrNull() ?: return null
     val host = if (parsed.host.contains(':')) "[${parsed.host}]" else parsed.host
-    val suffix = if (token.trim().isNotEmpty()) "?token=****" else ""
-    return "ws://$host:$portNumber/ws$suffix"
+    return when (protocolId) {
+        RemoteProtocols.OPENCODE_ID -> "http://$host:$portNumber/api"
+        else -> {
+            val suffix = if (token.trim().isNotEmpty()) "?token=****" else ""
+            "ws://$host:$portNumber/ws$suffix"
+        }
+    }
 }
 
 @Composable

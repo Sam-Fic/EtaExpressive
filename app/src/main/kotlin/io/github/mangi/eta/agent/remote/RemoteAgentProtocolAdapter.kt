@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
  * A pluggable remote agent protocol. [open] builds a live [RemoteSession] for a
  * configured server and starts streaming normalized [RemoteAgentEvent]s.
  *
- * The first implementation is pi-remote (`agent/remote/pi`); opencode and others
- * plug in here without the UI bridge changing.
+ * The first implementation is pi-remote (`agent/remote/pi`); OpenCode v2
+ * (`agent/remote/opencode`) and others plug in here without the UI bridge changing.
  */
 interface RemoteAgentProtocolAdapter {
     val protocolId: String

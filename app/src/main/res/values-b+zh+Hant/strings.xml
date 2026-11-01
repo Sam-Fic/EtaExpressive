@@ -1702,6 +1702,7 @@
   <string name="remote_agents_field_host">伺服器位址</string>
   <string name="remote_agents_field_host_hint">可直接貼上 WebUI 連結（如 http://192.168.1.10:8800?token=…），只填 IP 也行；連接埠與存取權杖會自動填好。</string>
   <string name="remote_agents_resolved_endpoint">將連線：%1$s</string>
+  <string name="remote_agents_hint_opencode">需在電腦上執行：OPENCODE_PASSWORD=密碼 opencode serve --hostname 0.0.0.0（預設連接埠 4096）。密碼填入存取權杖欄；僅當伺服器未設密碼時留空。</string>
   <string name="remote_agents_field_port">連接埠</string>
   <string name="remote_agents_field_token">存取權杖</string>
   <string name="remote_agents_field_protocol">協定</string>
