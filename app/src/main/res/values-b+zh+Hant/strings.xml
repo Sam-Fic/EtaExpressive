@@ -1705,6 +1705,8 @@
   <string name="remote_agents_field_port">連接埠</string>
   <string name="remote_agents_field_token">存取權杖</string>
   <string name="remote_agents_field_protocol">協定</string>
+  <string name="remote_agents_protocol_title">協定</string>
+  <string name="remote_agents_protocol_unsupported">本版本還不支援 %1$s 協定，請先換成已支援的協定</string>
   <string name="remote_agents_error_name">請填寫名稱</string>
   <string name="remote_agents_error_host">請填寫伺服器位址</string>
   <string name="remote_agents_error_host_invalid">位址無效：請填 IP 或主機名稱（如 192.168.1.10）</string>

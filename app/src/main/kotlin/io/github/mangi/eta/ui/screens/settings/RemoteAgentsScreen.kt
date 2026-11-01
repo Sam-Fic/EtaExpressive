@@ -42,6 +42,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.LocalNetworkPermission
 import io.github.mangi.eta.agent.remote.RemoteConnectionProbe
 import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
+import io.github.mangi.eta.agent.remote.RemoteProtocols
 import io.github.mangi.eta.agent.remote.RemoteServerAddress
 import io.github.mangi.eta.agent.remote.RemoteServerConfig
 import io.github.mangi.eta.data.datastore.SettingsDataStore
@@ -54,6 +55,7 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextField
@@ -93,6 +95,9 @@ internal fun RemoteAgentsScreen(
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
+    // 协议（远程智能体类型）：存在配置里的是稳定 id，不是界面上的名字。
+    var selectedProtocolId by remember { mutableStateOf(RemoteProtocols.DEFAULT_ID) }
+    var protocolPickerOpen by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     var deleteTarget by remember { mutableStateOf<RemoteServerConfig?>(null) }
     var probe by remember { mutableStateOf<ProbeUiState>(ProbeUiState.Idle) }
@@ -123,6 +128,7 @@ internal fun RemoteAgentsScreen(
         host = ""
         port = "8800"
         token = ""
+        selectedProtocolId = RemoteProtocols.DEFAULT_ID
         formError = null
         probe = ProbeUiState.Idle
         editorOpen = true
@@ -134,6 +140,7 @@ internal fun RemoteAgentsScreen(
         host = config.host
         port = config.port.toString()
         token = config.authToken
+        selectedProtocolId = config.protocolId
         formError = null
         probe = ProbeUiState.Idle
         editorOpen = true
@@ -254,7 +261,9 @@ internal fun RemoteAgentsScreen(
             port = portNumber,
             // 令牌输入框优先；没填就用链接里带的那个。
             authToken = token.trim().ifEmpty { address.token.orEmpty() },
-            protocolId = "pi",
+            // 老配置升上来时 protocolId 已经是默认值；编辑时不认识的 id 也照原样存回去，
+            // 不能偷偷改写成 pi——那会让「这台服务器本版本不支持」变成「连不上」。
+            protocolId = selectedProtocolId,
         )
         val updated = if (editingId == null) {
             servers + config
@@ -333,7 +342,8 @@ internal fun RemoteAgentsScreen(
                             val status = coordinator.statusOf(config.id)
                             EtaClickableRow(
                                 title = config.name,
-                                summary = "${config.host}:${config.port} · ${remoteStatusLabel(status)}",
+                                summary = "${RemoteProtocols.displayNameOf(config.protocolId)} · " +
+                                    "${config.host}:${config.port} · ${remoteStatusLabel(status)}",
                                 onClick = { openEdit(config) },
                                 leading = { StatusDot(status) },
                                 endActions = {
@@ -405,10 +415,28 @@ internal fun RemoteAgentsScreen(
                 onValueChange = { token = it; formError = null },
                 label = stringResource(R.string.remote_agents_field_token),
             )
-            EtaText(
-                text = "${stringResource(R.string.remote_agents_field_protocol)}: pi agent",
-                style = EtaTextStyle.Secondary,
-            )
+            // 协议行：只有一个已适配协议时是一条静态信息（点开只会看到一行，白点一次）；
+            // 等第二个协议接进 RemoteProtocolRegistry，这里自动变成可点的选择器。
+            // 当前配置的协议不认识时也要能点——那是用户唯一的改法。
+            val protocolOptions = RemoteProtocols.selectable()
+            val protocolKnown = protocolOptions.any { it.id == selectedProtocolId }
+            val protocolLabel = stringResource(R.string.remote_agents_field_protocol) +
+                " · " + RemoteProtocols.displayNameOf(selectedProtocolId)
+            if (protocolOptions.size > 1 || !protocolKnown) {
+                EtaTextButton(
+                    text = protocolLabel,
+                    onClick = { protocolPickerOpen = true },
+                )
+            } else {
+                EtaText(text = protocolLabel, style = EtaTextStyle.Secondary)
+            }
+            if (!protocolKnown) {
+                EtaText(
+                    text = stringResource(R.string.remote_agents_protocol_unsupported, selectedProtocolId),
+                    style = EtaTextStyle.Footnote,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             EtaTextButton(
                 text = stringResource(
                     if (probe is ProbeUiState.Running) R.string.remote_probe_running
@@ -423,6 +451,48 @@ internal fun RemoteAgentsScreen(
                     style = EtaTextStyle.Footnote,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+        }
+    }
+
+    // 协议选择：只列真的能连的协议（selectable 已按注册表过滤），
+    // 免得出现一个点了还是连不上的选项。
+    if (protocolPickerOpen) {
+        val pickerView = LocalView.current
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.remote_agents_protocol_title),
+            onDismissRequest = { protocolPickerOpen = false },
+            actions = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        TouchHaptics.click(pickerView)
+                        protocolPickerOpen = false
+                    },
+                ) {
+                    androidx.compose.material3.Text(stringResource(R.string.action_close))
+                }
+            },
+        ) {
+            EtaSegmentedColumn {
+                RemoteProtocols.selectable().forEach { option ->
+                    item(key = option.id) {
+                        EtaSegmentedRow(
+                            selected = option.id == selectedProtocolId,
+                            choiceRow = true,
+                            onClick = {
+                                selectedProtocolId = option.id
+                                formError = null
+                                protocolPickerOpen = false
+                            },
+                            content = {
+                                androidx.compose.material3.Text(
+                                    text = option.displayName,
+                                )
+                            },
+                        )
+                    }
+                }
             }
         }
     }

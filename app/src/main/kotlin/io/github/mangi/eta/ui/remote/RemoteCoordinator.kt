@@ -5,13 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.github.mangi.eta.agent.remote.RemoteAgentProtocolAdapter
 import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
 import io.github.mangi.eta.agent.remote.RemoteFailure
 import io.github.mangi.eta.agent.remote.RemoteHttpClient
 import io.github.mangi.eta.agent.remote.RemoteServerConfig
 import io.github.mangi.eta.agent.remote.RemoteSession
-import io.github.mangi.eta.agent.remote.pi.PiRemoteAdapter
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.model.AgentChatAction
@@ -67,9 +65,6 @@ internal class RemoteCoordinator(
     private val appContext: android.content.Context,
     private val scope: CoroutineScope,
 ) {
-
-    private val adapters: Map<String, RemoteAgentProtocolAdapter> =
-        mapOf(PiRemoteAdapter.PROTOCOL_ID to PiRemoteAdapter())
 
     private class Connection(
         val config: RemoteServerConfig,
@@ -141,7 +136,9 @@ internal class RemoteCoordinator(
     }
 
     private fun connect(config: RemoteServerConfig) {
-        val adapter = adapters[config.protocolId]
+        // 协议 → 适配器只在 RemoteProtocolRegistry 里登记一处；这里不认识就是真的没适配，
+        // 不能悄悄退回 pi 去连——那会把「服务器不是 pi」错报成「连不上」。
+        val adapter = io.github.mangi.eta.agent.remote.RemoteProtocolRegistry.adapterFor(config.protocolId)
         if (adapter == null) {
             statusById[config.id] = RemoteConnectionStatus.Failed(
                 RemoteFailure.Kind.UnsupportedProtocol,
@@ -184,6 +181,16 @@ internal class RemoteCoordinator(
 
     fun statusOf(serverId: String): RemoteConnectionStatus =
         statusById[serverId] ?: RemoteConnectionStatus.Disconnected
+
+    /**
+     * 这台服务器所用协议能表达什么；协议没适配时返回 null。
+     *
+     * 第二个协议接进来时，「切模型 / 会话列表 / 附件」这些控件靠它决定显不显示，
+     * 而不是在页面里各自判断协议 id。
+     */
+    fun capabilitiesOf(serverId: String): io.github.mangi.eta.agent.remote.RemoteCapabilities? =
+        servers.find { it.id == serverId }
+            ?.let { io.github.mangi.eta.agent.remote.RemoteProtocolRegistry.capabilitiesOf(it.protocolId) }
 
     /** Manual reconnect after a terminal [RemoteConnectionStatus.Failed]; tears down and re-opens. */
     fun retry(serverId: String) {

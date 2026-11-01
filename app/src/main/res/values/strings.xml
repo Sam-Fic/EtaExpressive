@@ -1689,6 +1689,8 @@
   <string name="remote_agents_field_port">Port</string>
   <string name="remote_agents_field_token">Access token</string>
   <string name="remote_agents_field_protocol">Protocol</string>
+  <string name="remote_agents_protocol_title">Protocol</string>
+  <string name="remote_agents_protocol_unsupported">This version does not support the %1$s protocol</string>
   <string name="remote_agents_error_name">Enter a name</string>
   <string name="remote_agents_error_host">Enter a server address</string>
   <string name="remote_agents_error_host_invalid">Invalid address: enter an IP or host name (for example 192.168.1.10)</string>
