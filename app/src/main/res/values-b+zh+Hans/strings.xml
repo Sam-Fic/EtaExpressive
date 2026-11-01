@@ -1564,7 +1564,9 @@
   <string name="chat_edit_replace_later">发送后将替换此消息及之后内容</string>
   <string name="chat_edit_replace_message">发送后将替换此消息</string>
   <string name="chat_eta_working">Eta 正在执行……</string>
+  <string name="chat_eta_working_named">%1$s 正在执行……</string>
   <string name="chat_input_hint">交给 Eta 去完成</string>
+  <string name="chat_input_hint_named">交给 %1$s 去完成</string>
   <string name="chat_stop">停止</string>
   <string name="chat_send">发送</string>
   <string name="chat_queue_steer_now">立即发送</string>
@@ -1931,6 +1933,7 @@
   <string name="stats_model_filter_preset_30d">30天</string>
   <string name="stats_model_filter_preset_month">本月</string>
   <string name="assistant_list_title">助手</string>
+  <string name="assistant_remote_locked">这个会话跑在远程智能体上：助手由服务器决定，本机换不了。</string>
   <string name="assistant_edit_title">人格</string>
   <string name="assistant_search">搜索助手</string>
   <string name="assistant_add">添加助手</string>

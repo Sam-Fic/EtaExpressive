@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -54,6 +55,7 @@ import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.ModelPickerCheckRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
@@ -110,6 +112,7 @@ internal fun M3ComposerPickerSheet(
 ) {
     if (!show) return
     var tabIndex by remember { mutableIntStateOf(0) }
+    val remoteAgentName = io.github.mangi.eta.ui.remote.LocalRemoteAgentName.current
     val assistantProfiles by AssistantRepository.profiles.collectAsState()
     val repositoryActiveId by AssistantRepository.activeId.collectAsState()
     ModalBottomSheet(
@@ -136,26 +139,30 @@ internal fun M3ComposerPickerSheet(
                     modifier = Modifier.weight(1f),
                 )
                 // 配置入口：随页签切换图标与目标（模型 → 模型配置，助手 → 助手管理）。
-                IconButton(
-                    onClick = {
-                        onDismiss()
-                        if (tabIndex == 0) onOpenModelProviders() else onOpenAssistants()
-                    },
-                ) {
-                    Icon(
-                        imageVector = if (tabIndex == 0) {
-                            Icons.Rounded.Memory
-                        } else {
-                            Icons.Rounded.SmartToy
+                // 远程会话下助手页签没有可配置的东西（助手在服务器上，本机也改不了），
+                // 留着这个入口只会把人带进一个和当前会话无关的页面。
+                if (!(remoteAgentName != null && tabIndex == 1)) {
+                    IconButton(
+                        onClick = {
+                            onDismiss()
+                            if (tabIndex == 0) onOpenModelProviders() else onOpenAssistants()
                         },
-                        contentDescription = stringResource(
-                            if (tabIndex == 0) {
-                                R.string.composer_configure_models
+                    ) {
+                        Icon(
+                            imageVector = if (tabIndex == 0) {
+                                Icons.Rounded.Memory
                             } else {
-                                R.string.composer_configure_assistants
+                                Icons.Rounded.SmartToy
                             },
-                        ),
-                    )
+                            contentDescription = stringResource(
+                                if (tabIndex == 0) {
+                                    R.string.composer_configure_models
+                                } else {
+                                    R.string.composer_configure_assistants
+                                },
+                            ),
+                        )
+                    }
                 }
             }
             val tabs = listOf(
@@ -184,6 +191,9 @@ internal fun M3ComposerPickerSheet(
                         state = modelPickerState,
                         onModelSelected = onModelSelected,
                     )
+                } else if (remoteAgentName != null) {
+                    // 远程会话：助手只有服务器上那一个，本机没有可换的目标。
+                    RemoteAssistantTab(name = remoteAgentName)
                 } else {
                     M3AssistantPickerTab(
                         assistantId = assistantId,
@@ -325,6 +335,50 @@ private fun ContextUsageRow(
  * 助手页签：官方搜索框 + KernelSU 式分段列表；行尾三点菜单提供复制 / 编辑 / 删除，
  * 与独立助手选择弹窗的 Material 3 分支保持同一套交互。
  */
+/**
+ * 远程会话下的助手页签：只有一项，就是用户给这台远程起的名字，且不可点。
+ *
+ * 远程的助手在服务器那一侧，本机既拿不到列表也没有切换通道——照本机的列表摆一屏
+ * 能点的行，点下去什么都不会变（请求仍由服务器的助手处理），比不给列表更糟。
+ * 所以这里只如实显示「这个会话用的是谁」，并说明为什么换不了。
+ */
+@Composable
+private fun RemoteAssistantTab(name: String) {
+    EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {
+        item(key = "remote-agent") {
+            EtaSegmentedRow(
+                selected = true,
+                choiceRow = true,
+                // 不可切换：没有 onClick，行不响应点击也不出涟漪。
+                onClick = null,
+                leadingContent = {
+                    Icon(
+                        imageVector = Icons.Rounded.SmartToy,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp),
+                    )
+                },
+                content = {
+                    Text(
+                        // 名字为空（服务器记录被删过）时用通用称呼，不要留一行空白。
+                        text = name.ifBlank { stringResource(R.string.route_remote_agents) },
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+            )
+        }
+    }
+    Text(
+        text = stringResource(R.string.assistant_remote_locked),
+        style = etaTextStyle(EtaType.Caption),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(vertical = 12.dp),
+    )
+}
+
 @Composable
 private fun M3AssistantPickerTab(
     assistantId: String,

@@ -1556,7 +1556,9 @@
   <string name="chat_edit_replace_later">Sending will replace this message and everything after it</string>
   <string name="chat_edit_replace_message">Sending will replace this message</string>
   <string name="chat_eta_working">Eta is working…</string>
+  <string name="chat_eta_working_named">%1$s is working…</string>
   <string name="chat_input_hint">Ask Eta to do something</string>
+  <string name="chat_input_hint_named">Ask %1$s to do something</string>
   <string name="chat_stop">Stop</string>
   <string name="chat_send">Send</string>
   <string name="chat_queue_steer_now">Send now</string>
@@ -1961,6 +1963,7 @@
   <string name="stats_model_filter_preset_30d">30d</string>
   <string name="stats_model_filter_preset_month">Month</string>
   <string name="assistant_list_title">Assistants</string>
+  <string name="assistant_remote_locked">This conversation runs on a remote agent. Its assistant lives on the server and cannot be switched here.</string>
   <string name="assistant_edit_title">Personality</string>
   <string name="assistant_search">Search assistants</string>
   <string name="assistant_add">Add assistant</string>

@@ -734,6 +734,12 @@ fun AgentAppRoot(
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 RoutedShell(route = AppRoute.Home, underlapTopBar = true) {
+                    // 远程会话只有「服务器上那个助手」一个，本机无法切换。
+                    // 把名字往下传（CompositionLocal），助手列表据此只显示这一项。
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        io.github.mangi.eta.ui.remote.LocalRemoteAgentName provides
+                            remoteAgentNameOf(coordinator, remote),
+                    ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     AgentHomeScreen(
                         stateProvider = { if (remote != null) coordinator.chatState(remote) else agentState.homeState },
@@ -833,12 +839,19 @@ fun AgentAppRoot(
                         )
                     }
                     }
+                    }
                 }
             }
             composable<AppRoute.Chat> {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 RoutedShell(route = AppRoute.Chat, underlapTopBar = true) {
+                    // 远程会话只有「服务器上那个助手」一个，本机无法切换。
+                    // 把名字往下传（CompositionLocal），助手列表据此只显示这一项。
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        io.github.mangi.eta.ui.remote.LocalRemoteAgentName provides
+                            remoteAgentNameOf(coordinator, remote),
+                    ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     AgentChatScreen(
                         stateProvider = { if (remote != null) coordinator.chatState(remote) else agentState.homeState },
@@ -932,6 +945,7 @@ fun AgentAppRoot(
                                 .align(Alignment.TopCenter)
                                 .padding(top = LocalShellTopBarInset.current),
                         )
+                    }
                     }
                     }
                 }
@@ -1805,6 +1819,20 @@ private data class MessageMutationTarget(
     val messageId: String,
     val laterTurnCount: Int,
 )
+
+/**
+ * 当前远程会话对应的智能体名字；本机会话返回 `null`。
+ *
+ * 挂在远程上但配置里查不到名字（服务器记录被删过）时返回**空串**而不是 null：
+ * 「空串」与「本机」必须区分开，否则远程会话会列出本机的一整套助手，而切换在远程侧
+ * 根本不生效。
+ */
+private fun remoteAgentNameOf(
+    coordinator: io.github.mangi.eta.ui.remote.RemoteCoordinator,
+    remote: io.github.mangi.eta.ui.remote.ChatTarget.Remote?,
+): String? = remote?.let { target ->
+    coordinator.servers.firstOrNull { it.id == target.serverId }?.name?.trim().orEmpty()
+}
 
 @Composable
 private fun MoveToFolderSheet(

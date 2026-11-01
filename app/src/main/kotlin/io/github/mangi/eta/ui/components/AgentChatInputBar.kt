@@ -249,6 +249,15 @@ internal fun AgentChatInputBar(
     val skillAppContext = LocalContext.current.applicationContext
     val assistantProfiles by AssistantRepository.profiles.collectAsState()
     val repositoryActiveId by AssistantRepository.activeId.collectAsState()
+    // 空输入框的提示语要写对名字（「交给 X 去完成」）：档案列表就在手边，这里解析一次，
+    // 省得输入框那层再各自收一遍同一份数据。找不到档案时留空，提示语退回通用文案。
+    val composerAssistantName = remember(assistantProfiles, assistantId, repositoryActiveId) {
+        (assistantProfiles.firstOrNull { it.id == assistantId }
+            ?: assistantProfiles.firstOrNull { it.id == repositoryActiveId }
+            ?: assistantProfiles.firstOrNull())
+            ?.name
+            .orEmpty()
+    }
     // The index walk takes a cross-process file lock and recursively scans the skills
     // root, so it must not run inside a composition on the main thread. Empty until the
     // first background result lands; the mention panel simply offers nothing until then.
@@ -485,6 +494,7 @@ internal fun AgentChatInputBar(
             onToolbarHeightPx = onToolbarHeightPx,
             conversationId = collaborationConversationId,
             assistantId = assistantId,
+            assistantName = composerAssistantName,
             modelPickerState = modelPickerState,
             reasoningEffort = reasoningEffort,
             availableReasoningEfforts = availableReasoningEfforts,

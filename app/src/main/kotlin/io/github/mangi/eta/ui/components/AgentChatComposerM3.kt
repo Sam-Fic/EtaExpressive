@@ -223,6 +223,13 @@ internal fun Material3ComposerBody(
     onToolbarHeightPx: (Int) -> Unit = {},
     conversationId: String?,
     assistantId: String,
+    /**
+     * 当前会话所属助手的名字，用于空输入框的提示语（「交给 X 去完成」）。
+     *
+     * 调用方已经收着助手档案列表，故由调用方解析后传入；留空表示调用方拿不到名字
+     * （例如语音浮层不关心助手），此时退回不带名字的通用文案。
+     */
+    assistantName: String = "",
     modelPickerState: AgentModelPickerUiState,
     reasoningEffort: ReasoningEffort,
     availableReasoningEfforts: List<ReasoningEffort>,
@@ -534,6 +541,7 @@ internal fun Material3ComposerBody(
                             focusRequester = focusRequester,
                             isStreaming = isStreaming,
                             showMorphLoading = showMorphLoading,
+                            assistantName = assistantName,
                         )
                     }
                 }
@@ -687,6 +695,32 @@ private val ComposerConcentricGap = 8.dp
 private val ComposerOuterCornerRadius = 36.dp
 
 /**
+ * 空输入框的提示语：名字跟着「当前这个会话到底是谁在干活」走。
+ *
+ * 本机会话取当前助手的名字（默认助手就叫 Eta，所以默认长相不变）；远程会话取用户在
+ * 远程智能体配置里起的名字——那里的助手由服务器固定，本机既改不了也换不了，
+ * 提示语再写死 Eta 就等于在跟用户说这个会话归 Eta 管，与事实不符。
+ *
+ * [remoteAgentName] 为 `null` 表示本机；空串表示「在远程上但没起名字」，
+ * 此时退回不带名字的通用文案，而不是拿本机助手名顶替（那会指错人）。
+ */
+@Composable
+private fun composerHintText(
+    isStreaming: Boolean,
+    remoteAgentName: String?,
+    assistantName: String,
+): String {
+    val displayName = (remoteAgentName ?: assistantName).trim()
+    return when {
+        isStreaming && displayName.isNotEmpty() ->
+            stringResource(R.string.chat_eta_working_named, displayName)
+        isStreaming -> stringResource(R.string.chat_eta_working)
+        displayName.isNotEmpty() -> stringResource(R.string.chat_input_hint_named, displayName)
+        else -> stringResource(R.string.chat_input_hint)
+    }
+}
+
+/**
  * 胶囊输入框：官方 Filled 文本框（无 label，仅 placeholder，容器 `surfaceContainer`，
  * 指示线透明，圆角固定 28dp＝官方 `extraLarge`，不改大小），起始侧内嵌生成中的形变加载指示器；
  * 语音／发送按钮叠放在输入框右下角。
@@ -701,6 +735,8 @@ private fun M3ComposerTextField(
     focusRequester: FocusRequester,
     isStreaming: Boolean,
     showMorphLoading: Boolean,
+    /** 本机会话当前助手的名字；远程会话由 `LocalRemoteAgentName` 覆盖它。 */
+    assistantName: String,
 ) {
     TextField(
         state = textFieldState,
@@ -710,11 +746,11 @@ private fun M3ComposerTextField(
         textStyle = etaTextStyle(EtaType.Body),
         placeholder = {
             Text(
-                text = if (isStreaming) {
-                    stringResource(R.string.chat_eta_working)
-                } else {
-                    stringResource(R.string.chat_input_hint)
-                },
+                text = composerHintText(
+                    isStreaming = isStreaming,
+                    remoteAgentName = io.github.mangi.eta.ui.remote.LocalRemoteAgentName.current,
+                    assistantName = assistantName,
+                ),
                 style = etaTextStyle(EtaType.Body),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
