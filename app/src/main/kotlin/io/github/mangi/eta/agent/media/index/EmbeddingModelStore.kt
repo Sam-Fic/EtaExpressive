@@ -40,6 +40,9 @@ internal object EmbeddingModelStore {
     const val DEFAULT_DIM = 768
     private val ALLOWED_DIMS = setOf(768, 512, 256)
 
+    /** 检索页匹配度阈值默认值：较强匹配。用户拖过滑杆后落盘，永远以用户值为准。 */
+    private const val DEFAULT_SEARCH_MIN_SCORE = 0.7f
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutable = MutableStateFlow(State())
     val state = mutable.asStateFlow()
@@ -53,12 +56,34 @@ internal object EmbeddingModelStore {
     fun directory(context: Context, model: EmbeddingModelCatalog.Model = mutable.value.model): File =
         File(context.noBackupFilesDir, "embedding/${model.id}/${model.revision}")
 
-    /** 已校验的 `.litertlm` 主文件路径；未就绪返回 null。 */
+    /** 已校验模型文件的指纹：路径 + 长度 + mtime 均未变即视为仍然有效。 */
+    private data class ValidatedModelFile(val path: String, val length: Long, val mtime: Long, val file: File)
+
+    @Volatile
+    private var validatedFile: ValidatedModelFile? = null
+
+    /**
+     * 已校验的 `.litertlm` 主文件路径；未就绪返回 null。
+     *
+     * 带指纹缓存：本函数被每次 embed（含精排每帧、索引管线每文件）与状态查询高频调用，
+     * 此前每次都重新对整个模型文件算 SHA-256（740M 档 484MB），是检索与索引的共同大头。
+     * 文件被替换必然改变长度或 mtime，指纹自动失效；@Volatile + 良性竞态——未命中时
+     * 两线程并发哈希结果一致，后写者胜。备份恢复走 [refresh] 主动清缓存强制重验。
+     */
     fun modelFile(context: Context): File? {
         val model = mutable.value.model
         val asset = model.assets.firstOrNull() ?: return null
         val file = File(directory(context, model), asset.name)
-        return file.takeIf { valid(it, asset) }
+        val length = file.length()
+        val mtime = file.lastModified()
+        validatedFile?.let { cached ->
+            if (cached.path == file.absolutePath && cached.length == length && cached.mtime == mtime) {
+                return cached.file
+            }
+        }
+        return file.takeIf { valid(it, asset) }?.also {
+            validatedFile = ValidatedModelFile(file.absolutePath, length, mtime, file)
+        }
     }
 
     @Synchronized
@@ -85,6 +110,8 @@ internal object EmbeddingModelStore {
         download?.cancel()
         download = null
         initialized = false
+        // 恢复可能替换了模型文件而长度/mtime 碰巧未变：清指纹缓存强制全量重验。
+        validatedFile = null
         mutable.value = mutable.value.copy(
             checking = true,
             downloading = false,
@@ -234,11 +261,12 @@ internal object EmbeddingModelStore {
     }
 
     /**
-     * 检索页匹配度阈值偏好：低于该相似度的命中不显示；0（默认）表示不过滤。
-     * 进检索页时恢复上次调节的阈值（[MediaSearchService.applyMinScore] 同口径）。
+     * 检索页匹配度阈值偏好：低于该相似度的命中在检索时被过滤，结果集 = 所有 ≥ 阈值的命中。
+     * 默认 [DEFAULT_SEARCH_MIN_SCORE]；进检索页时恢复上次调节的阈值，AI 工具 min_score
+     * 省略时同样回退本值（可显式传 0 绕过）。用户拖过滑杆后落盘，永远以用户值为准。
      */
     fun searchMinScore(context: Context): Float =
-        prefs(context).getFloat("search_min_score", 0f).coerceIn(0f, 1f)
+        prefs(context).getFloat("search_min_score", DEFAULT_SEARCH_MIN_SCORE).coerceIn(0f, 1f)
 
     fun setSearchMinScore(context: Context, minScore: Float) {
         prefs(context).edit().putFloat("search_min_score", minScore.coerceIn(0f, 1f)).apply()
