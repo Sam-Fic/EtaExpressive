@@ -611,7 +611,18 @@ internal enum class UserBubblePosition {
     GroupLast,
 }
 
-/** 接缝侧小圆角（组内 User 气泡相接角与尾巴底角共用）。 */
+/** 上方是同组气泡（缝侧在上）：行距收成组内缝的一半。 */
+private val UserBubblePosition.sticksUp: Boolean
+    get() = this == UserBubblePosition.GroupMid || this == UserBubblePosition.GroupLast
+
+/** 下方是同组气泡（缝侧在下）：行距收成组内缝的一半。 */
+private val UserBubblePosition.sticksDown: Boolean
+    get() = this == UserBubblePosition.GroupMid || this == UserBubblePosition.GroupFirst
+
+/**
+ * 接缝侧小圆角（组内 User 气泡相接角与尾巴底角共用）。组内气泡行的缝距已收成
+ * [AgentChatSpacing.BubbleGroupSeamHalf] 的两倍（2dp，与附件行缝距同语言），这个角才真正落在缝侧。
+ */
 private val UserBubbleInnerCorner = 2.dp
 
 /**
@@ -964,7 +975,14 @@ private fun UserMessageBubble(
             .streamDiagnosticMeasure("render.userBubble.measure", diagnosticRow)
             .streamDiagnosticDraw("render.userBubble.draw", diagnosticRow)
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            // 组内气泡互相贴缝（1+1 = 2dp，与附件行、设置页分段条目同语言）；
+            // 组首/组尾外側仍是基准半距：对上一轮页脚、下一块内容合成 16dp 轮间/回复起点间隙。
+            .padding(
+                start = AgentChatSpacing.RowHorizontal,
+                top = if (position.sticksUp) AgentChatSpacing.BubbleGroupSeamHalf else AgentChatSpacing.RowBaseHalf,
+                end = AgentChatSpacing.RowHorizontal,
+                bottom = if (position.sticksDown) AgentChatSpacing.BubbleGroupSeamHalf else AgentChatSpacing.RowBaseHalf,
+            ),
         horizontalAlignment = Alignment.End,
     ) {
         // 附件行：图片与文件移出气泡，镜像气泡对齐（右对齐、同 0.82 宽度上限）。
@@ -1464,7 +1482,7 @@ private fun AgentMessageBlock(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = AgentChatSpacing.RowHorizontal, vertical = AgentChatSpacing.RowBaseHalf),
     ) {
         if (message.content.isBlank() && message.isStreaming) {
             AITypingIndicator(

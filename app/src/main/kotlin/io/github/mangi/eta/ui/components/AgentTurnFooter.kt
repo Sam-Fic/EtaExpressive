@@ -123,7 +123,13 @@ internal fun AgentTurnFooter(
         onBranch = { actions.onBranchMessage(message.id) },
         modifier = modifier
             .testTag("turn-footer:${message.id}")
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            // 上侧不另加外距：有效上间隙 = 文字行底 8 + 按钮行内层 2 = 10dp，按钮组贴住所属回复；
+            // 下侧基准半距与下一行合成 16dp 轮间间隙。
+            .padding(
+                start = AgentChatSpacing.RowHorizontal,
+                end = AgentChatSpacing.RowHorizontal,
+                bottom = AgentChatSpacing.RowBaseHalf,
+            ),
     )
 }
 
@@ -170,7 +176,7 @@ internal fun AgentMessageActionRow(
     val onRegenerateClick: () -> Unit = { TouchHaptics.click(view); onRegenerate() }
     val onDeleteClick: () -> Unit = { TouchHaptics.click(view); onDelete() }
     Row(
-        modifier = modifier.fillMaxWidth().padding(top = 2.dp),
+        modifier = modifier.fillMaxWidth().padding(top = AgentChatSpacing.ActionRowTopGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // M3 Expressive：KernelSU 同款官方连体按钮组 —— EtaConnectedGroupRow

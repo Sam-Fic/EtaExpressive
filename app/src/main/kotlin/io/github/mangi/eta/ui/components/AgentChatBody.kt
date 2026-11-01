@@ -985,6 +985,18 @@ internal fun AgentConversationMessages(
             }
         }
     }
+    // 工作组行（摘要 / 步骤）上方是否紧邻用户气泡：回复起点与文字侧统一 16dp——
+    // 组首行对用户气泡的上边距抬到基准半距（8），否则保持 2dp 薄边（与文字行底 8 合成 10）。
+    val workRowFollowsUser = remember(timelineRows) {
+        buildMap {
+            timelineRows.forEachIndexed { index, row ->
+                if (row is AgentTimelineRow.WorkSummary || row is AgentTimelineRow.WorkStep) {
+                    val prev = timelineRows.getOrNull(index - 1) as? AgentTimelineRow.Message
+                    put(row.key, prev?.message is UserMessageUi)
+                }
+            }
+        }
+    }
     LaunchedEffect(scrollToMessageId, timelineRows) {
         val target = scrollToMessageId ?: return@LaunchedEffect
         val index = timelineRows.indexOfFirst { it.containsMessageId(target) }
@@ -1993,13 +2005,23 @@ internal fun AgentConversationMessages(
                                     }
                                 }
                             },
-                            // 组首与列表内容的间距 2dp；展开后与步骤行之间是 2dp 露缝（1+1）。
-                            // 展开后首步若是纯文本回复，列表不接摘要，摘要下沿仍是 2dp。
+                            // 组首与相邻内容的上间距：紧邻用户气泡（回复起点）抬到基准半距
+                            // 8dp（与文字侧一致合成 16dp），否则 2dp 薄边（与文字行底 8 合成 10dp）。
+                            // 展开后与步骤行之间是 2dp 露缝（1+1）；展开后首步若是纯文本回复，
+                            // 列表不接摘要，摘要下沿仍是 2dp。
                             // 用 visualExpanded：收起进行中摘要已回到单独一条的间距/形状，
                             // 与步骤行退场同帧。
                             modifier = Modifier.padding(
-                                top = 2.dp,
-                                bottom = if (visualExpanded && entry.group.summaryContinuesIntoSteps()) 1.dp else 2.dp,
+                                top = if (workRowFollowsUser[entry.key] == true) {
+                                    AgentChatSpacing.RowBaseHalf
+                                } else {
+                                    AgentChatSpacing.WorkEdge
+                                },
+                                bottom = if (visualExpanded && entry.group.summaryContinuesIntoSteps()) {
+                                    AgentChatSpacing.WorkSeamHalf
+                                } else {
+                                    AgentChatSpacing.WorkEdge
+                                },
                             ),
                         )
                     }
@@ -2016,10 +2038,15 @@ internal fun AgentConversationMessages(
                             animateEntry = firstRowAppearance,
                             onHidden = { onWorkStepExitFinished(entry.groupKey, entry.key) },
                             // 连续步骤是设置页「同组项」式的连续分段列表：组内露缝 2dp（1+1），
-                            // 组首/组末与相邻内容保持 2dp 间距。padding 在 clip 之内，缩回时一起消失。
+                            // 组首/组末与相邻内容保持 2dp 薄边；组首紧邻用户气泡（回复起点）时
+                            // 抬到基准半距 8dp，与文字侧一致。padding 在 clip 之内，缩回时一起消失。
                             modifier = Modifier.padding(
-                                top = if (entry.isFirst) 2.dp else 1.dp,
-                                bottom = if (entry.isLast) 2.dp else 1.dp,
+                                top = when {
+                                    !entry.isFirst -> AgentChatSpacing.WorkSeamHalf
+                                    workRowFollowsUser[entry.key] == true -> AgentChatSpacing.RowBaseHalf
+                                    else -> AgentChatSpacing.WorkEdge
+                                },
+                                bottom = if (entry.isLast) AgentChatSpacing.WorkEdge else AgentChatSpacing.WorkSeamHalf,
                             ),
                         ) {
                             ChatMessageItem(
@@ -2059,6 +2086,13 @@ internal fun AgentConversationMessages(
                         speechPreface = speechPrefaces[owner.id].orEmpty(),
                         messageActionsEnabled = messageActionsEnabled && !isStreaming && !isPaused,
                         branchEnabled = branchEnabled,
+                        // 页脚上侧按锚点行补差：锚在文字 / 分割线 / 用户气泡（底 8dp）上时不再另加，
+                        // 锚在工作组行（底 2dp 薄边）上时补 6dp——有效上间隙统一 10dp（含按钮行内层 2）。
+                        modifier = if (entry is AgentTimelineRow.WorkSummary || entry is AgentTimelineRow.WorkStep) {
+                            Modifier.padding(top = AgentChatSpacing.FooterAfterWorkTopGap)
+                        } else {
+                            Modifier
+                        },
                     )
                 }
                 }
