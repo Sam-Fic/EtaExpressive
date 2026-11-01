@@ -42,6 +42,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaPageSurface
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
@@ -150,9 +151,6 @@ internal fun resolveSubAgentProfileConfig(profile: SubAgentProfile, providers: L
 
 private class SubAgentResolvedDraftBinding(val providerId: String, val modelId: String, val role: String,
     val config: AgentModelClient.ModelConfig?)
-
-/** 预设分组之间的垂直间距，与兄弟设置页的分段分组节奏一致。 */
-private val ProfileDialogGroupSpacing = 13.dp
 
 /**
  * 分段卡片条目。
@@ -308,7 +306,7 @@ internal fun SubAgentProfileConfigDialog(
                         // 分段列表：名称、启用开关与各设置行同处一组，首末项自动获得外圆角、行间留缝。
                         // 名称与并行上限不再单独摆描边输入框，避免同一页混用「卡片行」与「表单字段」两种形态。
                         EtaSegmentedColumn(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = ProfileDialogGroupSpacing),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = EtaSegmentedGroupSpacing),
                         ) {
                             // 与预设组详情页的标题行逐像素同款：同一套 EtaSegmentedRow（choiceRow）
                             // + 只读名称正文 + 行尾 Expressive 开关；改名为点击整行打开重命名弹窗。

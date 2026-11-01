@@ -25,14 +25,20 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.SessionGatewayRule
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 
-/** 分段列调用方的统一水平边距：16dp 与 KernelSU 分段列表一致。 */
-internal val EditorSectionPadding = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp)
+/** 分段列调用方的统一外边距：取组边距 token（水平 16dp、组间 13dp），与 KernelSU 分段列表一致。 */
+internal val EditorSectionPadding = Modifier.padding(
+    start = EtaGroupHorizontalPadding,
+    end = EtaGroupHorizontalPadding,
+    bottom = EtaSegmentedGroupSpacing,
+)
 
 internal fun LazyListScope.providerSessionGateway(
     modelPattern: String,

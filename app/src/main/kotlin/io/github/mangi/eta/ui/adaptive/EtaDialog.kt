@@ -59,7 +59,7 @@ fun EtaDialog(
         },
         title = { Text(text = title, style = MaterialTheme.typography.titleLarge) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(EtaDimens.SpaceMd)) {
                 summary?.let {
                     Text(
                         text = it,
@@ -181,7 +181,7 @@ fun EtaDialogActions(
     // 动作形态——没有整宽填充按钮），破坏性确认以 error 色文案区分，不加按钮底色。
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        horizontalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm, Alignment.End),
     ) {
         TextButton(
             onClick = {

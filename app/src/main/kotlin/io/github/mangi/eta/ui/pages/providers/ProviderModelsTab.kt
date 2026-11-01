@@ -90,6 +90,8 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSectionTitle
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaDimens
@@ -676,12 +678,16 @@ private fun ModelListGroupItem(
     content: @Composable () -> Unit,
 ) {
     // M3：容器底色与首尾圆角交给官方 ListItem（segmentedColors + segmentedShapes），
-    // 行间 2dp 露出背景缝隙（KernelSU 的 spacedBy(2.dp)），末项补足组间距 13dp，
-    // 水平 16dp 与供应商列表页一致。
+    // 行间露出背景缝隙（EtaSegmentedGap），末项补足组间距（EtaSegmentedGroupSpacing），
+    // 水平取组边距 token，与供应商列表页一致。
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, bottom = if (isLast) 13.dp else 2.dp),
+            .padding(
+                start = EtaGroupHorizontalPadding,
+                end = EtaGroupHorizontalPadding,
+                bottom = if (isLast) EtaSegmentedGroupSpacing else EtaSegmentedGap,
+            ),
     ) {
         content()
     }

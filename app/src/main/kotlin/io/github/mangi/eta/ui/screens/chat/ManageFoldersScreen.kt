@@ -37,10 +37,9 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
-import io.github.mangi.eta.ui.adaptive.EtaText
-import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.FolderNameDialog
+import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.ConversationFolderUi
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
@@ -91,11 +90,8 @@ internal fun ManageFoldersScreen(
     ) {
         if (folders.isEmpty()) {
             item(key = "empty") {
-                EtaText(
-                    text = stringResource(R.string.folders_page_empty),
-                    style = EtaTextStyle.Body,
-                    secondary = true,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                ListEmptyState(
+                    title = stringResource(R.string.folders_page_empty),
                 )
             }
         } else {

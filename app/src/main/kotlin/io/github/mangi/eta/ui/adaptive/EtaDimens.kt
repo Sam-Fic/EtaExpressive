@@ -31,6 +31,12 @@ object EtaDimens {
     /** 状态标记图标（工具行、朗读按钮等 16dp 状态槽）。 */
     val StatusIconSize = 16.dp
 
+    /** 会话行运行状态圆点（会话列表「运行中 / 已完成」标记）。 */
+    val StatusDotSize = 6.dp
+
+    /** 远程连接状态圆点（侧栏远程行、远程服务器管理页），比运行状态点大一级。 */
+    val RemoteStatusDotSize = 10.dp
+
     /**
      * 极小标记图标（12dp）：仅用于纯装饰性的点状/短划元素。
      *

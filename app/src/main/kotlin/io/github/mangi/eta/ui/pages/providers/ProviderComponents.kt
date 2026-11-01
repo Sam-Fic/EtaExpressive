@@ -33,7 +33,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.data.model.CustomProviderSetting
 import io.github.mangi.eta.data.model.ProviderSetting
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.providerBrandLogoRes as sharedProviderBrandLogoRes
@@ -46,8 +48,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text as M3Text
 
-/** 分段列调用方的统一外边距：水平 16dp、组间 13dp，与 KernelSU 分段列表调用方一致。 */
-internal val ProviderSectionGroupPadding = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp)
+/** 分段列调用方的统一外边距：取组边距 token（水平 16dp、组间 13dp），与 KernelSU 分段列表调用方一致。 */
+internal val ProviderSectionGroupPadding = Modifier.padding(
+    start = EtaGroupHorizontalPadding,
+    end = EtaGroupHorizontalPadding,
+    bottom = EtaSegmentedGroupSpacing,
+)
 
 /**
  * 可展开编辑器的展开体容器：M3 用官方分段容器（与分段行拼成连续表面，

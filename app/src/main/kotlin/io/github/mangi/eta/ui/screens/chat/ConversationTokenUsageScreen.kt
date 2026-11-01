@@ -9,8 +9,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.repository.formatTokenCount
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.model.ConversationTokenUsageUi
@@ -36,13 +38,17 @@ internal fun ConversationTokenUsageScreen(
             item(key = "empty") {
                 ListEmptyState(
                     title = stringResource(R.string.token_usage_empty),
-                    modifier = Modifier.padding(bottom = 13.dp),
+                    modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
                 )
             }
         } else {
             item(key = "usage") {
                 EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedGroupSpacing,
+                    ),
                 ) {
                     item(key = "context") {
                         // 上下文是「最近一轮请求的输入」，不是各轮累加；后者会被前缀重发放大多倍。

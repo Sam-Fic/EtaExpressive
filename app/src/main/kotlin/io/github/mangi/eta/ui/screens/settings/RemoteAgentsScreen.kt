@@ -49,6 +49,7 @@ import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
@@ -559,7 +560,8 @@ internal fun RemoteAgentsScreen(
                 modifier = Modifier
                     .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                // 与 EtaDialog 正文槽同一行距档。
+                verticalArrangement = Arrangement.spacedBy(EtaDimens.SpaceMd),
             ) {
                 EtaText(
                     text = probeLocalNetworkDialogText(lanState),
@@ -992,7 +994,7 @@ private fun StatusDot(status: RemoteConnectionStatus) {
     }
     Box(
         modifier = Modifier
-            .size(10.dp)
+            .size(EtaDimens.RemoteStatusDotSize)
             .clip(CircleShape)
             .background(color),
     )

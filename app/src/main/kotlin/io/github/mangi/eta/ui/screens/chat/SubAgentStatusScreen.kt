@@ -13,8 +13,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.delegation.SubAgentContextStats
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.contextLabel
@@ -44,13 +46,17 @@ internal fun SubAgentStatusScreen(
             item(key = "empty") {
                 ListEmptyState(
                     title = stringResource(R.string.sub_agent_status_empty),
-                    modifier = Modifier.padding(bottom = 13.dp),
+                    modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
                 )
             }
         } else {
             item(key = "roster") {
                 EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedGroupSpacing,
+                    ),
                 ) {
                     ordered.forEachIndexed { index, agent ->
                         item(key = index) {

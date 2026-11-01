@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.screens.chat
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,8 +41,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSearchPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
-import io.github.mangi.eta.ui.adaptive.EtaText
-import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
 
@@ -101,11 +99,8 @@ internal fun TrashScreen(
     ) {
         if (trash.isEmpty()) {
             item(key = "empty") {
-                EtaText(
-                    text = stringResource(R.string.drawer_trash_empty),
-                    style = EtaTextStyle.Body,
-                    secondary = true,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                ListEmptyState(
+                    title = stringResource(R.string.drawer_trash_empty),
                 )
             }
         } else {
@@ -220,7 +215,6 @@ private fun TrashRow(
                 trailingContent = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(0.dp),
                     ) {
                         M3IconButton(
                             onClick = onRestore,
@@ -278,11 +272,8 @@ internal fun TrashSearchScreen(
         val hits = onSearch(query)
         if (hits.isEmpty()) {
             item(key = "empty") {
-                EtaText(
-                    text = stringResource(R.string.trash_search_empty),
-                    style = EtaTextStyle.Body,
-                    secondary = true,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                ListEmptyState(
+                    title = stringResource(R.string.trash_search_empty),
                 )
             }
         } else {

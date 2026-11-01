@@ -2015,12 +2015,12 @@ internal fun AgentConversationMessages(
                                 top = if (workRowFollowsUser[entry.key] == true) {
                                     AgentChatSpacing.RowBaseHalf
                                 } else {
-                                    AgentChatSpacing.WorkEdge
+                                    AgentChatSpacing.TurnInnerEdge
                                 },
                                 bottom = if (visualExpanded && entry.group.summaryContinuesIntoSteps()) {
                                     AgentChatSpacing.WorkSeamHalf
                                 } else {
-                                    AgentChatSpacing.WorkEdge
+                                    AgentChatSpacing.TurnInnerEdge
                                 },
                             ),
                         )
@@ -2044,9 +2044,9 @@ internal fun AgentConversationMessages(
                                 top = when {
                                     !entry.isFirst -> AgentChatSpacing.WorkSeamHalf
                                     workRowFollowsUser[entry.key] == true -> AgentChatSpacing.RowBaseHalf
-                                    else -> AgentChatSpacing.WorkEdge
+                                    else -> AgentChatSpacing.TurnInnerEdge
                                 },
-                                bottom = if (entry.isLast) AgentChatSpacing.WorkEdge else AgentChatSpacing.WorkSeamHalf,
+                                bottom = if (entry.isLast) AgentChatSpacing.TurnInnerEdge else AgentChatSpacing.WorkSeamHalf,
                             ),
                         ) {
                             ChatMessageItem(
@@ -2066,6 +2066,8 @@ internal fun AgentConversationMessages(
                                     entry.isLast -> SegmentedRowPosition.Last
                                     else -> SegmentedRowPosition.Middle
                                 },
+                                // 包装层已给薄边/组缝：运行轨迹等双上下文行据此收零自身纵向外距。
+                                inWorkGroup = true,
                                 modifier = Modifier,
                             )
                         }

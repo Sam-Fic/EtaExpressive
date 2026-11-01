@@ -17,7 +17,6 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Videocam
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -51,6 +50,8 @@ import io.github.mangi.eta.agent.delegation.ConversationSubAgentPreferences
 import io.github.mangi.eta.agent.delegation.SubAgentConfigKey
 import io.github.mangi.eta.agent.delegation.SubAgentProfile
 import io.github.mangi.eta.data.repository.ProviderRepository
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
@@ -58,6 +59,7 @@ import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
@@ -209,7 +211,11 @@ private fun SubAgentPresetDetail(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = 6.dp),
+                            .padding(
+                                start = EtaGroupHorizontalPadding,
+                                end = EtaGroupHorizontalPadding,
+                                bottom = EtaSegmentedTitleSpacing,
+                            ),
                     ) {
                         Text(
                             text = when (state) {
@@ -302,13 +308,24 @@ private fun SubAgentPresetDetail(
                 )
             }
             delete?.let { profile ->
-                if (editable) AlertDialog(onDismissRequest = { delete = null }, title = { Text(stringResource(R.string.sas_delete_agent_title)) },
-                    text = { Text(stringResource(R.string.sas_delete_agent_note, profile.name)) },
-                    dismissButton = { TextButton(onClick = { delete = null }) { Text(stringResource(R.string.action_cancel)) } },
-                    confirmButton = { TextButton(enabled = editable, onClick = {
-                        if (editor.enabled && editor.remove(profile.id) is ConversationSubAgentPreferences.WriteResult.Saved)
-                            delete = null
-                    }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) } })
+                if (editable) EtaDialog(
+                    show = true,
+                    title = stringResource(R.string.sas_delete_agent_title),
+                    onDismissRequest = { delete = null },
+                    summary = stringResource(R.string.sas_delete_agent_note, profile.name),
+                    actions = {
+                        // 全项目确认弹窗统一动作行：右对齐 TextButton，破坏性确认 error 色文案。
+                        EtaDialogActions(
+                            confirmText = stringResource(R.string.action_delete),
+                            destructive = true,
+                            onCancel = { delete = null },
+                            onConfirm = {
+                                if (editor.enabled && editor.remove(profile.id) is ConversationSubAgentPreferences.WriteResult.Saved)
+                                    delete = null
+                            },
+                        )
+                    },
+                )
             }
         }
     }

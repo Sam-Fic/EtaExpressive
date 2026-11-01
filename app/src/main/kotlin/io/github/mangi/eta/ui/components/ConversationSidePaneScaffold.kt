@@ -113,6 +113,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import io.github.mangi.eta.ui.adaptive.EtaConnectedPosition
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
@@ -216,7 +217,6 @@ private object DrawerMetrics {
     // 胶囊行横向滚动的两端淡出带宽度。用 DstIn 蒙版淡化这行内容本身，
     // 滚动到中间时把视口切开的胶囊边缘擦掉，底下露出的自然是抽屉底色。
     val ChipRowEdgeFadeWidth = 24.dp
-    val AfterChips = 10.dp
     // 底部浮动工具栏（M3E HorizontalFloatingToolbar with FAB）：可视药丸高 64dp（官方
     // ContainerSize），但官方布局以 FAB 的最大尺寸 80dp（FabSizeRange 上限）作 minHeight、
     // 药丸在其内垂直居中，组合总高 80dp、药丸中线落在总高一半（40dp）处。离底间距取 8dp
@@ -230,17 +230,9 @@ private object DrawerMetrics {
     val ToolbarListGap = 12.dp
     val ToolbarListBottomPadding = ToolbarHeight + ToolbarBottomOffset + ToolbarListGap
     val ActionIconSize = 20.dp
-    val CircleButtonPadding = 10.dp
-    val SectionTopPadding = 10.dp
-    val SectionBottomPadding = 6.dp
-    val RowMinHeight = 44.dp
     val RowGap = 2.dp
     val RowCornerRadius = 16.dp
-    val RowHorizontalPadding = 14.dp
-    val RowVerticalPadding = 10.dp
-    val ActiveDotSize = 6.dp
     val ActiveDotGap = 8.dp
-    val EmptyVerticalPadding = 28.dp
     val DockTopGap = 8.dp
     val AssistantBarHeight = 48.dp
 }
@@ -1948,7 +1940,7 @@ private fun RemoteStatusDot(status: RemoteConnectionStatus) {
     }
     Box(
         modifier = Modifier
-            .size(10.dp)
+            .size(EtaDimens.RemoteStatusDotSize)
             .clip(CircleShape)
             .background(color),
     )

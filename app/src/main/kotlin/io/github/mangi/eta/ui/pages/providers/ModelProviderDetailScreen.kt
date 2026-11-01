@@ -46,10 +46,12 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -305,10 +307,10 @@ internal fun ModelProviderDetailScreen(
                         currentTab = it
                     },
                     modifier = Modifier.padding(
-                        start = sidePadding + 16.dp,
-                        end = sidePadding + 16.dp,
+                        start = sidePadding + EtaGroupHorizontalPadding,
+                        end = sidePadding + EtaGroupHorizontalPadding,
                         top = 8.dp,
-                        bottom = 13.dp,
+                        bottom = EtaSegmentedGroupSpacing,
                     ),
                 )
             }
@@ -736,7 +738,11 @@ private fun ProviderConfigTab(
                 // KernelSU 设置页「卸载」同款：分段行 + Delete 图标 + 官方 error 角色色，
                 // 不再用大块卡片抢占视觉重心。
                 EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedGroupSpacing,
+                    ),
                 ) {
                     item {
                         EtaSegmentedRow(

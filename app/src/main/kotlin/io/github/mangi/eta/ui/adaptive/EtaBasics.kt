@@ -36,7 +36,12 @@ fun EtaSectionTitle(
         text = text,
         style = MaterialTheme.typography.titleSmallEmphasized,
         color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+        modifier = modifier.padding(
+            start = EtaGroupHorizontalPadding,
+            end = EtaGroupHorizontalPadding,
+            top = EtaDimens.SpaceMd,
+            bottom = EtaDimens.SpaceSm,
+        ),
     )
 }
 

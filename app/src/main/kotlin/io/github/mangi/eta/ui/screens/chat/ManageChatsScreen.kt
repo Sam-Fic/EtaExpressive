@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
@@ -47,8 +48,7 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
-import io.github.mangi.eta.ui.adaptive.EtaText
-import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.streamDiagnosticDraw
 import io.github.mangi.eta.ui.components.streamDiagnosticMeasure
 import io.github.mangi.eta.ui.components.streamDiagnosticPlacement
@@ -127,11 +127,8 @@ internal fun ManageChatsScreen(
     ) {
         if (ordered.isEmpty()) {
             item(key = "empty") {
-                EtaText(
-                    text = stringResource(R.string.history_page_empty),
-                    style = EtaTextStyle.Body,
-                    secondary = true,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                ListEmptyState(
+                    title = stringResource(R.string.history_page_empty),
                 )
             }
         } else {
@@ -352,7 +349,7 @@ private fun ManageChatStatusDot(
 ) {
     Box(
         modifier = modifier
-            .size(6.dp)
+            .size(EtaDimens.StatusDotSize)
             .clip(CircleShape)
             .then(
                 if (activeRun) {

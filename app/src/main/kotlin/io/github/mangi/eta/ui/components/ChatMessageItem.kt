@@ -467,6 +467,11 @@ internal fun ChatMessageItem(
     onThinkingToggle: ((String, Boolean) -> Unit)? = null,
     /** 本行在连续分段列表（同组步骤）里的位置，传给思考 / 工具气泡。 */
     segmentedPosition: SegmentedRowPosition = SegmentedRowPosition.Whole,
+    /**
+     * 本行是否渲染在工作组包装层之内（WorkStep 路径）：包装层已给薄边，
+     * 运行轨迹这类双上下文行据此把自身纵向外距收零，避免叠进组缝体系。
+     */
+    inWorkGroup: Boolean = false,
 ) {
     when (message) {
         is io.github.mangi.eta.ui.model.AgentQuestionMessageUi -> AgentQuestionCard(message, modifier,
@@ -552,7 +557,12 @@ internal fun ChatMessageItem(
             onToggle = onThinkingToggle,
             position = segmentedPosition,
         )
-        is RunTraceMessageUi -> RunTraceRow(message = message, onClick = actions.onRunTraceClick, modifier = modifier)
+        is RunTraceMessageUi -> RunTraceRow(
+            message = message,
+            onClick = actions.onRunTraceClick,
+            inWorkGroup = inWorkGroup,
+            modifier = modifier,
+        )
         is ToolActivityMessageUi -> ToolActivityInline(
             message = message,
             onOpenBrowser = actions.onOpenBrowser,
@@ -1485,9 +1495,8 @@ private fun AgentMessageBlock(
             .padding(horizontal = AgentChatSpacing.RowHorizontal, vertical = AgentChatSpacing.RowBaseHalf),
     ) {
         if (message.content.isBlank() && message.isStreaming) {
-            AITypingIndicator(
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            // 回复起点 16dp 由行层（气泡底 8 + 行顶 8）保证，打字指示不再额外下沉。
+            AITypingIndicator()
         } else {
             HapticSelectionContainer {
                 when {
@@ -4178,6 +4187,7 @@ private fun ToolMediaThumbnail(
 private fun RunTraceRow(
     message: RunTraceMessageUi,
     onClick: () -> Unit,
+    inWorkGroup: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val body: @Composable RowScope.() -> Unit = {
@@ -4205,13 +4215,19 @@ private fun RunTraceRow(
     // surface 底色、outlineVariant 描边与官方涟漪。
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(
+            horizontal = AgentChatSpacing.RowHorizontal,
+            // 独立行：上侧贴身（对文字/页脚合成 10dp 轮内）、下侧基准（对下一轮合成 16dp 轮间）；
+            // 工作组步骤行：纵向外距收零，交给包装层的薄边/组缝。
+            top = if (inWorkGroup) 0.dp else AgentChatSpacing.TurnInnerEdge,
+            bottom = if (inWorkGroup) 0.dp else AgentChatSpacing.RowBaseHalf,
+        ),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
         border = chatCardBorder(0.55f),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) { body() }
     }
@@ -4228,7 +4244,9 @@ private fun ToolSummaryInline(
     FlowRow(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
+            // 只作为工作组步骤行渲染：纵向外距收零，间隙交给工作组包装层的薄边/组缝；
+            // 水平与正文行左缘对齐（原 20dp 比行基准多缩进 4dp）。
+            .padding(horizontal = AgentChatSpacing.RowHorizontal),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -4347,7 +4365,12 @@ private fun SuggestionChipsRow(
     FlowRow(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(
+                horizontal = AgentChatSpacing.RowHorizontal,
+                // 上侧贴身（对页脚/正文合成 10dp 轮内），下侧基准（对下一轮合成 16dp 轮间）。
+                top = AgentChatSpacing.TurnInnerEdge,
+                bottom = AgentChatSpacing.RowBaseHalf,
+            ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

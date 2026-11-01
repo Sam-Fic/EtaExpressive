@@ -50,9 +50,12 @@ import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.adaptive.EtaCard
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSectionTitle
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
@@ -68,8 +71,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.material3.Text as M3Text
 
-/** 分组标题（已含上下留白）+ 分段列表的组合外边距。 */
-private val SectionGroupPadding = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 21.dp)
+/** 分组标题（已含上下留白）+ 分段列表的组合外边距：取组边距 token，与模型 Tab 分组节奏一致。 */
+private val SectionGroupPadding = Modifier.padding(
+    start = EtaGroupHorizontalPadding,
+    end = EtaGroupHorizontalPadding,
+    bottom = EtaSegmentedGroupSpacing,
+)
 
 @Composable
 internal fun ModelProviderListScreen(
@@ -376,14 +383,13 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.materialProviderList
                 index = index,
                 count = filteredProviders.size,
             ) {
-                // 分段间 2dp 露出背景缝隙（KernelSU 的 spacedBy(2.dp)），
-                // 末项补足组间距 13dp。
+                // 分段间露出背景缝隙（EtaSegmentedGap），末项补足组间距（EtaSegmentedGroupSpacing）。
                 val isLast = index == filteredProviders.lastIndex
                 Column(
                     modifier = Modifier.padding(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = if (isLast) 13.dp else 2.dp,
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = if (isLast) EtaSegmentedGroupSpacing else EtaSegmentedGap,
                     ),
                 ) {
                     ProviderListItem(

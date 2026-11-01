@@ -40,11 +40,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.material3.TextButton as M3TextButton
 import java.text.NumberFormat
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 
 @Composable
 internal fun AgentMemoryScreen(
@@ -86,7 +88,11 @@ internal fun AgentMemoryScreen(
             ) {
                 item(key = "status-card") {
                     EtaSegmentedColumn(
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                        modifier = Modifier.padding(
+                            start = EtaGroupHorizontalPadding,
+                            end = EtaGroupHorizontalPadding,
+                            bottom = EtaSegmentedGroupSpacing,
+                        ),
                         title = stringResource(R.string.ui_memory_b55ff5),
                     ) {
                         if (!globalEnabled) {
@@ -148,7 +154,11 @@ internal fun AgentMemoryScreen(
                     .navigationBarsPadding(),
             ) {
                 EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedGroupSpacing,
+                    ),
                     title = "MEMORY.md",
                 ) {
                     item {
