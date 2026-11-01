@@ -811,10 +811,11 @@ internal class OpencodeSession(
 
     private fun OpencodeTokens.toContextUsage(): RemoteContextUsage? {
         val total = total ?: return null
+        val window = contextWindow
         return RemoteContextUsage(
             tokens = total.toInt(),
-            contextWindow = contextWindow?.toInt(),
-            percent = if (contextWindow != null && contextWindow > 0) total * 100.0 / contextWindow else null,
+            contextWindow = window?.toInt(),
+            percent = if (window != null && window > 0) total * 100.0 / window else null,
         )
     }
 

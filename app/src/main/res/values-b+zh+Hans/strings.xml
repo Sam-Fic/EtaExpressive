@@ -1694,7 +1694,8 @@
   <string name="remote_agents_field_host">服务器地址</string>
   <string name="remote_agents_field_host_hint">可直接粘贴 WebUI 链接（如 http://192.168.1.10:8800?token=…），只填 IP 也行；端口与令牌会自动填好。</string>
   <string name="remote_agents_resolved_endpoint">将连接：%1$s</string>
-  <string name="remote_agents_hint_opencode">需在电脑上运行：OPENCODE_PASSWORD=密码 opencode serve --hostname 0.0.0.0（默认端口 4096）。密码填入令牌栏；仅当服务器未设密码时留空。</string>
+  <string name="remote_agents_hint_opencode">需在电脑上运行：OPENCODE_PASSWORD=密码 opencode serve --hostname 0.0.0.0（默认端口 4096）。密码填入令牌栏；不设环境变量时服务器会自动生成并在启动时打印一个密码，复制它即可。仅当服务器未设密码时留空。</string>
+  <string name="remote_agents_server_missing">该服务器已不存在</string>
   <string name="remote_agents_field_port">端口</string>
   <string name="remote_agents_field_token">访问令牌</string>
   <string name="remote_agents_field_protocol">协议</string>
@@ -3127,6 +3128,7 @@
   <string name="remote_probe_step_tcp_wifi">TCP 连接（强制走 Wi-Fi）</string>
   <string name="remote_probe_step_http">HTTP 响应</string>
   <string name="remote_probe_step_ws">WebSocket 握手</string>
+  <string name="remote_probe_step_sse">事件流（SSE）</string>
   <string name="remote_probe_step_ok">%1$s：通过</string>
   <string name="remote_probe_step_failed">%1$s：失败 — %2$s</string>
   <string name="remote_probe_step_skipped">%1$s：未执行</string>

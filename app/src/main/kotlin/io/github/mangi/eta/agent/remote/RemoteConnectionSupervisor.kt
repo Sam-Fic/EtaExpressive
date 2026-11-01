@@ -127,7 +127,7 @@ internal class RemoteConnectionSupervisor(
             reconnectJob?.cancel()
             reconnectJob = null
             AndroidAgentLogger.warn("Remote WS reconnect gave up after $currentAttempt attempts: $lastKind ($lastDetail)")
-            postStatus(RemoteConnectionStatus.Failed(lastKind, lastDetail))
+            postStatus(RemoteConnectionStatus.Failed(lastKind ?: RemoteFailure.Kind.Unknown, lastDetail))
             return
         }
         postStatus(RemoteConnectionStatus.Reconnecting(currentAttempt, lastKind, lastDetail))

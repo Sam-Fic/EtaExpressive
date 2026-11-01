@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonElement
  *
  * 全部字段可空 + `ignoreUnknownKeys`，与 [io.github.mangi.eta.agent.remote.pi.PiFrame]
  * 同一条宽容原则：服务器版本升级加了字段/换了枚举值时，老客户端只丢细节、不崩连接。
- * 字段名对照的是 v2.2.5 的 wire 契约（`packages/schema/src/*.ts`）：
+ * 字段名对照的是 v2.2.5 的 wire 契约（`packages/schema/src` 下的 `.ts`）：
  * - 消息与工具状态的判别字段是 `type` / `status`（没有 `role`）；
  * - 时间一律是 epoch 毫秒数；
  * - `model` 引用是 `{id, providerID}`，注意 `id` 在前。

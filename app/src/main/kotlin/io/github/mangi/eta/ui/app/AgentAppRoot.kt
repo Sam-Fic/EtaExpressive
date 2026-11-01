@@ -858,7 +858,6 @@ fun AgentAppRoot(
                     }
                     }
                 }
-            }
             composable<AppRoute.Chat> {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
@@ -959,7 +958,6 @@ fun AgentAppRoot(
                     }
                     }
                 }
-            }
             composable<AppRoute.Browser> {
                 AgentBrowserScreen(
                     onBack = ::popRoute,
@@ -1517,6 +1515,15 @@ fun AgentAppRoot(
             }
             composable<AppRoute.RemoteAgents> {
                 io.github.mangi.eta.ui.screens.settings.RemoteAgentsScreen(
+                    onBack = ::popRoute,
+                    coordinator = appViewModel.remoteCoordinator,
+                    onOpenEditor = { serverId -> pushRoute(AppRoute.RemoteAgentEditor(serverId)) },
+                )
+            }
+            composable<AppRoute.RemoteAgentEditor> { entry ->
+                val route = entry.toRoute<AppRoute.RemoteAgentEditor>()
+                io.github.mangi.eta.ui.screens.settings.RemoteAgentEditorScreen(
+                    serverId = route.serverId,
                     onBack = ::popRoute,
                     coordinator = appViewModel.remoteCoordinator,
                 )

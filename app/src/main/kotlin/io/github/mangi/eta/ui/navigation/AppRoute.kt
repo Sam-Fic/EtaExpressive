@@ -214,6 +214,14 @@ sealed interface AppRoute {
     /** 远程智能体设置页：局域网 agent 服务器的增删改与连接状态。 */
     @Serializable
     data object RemoteAgents : AppRoute
+
+    /**
+     * 远程服务器编辑子页：[serverId] 为 null 是新建，否则编辑既有配置。
+     * 独立路由才能复用 NavHost 的入栈/出栈转场——编辑器内容（表单 + 协议 +
+     * 诊断）已塞不进一个弹窗。
+     */
+    @Serializable
+    data class RemoteAgentEditor(val serverId: String? = null) : AppRoute
 }
 
 @Serializable

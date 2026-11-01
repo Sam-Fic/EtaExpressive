@@ -12,6 +12,7 @@ import java.net.Socket
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.SocketFactory
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 
 /**
@@ -33,6 +34,9 @@ internal object RemoteHttpClient {
     private const val CONNECT_TIMEOUT_MS = 8_000L
     private const val READ_TIMEOUT_MS = 30_000L
     private const val WRITE_TIMEOUT_MS = 120_000L
+
+    /** 池内空闲连接的养命时长；必须小于已知对端（Node 默认）的 5 秒 keep-alive。 */
+    private const val POOL_KEEP_ALIVE_SECONDS = 3L
 
     /**
      * 应用上下文，只用来查网络。
@@ -73,6 +77,13 @@ internal object RemoteHttpClient {
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(false)
+            // 连接池空闲寿命必须压在对端 keep-alive 之下。opencode（Node/Bun http）
+            // 回 `Keep-Alive: timeout=5`——5 秒空闲就断，而 OkHttp 池默认养 5 分钟：
+            // 复用一条对端已关闭的死连接会直接「unexpected end of stream」，且本客户端
+            // 关掉了自动重试（见上，为了不悄悄重发聊天帧），死连接会原样炸到调用方。
+            // 把池缩到 3 秒，从源头消灭死连接复用；局域网 TCP 握手亚毫秒级，
+            // 多握一次手的代价可以忽略。
+            .connectionPool(ConnectionPool(5, POOL_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS))
             // 局域网地址永远不走代理——代理既不认识它，也不该经它转发。
             .proxy(Proxy.NO_PROXY)
             .socketFactory(LanSocketFactory())

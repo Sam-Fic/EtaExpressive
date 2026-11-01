@@ -14,16 +14,19 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Credentials
 import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import okio.BufferedSource
 
 /**
  * 远程 agent 连接诊断。
@@ -36,8 +39,11 @@ import okio.ByteString
  * 3. **TCP 通了但 HTTP 不对** —— 服务端拒绝/重定向/令牌不对；
  * 4. **HTTP 正常但 WS 握手失败** —— 路径、令牌或协议协商不对。
  *
- * 逐级探测（裸 TCP → HTTP → WebSocket）能把这四层分开，
- * 免得用户在一个笼统的「连接超时」上反复瞎猜。
+ * 逐级探测（裸 TCP → HTTP → 长连接）能把这四层分开，
+ * 免得用户在一个笼统的「连接超时」上反复瞎猜。最后一层随协议而变：
+ * pi 是 WebSocket 握手，OpenCode 是 SSE 事件流（见 [RemoteProtocols]），
+ * HTTP 一层的探测目标也随协议不同（OpenCode 打鉴权过的 `/api/info`，
+ * 才能真实验证密码，而不是打到无需鉴权的静态页上）。
  *
  * 另外多探一层 **局域网网关**：网关有应答而服务器没有，说明「局域网这条路是通的，
  * 是服务器那台机器不接受连接」——这跟「手机压根没在这个局域网里」是两码事，
@@ -59,6 +65,15 @@ internal object RemoteConnectionProbe {
     /** 网关探测的单个端口超时。RST 是毫秒级回来的，只有「没人应答」才耗满。 */
     private const val GATEWAY_TIMEOUT_MS = 1_500
     private const val WS_TIMEOUT_MS = 12_000L
+
+    /** OpenCode SSE 探针的单次读超时。首帧 server.connected 是连接即发的，给 4 秒绰绰有余。 */
+    private const val SSE_PROBE_READ_TIMEOUT_SECONDS = 4L
+
+    /** SSE 探针最多读多少行就去下结论（跳过空行/心跳注释，等一条 data: 帧）。 */
+    private const val SSE_PROBE_MAX_LINES = 10
+
+    /** OpenCode 的 Basic auth 用户名是固定的，服务器只认这一个。 */
+    private const val OPENCODE_AUTH_USERNAME = "opencode"
 
     /** 单个探测步骤的结果。 */
     sealed interface Step {
@@ -199,11 +214,12 @@ internal object RemoteConnectionProbe {
         /** 绑到 Wi-Fi 网络后的 TCP 结果；默认路由本来就通时为 null（不必测）。 */
         val tcpViaWifi: Step?,
         val http: Step,
-        val websocket: Step,
+        /** 长连接层结果：pi 是 WebSocket 握手，OpenCode 是 SSE 事件流。 */
+        val stream: Step,
     ) {
         /** 第一处失败即为根因；全通过说明链路本身没问题。 */
         val firstFailure: Step.Failed?
-            get() = listOf(tcp, tcpViaWifi, http, websocket)
+            get() = listOf(tcp, tcpViaWifi, http, stream)
                 .filterNotNull()
                 .firstNotNullOfOrNull { it as? Step.Failed }
 
@@ -272,12 +288,14 @@ internal object RemoteConnectionProbe {
      * @param host 服务器主机名或 IP
      * @param port 服务器端口
      * @param token 访问令牌（可为空——服务端可能关闭了鉴权）
+     * @param protocolId 协议 id（[RemoteProtocols]），决定 HTTP 探测目标与长连接层形态
      */
     suspend fun run(
         context: Context,
         host: String,
         port: Int,
         token: String,
+        protocolId: String,
     ): Report = withContext(Dispatchers.IO) {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val deviceIps = deviceIpv4(manager)
@@ -311,8 +329,8 @@ internal object RemoteConnectionProbe {
         val gatewayRoute = gateway?.let { probeRoute(it, GATEWAY_PORTS[0]) }
         // ARP 必须放在 TCP 尝试之后读：内核正是被刚才那次 connect 触发去解析 MAC 的。
         val hostArp = if (tcp is Step.Failed) arpStateOf(host) else Arp.Unknown
-        val http = if (tcp is Step.Ok) probeHttp(host, port, token) else Step.Skipped
-        val websocket = if (http is Step.Ok) probeWebSocket(host, port, token) else Step.Skipped
+        val http = if (tcp is Step.Ok) probeHttp(host, port, token, protocolId) else Step.Skipped
+        val stream = if (http is Step.Ok) probeStream(host, port, token, protocolId) else Step.Skipped
 
         val report = Report(
             deviceIpv4 = deviceIps,
@@ -332,7 +350,7 @@ internal object RemoteConnectionProbe {
             tcp = tcp,
             tcpViaWifi = tcpViaWifi,
             http = http,
-            websocket = websocket,
+            stream = stream,
         )
         // 诊断出「默认路由不通、绑 Wi-Fi 就通」，或发现出口被改道到别的网络时，
         // 直接把这个结论用到真实连接上：让用户看完报告后重连就能通，
@@ -495,21 +513,89 @@ internal object RemoteConnectionProbe {
         Reach.Silent
     }
 
-    /** 第二层：HTTP GET 根路径，确认服务进程活着且令牌策略符合预期。 */
-    private suspend fun probeHttp(host: String, port: Int, token: String): Step = withContext(Dispatchers.IO) {
+    /**
+     * 第二层：确认服务进程活着且令牌策略符合预期。
+     *
+     * pi 打根路径 `/`（WebUI 首页，令牌走查询参数）；OpenCode 打鉴权过的
+     * `/api/info`——它的根路径是无需鉴权的静态页，打根路径验证不了密码。
+     */
+    private suspend fun probeHttp(host: String, port: Int, token: String, protocolId: String): Step =
+        withContext(Dispatchers.IO) {
+            val isOpenCode = protocolId == RemoteProtocols.OPENCODE_ID
+            val url = HttpUrl.Builder()
+                .scheme("http")
+                .host(RemoteServerAddress.bareHost(host))
+                .port(port)
+                .apply {
+                    if (isOpenCode) {
+                        addPathSegment("api")
+                        addPathSegment("info")
+                    } else {
+                        addPathSegment("")
+                        if (token.isNotEmpty()) addQueryParameter("token", token)
+                    }
+                }
+                .build()
+            val request = Request.Builder().url(url).get().apply {
+                if (isOpenCode && token.isNotEmpty()) {
+                    header("Authorization", Credentials.basic(OPENCODE_AUTH_USERNAME, token))
+                }
+            }.build()
+            try {
+                RemoteHttpClient.client.newCall(request).execute().use { response ->
+                    when (response.code) {
+                        200 -> Step.Ok
+                        401, 403 -> Step.Failed(RemoteFailure.Kind.Unauthorized, response.code.toString())
+                        404 -> Step.Failed(RemoteFailure.Kind.NotFound, response.code.toString())
+                        else -> Step.Failed(RemoteFailure.Kind.Unknown, "HTTP ${response.code}")
+                    }
+                }
+            } catch (t: Throwable) {
+                Step.Failed(RemoteFailure.kindOf(t, RemoteFailure.Phase.Read), RemoteFailure.detailOf(t))
+            }
+        }
+
+    /** 第三层（长连接）：pi 验证 `/ws` 握手能换到 101；OpenCode 验证 SSE 首帧真的会来。 */
+    private suspend fun probeStream(host: String, port: Int, token: String, protocolId: String): Step =
+        if (protocolId == RemoteProtocols.OPENCODE_ID) {
+            probeSse(host, port, token)
+        } else {
+            probeWebSocket(host, port, token)
+        }
+
+    /** OpenCode 的 SSE 探针：GET /api/event，等到第一条 `data:` 帧即算通。 */
+    private suspend fun probeSse(host: String, port: Int, password: String): Step = withContext(Dispatchers.IO) {
         val url = HttpUrl.Builder()
             .scheme("http")
             .host(RemoteServerAddress.bareHost(host))
             .port(port)
-            .addPathSegment("")
-            .apply { if (token.isNotEmpty()) addQueryParameter("token", token) }
+            .addPathSegment("api")
+            .addPathSegment("event")
             .build()
+        val request = Request.Builder().url(url).get().apply {
+            if (password.isNotEmpty()) header("Authorization", Credentials.basic(OPENCODE_AUTH_USERNAME, password))
+        }.build()
         try {
-            RemoteHttpClient.client.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
-                when (response.code) {
-                    200 -> Step.Ok
-                    401, 403 -> Step.Failed(RemoteFailure.Kind.Unauthorized, response.code.toString())
-                    404 -> Step.Failed(RemoteFailure.Kind.NotFound, response.code.toString())
+            // 独立读超时：SSE 是长读，共享客户端的 30 秒读超时对「探首帧」太宽。
+            // newBuilder 共享连接池与 Wi-Fi 绑定逻辑，只覆写读超时。
+            val client = RemoteHttpClient.client.newBuilder()
+                .readTimeout(SSE_PROBE_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .build()
+            client.newCall(request).execute().use { response ->
+                when {
+                    response.code == 200 -> {
+                        val source = response.body?.source()
+                        val gotFrame = source?.let { readFirstDataFrame(it) } ?: false
+                        if (gotFrame) {
+                            Step.Ok
+                        } else {
+                            Step.Failed(RemoteFailure.Kind.ReadTimeout, "SSE 首帧未到达")
+                        }
+                    }
+                    response.code == 401 || response.code == 403 ->
+                        Step.Failed(RemoteFailure.Kind.Unauthorized, response.code.toString())
+                    response.code == 404 ->
+                        Step.Failed(RemoteFailure.Kind.NotFound, response.code.toString())
                     else -> Step.Failed(RemoteFailure.Kind.Unknown, "HTTP ${response.code}")
                 }
             }
@@ -518,7 +604,16 @@ internal object RemoteConnectionProbe {
         }
     }
 
-    /** 第三层：WebSocket 握手，验证 `/ws` 路径与令牌确实能换到 101。 */
+    /** 逐行读 SSE，跳过空行与 `: heartbeat` 注释，等到一条 `data:` 帧为止。 */
+    private fun readFirstDataFrame(source: BufferedSource): Boolean {
+        repeat(SSE_PROBE_MAX_LINES) {
+            val line = source.readUtf8Line() ?: return false
+            if (line.startsWith("data:")) return true
+        }
+        return false
+    }
+
+    /** pi 的 WebSocket 探针：验证 `/ws` 路径与令牌确实能换到 101。 */
     private suspend fun probeWebSocket(host: String, port: Int, token: String): Step =
         withContext(Dispatchers.IO) {
             val url = HttpUrl.Builder()

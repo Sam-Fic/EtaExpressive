@@ -492,6 +492,9 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.MobileActionsSettings -> stringResource(R.string.mobile_actions_settings_title)
     is AppRoute.MobileActions -> stringResource(R.string.mobile_actions_screen_title)
     is AppRoute.RemoteAgents -> stringResource(R.string.route_remote_agents)
+    is AppRoute.RemoteAgentEditor ->
+        if (route.serverId == null) stringResource(R.string.remote_agents_new_title)
+        else stringResource(R.string.remote_agents_edit_title)
     null -> stringResource(R.string.app_name)
 }
 
