@@ -248,8 +248,6 @@ import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
-import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.IconButtonDefaults
 
@@ -1024,72 +1022,69 @@ private fun UserMessageBubble(
                         } else {
                             fitSide.coerceAtMost(UserBubbleImageSide)
                         }
-                        val stripWidth = (imageSide * imageCount + gapTotal)
-                            .coerceAtMost(chatContentWidth)
-                        val carouselState = rememberCarouselState { imageCount }
-                        // 它首帧会停在右端（第一张被切掉），固定从第一张开始。
-                        LaunchedEffect(imageCount) { carouselState.scrollToItem(0) }
-                        HorizontalUncontainedCarousel(
-                            state = carouselState,
-                            itemWidth = imageSide,
+                        // 普通平移横滚（替代非收纳轮播的吸附/外露动效）：两端溢出用
+                        // ScrollEdgeFade 的 DstIn 淡出带提示（与抽屉胶囊行、素材缩略图条
+                        // 同一套），停在两端时带子自然收回。
+                        val stripScrollState = rememberScrollState()
+                        Row(
                             modifier = Modifier
-                                .requiredWidth(stripWidth)
                                 .height(imageSide)
-                                .clipToBounds(),
-                            // carousel 的间距是「两侧各留一半」，视觉间隙 = 2 × itemSpacing。
-                            itemSpacing = UserBubbleAttachmentGap / 2,
-                            contentPadding = PaddingValues(0.dp),
-                        ) { index ->
-                            val dataUrl = message.images[index]
-                            val bitmap = rememberDataUrlBitmap(
-                                dataUrl.ifBlank { message.fullImageSourceAt(index) },
-                                fallback = message.fullImageSourceAt(index),
-                            )
-                            val mediaShape = chatMediaShape(
-                                userImageCorners(
-                                    index = index,
-                                    count = imageCount,
-                                    connectsBelow = imageRowConnectsBelow,
-                                ),
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(imageSide)
-                                    .clip(mediaShape)
-                                    .background(chatSurfaceContainerColor()),
-                            ) {
-                                if (bitmap != null) {
-                                    ChatClickableImage(
-                                        source = message.fullImageSourceAt(index),
-                                        bitmap = bitmap,
-                                        contentDescription = stringResource(
-                                            if (message.isVideoAt(index)) {
-                                                R.string.chat_video_preview
-                                            } else {
-                                                R.string.chat_image_preview
-                                            },
-                                        ),
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                }
-                                if (message.isVideoAt(index)) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.PlayArrow,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .size(FloatingActionButtonDefaults.MediumIconSize),
-                                    )
-                                    Text(
-                                        text = AgentVideoCodec.formatDuration(message.durationMsAt(index) ?: 0L),
-                                        style = chatTertiaryStyle(),
-                                        color = Color.White,
-                                        modifier = Modifier
-                                            .align(Alignment.BottomStart)
-                                            .padding(8.dp),
-                                    )
+                                .horizontalScrollEdgeFade(stripScrollState)
+                                .horizontalScroll(stripScrollState),
+                            horizontalArrangement = Arrangement.spacedBy(UserBubbleAttachmentGap),
+                        ) {
+                            message.images.forEachIndexed { index, _ ->
+                                val dataUrl = message.images[index]
+                                val bitmap = rememberDataUrlBitmap(
+                                    dataUrl.ifBlank { message.fullImageSourceAt(index) },
+                                    fallback = message.fullImageSourceAt(index),
+                                )
+                                val mediaShape = chatMediaShape(
+                                    userImageCorners(
+                                        index = index,
+                                        count = imageCount,
+                                        connectsBelow = imageRowConnectsBelow,
+                                    ),
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(imageSide)
+                                        .clip(mediaShape)
+                                        .background(chatSurfaceContainerColor()),
+                                ) {
+                                    if (bitmap != null) {
+                                        ChatClickableImage(
+                                            source = message.fullImageSourceAt(index),
+                                            bitmap = bitmap,
+                                            contentDescription = stringResource(
+                                                if (message.isVideoAt(index)) {
+                                                    R.string.chat_video_preview
+                                                } else {
+                                                    R.string.chat_image_preview
+                                                },
+                                            ),
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                    }
+                                    if (message.isVideoAt(index)) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.PlayArrow,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .size(FloatingActionButtonDefaults.MediumIconSize),
+                                        )
+                                        Text(
+                                            text = AgentVideoCodec.formatDuration(message.durationMsAt(index) ?: 0L),
+                                            style = chatTertiaryStyle(),
+                                            color = Color.White,
+                                            modifier = Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(8.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -4216,7 +4211,8 @@ private fun RunTraceRow(
     Surface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().padding(
-            horizontal = AgentChatSpacing.RowHorizontal,
+            start = AgentChatSpacing.RowHorizontal,
+            end = AgentChatSpacing.RowHorizontal,
             // 独立行：上侧贴身（对文字/页脚合成 10dp 轮内）、下侧基准（对下一轮合成 16dp 轮间）；
             // 工作组步骤行：纵向外距收零，交给包装层的薄边/组缝。
             top = if (inWorkGroup) 0.dp else AgentChatSpacing.TurnInnerEdge,
@@ -4366,7 +4362,8 @@ private fun SuggestionChipsRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(
-                horizontal = AgentChatSpacing.RowHorizontal,
+                start = AgentChatSpacing.RowHorizontal,
+                end = AgentChatSpacing.RowHorizontal,
                 // 上侧贴身（对页脚/正文合成 10dp 轮内），下侧基准（对下一轮合成 16dp 轮间）。
                 top = AgentChatSpacing.TurnInnerEdge,
                 bottom = AgentChatSpacing.RowBaseHalf,
