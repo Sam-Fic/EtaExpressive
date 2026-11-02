@@ -1701,6 +1701,16 @@
   <string name="remote_agents_field_host_hint">可直接粘贴 WebUI 链接（如 http://192.168.1.10:8800?token=…），只填 IP 也行；端口与令牌会自动填好。</string>
   <string name="remote_agents_resolved_endpoint">将连接：%1$s</string>
   <string name="remote_agents_hint_opencode">需在电脑上运行：OPENCODE_PASSWORD=密码 opencode serve --hostname 0.0.0.0（默认端口 4096）。密码填入令牌栏；不设环境变量时服务器会自动生成并在启动时打印一个密码，复制它即可。仅当服务器未设密码时留空。</string>
+  <string name="remote_agents_hint_pi_summary">电脑端需安装 pi-remote 插件</string>
+  <string name="remote_agents_install_help">安装步骤</string>
+  <string name="remote_agents_install_title">在电脑上安装 pi-remote</string>
+  <string name="remote_agents_install_step_1">1. 电脑上需要 pi 0.80 或更高版本。</string>
+  <string name="remote_agents_install_step_2">2. 克隆仓库，执行 npm install，再执行 npm run build。</string>
+  <string name="remote_agents_install_step_3">3. 让 pi 指向构建产物：pi install &lt;pi-remote 目录&gt;。</string>
+  <string name="remote_agents_install_step_4">4. 在 pi 会话里运行 /remote，它会打印局域网地址和二维码。</string>
+  <string name="remote_agents_install_step_5">5. 把该地址粘到上面的「服务器地址」，再点「测试连接」。</string>
+  <string name="remote_agents_install_open_github">打开 GitHub</string>
+  <string name="remote_probe_pi_not_installed">/ws 返回 404：电脑端大概率没有运行带 pi-remote 插件的 pi，或该端口被别的服务占用。</string>
   <string name="remote_agents_server_missing">该服务器已不存在</string>
   <string name="remote_agents_field_port">端口</string>
   <string name="remote_agents_field_token">访问令牌</string>
@@ -1790,7 +1800,6 @@
   <string name="recipe_state_no_root">不需要 Root</string>
   <string name="recipe_root_warning">需要 Root：模型没有 Root 时看不到这个工具</string>
   <string name="settings_tool_recipes">模型自建工具</string>
-  <string name="settings_tool_recipes_summary">查看、启停、编辑、删除并分享模型为自己写的配方</string>
   <string name="data_backup_recipes">配方 · %1$d</string>
   <string name="data_backup_recipes_size">占用 %1$s，勾选「应用数据」时随备份一起导出；也可在「设置 → 模型自建工具」里查看、编辑或分享</string>
   <string name="mcp_add_server">添加服务器</string>

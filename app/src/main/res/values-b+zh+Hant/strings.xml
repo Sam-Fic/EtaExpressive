@@ -1709,6 +1709,16 @@
   <string name="remote_agents_field_host_hint">可直接貼上 WebUI 連結（如 http://192.168.1.10:8800?token=…），只填 IP 也行；連接埠與存取權杖會自動填好。</string>
   <string name="remote_agents_resolved_endpoint">將連線：%1$s</string>
   <string name="remote_agents_hint_opencode">需在電腦上執行：OPENCODE_PASSWORD=密碼 opencode serve --hostname 0.0.0.0（預設連接埠 4096）。密碼填入存取權杖欄；不設環境變數時伺服器會自動產生並在啟動時印出一個密碼，複製它即可。僅當伺服器未設密碼時留空。</string>
+  <string name="remote_agents_hint_pi_summary">電腦端需安裝 pi-remote 擴充功能</string>
+  <string name="remote_agents_install_help">安裝步驟</string>
+  <string name="remote_agents_install_title">在電腦上安裝 pi-remote</string>
+  <string name="remote_agents_install_step_1">1. 電腦上需要 pi 0.80 或更新版本。</string>
+  <string name="remote_agents_install_step_2">2. 複製倉庫，執行 npm install，再執行 npm run build。</string>
+  <string name="remote_agents_install_step_3">3. 讓 pi 指向建置產物：pi install &lt;pi-remote 資料夾&gt;。</string>
+  <string name="remote_agents_install_step_4">4. 在 pi 工作階段執行 /remote，它會印出區域網路位址和 QR code。</string>
+  <string name="remote_agents_install_step_5">5. 把該位址貼到上面的「伺服器位址」，再點「測試連線」。</string>
+  <string name="remote_agents_install_open_github">開啟 GitHub</string>
+  <string name="remote_probe_pi_not_installed">/ws 回傳 404：電腦端大概沒有執行帶 pi-remote 擴充功能的 pi，或該連接埠被其他服務佔用。</string>
   <string name="remote_agents_server_missing">該伺服器已不存在</string>
   <string name="remote_agents_field_port">連接埠</string>
   <string name="remote_agents_field_token">存取權杖</string>
@@ -1798,7 +1808,6 @@
   <string name="recipe_state_no_root">不需要 Root</string>
   <string name="recipe_root_warning">需要 Root：模型沒有 Root 時看不到這個工具</string>
   <string name="settings_tool_recipes">模型自建工具</string>
-  <string name="settings_tool_recipes_summary">查看、啟停、編輯、刪除並分享模型為自己寫的配方</string>
   <string name="data_backup_recipes">配方 · %1$d</string>
   <string name="data_backup_recipes_size">佔用 %1$s，勾選「應用資料」時隨備份一併匯出；也可在「設定 → 模型自建工具」裡查看、編輯或分享</string>
   <string name="mcp_add_server">新增伺服器</string>

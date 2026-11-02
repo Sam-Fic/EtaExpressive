@@ -1693,6 +1693,16 @@
   <string name="remote_agents_field_host_hint">Paste the WebUI link (for example http://192.168.1.10:8800?token=…) or just the IP; the port and token are filled in for you.</string>
   <string name="remote_agents_resolved_endpoint">Will connect to: %1$s</string>
   <string name="remote_agents_hint_opencode">On the computer run: OPENCODE_PASSWORD=&lt;password&gt; opencode serve --hostname 0.0.0.0 (default port 4096). Enter the password as the access token. If OPENCODE_PASSWORD is unset, the server generates one and prints it at startup — copy that. Leave it empty only when the server has no auth.</string>
+  <string name="remote_agents_hint_pi_summary">The computer needs the pi-remote extension</string>
+  <string name="remote_agents_install_help">Install steps</string>
+  <string name="remote_agents_install_title">Install pi-remote on the computer</string>
+  <string name="remote_agents_install_step_1">1. The computer needs pi 0.80 or newer.</string>
+  <string name="remote_agents_install_step_2">2. Clone the repository, run npm install, then npm run build.</string>
+  <string name="remote_agents_install_step_3">3. Point pi at the build output: pi install &lt;pi-remote folder&gt;.</string>
+  <string name="remote_agents_install_step_4">4. Run /remote in a pi session; it prints the LAN address and a QR code.</string>
+  <string name="remote_agents_install_step_5">5. Paste that address into Address above, then run the connection test.</string>
+  <string name="remote_agents_install_open_github">Open GitHub</string>
+  <string name="remote_probe_pi_not_installed">404 on /ws: the computer is probably not running pi with the pi-remote extension, or another service owns that port.</string>
   <string name="remote_agents_server_missing">This server no longer exists</string>
   <string name="remote_agents_field_port">Port</string>
   <string name="remote_agents_field_token">Access token</string>
@@ -1782,7 +1792,6 @@
   <string name="recipe_state_no_root">No Root needed</string>
   <string name="recipe_root_warning">Needs Root: the model cannot see this tool without Root</string>
   <string name="settings_tool_recipes">Tools the model wrote</string>
-  <string name="settings_tool_recipes_summary">Review, enable, edit, delete and share the recipes the model wrote for itself</string>
   <string name="data_backup_recipes">Recipes · %1$d</string>
   <string name="data_backup_recipes_size">Takes up %1$s. Backed up together with app data; also review, edit or share them under Settings → Your own tools</string>
   <string name="mcp_add_server">Add server</string>
