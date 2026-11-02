@@ -505,6 +505,16 @@ final class OwnerHandoff {
             int[] kids=(int[])field(t,"childTaskIds");
             if(!validRootChildMarkers(id,kids)) throw new IllegalStateException("child task ids unknown");
         }
+        /**
+         * Identity check for a root the system moved off the source display. Everything except the
+         * display id must be unchanged, and the task must still be a root elsewhere.
+         */
+        void checkMoved(Object t,int source)throws Exception {
+            if(t==null||!Objects.equals(data,((Intent)field(t,"baseIntent")).getDataString())||number(t,"taskId")!=id||number(t,"displayId")==source||!binder.equals(binder(t))||!base.equals(base(t))) throw new IllegalStateException("task identity changed");
+            if(number(t,"userId")!=0||number(t,"parentTaskId")!=-1) throw new IllegalStateException("unsupported task shape");
+            int[] kids=(int[])field(t,"childTaskIds");
+            if(!validRootChildMarkers(id,kids)) throw new IllegalStateException("child task ids unknown");
+        }
     }
     /** Cleanup removal is settled only once the task is gone. A still-present task is never success. */
     static boolean unselectedRemovalSettled(Object removeResult, boolean stillPresent) {

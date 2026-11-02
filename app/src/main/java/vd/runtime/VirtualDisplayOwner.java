@@ -30,6 +30,17 @@ public final class VirtualDisplayOwner {
     private static final int MAX_OUTPUT_CHARS = 2000;
     private static final int MAX_COORDINATE = 100_000;
     private static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
+    /**
+     * Symbolic failures this class raises for its own post-launch checks. Only these tokens are
+     * echoed back; a platform exception message may carry task or intent internals.
+     */
+    private static final java.util.Set<String> LAUNCH_CHECK_FAILURES =
+            new java.util.HashSet<String>(java.util.Arrays.asList(
+                    "launch outcome unverified", "pre-existing task moved", "launch provenance",
+                    "multiple fresh tasks", "fresh launch task not observed",
+                    "unexpected source task", "post-launch inventory unproven",
+                    "task identity changed", "unsupported task shape",
+                    "child task ids unknown", "fresh task identity not proven"));
 
     private final VirtualDisplayFactory.Created created;
     private final OwnerFrameStore frames;
@@ -135,6 +146,9 @@ public final class VirtualDisplayOwner {
                 OwnedTaskStates states=OwnedTaskStates.read(created.displayId,OwnerHandoff.roots(),owned);
                 out.put("liveTaskIds",new JSONArray(states.live));
                 out.put("goneTaskIds",new JSONArray(states.gone));
+                // A vendor policy may recycle an owned task to another display; the caller uses
+                // this read-only report to decide whether a reclaim is worth attempting.
+                out.put("escapedTaskIds",new JSONArray(states.escaped));
             } catch(Exception ignored) { }
             out.put("finishing",finishing);
             out.put("handoffComplete",handoffComplete);
@@ -180,7 +194,15 @@ public final class VirtualDisplayOwner {
         // Admission and post-launch absence checks use the SAME complete root/child snapshot.
         OwnerHandoff.LaunchPreflight preflight;
         try { preflight=OwnerHandoff.launchPreflight(targetPackage,displayId,owned); }
-        catch(OwnerException ex) { throw ex; }
+        catch(OwnerException ex) {
+            // A task moved away by a vendor display policy otherwise blocks every later launch.
+            if(!LaunchTargetOccupancy.UNKNOWN.equals(ex.code) || !reclaimEscaped(displayId,owned,null))
+                throw ex;
+            try { preflight=OwnerHandoff.launchPreflight(targetPackage,displayId,owned); }
+            catch(OwnerException retry) { throw retry; }
+            catch(Exception retry) { throw new OwnerException(LaunchTargetOccupancy.UNKNOWN,
+                    retry.getClass().getSimpleName()); }
+        }
         catch(Exception ex) { throw new OwnerException(LaunchTargetOccupancy.UNKNOWN,
                 ex.getClass().getSimpleName()); }
         // A caller may only restate bits the owner already forces. NEW_DOCUMENT or any other bit is
@@ -224,26 +246,19 @@ public final class VirtualDisplayOwner {
             java.util.Map<Integer,OwnerHandoff.Task> updated=EndedOwnedRecent.register(owned,fresh.id,
                     fresh,preflight.presentTaskIds,preflight.goneTaskIds);
             // Re-read actual binder, marker, component, shape and display before committing.
-            java.util.Map<Integer,Object> verified=OwnerHandoff.roots();
-            fresh.check(verified.get(fresh.id),displayId);
-            java.util.List<LaunchTargetOccupancy.Root> descriptions=new java.util.ArrayList<LaunchTargetOccupancy.Root>();
-            for(Object task:verified.values()) {
-                descriptions.add(OwnerHandoff.describeRoot(task));
-                if(OwnerHandoff.number(task,"displayId")==displayId) {
-                    OwnerHandoff.Task identity=updated.get(OwnerHandoff.number(task,"taskId"));
-                    if(identity==null) throw new IllegalStateException("unexpected source task");
-                    identity.check(task,displayId);
-                }
+            try { verifyPostLaunch(displayId,updated,fresh); }
+            catch(Exception firstFailure) {
+                // A vendor display policy can recycle a just-launched task to the main display.
+                // Reclaim that same task once, then verify again; a failed reclaim keeps the
+                // original failure so the session still records an uncertain outcome.
+                if(!reclaimEscaped(displayId,updated,null)) throw firstFailure;
+                verifyPostLaunch(displayId,updated,fresh);
             }
-            if(EndedOwnedRecent.presentIds(descriptions)==null
-                    || !OwnedTaskStates.read(displayId,verified,updated).escaped.isEmpty())
-                throw new IllegalStateException("post-launch inventory unproven");
-            OwnerHandoff.verifyDisplay(displayId,created.uniqueId);
             OwnerHandoff.Task previous=owned.get(fresh.id);
             if(previous!=null) registry.replaceGone(fresh.id,previous.binder,fresh.binder,
                     preflight.presentTaskIds,preflight.goneTaskIds);
             owned.put(fresh.id,fresh);
-        } catch(Exception e) { throw new OwnerException("LAUNCH_IDENTITY_UNCERTAIN"); }
+        } catch(Exception e) { throw new OwnerException("LAUNCH_IDENTITY_UNCERTAIN", launchFailureDetail(e)); }
         JSONObject out = new JSONObject();
         try {
             out.put("taskIds",new JSONArray(owned.keySet()));
@@ -258,6 +273,65 @@ public final class VirtualDisplayOwner {
         return out;
     }
 
+    /** Symbolic reason for a failed post-launch check; never a platform payload. */
+    private static String launchFailureDetail(Exception failure) {
+        String message = failure.getMessage();
+        return message != null && LAUNCH_CHECK_FAILURES.contains(message)
+                ? message : failure.getClass().getSimpleName();
+    }
+
+    /**
+     * Post-launch admission: the fresh task and every owned task are roots on the source display
+     * with unchanged identities, and no owned id has escaped.
+     */
+    private void verifyPostLaunch(int displayId,java.util.Map<Integer,OwnerHandoff.Task> updated,
+            OwnerHandoff.Task fresh)throws Exception {
+        java.util.Map<Integer,Object> verified=OwnerHandoff.roots();
+        fresh.check(verified.get(fresh.id),displayId);
+        java.util.List<LaunchTargetOccupancy.Root> descriptions=new java.util.ArrayList<LaunchTargetOccupancy.Root>();
+        for(Object task:verified.values()) {
+            descriptions.add(OwnerHandoff.describeRoot(task));
+            if(OwnerHandoff.number(task,"displayId")==displayId) {
+                OwnerHandoff.Task identity=updated.get(OwnerHandoff.number(task,"taskId"));
+                if(identity==null) throw new IllegalStateException("unexpected source task");
+                identity.check(task,displayId);
+            }
+        }
+        if(EndedOwnedRecent.presentIds(descriptions)==null
+                || !OwnedTaskStates.read(displayId,verified,updated).escaped.isEmpty())
+            throw new IllegalStateException("post-launch inventory unproven");
+        OwnerHandoff.verifyDisplay(displayId,created.uniqueId);
+    }
+
+    /** Best effort at an internal admission point: false keeps the caller's own failure. */
+    private boolean reclaimEscaped(int displayId,java.util.Map<Integer,OwnerHandoff.Task> tasks,
+            JSONArray requested) {
+        try {
+            return OwnerReclaim.run(displayId,created.uniqueId,tasks,requested)
+                    .optInt("reclaimed",0)>0;
+        } catch(Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Moves an owned task the platform relocated to another display back onto this display.
+     * Read-only when nothing has escaped; an unproven move latches the session as uncertain.
+     */
+    public JSONObject reclaim(JSONObject request) throws OwnerException {
+        requireLive();
+        if(finishing) throw new OwnerException("SESSION_FINISHING");
+        OwnerProtocol.Request parsed = wrap(request);
+        optionalDisplay(parsed);
+        try {
+            return OwnerReclaim.run(created.displayId,created.uniqueId,owned,
+                    request.optJSONArray("taskIds"));
+        } catch(OwnerException ex) {
+            if(OwnerReclaim.UNCERTAIN.equals(ex.code)) { finishing=true; mutationUncertain=true; }
+            throw ex;
+        }
+    }
+
     /** Switch back to a task this session launched; never starts an activity or touches display 0. */
     private JSONObject reuseOwned(int taskId, int displayId) throws OwnerException {
         OwnerHandoff.Task identity=owned.get(taskId);
@@ -267,7 +341,8 @@ public final class VirtualDisplayOwner {
         catch(Exception e) {
             // Checks before the transaction are read-only: refuse cleanly and keep the session usable.
             if(!applied[0]) throw new OwnerException("REUSE_PREFLIGHT_FAILED", e.getClass().getSimpleName());
-            finishing=true; mutationUncertain=true; throw new OwnerException("LAUNCH_IDENTITY_UNCERTAIN");
+            finishing=true; mutationUncertain=true;
+            throw new OwnerException("LAUNCH_IDENTITY_UNCERTAIN", launchFailureDetail(e));
         }
         JSONObject out = new JSONObject();
         try {

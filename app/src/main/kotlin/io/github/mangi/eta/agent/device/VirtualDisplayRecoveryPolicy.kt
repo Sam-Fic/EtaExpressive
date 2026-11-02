@@ -19,6 +19,14 @@ internal object VirtualDisplayRecoveryPolicy {
     fun canRecoverExistingRun(phase: String, closedRun: Boolean): Boolean =
         closedRun && phase in setOf("active", "held", "uncertain", "handoff_pending")
 
+    /**
+     * The persisted owner record may only be discarded when this boot still matches and both
+     * the recorded process and its display are gone. A reused pid or display id alone is never
+     * evidence of absence, and a dead owner cannot mutate a display it no longer owns.
+     */
+    fun staleOwnerGone(sameBoot: Boolean, processGone: Boolean, displayGone: Boolean): Boolean =
+        sameBoot && processGone && displayGone
+
     fun taskIds(raw: List<*>): Set<Int>? {
         val ids = linkedSetOf<Int>()
         for (value in raw) {

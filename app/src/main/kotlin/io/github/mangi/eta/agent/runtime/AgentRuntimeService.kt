@@ -43,6 +43,8 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
 import io.github.mangi.eta.agent.device.RootAccess
+import io.github.mangi.eta.agent.device.OwnerDisplayPresence
+import io.github.mangi.eta.agent.device.VirtualDisplaySession
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
@@ -62,12 +64,17 @@ import io.github.mangi.eta.agent.overlay.applyControlledEvent
 import io.github.mangi.eta.agent.overlay.applyEvent
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
+import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.ModuleConfig
 import io.github.mangi.eta.core.safeLogType
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
@@ -143,6 +150,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     /** 顶部胶囊只描述当前虚拟屏；画面与阶段由控制器快照驱动。 */
     private val virtualDisplayState = mutableStateOf(VirtualDisplaySnapshot.Inactive)
+    /** 后台 run 的 owner 副屏存在性；非空时胶囊手势改投 owner。 */
+    private var ownerPresence: OwnerDisplayPresence? = null
     private val capsuleExpanded = mutableStateOf(false)
     private val capsuleSupplementFocusable = mutableStateOf(false)
     private val capsuleYielded = mutableStateOf(false)
@@ -221,31 +230,98 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         lifecycleScope.launch {
             VirtualDisplayController.snapshots.collect { snapshot ->
-                val wasActive = virtualDisplayState.value.active
-                virtualDisplayState.value = snapshot
-                if (wasActive == snapshot.active) return@collect
-                if (!snapshot.active) {
-                    VirtualDisplayController.setStageExpanded(false)
-                    capsuleExpanded.value = false
-                    capsuleSupplementFocusable.value = false
-                    capsuleYielded.value = false
-                    mainHandler.removeCallbacks(restoreCapsule)
-                    // 后台 run 失去副屏后没有任何可展示的表面；保留会话身份只会在终态时误判。
-                    val session = overlaySession
-                    if (session != null && !AgentOverlayVisibilityPolicy.allowsOverlay(
-                            session.taskSurfaceMode, false,
-                        )
-                    ) {
-                        removeAmbientWindows(animated = true)
-                        overlaySession = null
-                    }
-                } else {
-                    bindVirtualDisplayOverlaySession()
-                }
-                updateCapsuleWindowBounds()
-                syncActiveRunOverlayVisibility()
+                // 前台 run 使用进程内控制器；后台 run 的副屏由 owner 会话驱动。
+                val presence = ownerPresence
+                applyVirtualDisplaySnapshot(
+                    if (!snapshot.active && presence != null) ownerVirtualSnapshot(presence) else snapshot,
+                )
             }
         }
+        lifecycleScope.launch {
+            VirtualDisplaySession.displayPresence.collect { presences ->
+                val presence = activeOwnerPresence(presences)
+                val previous = ownerPresence
+                ownerPresence = presence
+                if (presence == null) {
+                    if (previous != null && !VirtualDisplayController.snapshots.value.active) {
+                        applyVirtualDisplaySnapshot(VirtualDisplaySnapshot.Inactive)
+                    }
+                    return@collect
+                }
+                if (VirtualDisplayController.snapshots.value.active) return@collect
+                applyVirtualDisplaySnapshot(ownerVirtualSnapshot(presence))
+            }
+        }
+        lifecycleScope.launch {
+            // 胶囊展开时抓取 owner 副屏实况；只在确实展开且窗口存在时轮询，收起后立即停。
+            while (isActive) {
+                delay(OWNER_PREVIEW_INTERVAL_MS)
+                val presence = ownerPresence ?: continue
+                if (!capsuleExpanded.value || capsuleView == null) continue
+                val frame = withContext(Dispatchers.IO) {
+                    VirtualDisplaySession.capturePreview(presence.runId)
+                } ?: continue
+                if (ownerPresence != presence) continue
+                val current = virtualDisplayState.value
+                if (!current.active || current.displayId != presence.displayId) continue
+                virtualDisplayState.value = current.copy(
+                    frame = frame,
+                    frameSequence = current.frameSequence + 1,
+                )
+            }
+        }
+    }
+
+    private fun activeOwnerPresence(presences: Map<String, OwnerDisplayPresence>): OwnerDisplayPresence? {
+        // 只有一个 owner 副屏；胶囊首次出现时 overlaySession 可能还没绑定。
+        return overlayRunId?.let(presences::get) ?: presences.values.singleOrNull()
+    }
+
+    private fun ownerVirtualSnapshot(presence: OwnerDisplayPresence): VirtualDisplaySnapshot {
+        val previous = virtualDisplayState.value
+        val sameDisplay = previous.active && previous.displayId == presence.displayId
+        return VirtualDisplaySnapshot(
+            active = true,
+            displayId = presence.displayId,
+            width = presence.width.coerceAtLeast(1),
+            height = presence.height.coerceAtLeast(1),
+            appName = presence.appName,
+            packageName = presence.packageName,
+            userControlling = sameDisplay && previous.userControlling,
+            materializingToMain = false,
+            frame = if (sameDisplay) previous.frame else null,
+            frameSequence = previous.frameSequence,
+            touchEffect = if (sameDisplay) previous.touchEffect else null,
+        )
+    }
+
+    private fun applyVirtualDisplaySnapshot(snapshot: VirtualDisplaySnapshot) {
+        val wasActive = virtualDisplayState.value.active
+        virtualDisplayState.value = snapshot
+        if (wasActive == snapshot.active) {
+            if (snapshot.active) updateCapsuleWindowBounds()
+            return
+        }
+        if (!snapshot.active) {
+            VirtualDisplayController.setStageExpanded(false)
+            capsuleExpanded.value = false
+            capsuleSupplementFocusable.value = false
+            capsuleYielded.value = false
+            mainHandler.removeCallbacks(restoreCapsule)
+            // 后台 run 失去副屏后没有任何可展示的表面；保留会话身份只会在终态时误判。
+            val session = overlaySession
+            if (session != null && !AgentOverlayVisibilityPolicy.allowsOverlay(
+                    session.taskSurfaceMode, false,
+                )
+            ) {
+                removeAmbientWindows(animated = true)
+                overlaySession = null
+            }
+        } else {
+            bindVirtualDisplayOverlaySession()
+        }
+        updateCapsuleWindowBounds()
+        syncActiveRunOverlayVisibility()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -1500,31 +1576,58 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 onToggleExpanded = ::toggleCapsule,
                 onCollapsedSettled = ::onCapsuleCollapsedSettled,
                 onPause = {
-                    VirtualDisplayController.setUserControlling(false)
+                    if (ownerPresence == null) VirtualDisplayController.setUserControlling(false)
                     requestPause(controlRunId)
                 },
                 onResume = {
-                    VirtualDisplayController.setUserControlling(false)
+                    if (ownerPresence == null) VirtualDisplayController.setUserControlling(false)
                     requestResume(controlRunId)
                 },
                 onStop = { stopMainRun(controlRunId) },
                 onSupplementModeChange = ::setCapsuleInputMode,
                 onSupplement = { text -> requestSupplement(text, controlRunId) },
                 virtualDisplay = virtualDisplayState.value,
+                ownerBacked = ownerPresence != null,
                 onTakeOverVirtualDisplay = {
-                    VirtualDisplayController.setUserControlling(true)
+                    if (ownerPresence == null) VirtualDisplayController.setUserControlling(true)
                     requestPause(controlRunId)
                 },
                 onResumeVirtualDisplay = {
-                    VirtualDisplayController.setUserControlling(false)
+                    if (ownerPresence == null) VirtualDisplayController.setUserControlling(false)
                     requestResume(controlRunId)
                 },
-                onFullscreenVirtualDisplay = ::requestFullscreenVirtualDisplay,
+                onFullscreenVirtualDisplay = {
+                    if (ownerPresence == null) requestFullscreenVirtualDisplay()
+                },
                 onTapVirtualCanvas = { nx, ny, longPress ->
-                    VirtualDisplayController.dispatchUserTapOnCanvas(nx, ny, longPress)
+                    val presence = ownerPresence
+                    if (presence != null) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        virtualDisplayState.value = virtualDisplayState.value.copy(
+                            touchEffect = VirtualTouchEffect.Tap(now, now, nx, ny, longPress),
+                        )
+                        thread(name = "eta-vd-stage-tap", isDaemon = true) {
+                            VirtualDisplaySession.dispatchUserTap(presence.runId, nx, ny, longPress)
+                        }
+                    } else {
+                        VirtualDisplayController.dispatchUserTapOnCanvas(nx, ny, longPress)
+                    }
                 },
                 onSwipeVirtualCanvas = { sx, sy, ex, ey, durationMs ->
-                    VirtualDisplayController.dispatchUserSwipeOnCanvas(sx, sy, ex, ey, durationMs)
+                    val presence = ownerPresence
+                    if (presence != null) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        virtualDisplayState.value = virtualDisplayState.value.copy(
+                            touchEffect = VirtualTouchEffect.Swipe(now, now, sx, sy, ex, ey, durationMs),
+                        )
+                        thread(name = "eta-vd-stage-swipe", isDaemon = true) {
+                            VirtualDisplaySession.dispatchUserSwipe(
+                                presence.runId, sx, sy, ex, ey, durationMs,
+                            )
+                        }
+                    } else {
+                        VirtualDisplayController.dispatchUserSwipeOnCanvas(sx, sy, ex, ey, durationMs)
+                    }
                 },
             )
         }
@@ -1545,11 +1648,13 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         capsuleExpanded.value = expanded
         // 展开先撑开窗口再播放内容动画；收起等动画收拢后再缩窗，避免内容被窗口裁掉。
         if (expanded) updateCapsuleWindowBounds()
-        if (virtualDisplayActive()) VirtualDisplayController.setStageExpanded(expanded)
+        if (virtualDisplayActive() && ownerPresence == null) {
+            VirtualDisplayController.setStageExpanded(expanded)
+        }
     }
 
     private fun onCapsuleCollapsedSettled() {
-        VirtualDisplayController.setStageExpanded(false)
+        if (ownerPresence == null) VirtualDisplayController.setStageExpanded(false)
         if (!capsuleExpanded.value) updateCapsuleWindowBounds()
     }
 
@@ -2145,11 +2250,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private const val RESULT_CARD_HEIGHT_RATIO = 0.5f
         private const val MAX_ARCHIVED_USER_IMAGE_PREVIEWS = 4
         // 胶囊窗口按内容尺寸分档固定；Compose 侧负责内部动画，窗口只在阶段切换时更新。
+        // 高度 = 上下留白 12 + 头部 56（TextFieldDefaults.MinHeight）+ 8dp 间距 + 内容 + 8dp 间距。
         private const val CAPSULE_WINDOW_WIDTH_DP = 272
         private const val CAPSULE_MICRO_WINDOW_WIDTH_DP = 290
         private const val CAPSULE_STAGE_WINDOW_WIDTH_DP = 324
         private const val CAPSULE_COLLAPSED_HEIGHT_DP = 68
-        private const val CAPSULE_CONTROLS_HEIGHT_DP = 124
+        private const val CAPSULE_CONTROLS_HEIGHT_DP = 132
         private const val CAPSULE_STAGE_HEIGHT_DP = 524
         private const val CAPSULE_SUPPLEMENT_HEIGHT_DP = 260
         private const val CAPSULE_CLEARANCE_SLOP_DP = 8
@@ -2160,6 +2266,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private const val ORB_ENTER_SCALE = 0.88f
         // 补充输入退场交叉淡化结束后再收窗。
         private const val CAPSULE_SHRINK_DELAY_MS = 220L
+        // 展开视窗的 owner 实况帧轮询间隔；收起后不抓帧。
+        private const val OWNER_PREVIEW_INTERVAL_MS = 1_000L
     }
 
     private data class CompletedRunContext(

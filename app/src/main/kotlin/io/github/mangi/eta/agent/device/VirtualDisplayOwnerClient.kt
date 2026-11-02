@@ -165,6 +165,20 @@ internal class VirtualDisplayOwnerClient private constructor(
         )
     }
 
+    /** `reclaim`：把被系统挪到其他显示的本会话任务移回副屏；失败不回退主屏。 */
+    fun reclaim(
+        taskIds: List<Int>? = null,
+        runId: String = this.runId,
+        timeoutMillis: Long = DEFAULT_REQUEST_TIMEOUT_MS,
+    ): OwnerResponse {
+        val run = runId.ifBlank {
+            return errorResponse(VirtualDisplayOwnerProtocol.OP_RECLAIM, VirtualDisplayOwnerError.REQUEST_INVALID)
+        }
+        val payload = linkedMapOf<String, Any?>(VirtualDisplayOwnerProtocol.FIELD_RUN_ID to run)
+        if (taskIds != null) payload["taskIds"] = JSONArray(taskIds)
+        return request(VirtualDisplayOwnerProtocol.OP_RECLAIM, payload, timeoutMillis)
+    }
+
     /** `handoff`：透传调用方给的扁平字段；owner 未实现时会返回错误，本类原样上报。 */
     fun handoff(
         fields: Map<String, Any?> = emptyMap(),
@@ -501,6 +515,7 @@ internal object VirtualDisplayOwnerProtocol {
     const val OP_LAUNCH = "launch"
     const val OP_INPUT = "input"
     const val OP_SNAPSHOT = "snapshot"
+    const val OP_RECLAIM = "reclaim"
     const val OP_HANDOFF = "handoff"
     const val OP_RELEASE = "release"
 

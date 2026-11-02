@@ -8,30 +8,27 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -39,7 +36,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,13 +49,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,14 +77,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -93,6 +98,9 @@ import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
+import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.etaConnectedGroupColors
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
 import kotlin.math.hypot
 import kotlinx.coroutines.delay
@@ -118,6 +126,8 @@ internal fun AgentOverlayCapsule(
     onSupplementModeChange: (Boolean) -> Unit,
     onSupplement: (String) -> Unit,
     virtualDisplay: VirtualDisplaySnapshot = VirtualDisplaySnapshot.Inactive,
+    /** owner 副屏无法直接破壁投到主屏（需先 handoff），不展示全屏入口。 */
+    ownerBacked: Boolean = false,
     onTakeOverVirtualDisplay: () -> Unit = {},
     onResumeVirtualDisplay: () -> Unit = {},
     onFullscreenVirtualDisplay: () -> Unit = {},
@@ -150,7 +160,12 @@ internal fun AgentOverlayCapsule(
     }
 
     LaunchedEffect(expanded) {
-        if (!expanded && supplementMode) leaveSupplementMode()
+        // 收起时只先收键盘；输入态留到整块展开体收拢后再复位，
+        // 避免退场过程中补充输入切回舞台、在面板里闪一下。
+        if (!expanded && supplementMode) {
+            focusManager.clearFocus(force = true)
+            keyboard?.hide()
+        }
     }
 
     // 为 Agent 手势让路：离开时快速上移收小淡出，回来时用弹簧落回，只改绘制层不触发重排。
@@ -175,7 +190,13 @@ internal fun AgentOverlayCapsule(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
         label = "capsule_expansion",
-        finishedListener = { value -> if (value == 0f) onCollapsedSettled() },
+        finishedListener = { value ->
+            if (value == 0f) {
+                // 展开体已完全收拢，此时复位补充输入不会露出面板内部的切换动画。
+                if (supplementMode) setSupplementMode(false)
+                onCollapsedSettled()
+            }
+        },
     )
 
     val targetCapsuleWidth by animateDpAsState(
@@ -188,7 +209,7 @@ internal fun AgentOverlayCapsule(
         label = "capsule_width",
     )
     val targetCapsuleCorner by animateDpAsState(
-        targetValue = if (virtualDisplay.active && expanded) CapsuleStageCorner else CapsuleCorner,
+        targetValue = if (virtualDisplay.active && expanded) CapsuleOuterCorner else CapsuleInnerCorner,
         animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
         label = "capsule_corner",
     )
@@ -219,7 +240,9 @@ internal fun AgentOverlayCapsule(
         ),
     ) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-            Column(
+            // 官方 M3 Surface 作为整块胶囊容器：实色 surfaceContainer + 官方海拔，
+            // 不再叠 0.96 半透明底色或描边，外观全部由 M3 容器与形状令牌决定。
+            Surface(
                 modifier = Modifier
                     .padding(horizontal = 12.dp, vertical = 6.dp)
                     .width(targetCapsuleWidth)
@@ -232,144 +255,140 @@ internal fun AgentOverlayCapsule(
                         translationY = -12.dp.toPx() * clearance
                         alpha = 1f - clearance
                         transformOrigin = TransformOrigin(0.5f, 0f)
-                    }
-                    .shadow(
-                        elevation = 10.dp,
-                        shape = RoundedCornerShape(targetCapsuleCorner),
-                        ambientColor = accent,
-                        spotColor = accent,
-                    )
-                    .clip(RoundedCornerShape(targetCapsuleCorner))
-                    .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.96f))
-                    .border(
-                        width = 0.75.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-                        shape = RoundedCornerShape(targetCapsuleCorner),
-                    ),
+                    },
+                shape = RoundedCornerShape(targetCapsuleCorner),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 3.dp,
+                shadowElevation = 8.dp,
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onToggleExpanded,
-                        )
-                        .semantics { contentDescription = expandDescription }
-                        .padding(
-                            start = 12.dp,
-                            end = if (virtualDisplay.active && !expanded) 10.dp else 16.dp,
-                            top = 9.dp,
-                            bottom = 9.dp,
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PhaseIndicator(phase = state.phase, accent = accent)
-                    Spacer(Modifier.width(9.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        AnimatedContent(
-                            targetState = statusText,
-                            transitionSpec = {
-                                (slideInVertically(tween(220)) { it / 2 } + fadeIn(tween(220))) togetherWith
-                                    (slideOutVertically(tween(180)) { -it / 2 } + fadeOut(tween(160))) using
-                                    SizeTransform(clip = true) { _, _ -> snap() }
-                            },
-                            label = "capsule_status",
-                        ) { text ->
-                            Text(
-                                text = text,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        DetailLine(detail = state.detailText.takeIf { state.phase == AgentOverlayPhase.RUNNING }.orEmpty())
-                    }
-                    AnimatedVisibility(
-                        visible = virtualDisplay.active && !expanded,
-                        enter = fadeIn(tween(180)),
-                        exit = fadeOut(tween(120)),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Spacer(Modifier.width(8.dp))
-                            VirtualDisplayMicroLens(snapshot = virtualDisplay, accent = accent)
-                        }
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = expanded,
-                    enter = expandVertically(
-                        animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
-                        clip = true,
-                    ) + fadeIn(tween(180, delayMillis = 40)),
-                    exit = shrinkVertically(
-                        animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium),
-                        clip = true,
-                    ) + fadeOut(tween(90)),
-                ) {
-                    Column(
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
                         modifier = Modifier
-                            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
-                            .graphicsLayer { translationY = (1f - expansion) * -6.dp.toPx() },
+                            .fillMaxWidth()
+                            .height(TextFieldDefaults.MinHeight)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onToggleExpanded,
+                            )
+                            .semantics { contentDescription = expandDescription }
+                            .padding(horizontal = EtaDimens.SpaceLg),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AnimatedContent(
-                            targetState = bodyMode,
-                            contentAlignment = Alignment.TopCenter,
-                            transitionSpec = {
-                                val enter = fadeIn(tween(200)) + scaleIn(
-                                    initialScale = 0.94f,
-                                    transformOrigin = bodyOrigin,
-                                    animationSpec = bodySpatial,
+                        PhaseIndicator(phase = state.phase, accent = accent)
+                        Spacer(Modifier.width(EtaDimens.SpaceSm))
+                        Column(modifier = Modifier.weight(1f)) {
+                            AnimatedContent(
+                                targetState = statusText,
+                                transitionSpec = {
+                                    (slideInVertically(tween(220)) { it / 2 } + fadeIn(tween(220))) togetherWith
+                                        (slideOutVertically(tween(180)) { -it / 2 } + fadeOut(tween(160))) using
+                                        SizeTransform(clip = false) { _, _ -> snap() }
+                                },
+                                label = "capsule_status",
+                            ) { text ->
+                                Text(
+                                    text = text,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
-                                val exit = fadeOut(tween(140)) + scaleOut(
-                                    targetScale = 0.94f,
-                                    transformOrigin = bodyOrigin,
-                                    animationSpec = bodyFastSpatial,
-                                )
-                                (enter togetherWith exit) using SizeTransform(clip = false) { _, _ -> bodySizeSpatial }
-                            },
-                            label = "capsule_body",
-                        ) { mode ->
-                            when (mode) {
-                                CapsuleBody.Stage -> Column(modifier = Modifier.fillMaxWidth()) {
-                                    VirtualDisplayStageSection(
-                                        snapshot = virtualDisplay,
-                                        accent = accent,
-                                        isPaused = state.phase == AgentOverlayPhase.PAUSED,
-                                        onTakeOver = onTakeOverVirtualDisplay,
-                                        onResumeAuto = onResumeVirtualDisplay,
-                                        onFullscreen = onFullscreenVirtualDisplay,
-                                        onTapCanvas = onTapVirtualCanvas,
-                                        onSwipeCanvas = onSwipeVirtualCanvas,
+                            }
+                            DetailLine(detail = state.detailText.takeIf { state.phase == AgentOverlayPhase.RUNNING }.orEmpty())
+                        }
+                        AnimatedVisibility(
+                            visible = virtualDisplay.active && !expanded,
+                            enter = fadeIn(tween(180)) + expandHorizontally(
+                                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                                expandFrom = Alignment.End,
+                            ),
+                            exit = fadeOut(tween(120)) + shrinkHorizontally(
+                                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                                shrinkTowards = Alignment.End,
+                            ),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Spacer(Modifier.width(EtaDimens.SpaceSm))
+                                VirtualDisplayMicroLens(snapshot = virtualDisplay, accent = accent)
+                            }
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = expanded,
+                        enter = expandVertically(
+                            animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                            clip = true,
+                        ) + fadeIn(tween(180, delayMillis = 40)),
+                        exit = shrinkVertically(
+                            animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium),
+                            clip = true,
+                        ) + fadeOut(tween(90)),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .padding(EtaDimens.SpaceSm)
+                                .graphicsLayer { translationY = (1f - expansion) * -6.dp.toPx() },
+                        ) {
+                            AnimatedContent(
+                                targetState = bodyMode,
+                                contentAlignment = Alignment.TopCenter,
+                                transitionSpec = {
+                                    val enter = fadeIn(tween(200)) + scaleIn(
+                                        initialScale = 0.94f,
+                                        transformOrigin = bodyOrigin,
+                                        animationSpec = bodySpatial,
                                     )
-                                    Spacer(Modifier.height(10.dp))
-                                    CapsuleActions(
+                                    val exit = fadeOut(tween(140)) + scaleOut(
+                                        targetScale = 0.94f,
+                                        transformOrigin = bodyOrigin,
+                                        animationSpec = bodyFastSpatial,
+                                    )
+                                    (enter togetherWith exit) using SizeTransform(clip = false) { _, _ -> bodySizeSpatial }
+                                },
+                                label = "capsule_body",
+                            ) { mode ->
+                                when (mode) {
+                                    CapsuleBody.Stage -> Column(modifier = Modifier.fillMaxWidth()) {
+                                        VirtualDisplayStageSection(
+                                            snapshot = virtualDisplay,
+                                            accent = accent,
+                                            isPaused = state.phase == AgentOverlayPhase.PAUSED,
+                                            fullscreenEnabled = !ownerBacked,
+                                            onTakeOver = onTakeOverVirtualDisplay,
+                                            onResumeAuto = onResumeVirtualDisplay,
+                                            onFullscreen = onFullscreenVirtualDisplay,
+                                            onTapCanvas = onTapVirtualCanvas,
+                                            onSwipeCanvas = onSwipeVirtualCanvas,
+                                        )
+                                        Spacer(Modifier.height(EtaDimens.SpaceSm))
+                                        CapsuleActions(
+                                            phase = state.phase,
+                                            onSupplement = { setSupplementMode(true) },
+                                            onPause = onPause,
+                                            onResume = onResume,
+                                            onStop = onStop,
+                                        )
+                                    }
+                                    CapsuleBody.Controls -> CapsuleActions(
                                         phase = state.phase,
                                         onSupplement = { setSupplementMode(true) },
                                         onPause = onPause,
                                         onResume = onResume,
                                         onStop = onStop,
                                     )
+                                    CapsuleBody.Supplement -> SupplementInput(
+                                        value = supplementText,
+                                        onValueChange = { supplementText = it },
+                                        onCancel = { leaveSupplementMode() },
+                                        onSend = {
+                                            val text = supplementText.trim()
+                                            if (text.isNotBlank()) leaveSupplementMode { onSupplement(text) }
+                                        },
+                                    )
                                 }
-                                CapsuleBody.Controls -> CapsuleActions(
-                                    phase = state.phase,
-                                    onSupplement = { setSupplementMode(true) },
-                                    onPause = onPause,
-                                    onResume = onResume,
-                                    onStop = onStop,
-                                )
-                                CapsuleBody.Supplement -> SupplementInput(
-                                    value = supplementText,
-                                    onValueChange = { supplementText = it },
-                                    onCancel = { leaveSupplementMode() },
-                                    onSend = {
-                                        val text = supplementText.trim()
-                                        if (text.isNotBlank()) leaveSupplementMode { onSupplement(text) }
-                                    },
-                                )
                             }
                         }
                     }
@@ -382,7 +401,7 @@ internal fun AgentOverlayCapsule(
 /** 展开体互切的三态；舞台与输入框共用尺寸过渡，不靠条件分支硬切。 */
 private enum class CapsuleBody { Stage, Controls, Supplement }
 
-/** 补充 / 暂停恢复 / 停止：暂停与恢复图标同在 40×34.dp 槽位内交叉淡化。 */
+/** 补充 / 暂停恢复 / 停止：官方 M3E 小号图标按钮一行居中。 */
 @Composable
 private fun CapsuleActions(
     phase: AgentOverlayPhase,
@@ -393,7 +412,7 @@ private fun CapsuleActions(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm, Alignment.CenterHorizontally),
     ) {
         CapsuleAction(
             icon = Icons.Rounded.Edit,
@@ -403,7 +422,9 @@ private fun CapsuleActions(
         )
         AnimatedContent(
             targetState = phase,
-            transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+            transitionSpec = {
+                (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
+            },
             label = "capsule_phase_action",
         ) { current ->
             when (current) {
@@ -431,7 +452,7 @@ private fun CapsuleActions(
     }
 }
 
-/** 运行中是旋转的弧形光点，暂停为静止空心环，结束为实心点；只在运行时持有帧动画。 */
+/** 运行中是官方 M3E [LoadingIndicator]，其余阶段用官方图标；不自绘旋转弧线。 */
 @Composable
 private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
     AnimatedContent(
@@ -446,55 +467,33 @@ private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PhaseGlyph(phase: AgentOverlayPhase, accent: Color) {
-    val size = 14.dp
-    if (phase != AgentOverlayPhase.RUNNING) {
-        Box(
-            modifier = Modifier
-                .size(size)
-                .drawBehind {
-                    val radius = this.size.minDimension / 2f
-                    if (phase == AgentOverlayPhase.PAUSED) {
-                        drawCircle(accent, radius * 0.78f, style = Stroke(radius * 0.32f))
-                    } else {
-                        drawCircle(accent, radius * 0.6f)
-                    }
-                },
+    when (phase) {
+        AgentOverlayPhase.RUNNING -> LoadingIndicator(
+            modifier = Modifier.size(EtaDimens.StatusIconSize),
+            color = accent,
         )
-        return
+        AgentOverlayPhase.PAUSED -> Icon(
+            imageVector = Icons.Rounded.Pause,
+            contentDescription = null,
+            modifier = Modifier.size(EtaDimens.StatusIconSize),
+            tint = accent,
+        )
+        AgentOverlayPhase.FINISHED -> Icon(
+            imageVector = Icons.Rounded.CheckCircle,
+            contentDescription = null,
+            modifier = Modifier.size(EtaDimens.StatusIconSize),
+            tint = accent,
+        )
+        AgentOverlayPhase.FAILED -> Icon(
+            imageVector = Icons.Rounded.Error,
+            contentDescription = null,
+            modifier = Modifier.size(EtaDimens.StatusIconSize),
+            tint = accent,
+        )
     }
-    val transition = rememberInfiniteTransition(label = "capsule_indicator")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
-        label = "capsule_indicator_rotation",
-    )
-    val breathe by transition.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-        label = "capsule_indicator_breathe",
-    )
-    Box(
-        modifier = Modifier
-            .size(size)
-            .graphicsLayer { rotationZ = rotation }
-            .drawBehind {
-                val radius = this.size.minDimension / 2f
-                val center = Offset(radius, radius)
-                drawCircle(accent.copy(alpha = 0.18f), radius)
-                drawArc(
-                    brush = Brush.sweepGradient(listOf(Color.Transparent, accent), center),
-                    startAngle = 0f,
-                    sweepAngle = 300f,
-                    useCenter = false,
-                    style = Stroke(radius * 0.34f, cap = StrokeCap.Round),
-                )
-                drawCircle(accent.copy(alpha = breathe), radius * 0.26f, center)
-            },
-    )
 }
 
 /**
@@ -521,22 +520,24 @@ private fun DetailLine(detail: String) {
     )
 }
 
+/** 官方 M3E [FilledTonalIconButton]（S 档容器 + 按压 morph），容器与图标尺寸取官方令牌。 */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun CapsuleAction(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(width = 40.dp, height = 34.dp)
-            .clip(RoundedCornerShape(17.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+        shapes = IconButtonDefaults.shapes(),
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = tint,
+        ),
     ) {
-        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(17.dp), tint = tint)
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+        )
     }
 }
 
@@ -545,6 +546,7 @@ private fun CapsuleAction(icon: ImageVector, label: String, tint: Color, onClick
  *
  * 平时安静展示虚拟屏缩略画面；当虚拟屏内发生点击或滑动时，外圈泛起柔和的呼吸微光。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun VirtualDisplayMicroLens(
     snapshot: VirtualDisplaySnapshot,
@@ -560,63 +562,72 @@ internal fun VirtualDisplayMicroLens(
     }
 
     val borderColor = lerp(
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
-        accent.copy(alpha = 0.78f),
+        MaterialTheme.colorScheme.outlineVariant,
+        accent,
         pulse.value,
     )
-    val lensShape = RoundedCornerShape(6.dp)
+    // 取景器高 = 官方 XS 图标按钮容器高度（32dp），形状保持全圆角。
+    val lensShape = RoundedCornerShape(percent = 50)
 
-    Box(
+    // 官方 M3 Surface 容器：实色 surfaceContainerHigh + 实色描边，无半透明底色。
+    Surface(
         modifier = modifier
-            .size(width = 18.dp, height = 32.dp)
+            .size(
+                width = 18.dp,
+                height = IconButtonDefaults.extraSmallContainerSize().height,
+            )
             .graphicsLayer {
                 val scale = 1f + 0.06f * pulse.value
                 scaleX = scale
                 scaleY = scale
-            }
-            .clip(lensShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .border(width = 0.85.dp, color = borderColor, shape = lensShape),
-        contentAlignment = Alignment.Center,
+            },
+        shape = lensShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, borderColor),
     ) {
-        val frame = snapshot.frame
-        // 首帧到达或副屏释放时画面与占位点交叉淡化，避免微缩镜里画面瞬切。
-        val frameAlpha by animateFloatAsState(
-            targetValue = if (frame != null) 1f else 0f,
-            animationSpec = tween(220),
-            label = "lens_frame_alpha",
-        )
-        if (frame != null) {
-            Image(
-                bitmap = frame,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = frameAlpha },
-            )
-        }
-        if (frameAlpha < 1f) {
-            Box(
-                modifier = Modifier
-                    .size(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(accent.copy(alpha = 0.55f * (1f - frameAlpha))),
-            )
-        }
-        val effect = snapshot.touchEffect
-        if (effect != null && pulse.value > 0.02f) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val (nx, ny) = when (effect) {
-                    is VirtualTouchEffect.Tap -> effect.normalizedX to effect.normalizedY
-                    is VirtualTouchEffect.Swipe -> effect.endX to effect.endY
+        // 保留最后一帧，画面丢失时旧帧跟着淡出，避免取景器瞬间变空。
+        var lastFrame by remember { mutableStateOf(snapshot.frame) }
+        LaunchedEffect(snapshot.frame) { snapshot.frame?.let { lastFrame = it } }
+        val frame = snapshot.frame ?: lastFrame
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // 帧到达/退出时淡入淡出，避免占位点与缩略画面硬切。
+            AnimatedContent(
+                targetState = snapshot.frame != null,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+                contentAlignment = Alignment.Center,
+                label = "lens_frame_presence",
+            ) { hasFrame ->
+                if (hasFrame && frame != null) {
+                    Image(
+                        bitmap = frame,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(accent),
+                    )
                 }
-                val center = Offset(nx * size.width, ny * size.height)
-                drawCircle(
-                    color = accent.copy(alpha = 0.85f * pulse.value),
-                    radius = 2.2.dp.toPx(),
-                    center = center,
-                )
+            }
+            val effect = snapshot.touchEffect
+            if (effect != null && pulse.value > 0.02f) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val (nx, ny) = when (effect) {
+                        is VirtualTouchEffect.Tap -> effect.normalizedX to effect.normalizedY
+                        is VirtualTouchEffect.Swipe -> effect.endX to effect.endY
+                    }
+                    val center = Offset(nx * size.width, ny * size.height)
+                    drawCircle(
+                        color = accent,
+                        radius = 2.2.dp.toPx() * pulse.value,
+                        center = center,
+                    )
+                }
             }
         }
     }
@@ -625,7 +636,7 @@ internal fun VirtualDisplayMicroLens(
 /**
  * 画廊装裱式虚拟屏视窗（Gallery Matte Stage）。
  *
- * 采用外框 28.dp + 10.dp 留白衬底 + 内画框 18.dp 的同心圆角装裱设计，
+ * 采用外圈 36.dp（extraLarge 28 + 间距 8）+ 8.dp 留白衬底 + 内画框 28.dp 的同心圆角装裱设计，
  * 支持用户手指直接在画布上点按/滑动接管，以及一键全屏投射至物理主屏。
  */
 @Composable
@@ -639,33 +650,30 @@ internal fun VirtualDisplayStageSection(
     onTapCanvas: (Float, Float, Boolean) -> Unit,
     onSwipeCanvas: (Float, Float, Float, Float, Int) -> Unit,
     modifier: Modifier = Modifier,
+    fullscreenEnabled: Boolean = true,
 ) {
-    val frameShape = RoundedCornerShape(StageCanvasCorner)
+    // 同心：外圈 36dp（extraLarge 28 + 间距 8），内画框取官方 extraLarge 28dp。
+    val frameShape = MaterialTheme.shapes.extraLarge
     // 接管/暂停切换时画框颜色渐渡，与胶囊其余状态色保持同一节奏。
     val borderColor by animateColorAsState(
         targetValue = if (snapshot.userControlling || isPaused) {
-            accent.copy(alpha = 0.42f)
+            accent
         } else {
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.70f)
+            MaterialTheme.colorScheme.outlineVariant
         },
         animationSpec = tween(220),
         label = "stage_border_color",
     )
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = StageMattePadding, vertical = 4.dp),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // ── 画廊留白内衬画布（Concentric 18.dp Corner） ────────────────────
-        Box(
+        // ── 画廊留白内衬画布（官方 extraLarge 28dp，与 8dp 衬底同心） ──────
+        Surface(
             modifier = Modifier
                 .height(StageCanvasHeight)
                 .aspectRatio(snapshot.aspectRatio, matchHeightConstraintsFirst = true)
-                .clip(frameShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                .border(width = 0.75.dp, color = borderColor, shape = frameShape)
                 .pointerInput(snapshot.displayId, snapshot.userControlling, isPaused) {
                     val touchSlopPx = viewConfiguration.touchSlop
                     val longPressTimeoutMs = viewConfiguration.longPressTimeoutMillis
@@ -712,51 +720,55 @@ internal fun VirtualDisplayStageSection(
                         }
                     }
                 },
-            contentAlignment = Alignment.Center,
+            shape = frameShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            border = BorderStroke(1.dp, borderColor),
         ) {
-            val frame = snapshot.frame
-            // 帧与文字标签交叉淡化，避免首帧到达或副屏结束时舞台画面瞬切。
-            val frameAlpha by animateFloatAsState(
-                targetValue = if (frame != null) 1f else 0f,
-                animationSpec = tween(200),
-                label = "stage_frame_alpha",
-            )
-            if (frame != null) {
-                Image(
-                    bitmap = frame,
-                    contentDescription = snapshot.appName.ifBlank {
-                        stringResource(R.string.overlay_virtual_canvas_auto)
-                    },
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = frameAlpha },
-                )
-            }
-            if (frameAlpha < 1f) {
-                Text(
-                    text = snapshot.appName.ifBlank {
-                        stringResource(R.string.overlay_virtual_canvas_auto)
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
-                    modifier = Modifier.graphicsLayer { alpha = 1f - frameAlpha },
-                )
-            }
+            // 保留最后一帧：画面丢失时旧帧跟着淡出，而不是瞬间消失。
+            var lastFrame by remember { mutableStateOf(snapshot.frame) }
+            LaunchedEffect(snapshot.frame) { snapshot.frame?.let { lastFrame = it } }
+            val frame = snapshot.frame ?: lastFrame
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                // 首帧到达 / 副屏结束时淡入淡出，避免占位文字与画面硬切；逐帧更新不触发过渡。
+                AnimatedContent(
+                    targetState = snapshot.frame != null,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(160)) },
+                    contentAlignment = Alignment.Center,
+                    label = "stage_frame_presence",
+                ) { hasFrame ->
+                    if (hasFrame && frame != null) {
+                        Image(
+                            bitmap = frame,
+                            contentDescription = snapshot.appName.ifBlank {
+                                stringResource(R.string.overlay_virtual_canvas_auto)
+                            },
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Text(
+                            text = snapshot.appName.ifBlank {
+                                stringResource(R.string.overlay_virtual_canvas_auto)
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
 
-            VirtualTouchFocusLayer(
-                effect = snapshot.touchEffect,
-                modifier = Modifier.matchParentSize(),
-            )
+                VirtualTouchFocusLayer(
+                    effect = snapshot.touchEffect,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(EtaDimens.SpaceSm))
 
         // ── 极简画廊信息与接管栏 ───────────────────────────────────────────
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val modeLabel = stringResource(
@@ -771,90 +783,137 @@ internal fun VirtualDisplayStageSection(
             } else {
                 modeLabel
             }
-            Text(
-                text = footerTitle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            AnimatedContent(
+                targetState = footerTitle,
                 modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(8.dp))
-            StagePillButton(
-                label = stringResource(
-                    if (snapshot.userControlling || isPaused) {
-                        R.string.overlay_virtual_continue
-                    } else {
-                        R.string.overlay_virtual_takeover
+                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                label = "stage_footer_title",
+            ) { title ->
+                Text(
+                    text = title,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.width(EtaDimens.SpaceSm))
+            val takeoverActive = snapshot.userControlling || isPaused
+            val actionCount = if (fullscreenEnabled) 2 else 1
+            EtaConnectedGroupRow {
+                StageActionToggle(
+                    label = stringResource(
+                        if (takeoverActive) {
+                            R.string.overlay_virtual_continue
+                        } else {
+                            R.string.overlay_virtual_takeover
+                        },
+                    ),
+                    checked = takeoverActive,
+                    index = 0,
+                    count = actionCount,
+                    onClick = {
+                        if (takeoverActive) onResumeAuto() else onTakeOver()
                     },
-                ),
-                highlighted = snapshot.userControlling || isPaused,
-                accent = accent,
-                onClick = {
-                    if (snapshot.userControlling || isPaused) onResumeAuto() else onTakeOver()
-                },
-            )
-            Spacer(Modifier.width(6.dp))
-            StagePillButton(
-                label = stringResource(R.string.overlay_virtual_fullscreen),
-                highlighted = false,
-                accent = accent,
-                onClick = onFullscreen,
-            )
+                )
+                AnimatedVisibility(
+                    visible = fullscreenEnabled,
+                    enter = fadeIn(tween(180)) + expandHorizontally(
+                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        expandFrom = Alignment.End,
+                    ),
+                    exit = fadeOut(tween(140)) + shrinkHorizontally(
+                        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                        shrinkTowards = Alignment.End,
+                    ),
+                ) {
+                    StageActionToggle(
+                        label = stringResource(R.string.overlay_virtual_fullscreen),
+                        checked = false,
+                        index = 1,
+                        count = 2,
+                        onClick = onFullscreen,
+                    )
+                }
+            }
         }
     }
 }
 
+/** 舞台底部动作：官方 M3E [ToggleButton]（Small 档 + 官方相连形状 + 实色令牌）。 */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun StagePillButton(
+private fun StageActionToggle(
     label: String,
-    highlighted: Boolean,
-    accent: Color,
+    checked: Boolean,
+    index: Int,
+    count: Int,
     onClick: () -> Unit,
 ) {
-    val background by animateColorAsState(
-        targetValue = if (highlighted) {
-            accent.copy(alpha = 0.16f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        animationSpec = tween(200),
-        label = "stage_pill_background",
-    )
-    val textColor by animateColorAsState(
-        targetValue = if (highlighted) accent else MaterialTheme.colorScheme.onSurface,
-        animationSpec = tween(200),
-        label = "stage_pill_text",
-    )
-    Box(
-        modifier = Modifier
-            .height(27.dp)
-            .clip(RoundedCornerShape(13.5.dp))
-            .background(background)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
+    val shapes = when {
+        count <= 1 -> null
+        index <= 0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+        index >= count - 1 -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+    }
+    val colors = etaConnectedGroupColors()
+    val content: @Composable RowScope.() -> Unit = {
+        // 文案切换（接管 ↔ 继续）时按钮宽度随内容平滑过渡，不瞬间跳宽。
+        AnimatedContent(
+            targetState = label,
+            transitionSpec = {
+                (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
+            },
+            contentAlignment = Alignment.Center,
+            label = "stage_action_label",
+        ) { text ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            .padding(horizontal = 11.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
+        }
+    }
+    if (shapes == null) {
+        ToggleButton(
+            checked = checked,
+            onCheckedChange = { onClick() },
+            buttonSize = ToggleButtonSize.Small,
+            contentPadding = PaddingValues(horizontal = EtaDimens.SpaceMd),
+            colors = colors,
+            content = content,
+        )
+    } else {
+        ToggleButton(
+            checked = checked,
+            onCheckedChange = { onClick() },
+            buttonSize = ToggleButtonSize.Small,
+            shapes = shapes,
+            contentPadding = PaddingValues(horizontal = EtaDimens.SpaceMd),
+            colors = colors,
+            content = content,
         )
     }
 }
 
-private val StageMattePadding = 10.dp
-private val StageCanvasCorner = 18.dp
-private val StageCanvasHeight = 336.dp
+/**
+ * 圆角与聊天输入胶囊（AgentChatComposerM3）同一套同心规则：
+ * 内层取官方 `extraLarge`（28dp，单行 56dp 高即胶囊），外层 = 内层 + 8dp 间距 = 36dp。
+ * 舞台画布与补充输入框都用内层 28dp，距外圈正好 8dp（[EtaDimens.SpaceSm]），弧心重合。
+ */
+private val CapsuleInnerCorner = 28.dp
+private val CapsuleOuterCorner = 36.dp
+
+/**
+ * 舞台画布高度 = 舞台窗口 524 − 上下留白 12 − 头部 56（`TextFieldDefaults.MinHeight`）
+ * − 展开体上下内边距 16（[EtaDimens.SpaceSm] × 2）− 两处 8dp 间距
+ * − 接管栏 48 − 动作行 48（官方 40dp 按钮的 48dp 触摸槽）。
+ */
+private val StageCanvasHeight = 328.dp
+
 private val CapsuleDefaultWidth = 248.dp
 private val CapsuleMicroLensWidth = 264.dp
 private val CapsuleStageWidth = 296.dp
-private val CapsuleCorner = 22.dp
-private val CapsuleStageCorner = 28.dp

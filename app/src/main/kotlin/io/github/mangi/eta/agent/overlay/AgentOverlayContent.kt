@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -59,7 +58,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -96,6 +94,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.components.verticalScrollEdgeFade
 
@@ -341,7 +341,7 @@ internal fun AgentOverlayBubble(
                 .widthIn(max = 136.dp),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.8f)
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ),
         ) {
             Column(
@@ -454,8 +454,6 @@ internal fun SupplementInput(
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val textColor = MaterialTheme.colorScheme.onSurface
-    val fieldBg = MaterialTheme.colorScheme.surfaceContainer
 
     LaunchedEffect(Unit) {
         delay(180)
@@ -465,59 +463,52 @@ internal fun SupplementInput(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm),
     ) {
-        Box(
+        // 官方 M3 TextField：实色容器 + 无指示线；圆角取官方 extraLarge（28dp），
+        // 与胶囊外圈 36dp 保持 8dp 间距的同心关系。
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 44.dp, max = 112.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(fieldBg)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            contentAlignment = Alignment.TopStart,
-        ) {
-            if (value.isBlank()) {
+                .heightIn(max = 112.dp)
+                .focusRequester(focusRequester),
+            shape = MaterialTheme.shapes.extraLarge,
+            textStyle = MaterialTheme.typography.bodyMedium,
+            placeholder = {
                 Text(
                     text = stringResource(R.string.overlay_supplement_hint),
-                    color = textColor.copy(alpha = 0.45f),
-                    fontSize = MaterialTheme.typography.bodyMedium.fontSize,
-                    lineHeight = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester),
-                textStyle = TextStyle(
-                    color = textColor,
-                    fontSize = MaterialTheme.typography.bodyMedium.fontSize,
-                    lineHeight = 18.sp,
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                maxLines = 4,
-            )
-        }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+            maxLines = 4,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(
-                onClick = onCancel,
-                modifier = Modifier.heightIn(min = 32.dp),
-            ) {
+            TextButton(onClick = onCancel) {
                 Text(stringResource(R.string.action_cancel))
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            TextButton(
-                onClick = onSend,
-                enabled = value.isNotBlank(),
-                modifier = Modifier.heightIn(min = 32.dp),
-            ) {
+            Spacer(modifier = Modifier.width(EtaDimens.SpaceSm))
+            TextButton(onClick = onSend, enabled = value.isNotBlank()) {
                 Text(stringResource(R.string.overlay_send))
             }
         }

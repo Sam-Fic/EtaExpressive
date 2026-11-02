@@ -30,12 +30,13 @@ public final class OwnerProtocol {
     public static final String OP_LAUNCH = "launch";
     public static final String OP_INPUT = "input";
     public static final String OP_SNAPSHOT = "snapshot";
+    public static final String OP_RECLAIM = "reclaim";
     public static final String OP_HANDOFF = "handoff";
     public static final String OP_RELEASE = "release";
 
     /** Operations this build answers successfully. */
     public static final String[] SUPPORTED_OPS = {
-            OP_STATUS, OP_LAUNCH, OP_INPUT, OP_SNAPSHOT, OP_HANDOFF, OP_RELEASE,
+            OP_STATUS, OP_LAUNCH, OP_INPUT, OP_SNAPSHOT, OP_RECLAIM, OP_HANDOFF, OP_RELEASE,
     };
 
     /** Operations that are named in the protocol but deliberately not implemented yet. */
@@ -75,7 +76,7 @@ public final class OwnerProtocol {
     private static final int MAX_TOKEN_CHARS = 256;
 
     private static final Set<String> OPS = new HashSet<String>(Arrays.asList(
-            OP_STATUS, OP_LAUNCH, OP_INPUT, OP_SNAPSHOT, OP_HANDOFF, OP_RELEASE));
+            OP_STATUS, OP_LAUNCH, OP_INPUT, OP_SNAPSHOT, OP_RECLAIM, OP_HANDOFF, OP_RELEASE));
 
     private OwnerProtocol() {
     }
