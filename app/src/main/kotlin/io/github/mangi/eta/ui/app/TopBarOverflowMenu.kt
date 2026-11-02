@@ -38,6 +38,7 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.components.rememberInteractiveModeEnabled
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 
