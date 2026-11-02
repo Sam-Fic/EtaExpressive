@@ -310,7 +310,7 @@ internal fun settingsCatalog(): List<SettingsEntry> {
             SettingsEntry(
                 key = SettingsKeys.TOOL_RECIPES,
                 title = stringResource(R.string.settings_tool_recipes),
-                summary = stringResource(R.string.settings_tool_recipes_summary),
+                summary = null,
                 keywords = "recipe recipes 配方 自建工具 自定义工具 模型写工具 审计",
                 icon = Icons.Rounded.Handyman,
                 group = groupContextExtensions,

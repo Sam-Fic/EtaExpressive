@@ -432,7 +432,6 @@ internal fun SettingsScreen(
                 row(key = SettingsKeys.TOOL_RECIPES) {
                     EtaClickableRow(
                         title = stringResource(R.string.settings_tool_recipes),
-                        summary = stringResource(R.string.settings_tool_recipes_summary),
                         leading = {
                             PreferenceIcon(
                                 icon = Icons.Rounded.Handyman,
