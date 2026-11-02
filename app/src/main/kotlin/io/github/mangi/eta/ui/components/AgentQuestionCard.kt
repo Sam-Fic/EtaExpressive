@@ -20,6 +20,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,6 +47,12 @@ import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.app.AgentQuestionProjection
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
+
+/**
+ * 危险操作确认的同意选项 id（与 `AgentDangerousConfirmationGate` 的协议一致）：
+ * 这些选项会把操作真的执行下去，因此用 destructive 样式渲染。
+ */
+private val DANGEROUS_CONFIRM_OPTION_IDS = setOf("confirm_once", "confirm_session")
 
 /**
  * 问答卡：与思考/工具卡片同一套 Material 3 Expressive 官方 `SegmentedListItem` 结构
@@ -114,7 +121,8 @@ private fun AgentQuestionCardContent(
                         key(option.id) {
                             val selected = displayed.kind == "option" && displayed.optionId == option.id
                             QuestionOptionRow(option.label, option.description, selected, editable,
-                                option.id == request.recommendedOptionId) {
+                                option.id == request.recommendedOptionId,
+                                destructive = option.id in DANGEROUS_CONFIRM_OPTION_IDS) {
                                 changeDraft(draft.copy(kind = "option", optionId = option.id))
                             }
                         }
@@ -195,20 +203,35 @@ private fun questionStatusText(status: AgentQuestionStatus): String = stringReso
 @Composable
 private fun QuestionOptionRow(
     label: String, description: String, selected: Boolean, enabled: Boolean, recommended: Boolean,
+    destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
     // M3 Expressive：官方单选 ListItem 承担整行命中区、选中容器色、涟漪与 Role.RadioButton；
     // 单选圆点用官方 RadioButton（不自绘，也不手拼 selectable + 背景）。
+    // 危险操作的同意选项用 error 容器色，和其它选项在视觉上分开。
     ListItem(
         selected = selected,
         onClick = onClick,
         enabled = enabled,
         colors = ListItemDefaults.colors(
             containerColor = Color.Transparent,
-            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+            selectedContainerColor = if (destructive) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.secondaryContainer
+            },
         ),
         leadingContent = {
-            RadioButton(selected = selected, onClick = null, enabled = enabled)
+            RadioButton(
+                selected = selected,
+                onClick = null,
+                enabled = enabled,
+                colors = if (destructive) {
+                    RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.error)
+                } else {
+                    RadioButtonDefaults.colors()
+                },
+            )
         },
         supportingContent = if (description.isNotBlank()) {
             {

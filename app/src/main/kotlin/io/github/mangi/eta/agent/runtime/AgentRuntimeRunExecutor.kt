@@ -190,6 +190,10 @@ internal class AgentRuntimeRunExecutor(
                 confirmDangerousOperation = { toolName, argumentsJson ->
                     AgentDangerousOperationPolicy.decision(toolName, argumentsJson)
                 },
+                // 自建配方的 Root shell 步骤同样要过命令启发式，避免用配方名绕过确认。
+                confirmRecipeDangerousOperation = { toolName, argumentsJson, shellCommands ->
+                    AgentDangerousOperationPolicy.decisionForRecipe(toolName, argumentsJson, shellCommands)
+                },
                 beforeToolExecution = { toolName ->
                     val requiresAccessibility = AgentToolRequirements.requiresAccessibility(toolName)
                     if (!requiresAccessibility && !AgentOverlayVisibilityPolicy.requiresEntrySurfaceDismissal(toolName)) {

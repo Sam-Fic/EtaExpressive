@@ -126,6 +126,12 @@ internal class AgentLocalTools(
      * 后者是「这件事要不要先问用户」，两者失败时的错误码与恢复方式都不同。
      */
     private val confirmDangerousOperation: (String, String) -> ToolExecutionDecision? = { _, _ -> null },
+    /**
+     * 配方调用的危险确认：配方里的 Root shell 步骤不在工具名清单里，
+     * 只看 `recipe_x` 名字会让模型把 `rm -rf` 包装成无害工具。
+     */
+    private val confirmRecipeDangerousOperation:
+        (String, String, List<String>) -> ToolExecutionDecision? = { _, _, _ -> null },
     private val skillIndexService: SkillIndexService? = null,
     private val skillLoader: SkillLoader? = null,
     private val skillResourceReader: SkillResourceReader? = null,
@@ -727,6 +733,15 @@ internal class AgentLocalTools(
         if (!rootAvailable() && store_RequiresRoot(recipe)) {
             return errorResult("ROOT_REQUIRED", "该配方需要 Root 权限；未授权前不要重复调用本工具")
         }
+        // Root shell 步骤按命令本身判风险：配方名看不出它会执行什么。
+        val shellCommands = recipeShellCommands(recipe)
+        confirmRecipeDangerousOperation(toolName, args.toString(), shellCommands).let { decision ->
+            when (decision) {
+                null, ToolExecutionDecision.Allow -> Unit
+                is ToolExecutionDecision.Reject ->
+                    return errorResult(code = decision.code, message = decision.message)
+            }
+        }
         return recipeExecutor.execute(recipe, args)
     }
 
@@ -734,6 +749,24 @@ internal class AgentLocalTools(
     private fun store_RequiresRoot(recipe: ToolRecipe): Boolean {
         val all = recipeStore.all()
         return recipeStore.rootDependentRecipes(all).contains(recipe.name) || recipe.requiresRoot
+    }
+
+    /** 收集配方（含组合链）里的所有 Root shell 命令，交给统一的命令启发式判风险。 */
+    private fun recipeShellCommands(
+        recipe: ToolRecipe,
+        depth: Int = 0,
+        seen: MutableSet<String> = mutableSetOf(),
+    ): List<String> {
+        if (depth > ToolRecipeConstants.MAX_COMPOSITION_DEPTH || !seen.add(recipe.name)) return emptyList()
+        return recipe.steps.flatMap { step ->
+            when (step) {
+                is ToolRecipeStep.RootShell -> listOf(step.command)
+                is ToolRecipeStep.Compose -> recipeStore.find(step.recipe)?.let {
+                    recipeShellCommands(it, depth + 1, seen)
+                }.orEmpty()
+                else -> emptyList()
+            }
+        }
     }
 
     /** 自写工具的统一门禁：关闭开关后，模型重放旧的写配方调用也直接拒绝。 */

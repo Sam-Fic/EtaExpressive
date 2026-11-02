@@ -1,6 +1,5 @@
 package io.github.mangi.eta.agent.tool
 
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,8 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 危险操作逐次确认：只在用户开启时生效，只作用于写操作，
- * 且读类动作即使挂在同一个工具名下也不会被打扰。
+ * 危险操作逐次确认：中风险受设置开关控制，高风险/致命不受控制，
+ * 纯读类动作即使挂在同名工具下也不会被打扰。
  */
 class AgentDangerousOperationPolicyTest {
     @org.junit.Before
@@ -61,11 +60,48 @@ class AgentDangerousOperationPolicyTest {
     }
 
     @Test fun disabledSwitchKeepsHistoricalBehaviour() {
-        // 用户没开启确认时，危险操作照旧直接执行——这是历史行为，不能擅自改变。
+        // 用户没开启确认时，中风险操作照旧直接执行——这是历史行为，不能擅自改变。
         val noDecision = AgentDangerousOperationPolicy.decision(
-            "power_control", """{"action":"reboot"}""", confirmationEnabled = false,
+            "set_timezone", """{"action":"set","timezone":"Asia/Shanghai"}""", confirmationEnabled = false,
         )
         assertNull(noDecision)
+    }
+
+    @Test fun fatalOperationsAlwaysAskEvenWhenSwitchIsOff() {
+        // 致命操作不可撤销：总开关关闭时也只关掉其它档位，这一档必须始终确认。
+        listOf(
+            "power_control" to """{"action":"reboot"}""",
+            "manage_app" to """{"action":"clear_data","package_name":"x"}""",
+            "manage_file" to """{"action":"delete","path":"/sdcard/a"}""",
+            "memory_write" to """{"mode":"clear"}""",
+            "eta_manage_history" to """{"action":"empty_trash"}""",
+        ).forEach { (name, args) ->
+            val decision = AgentDangerousOperationPolicy.decision(name, args, confirmationEnabled = false)
+            assertEquals(
+                "$name 应在开关关闭时仍被拦下",
+                AgentDangerousOperationPolicy.CONFIRM_CODE,
+                (decision as ToolExecutionDecision.Reject).code,
+            )
+        }
+    }
+
+    @Test fun highRiskOperationsAlsoAskWhenSwitchIsOff() {
+        // 递归删除、git 破坏、批量删除属于高风险：不可撤销，不能靠总开关关掉。
+        val shell = AgentDangerousOperationPolicy.decision(
+            "terminal", """{"action":"exec","command":"rm -rf build"}""", confirmationEnabled = false,
+        )
+        assertTrue(shell is ToolExecutionDecision.Reject)
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "manage_file", """{"action":"move","path":"/sdcard/a"}""", confirmationEnabled = false,
+            ) is ToolExecutionDecision.Reject,
+        )
+        // 中风险仍受开关控制。
+        assertNull(
+            AgentDangerousOperationPolicy.decision(
+                "set_timezone", """{"action":"set","timezone":"UTC"}""", confirmationEnabled = false,
+            ),
+        )
     }
 
     @Test fun malformedArgumentsDoNotCrashAndDefaultToAsking() {
@@ -165,5 +201,94 @@ class AgentDangerousOperationPolicyTest {
         // 模拟授权过期：清理后重发必须重新确认。
         AgentDangerousConfirmationGate.pruneExpired(now = System.currentTimeMillis() + AgentDangerousConfirmationGate.TTL_MS + 1)
         assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+    }
+
+    // ── 确认粒度：本次允许 / 本会话允许 ────────────────────────────────────────
+
+    @Test fun mediumRiskCanBeAllowedForTheWholeSession() {
+        val args = """{"action":"set","timezone":"Asia/Shanghai"}"""
+        assertTrue(AgentDangerousOperationPolicy.decision("set_timezone", args, true) is ToolExecutionDecision.Reject)
+        assertEquals(
+            AgentConfirmationScope.SESSION,
+            AgentDangerousConfirmationGate.onUserAnsweredScoped(
+                "option", AgentDangerousConfirmationGate.CONFIRM_SESSION_OPTION_ID,
+            ),
+        )
+        // 本会话授权可重复使用，不消费。
+        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, true))
+        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, true))
+        // 换参数仍然要重新确认。
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "set_timezone", """{"action":"set","timezone":"UTC"}""", true,
+            ) is ToolExecutionDecision.Reject,
+        )
+    }
+
+    @Test fun fatalRiskNeverGrantsSessionScope() {
+        val args = """{"action":"reboot"}"""
+        AgentDangerousOperationPolicy.decision("power_control", args, true)
+        // 即使模型给了「本会话允许」选项，致命操作也只授权一次。
+        assertEquals(
+            AgentConfirmationScope.ONCE,
+            AgentDangerousConfirmationGate.onUserAnsweredScoped(
+                "option", AgentDangerousConfirmationGate.CONFIRM_SESSION_OPTION_ID,
+            ),
+        )
+        assertNull(AgentDangerousOperationPolicy.decision("power_control", args, true))
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+    }
+
+    @Test fun cancelOptionNeverGrants() {
+        val args = """{"action":"reboot"}"""
+        AgentDangerousOperationPolicy.decision("power_control", args, true)
+        assertNull(
+            AgentDangerousConfirmationGate.onUserAnsweredScoped(
+                "option", AgentDangerousConfirmationGate.CANCEL_OPTION_ID,
+            ),
+        )
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+    }
+
+    @Test fun shellToolsAreAssessedBeforeExecution() {
+        // 终端/命令原先完全不在确认清单里：模型可以直接 rm -rf。
+        val args = """{"action":"exec","command":"rm -rf /sdcard/Download"}"""
+        assertTrue(AgentDangerousOperationPolicy.isDangerous("terminal", args))
+        val decision = AgentDangerousOperationPolicy.decision("terminal", args, confirmationEnabled = true)
+        assertTrue(decision is ToolExecutionDecision.Reject)
+        assertTrue((decision as ToolExecutionDecision.Reject).message.contains("递归删除"))
+    }
+
+    @Test fun unknownToolsWithDestructiveNamesOrActionsAreNotSilentlyAllowed() {
+        // 新工具没有登记风险等级时，名字/动作里的不可逆动词仍要兜底确认一次。
+        assertEquals(
+            AgentRiskLevel.MEDIUM,
+            AgentRiskPolicy.assess("mystery_tool", """{"action":"delete"}""").level,
+        )
+        assertEquals(AgentRiskLevel.MEDIUM, AgentRiskPolicy.assess("purge_cache_v2", "{}").level)
+        // 只读的未知工具不被打扰。
+        assertEquals(AgentRiskLevel.LOW, AgentRiskPolicy.assess("mystery_tool", """{"action":"inspect"}""").level)
+    }
+
+    @Test fun recipeShellStepsShareTheSameGate() {
+        val args = """{"path":"/sdcard"}"""
+        val first = AgentDangerousOperationPolicy.decisionForRecipe(
+            "recipe_clean", args, listOf("rm -rf /sdcard/Download"), confirmationEnabled = true,
+        )
+        assertTrue(first is ToolExecutionDecision.Reject)
+        AgentDangerousConfirmationGate.onUserAnsweredScoped(
+            "option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID,
+        )
+        // 同一配方 + 同一参数重发才放行，换参数仍需确认。
+        assertNull(
+            AgentDangerousOperationPolicy.decisionForRecipe(
+                "recipe_clean", args, listOf("rm -rf /sdcard/Download"), confirmationEnabled = true,
+            ),
+        )
+        assertTrue(
+            AgentDangerousOperationPolicy.decisionForRecipe(
+                "recipe_clean", """{"path":"/storage"}""", listOf("rm -rf /sdcard/Download"), true,
+            ) is ToolExecutionDecision.Reject,
+        )
     }
 }
