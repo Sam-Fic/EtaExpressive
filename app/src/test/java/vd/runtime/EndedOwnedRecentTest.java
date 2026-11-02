@@ -124,7 +124,6 @@ public class EndedOwnedRecentTest {
         assertNull(EndedOwnedRecent.presentIds(Collections.<LaunchTargetOccupancy.Root>emptyList()));
         assertNull(EndedOwnedRecent.presentIds(Arrays.asList(root(1, false, 2))));
         assertNull(EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, (int[]) null))));
-        assertNull(EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, 0))));
         assertNull(EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, -2))));
         assertNull(EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, 2, 2))));
         assertNull(EndedOwnedRecent.presentIds(Arrays.asList(root(1, true), root(1, true))));
@@ -154,6 +153,13 @@ public class EndedOwnedRecentTest {
 
     @Test public void nonTaskMarkersDoNotCreateFalseActivePresence() {
         assertEquals(ids(1), EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, 1, -1))));
+    }
+
+    @Test public void visibilityBarrierChildIdIsNotAMalformedIdentity() {
+        // The platform reports the Bubbles visibility barrier as a real child task with id 0.
+        // It can never be an owned id, but it must not make the whole inventory unknown.
+        assertEquals(ids(1), EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, 0))));
+        assertEquals(ids(1, 2), EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, 0, 2))));
     }
 
     @Test public void unprovenRecentAndForeignActiveTaskStillRefuse() {

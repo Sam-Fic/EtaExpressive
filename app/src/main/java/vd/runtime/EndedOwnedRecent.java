@@ -67,7 +67,10 @@ final class EndedOwnedRecent {
             present.add(root.taskId);
             Set<Integer> children = new HashSet<Integer>();
             for (int id : root.childTaskIds) {
-                if ((id != -1 && id <= 0) || !children.add(id)) return null;
+                // 0 is a real platform task id (the Bubbles visibility barrier), not a sentinel.
+                // It can never match a positive owned id, so it cannot defeat an absence proof;
+                // treating it as malformed made every all-display inventory unknown on such devices.
+                if (id < -1 || !children.add(id)) return null;
                 if (id > 0) present.add(id);
             }
         }
