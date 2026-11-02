@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.screens.chat
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -111,6 +112,9 @@ private fun TokenUsageRow(label: String, value: String) {
         trailingContent = {
             Text(
                 text = value,
+                // 这里不用组件默认字号：本行不是列表选项，而是数据展示，
+                // 数值与左侧标签属于同一层级，字号跟主标题（bodyLarge）保持一致。
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
