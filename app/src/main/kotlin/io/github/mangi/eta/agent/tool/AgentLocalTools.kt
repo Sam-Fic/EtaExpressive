@@ -72,6 +72,7 @@ import io.github.mangi.eta.data.model.AssistantPrompt
 import io.github.mangi.eta.data.repository.AgentMemoryException
 import io.github.mangi.eta.data.repository.AgentMemoryMutation
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
+import io.github.mangi.eta.data.repository.AgentMemoryStore
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.data.repository.AgentMemoryWriteResult
 import io.github.mangi.eta.data.repository.LinuxEnvironmentSettingsRepository
@@ -261,6 +262,23 @@ internal class AgentLocalTools(
         .mapTo(mutableSetOf(), SkillParser::normalizeSkillLookup)
     private val runSkillEntries = runSkillEntries
     private val memoryAssistantId = memoryAssistantId
+
+    /**
+     * 上一次 memory_get 的分页指纹，用于识别"同参重复读同一页"。
+     *
+     * 实测病灶是"连续 30 次相同参数只拿到第 1 页"。只比对**最后一次**读取，
+     * 因此读过任意其他页即自动解锁（上下文压缩后重读旧页的活口）；
+     * revision 进 key，写入记忆后也自动解锁。
+     */
+    private data class MemoryPageKey(
+        val section: String?,
+        val query: String?,
+        val startLine: Int,
+        val maxChars: Int,
+        val revision: String,
+    )
+
+    private var lastMemoryPageKey: MemoryPageKey? = null
     private val mutatedSkillIds = ConcurrentHashMap.newKeySet<String>()
     private val skillTreeMutationUncertain = AtomicBoolean(false)
     private val pendingSkillConflict = AtomicReference(pendingSkillConflict)
@@ -855,15 +873,44 @@ internal class AgentLocalTools(
             .put("end_line", result.endLine ?: JSONObject.NULL)
             .put("matched_lines", result.matchedLines)
             .put("has_more", result.hasMore)
-            .put("content", result.content)
-            .toString()
+        // 分页续读指引：不带 query 时（纯分页或按标题整节读）都能用 start_line 续读。
+        // 只给 has_more 而不给出"下一段从哪读"，模型容易用同样的参数反复重试。
+        if (result.hasMore && query == null && result.endLine != null) {
+            val next = result.endLine + 1
+            payload
+                .put("next_start_line", next)
+                .put(
+                    "paging_hint",
+                    "已返回第 ${result.startLine}-${result.endLine} 行（共 ${result.snapshot.lineCount} 行）；" +
+                        "还有内容未返回，继续读取请传 start_line=$next",
+                )
+        }
+        val key = MemoryPageKey(
+            section = section,
+            query = query,
+            startLine = args.optInt("start_line", 1),
+            maxChars = args.optInt("max_chars", 12_000),
+            revision = result.snapshot.revision,
+        )
+        val duplicatePage = key == lastMemoryPageKey && section == null && query == null && result.hasMore
+        lastMemoryPageKey = key
+        if (duplicatePage) {
+            errorResult(
+                "DUPLICATE_PAGE",
+                "同参重复读取第 ${result.startLine}-${result.endLine} 行不会得到新内容（revision 未变）；" +
+                    "请传 start_line=${payload.optInt("next_start_line")} 续读。" +
+                    "如确需重读本页（例如上下文被压缩），先读一次其他页再回来。",
+            )
+        } else {
+            payload.put("content", result.content).toString()
+        }
     } catch (failure: AgentMemoryException) {
         errorResult(failure.code, failure.message ?: "记忆读取失败")
     }
 
     private fun memoryWrite(args: JSONObject): String = try {
         val revision = args.getString("revision")
-        val mutation = when (args.getString("mode")) {
+        val mutation = when (val mode = args.getString("mode")) {
             "replace_section" -> AgentMemoryMutation.ReplaceSection(
                 revision = revision,
                 section = args.optString("section"),
@@ -879,12 +926,28 @@ internal class AgentLocalTools(
                 revision = revision,
                 content = args.getString("content"),
             )
-            "clear" -> AgentMemoryMutation.Clear(revision)
-            else -> error("不支持的记忆写入模式")
+            "clear" -> {
+                val confirmation = args.optString("content")
+                if (confirmation != AgentMemoryStore.CLEAR_CONFIRMATION) {
+                    throw AgentMemoryException(
+                        code = "MEMORY_CONFIRM_REQUIRED",
+                        message = "清空全部记忆需要在 content 里回传 \"${AgentMemoryStore.CLEAR_CONFIRMATION}\" 作为确认。",
+                    )
+                }
+                AgentMemoryMutation.Clear(revision)
+            }
+            else -> throw AgentMemoryException(
+                code = "INVALID_ARGUMENT",
+                message = "不支持的记忆写入模式 $mode；可用：replace_section / replace_range / append / clear。",
+            )
         }
         when (val result = AgentMemoryRepository.mutate(mutation, memoryAssistantId)) {
             is AgentMemoryWriteResult.Success -> JSONObject()
                 .put("ok", true)
+                .put("changed", result.changed)
+                .apply {
+                    if (!result.changed) put("message", "内容与写入前逐字节一致，未产生任何改动。")
+                }
                 .put("revision", result.snapshot.revision)
                 .put("bytes", result.snapshot.byteSize)
                 .put("line_count", result.snapshot.lineCount)

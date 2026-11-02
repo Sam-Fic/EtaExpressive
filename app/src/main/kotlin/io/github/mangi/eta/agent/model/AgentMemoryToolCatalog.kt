@@ -11,7 +11,7 @@ internal object AgentMemoryToolCatalog {
             .put(
                 AgentToolSchema.function(
                     name = "memory_get",
-                    description = "Read persistent cross-conversation memory from MEMORY.md. Core memory and the heading index are already provided at run start, so call this only to inspect details, answer what is remembered, or refresh after a conflict. Prefer section to fetch one whole section by heading; use query for just-in-time retrieval; use start_line/max_chars only for paged reading.",
+                    description = "Read persistent cross-conversation memory from MEMORY.md. Core memory and the heading index are already provided at run start, so call this only to inspect details, answer what is remembered, or refresh after a conflict. Prefer section to fetch one whole section by heading; use query for just-in-time retrieval; use start_line/max_chars only for paged reading. When a paged read returns has_more, continue with the returned next_start_line instead of repeating the same request.",
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(
@@ -74,7 +74,7 @@ internal object AgentMemoryToolCatalog {
                                             "description",
                                             "replace_section replaces (or deletes) one whole section by heading; " +
                                                 "replace_range edits inclusive 1-based lines; append adds a brand-new section " +
-                                                "(its heading must not already exist); clear removes all memory.",
+                                                "(its heading must not already exist); clear removes all memory and requires content=\"${AgentMemoryStore.CLEAR_CONFIRMATION}\".",
                                         ),
                                 )
                                 .put(
@@ -114,7 +114,8 @@ internal object AgentMemoryToolCatalog {
                                         .put(
                                             "description",
                                             "Markdown to write, at most 3500 characters. For replace_section pass the whole new section and keep its heading line " +
-                                                "(an empty content deletes the section); for replace_range an empty content deletes those lines.",
+                                                "(an empty content deletes the section); for replace_range an empty content deletes those lines; " +
+                                                "for clear pass \"${AgentMemoryStore.CLEAR_CONFIRMATION}\". Results include changed=false when the write left the file byte-identical.",
                                         ),
                                 ),
                         )
