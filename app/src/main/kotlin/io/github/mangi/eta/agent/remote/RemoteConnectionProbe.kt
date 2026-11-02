@@ -239,6 +239,16 @@ internal object RemoteConnectionProbe {
             get() = tcp is Step.Failed
 
         /**
+         * 长连接端点不存在（HTTP 404）。
+         *
+         * TCP/HTTP 都通、只有端点 404，说明这个端口上确实有 HTTP 服务，
+         * 但不是选中的协议：pi 这一侧最常见的原因就是电脑端没装或没启用
+         * pi-remote（端口被别的服务占了也会是这样）。
+         */
+        val streamNotFound: Boolean
+            get() = (stream as? Step.Failed)?.kind == RemoteFailure.Kind.NotFound
+
+        /**
          * 默认路由不通、但绑到 Wi-Fi 就通了。
          *
          * 这是「默认路由被切到移动网络」的指纹——是这类问题里唯一

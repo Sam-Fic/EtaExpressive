@@ -29,6 +29,9 @@ internal object RemoteProtocols {
     /** 默认协议：老配置没有 `protocolId` 字段，反序列化时也会落到它。 */
     const val DEFAULT_ID: String = PiRemoteAdapter.PROTOCOL_ID
 
+    /** pi 协议 id；设置页按协议定制提示文案时用，别在界面里散写字面量。 */
+    const val PI_ID: String = PiRemoteAdapter.PROTOCOL_ID
+
     /** OpenCode 协议 id；设置页按协议定制提示文案时用，别在界面里散写字面量。 */
     const val OPENCODE_ID: String = OpencodeRemoteAdapter.PROTOCOL_ID
 

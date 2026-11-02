@@ -1,6 +1,8 @@
 package io.github.mangi.eta.ui.screens.settings
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -54,9 +56,9 @@ import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
@@ -103,6 +105,8 @@ internal fun RemoteAgentEditorScreen(
     var formError by remember { mutableStateOf<String?>(null) }
     var probe by remember { mutableStateOf<ProbeUiState>(ProbeUiState.Idle) }
     var saving by remember { mutableStateOf(false) }
+    /** pi-remote 安装说明弹窗：协议提示与诊断报告都从这里打开。 */
+    var installHelpOpen by rememberSaveable { mutableStateOf(false) }
 
     // 本地网络闸门状态：探测前的授权判断要用；从系统设置回来也要刷新。
     var lanState by remember { mutableStateOf(LocalNetworkPermission.accessState(context)) }
@@ -385,12 +389,6 @@ internal fun RemoteAgentEditorScreen(
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
-                    if (selectedProtocolId == RemoteProtocols.OPENCODE_ID) {
-                        EtaText(
-                            text = stringResource(R.string.remote_agents_hint_opencode),
-                            style = EtaTextStyle.Footnote,
-                        )
-                    }
                     formError?.let { error ->
                         EtaText(
                             text = error,
@@ -407,25 +405,53 @@ internal fun RemoteAgentEditorScreen(
                         end = EtaGroupHorizontalPadding,
                         bottom = EtaSegmentedGroupSpacing,
                     ),
-                    title = stringResource(R.string.remote_agents_field_protocol),
                 ) {
-                    protocolOptions.forEach { option ->
-                        item(key = option.id) {
-                            EtaSegmentedRow(
-                                selected = option.id == selectedProtocolId,
-                                choiceRow = true,
-                                onClick = {
-                                    TouchHaptics.click(view)
-                                    selectedProtocolId = option.id
-                                    formError = null
-                                    probe = ProbeUiState.Idle
-                                },
-                                content = {
-                                    androidx.compose.material3.Text(text = option.displayName)
-                                },
+                    item {
+                        // 协议只有两个取值，用行内下拉而不是两行单选：设置页里
+                        // 「语言 / 长按电源键」都是这个交互，选中值在行尾显示。
+                        EtaSegmentedDropdownRow(
+                            title = stringResource(R.string.remote_agents_field_protocol),
+                            items = protocolOptions.map { it.displayName },
+                            selectedIndex = protocolOptions.indexOfFirst { it.id == selectedProtocolId },
+                            onItemSelected = { index ->
+                                val option = protocolOptions.getOrNull(index)
+                                    ?: return@EtaSegmentedDropdownRow
+                                selectedProtocolId = option.id
+                                formError = null
+                                probe = ProbeUiState.Idle
+                            },
+                            // pi 不是开箱可连的：电脑端要先装 pi-remote 插件，
+                            // 这一行让用户在「选协议」这一刻就知道少了哪一步。
+                            summary = if (selectedProtocolId == RemoteProtocols.PI_ID) {
+                                stringResource(R.string.remote_agents_hint_pi_summary)
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                    if (selectedProtocolId == RemoteProtocols.PI_ID) {
+                        item(key = "install-help") {
+                            EtaClickableRow(
+                                title = stringResource(R.string.remote_agents_install_help),
+                                // 轻触反馈由行组件自己触发，这里不要再调一次。
+                                onClick = { installHelpOpen = true },
                             )
                         }
                     }
+                }
+            }
+            // 协议说明跟在选择之后（而不是夹在表单和协议之间），读起来是「选了谁 → 它要什么」。
+            if (selectedProtocolId == RemoteProtocols.OPENCODE_ID) {
+                item(key = "protocol-hint") {
+                    EtaText(
+                        text = stringResource(R.string.remote_agents_hint_opencode),
+                        style = EtaTextStyle.Footnote,
+                        modifier = Modifier.padding(
+                            start = EtaGroupHorizontalPadding,
+                            end = EtaGroupHorizontalPadding,
+                            bottom = EtaSegmentedGroupSpacing,
+                        ),
+                    )
                 }
             }
             if (!protocolKnown) {
@@ -492,6 +518,19 @@ internal fun RemoteAgentEditorScreen(
                         androidx.compose.material3.Text(stringResource(R.string.remote_probe_open_settings))
                     }
                 }
+                // pi 的 /ws 返回 404：最可能是电脑端没装 pi-remote（或没跑 /remote）。
+                // 这时「安装步骤」比「关闭」更有用，直接给出去。
+                if (selectedProtocolId == RemoteProtocols.PI_ID && probeReport.streamNotFound) {
+                    TextButton(
+                        onClick = {
+                            TouchHaptics.click(view)
+                            probe = ProbeUiState.Idle
+                            installHelpOpen = true
+                        },
+                    ) {
+                        androidx.compose.material3.Text(stringResource(R.string.remote_agents_install_help))
+                    }
+                }
                 TextButton(
                     onClick = {
                         TouchHaptics.click(view)
@@ -514,7 +553,67 @@ internal fun RemoteAgentEditorScreen(
             }
         }
     }
+
+    // pi-remote 安装说明：协议行的「安装步骤」与诊断报告的 404 提示都落到这里。
+    if (installHelpOpen) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.remote_agents_install_title),
+            onDismissRequest = { installHelpOpen = false },
+            actions = {
+                TextButton(
+                    onClick = {
+                        TouchHaptics.click(view)
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PI_REMOTE_URL)))
+                    },
+                ) {
+                    androidx.compose.material3.Text(
+                        stringResource(R.string.remote_agents_install_open_github),
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        TouchHaptics.click(view)
+                        installHelpOpen = false
+                    },
+                ) {
+                    androidx.compose.material3.Text(stringResource(R.string.action_close))
+                }
+            },
+        ) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                EtaText(
+                    text = stringResource(R.string.remote_agents_install_step_1),
+                    style = EtaTextStyle.Footnote,
+                )
+                EtaText(
+                    text = stringResource(R.string.remote_agents_install_step_2),
+                    style = EtaTextStyle.Footnote,
+                )
+                EtaText(
+                    text = stringResource(R.string.remote_agents_install_step_3),
+                    style = EtaTextStyle.Footnote,
+                )
+                EtaText(
+                    text = stringResource(R.string.remote_agents_install_step_4),
+                    style = EtaTextStyle.Footnote,
+                )
+                EtaText(
+                    text = stringResource(R.string.remote_agents_install_step_5),
+                    style = EtaTextStyle.Footnote,
+                )
+            }
+        }
+    }
 }
+
+/** pi-remote 插件仓库：安装步骤以仓库 README 为准，App 内只给入口。 */
+private const val PI_REMOTE_URL = "https://github.com/Sam-Fic/pi-remote"
 
 /**
  * 诊断状态。
@@ -621,6 +720,15 @@ private fun ProbeReport(report: RemoteConnectionProbe.Report, protocolId: String
     // 结果最关键的「强制走 Wi-Fi 对照」被挤到折叠线以下，用户以为它压根没跑。
     rows.forEach { (label, step) ->
         EtaText(text = probeStepText(label, step), style = EtaTextStyle.Footnote)
+    }
+    // pi 的 /ws 404 不是「连不上」：TCP/HTTP 已经通了，缺的是电脑端那一侧
+    // 的 pi-remote 端点。把这条单独写出来，否则用户会照着「连接失败」去查网络。
+    if (protocolId == RemoteProtocols.PI_ID && report.streamNotFound) {
+        EtaText(
+            text = stringResource(R.string.remote_probe_pi_not_installed),
+            style = EtaTextStyle.Footnote,
+            color = MaterialTheme.colorScheme.error,
+        )
     }
     // 系统闸门必须紧跟明细：它一旦是「被拦截」，下面那些「网关有应答 / ARP 读不到」
     // 全都不再有意义——继续往下读只会把人往错的方向带。
