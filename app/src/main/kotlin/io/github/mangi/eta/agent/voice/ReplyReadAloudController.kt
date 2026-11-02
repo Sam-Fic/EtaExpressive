@@ -381,6 +381,14 @@ internal object ReplyReadAloudController {
         SpeechPlayback.stopOwned("conversation_switch") { it.startsWith(OWNER_PREFIX) }
     }
 
+    /**
+     * 应用切到后台时是否保留 [owner] 的播放：只有「自动朗读」且设置「后台继续朗读」打开才放行。
+     * 手动朗读（owner = 消息 id）、试听与语音对话的 owner 一律返回 false，仍按原逻辑停止。
+     * 由生命周期入口逐次读取，设置项改动即时生效，不需要重启应用。
+     */
+    fun keepsPlayingInBackground(owner: String?): Boolean =
+        ReplyReadAloudPreference.continueInBackground && owner?.startsWith(OWNER_PREFIX) == true
+
     private fun ensureLoops() {
         if (decide?.isActive != true) decide = scope.launch { decideLoop() }
         if (play?.isActive != true) play = scope.launch { playLoop() }

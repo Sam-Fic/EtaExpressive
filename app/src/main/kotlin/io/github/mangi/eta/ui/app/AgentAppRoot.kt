@@ -250,7 +250,11 @@ fun AgentAppRoot(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
-                    io.github.mangi.eta.agent.voice.tts.SpeechPlayback.stopUiBound("pause")
+                    // 「后台继续朗读」只放行自动朗读；手动朗读、试听与语音对话照旧停止。
+                    val owner = io.github.mangi.eta.agent.voice.tts.SpeechPlayback.state.value.owner
+                    if (!io.github.mangi.eta.agent.voice.ReplyReadAloudController.keepsPlayingInBackground(owner)) {
+                        io.github.mangi.eta.agent.voice.tts.SpeechPlayback.stopUiBound("pause")
+                    }
                     keyboard?.hide()
                     focusManager.clearFocus(force = true)
                 }
