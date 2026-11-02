@@ -305,10 +305,13 @@ fun EtaSegmentedColumn(
                             if (isLast) SegmentedOuterRadius else SegmentedInnerRadius,
                             dpSpring, label = "SegmentedBottomRadius",
                         )
-                        val gap by animateDpAsState(
+                        val animatedGap by animateDpAsState(
                             if (isFirst) 0.dp else SegmentedEntryGap,
                             dpSpring, label = "SegmentedGap",
                         )
+                        // 欠阻尼弹簧回弹时动画值会短暂越过 0dp，而 Modifier.padding 不接受负值
+                        // （否则抛 IllegalArgumentException: Padding must be non-negative），这里兜底。
+                        val gap = animatedGap.coerceAtLeast(0.dp)
 
                         val shape = RoundedCornerShape(
                             topStart = topRadius, topEnd = topRadius,
