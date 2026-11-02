@@ -24,4 +24,6 @@
   <string name="tts_voice_personal">個人</string>
   <string name="tts_search_voice">搜尋音色</string>
   <string name="tts_no_matching_voice">沒有符合的音色</string>
+    <string name="tts_auto_read_background">切換到背景後繼續朗讀</string>
+    <string name="tts_auto_read_background_hint">離開應用程式後仍繼續朗讀；關閉後進入背景立即停止自動朗讀</string>
 </resources>

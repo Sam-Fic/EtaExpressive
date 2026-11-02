@@ -24,4 +24,6 @@
   <string name="tts_voice_personal">个人</string>
   <string name="tts_search_voice">搜索音色</string>
   <string name="tts_no_matching_voice">没有匹配的音色</string>
+    <string name="tts_auto_read_background">后台继续朗读</string>
+    <string name="tts_auto_read_background_hint">离开应用后仍继续朗读；关闭后进入后台立即停止自动朗读</string>
 </resources>

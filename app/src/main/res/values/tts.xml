@@ -24,4 +24,6 @@
   <string name="tts_voice_personal">Personal</string>
   <string name="tts_search_voice">Search voice</string>
   <string name="tts_no_matching_voice">No matching voices</string>
+    <string name="tts_auto_read_background">Continue reading in background</string>
+    <string name="tts_auto_read_background_hint">Keep reading aloud after leaving the app; when off, auto reading stops as soon as the app goes to the background</string>
 </resources>

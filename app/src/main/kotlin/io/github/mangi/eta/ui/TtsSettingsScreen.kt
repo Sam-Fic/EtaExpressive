@@ -33,6 +33,7 @@ internal fun TtsSettingsScreen(onBack: () -> Unit, conversation: Boolean = false
     // 自动朗读只属于「朗读」分区：语音对话（conversation）本身就在逐句朗读回复。
     var autoRead by remember(profile) { mutableStateOf(!conversation && ReplyReadAloudPreference.autoRead) }
     var streamSynth by remember(profile) { mutableStateOf(ReplyReadAloudPreference.streamSynthesis) }
+    var backgroundContinue by remember(profile) { mutableStateOf(ReplyReadAloudPreference.continueInBackground) }
     val providers by remember { ProviderRepository.providersFlow() }.collectAsState(initial = emptyList())
     val models = remember(providers, providerId, modelId) {
         AgentModelPickerProjector.project(providers.filter(SpeechSynthesisModels::isReadAloudProvider), providerId, modelId, includeSpeechModels = true, speechOnly = true)
@@ -101,6 +102,18 @@ internal fun TtsSettingsScreen(onBack: () -> Unit, conversation: Boolean = false
                     onCheckedChange = {
                         streamSynth = it
                         ReplyReadAloudPreference.setStreamSynthesis(it)
+                    },
+                )
+            }
+            if (!conversation) item(key = "tts_auto_read_background", visible = autoRead) {
+                EtaSwitchRow(
+                    title = stringResource(R.string.tts_auto_read_background),
+                    summary = stringResource(R.string.tts_auto_read_background_hint),
+                    checked = backgroundContinue,
+                    enabled = autoRead,
+                    onCheckedChange = {
+                        backgroundContinue = it
+                        ReplyReadAloudPreference.setContinueInBackground(it)
                     },
                 )
             }
