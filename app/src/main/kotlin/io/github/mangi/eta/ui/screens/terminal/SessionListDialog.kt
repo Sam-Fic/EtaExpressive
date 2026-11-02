@@ -135,6 +135,9 @@ private fun SessionRow(
         trailingContent = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                // 尾槽内是「状态文字 + 两个 XS 图标按钮」：按钮 32dp 容器比 20dp 图标
+                // 每侧各含 6dp 内缩，spacedBy(4.dp) 的视觉节奏约 12~16dp，
+                // 与全局 EtaDimens.TrailingElementGap 一致，因此不再改成字面 12dp。
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 M3Text(

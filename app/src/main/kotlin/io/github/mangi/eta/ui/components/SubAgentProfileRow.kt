@@ -27,6 +27,7 @@ import io.github.mangi.eta.agent.model.ModelFeatureSelection
 import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.TtsModelPickerDialog
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
@@ -299,7 +300,7 @@ internal fun SubAgentSettingsRow(
         trailingContent = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
             ) {
                 if (!badge.isNullOrBlank()) {
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceContainerHighest) {

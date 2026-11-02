@@ -577,6 +577,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
                                 modifier = Modifier.align(Alignment.CenterVertically),
                                 tint = etaOnSurfaceVariant(),
                             )
+                            // 尾槽顺序统一：开关在最右、展开箭头在左，中间留 12dp。
+                            Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
                         }
                         EtaSwitch(
                             checked = appearance.morphLoadingIndicator,

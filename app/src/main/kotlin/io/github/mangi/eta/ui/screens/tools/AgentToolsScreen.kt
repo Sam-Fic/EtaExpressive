@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -196,6 +197,14 @@ private fun ToolCapabilityHeaderRow(
         content = { M3Text(text = capability.title) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // 尾槽顺序统一：开关永远最右，箭头在其左侧。
+                // 组头开关与下方各工具行的开关同列，避免同卡片内出现 36dp 错位。
+                Icon(
+                    imageVector = Icons.Rounded.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.rotate(rotation),
+                )
+                Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
                 EtaSwitch(
                     checked = capability.switchEnabled,
                     onCheckedChange = { enabled ->
@@ -203,12 +212,6 @@ private fun ToolCapabilityHeaderRow(
                         onAction(AgentToolsAction.ToggleGroup(capability.switchKey, enabled))
                     },
                     modifier = Modifier.semantics { contentDescription = switchLabel },
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Rounded.ExpandMore,
-                    contentDescription = null,
-                    modifier = Modifier.rotate(rotation),
                 )
             }
         },

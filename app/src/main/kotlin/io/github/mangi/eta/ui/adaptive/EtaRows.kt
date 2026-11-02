@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
@@ -141,6 +143,10 @@ fun EtaClickableRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 endActions?.invoke(this)
                 if (showChevron) {
+                    // 行尾多元素时统一留 12dp：尾槽内部间距不归官方 ListItem 管。
+                    if (endActions != null) {
+                        Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
+                    }
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                         contentDescription = null,

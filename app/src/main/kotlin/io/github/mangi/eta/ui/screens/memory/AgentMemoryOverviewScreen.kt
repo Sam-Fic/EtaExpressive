@@ -149,8 +149,7 @@ internal fun AgentMemoryOverviewScreen(
                                         TouchHaptics.toggle(view, enabled)
                                         persistAssistant(profile.id, enabled)
                                     },
-                                    // 行尾现在是「开关 + 箭头」两个元素，补一点间距免得贴在一起。
-                                    modifier = Modifier.padding(end = 4.dp),
+                                    // 与箭头的间距由 EtaClickableRow 统一按 12dp 施加。
                                 )
                             },
                         )

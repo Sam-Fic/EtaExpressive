@@ -232,7 +232,6 @@ private object DrawerMetrics {
     val ActionIconSize = 20.dp
     val RowGap = 2.dp
     val RowCornerRadius = 16.dp
-    val ActiveDotGap = 8.dp
     val DockTopGap = 8.dp
     val AssistantBarHeight = 48.dp
 }
@@ -1414,7 +1413,7 @@ private fun Material3ConversationRow(
                     trailingContent = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(DrawerMetrics.ActiveDotGap),
+                            horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
                         ) {
                             if (conversation.isActiveRun) {
                                 // M3E LoadingIndicator（morph 变形）：行尾运行态标记，

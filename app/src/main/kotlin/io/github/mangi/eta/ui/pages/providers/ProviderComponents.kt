@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.data.model.CustomProviderSetting
 import io.github.mangi.eta.data.model.ProviderSetting
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -313,14 +316,19 @@ internal fun ProviderExpandableRow(
         supportingContent = supporting,
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                endActions?.invoke(this)
+                // 尾槽顺序统一：开关永远最右，展开箭头在其左侧。
                 if (showChevron) {
                     Icon(
                         imageVector = Icons.Rounded.ExpandMore,
                         contentDescription = null,
                         modifier = Modifier.rotate(rotation),
                     )
+                    // 与 EtaClickableRow 同一口径：尾槽内部元素间距统一 12dp。
+                    if (endActions != null) {
+                        Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
+                    }
                 }
+                endActions?.invoke(this)
             }
         },
     )

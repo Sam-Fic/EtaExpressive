@@ -67,6 +67,7 @@ import io.github.mangi.eta.ui.app.message
 import io.github.mangi.eta.ui.app.rememberDeviceCapabilities
 import io.github.mangi.eta.ui.app.rememberExecutionNotificationRequest
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -483,7 +484,7 @@ internal fun LinuxEnvironmentScreen(
                                 leading = { Icon(profileUi.icon, null) },
                                 endActions = {
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         EtaStatusDot(active = ready)
@@ -565,7 +566,7 @@ internal fun LinuxEnvironmentScreen(
                             leading = { Icon(Icons.Rounded.Android, null) },
                             endActions = {
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     EtaStatusDot(active = apkAnalysisReady)

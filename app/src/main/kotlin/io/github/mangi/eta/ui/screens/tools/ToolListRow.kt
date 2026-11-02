@@ -106,7 +106,9 @@ internal fun ToolListRow(
                         modifier = Modifier.size(EtaDimens.StatusIconSize),
                         tint = accentColor,
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    // 动作标签与箭头是一组「带标签的尾元素」，组内保持 4dp；
+                    // 组与开关之间按尾槽统一间距留 12dp。
+                    Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
                 }
                 // 单工具开关：组开关之下的细粒度取舍。关掉后该工具不再下发给模型，
                 // 但仍在清单里可见，用户随时能恢复。说明卡（browser_read 等）按实际工具归一。
