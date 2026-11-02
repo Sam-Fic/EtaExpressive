@@ -92,9 +92,9 @@ class AgentMemoryContextBuilderTest {
         val content = buildString {
             append("# 核心记忆\n偏好")
             repeat(100) { index ->
-                append('\n').append("# 标题").append(index).append('x'.repeat(60))
+                append('\n').append("# 标题").append(index).append("x".repeat(60))
             }
-            append("\n# 标题5").append('x'.repeat(60))
+            append("\n# 标题5").append("x".repeat(60))
         }
         val context = AgentMemoryContextBuilder.build(snapshot(content), 128_000)
 
