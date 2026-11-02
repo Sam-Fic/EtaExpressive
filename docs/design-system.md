@@ -45,6 +45,7 @@
 2. **R2 工具元数据单源**：`iconForTool` / `toolDisplayNameResource` 旧表不得复活，只改 `ToolPresentation`。
 3. **R3 私有令牌 helper**：`private fun chat…Color/Style/Shape/Border` 只允许留在白名单（ChatMessageItem、AgentChatBody 存量），新文件禁止。
 4. **R4 禁裸默认尺寸进度指示器**。
+5. **R5 Tooltip 单源**：`TooltipBox` / `PlainTooltip` / `RichTooltip` / `rememberTooltipState` 只能在 `ui/adaptive/EtaTooltips.kt` 调用；业务页面用 `EtaTooltip` / `EtaTooltipIconButton`，规则见 [accessibility-tooltips.md](accessibility-tooltips.md)。
 
 白名单 = 存量债务钉死：把文件加进白名单需要 review，逐个迁移后删行。
 

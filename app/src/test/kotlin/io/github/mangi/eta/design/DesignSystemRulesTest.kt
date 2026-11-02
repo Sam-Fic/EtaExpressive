@@ -123,4 +123,24 @@ class DesignSystemRulesTest {
             hits.isEmpty(),
         )
     }
+
+    /**
+     * R5：长按提示气泡只有一个出处。`TooltipBox` / `PlainTooltip` / `RichTooltip` /
+     * `rememberTooltipState` 只能在 `ui/adaptive/EtaTooltips.kt` 调用，业务页面一律用
+     * `EtaTooltip`（详见 docs/accessibility-tooltips.md）。
+     */
+    @Test
+    fun `tooltip implementation stays in the adaptive wrapper`() {
+        val wrapper = "app/src/main/kotlin/io/github/mangi/eta/ui/adaptive/EtaTooltips.kt"
+        val hits = violations(
+            Regex("""\b(TooltipBox|PlainTooltip|RichTooltip|rememberTooltipState)\s*\("""),
+            allowed = { path -> path.removePrefix("/") == wrapper },
+        )
+        assertTrue(
+            "长按提示只能通过 ui/adaptive/EtaTooltips.kt 的 EtaTooltip / EtaTooltipIconButton 提供，" +
+                "业务页面禁止手写 TooltipBox / PlainTooltip —— 详见 docs/accessibility-tooltips.md：\n" +
+                hits.joinToString("\n"),
+            hits.isEmpty(),
+        )
+    }
 }
