@@ -42,7 +42,8 @@ internal val LocalEtaTooltipActive = staticCompositionLocalOf { false }
  *
  * @param text 提示文案：写动作用途；禁用态写原因；选中态交给 `stateDescription`。
  * @param enabled 为 false 时不响应长按，用于已禁用且无提示必要的场景。
- * @param anchor 气泡相对内容的位置，默认在内容上方。
+ * 气泡位置固定为内容上方（`TooltipAnchorPosition.Above`）；该类型属于实验性 API，
+ * 只允许出现在实现内部，避免调用方被迫 opt-in。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,13 +51,14 @@ fun EtaTooltip(
     text: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    anchor: TooltipAnchorPosition = TooltipAnchorPosition.Above,
     content: @Composable () -> Unit,
 ) {
     val state = rememberTooltipState()
     CompositionLocalProvider(LocalEtaTooltipActive provides true) {
         TooltipBox(
-            positionProvider = TooltipDefaults.rememberTooltipPositionProvider(anchor),
+            positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                TooltipAnchorPosition.Above,
+            ),
             tooltip = {
                 PlainTooltip {
                     Text(text = text, style = etaTextStyle(EtaType.Caption))
