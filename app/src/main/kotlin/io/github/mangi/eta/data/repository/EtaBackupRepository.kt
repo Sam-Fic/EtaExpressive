@@ -1170,41 +1170,57 @@ internal object EtaBackupRepository {
                 }
             }
         }
-        AgentMemoryRepository.importAll(document.assistantMemories, document.memoryMd)
-        if (document.schemaVersion >= 2) {
-            if (AssistantRepository.isReady()) {
-                document.assistants?.let(AssistantRepository::importSnapshot)
-                AssistantRepository.importAvatars(decodeFiles(document.assistantAvatars))
-            }
-            SkillRuntime.importUserSkills(context, decodeFiles(document.skillFiles))
-            McpSecretStore(context).replaceAll(document.mcpTokens)
-            // 语音配置属于应用数据；空快照表示旧备份没带，保留本机设置。
-            if (document.voicePreferences.isNotEmpty()) {
-                BackupPrefsFiles.restore(context, document.voicePreferences, BackupPrefsFiles.VOICE)
-                // 该配置在内存里有一份 StateFlow 投影，重读磁盘才会反映到运行中的语音入口。
-                DoubaoVoiceConfig.load(context)
-            }
-            document.settings?.let { SettingsDataStore.restoreBackup(it) }
-                ?: SettingsDataStore.setSelection(document.selectedProviderId, document.selectedModelId)
-        } else {
-            SettingsDataStore.setSelection(document.selectedProviderId, document.selectedModelId)
-        }
-        // Old archives without this field retain current prefs. Our own undo snapshot is exact,
-        // including the absence of a marker; no post-write migrations may alter rollback originals.
-        preferencesToRestore?.let { values ->
-            if (exactPreferences) {
-                BackupSubAgentConfig.restoreExactPreferences(
-                    values, requireNotNull(Prefs.localAgentPreferences()) { "Agent preferences 未初始化" },
-                )
+        // 记忆文件不在 Room 事务里，导入失败时不会自动回滚：先留一份旧记忆快照，
+        // 只有真正进入替换阶段后才做补偿，避免"什么都没改却把本机记忆再写一遍"。
+        val previousMemories = AgentMemoryRepository.exportAll()
+        var memoryReplaceStarted = false
+        try {
+            memoryReplaceStarted = true
+            AgentMemoryRepository.importAll(document.assistantMemories, document.memoryMd)
+            if (document.schemaVersion >= 2) {
+                if (AssistantRepository.isReady()) {
+                    document.assistants?.let(AssistantRepository::importSnapshot)
+                    AssistantRepository.importAvatars(decodeFiles(document.assistantAvatars))
+                }
+                SkillRuntime.importUserSkills(context, decodeFiles(document.skillFiles))
+                McpSecretStore(context).replaceAll(document.mcpTokens)
+                // 语音配置属于应用数据；空快照表示旧备份没带，保留本机设置。
+                if (document.voicePreferences.isNotEmpty()) {
+                    BackupPrefsFiles.restore(context, document.voicePreferences, BackupPrefsFiles.VOICE)
+                    // 该配置在内存里有一份 StateFlow 投影，重读磁盘才会反映到运行中的语音入口。
+                    DoubaoVoiceConfig.load(context)
+                }
+                document.settings?.let { SettingsDataStore.restoreBackup(it) }
+                    ?: SettingsDataStore.setSelection(document.selectedProviderId, document.selectedModelId)
             } else {
-                Prefs.restoreAgentPreferences(values)
+                SettingsDataStore.setSelection(document.selectedProviderId, document.selectedModelId)
             }
-            subAgentStore.refreshAfterRestore()
-        }
-        LinuxEnvironmentSettingsRepository.initialize(context)
-        if (reconcile) {
-            ProviderRepository.ensureBuiltInsMerged()
-            ProviderRepository.repairSelection()
+            // Old archives without this field retain current prefs. Our own undo snapshot is exact,
+            // including the absence of a marker; no post-write migrations may alter rollback originals.
+            preferencesToRestore?.let { values ->
+                if (exactPreferences) {
+                    BackupSubAgentConfig.restoreExactPreferences(
+                        values, requireNotNull(Prefs.localAgentPreferences()) { "Agent preferences 未初始化" },
+                    )
+                } else {
+                    Prefs.restoreAgentPreferences(values)
+                }
+                subAgentStore.refreshAfterRestore()
+            }
+            LinuxEnvironmentSettingsRepository.initialize(context)
+            if (reconcile) {
+                ProviderRepository.ensureBuiltInsMerged()
+                ProviderRepository.repairSelection()
+            }
+        } catch (failure: Throwable) {
+            if (memoryReplaceStarted) {
+                try {
+                    AgentMemoryRepository.importAll(previousMemories)
+                } catch (restoreFailure: Throwable) {
+                    failure.addSuppressed(restoreFailure)
+                }
+            }
+            throw failure
         }
     }
 
