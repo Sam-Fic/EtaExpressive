@@ -44,6 +44,7 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 /**
  * [T-android-browser-download-ux] Downloads panel — Android port of iOS
@@ -140,20 +141,28 @@ fun BrowserDownloadsSheet(
                             trailingContent = {
                                 when (entry.state) {
                                     BrowserTabPool.DownloadState.DOWNLOADING -> {
-                                        IconButton(onClick = { tabPool.cancelDownload(entry.id) }) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.Cancel,
-                                                contentDescription = stringResource(R.string.om_browser_downloads_cancel),
-                                            )
+                                        val cancelDescription =
+                                            stringResource(R.string.om_browser_downloads_cancel)
+                                        EtaTooltip(text = cancelDescription) {
+                                            IconButton(onClick = { tabPool.cancelDownload(entry.id) }) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Cancel,
+                                                    contentDescription = cancelDescription,
+                                                )
+                                            }
                                         }
                                     }
                                     BrowserTabPool.DownloadState.COMPLETED -> {
-                                        IconButton(onClick = { openDownloadedFile(context, entry) }) {
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                                                contentDescription = stringResource(R.string.om_browser_downloads_open),
-                                                tint = MaterialTheme.colorScheme.primary,
-                                            )
+                                        val openDescription =
+                                            stringResource(R.string.om_browser_downloads_open)
+                                        EtaTooltip(text = openDescription) {
+                                            IconButton(onClick = { openDownloadedFile(context, entry) }) {
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                                                    contentDescription = openDescription,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
                                         }
                                     }
                                     BrowserTabPool.DownloadState.FAILED -> {

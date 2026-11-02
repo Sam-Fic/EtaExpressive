@@ -66,6 +66,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.launch
@@ -438,18 +439,21 @@ fun BrowserSettingsPage(
                                     )
                                 },
                                 trailingContent = {
-                                    IconButton(
-                                        onClick = { clearCookiesForDomain(domain) },
-                                        modifier = Modifier.size(40.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Delete,
-                                            contentDescription = stringResource(
-                                                R.string.om_browser_settings_clear_cookies_for,
-                                                domain,
-                                            ),
-                                            tint = MaterialTheme.colorScheme.error,
-                                        )
+                                    val clearDescription = stringResource(
+                                        R.string.om_browser_settings_clear_cookies_for,
+                                        domain,
+                                    )
+                                    EtaTooltip(text = clearDescription) {
+                                        IconButton(
+                                            onClick = { clearCookiesForDomain(domain) },
+                                            modifier = Modifier.size(40.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Delete,
+                                                contentDescription = clearDescription,
+                                                tint = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
                                     }
                                 },
                             )

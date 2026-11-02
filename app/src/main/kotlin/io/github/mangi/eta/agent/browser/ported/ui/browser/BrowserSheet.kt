@@ -128,6 +128,7 @@ import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaMorphChipShape
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.etaConnectedButtonShapes
 import io.github.mangi.eta.ui.adaptive.etaConnectedPosition
 import io.github.mangi.eta.ui.adaptive.EtaDimens
@@ -191,11 +192,14 @@ internal fun BrowserSheetTopBar(
             )
         },
         navigationIcon = {
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    imageVector = navigationIcon,
-                    contentDescription = resolvedNavigationContentDescription,
-                )
+            val dismissDescription = resolvedNavigationContentDescription
+            EtaTooltip(text = dismissDescription) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = navigationIcon,
+                        contentDescription = dismissDescription,
+                    )
+                }
             }
         },
         actions = actions,
@@ -538,12 +542,15 @@ fun BrowserPage(
                 },
                 trailingIcon = if (isLoading) {
                     {
-                        IconButton(onClick = { selectedTab?.manager?.stopLoading() }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.om_browser_stop),
-                                modifier = Modifier.size(EtaDimens.DenseIconSize),
-                            )
+                        val stopDescription = stringResource(R.string.om_browser_stop)
+                        EtaTooltip(text = stopDescription) {
+                            IconButton(onClick = { selectedTab?.manager?.stopLoading() }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = stopDescription,
+                                    modifier = Modifier.size(EtaDimens.DenseIconSize),
+                                )
+                            }
                         }
                     }
                 } else {
