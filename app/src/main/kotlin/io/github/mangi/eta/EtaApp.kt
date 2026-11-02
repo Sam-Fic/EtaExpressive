@@ -77,6 +77,8 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
         if (!AppProcessPolicy.shouldInitializeFullRuntime(Application.getProcessName(), packageName)) {
             return
         }
+        // 本机语音模型只在完整运行时进程常驻；子进程不预加载，避免每进程各占一份内存。
+        io.github.mangi.eta.agent.voice.offline.OfflineSpeechPrewarm.install(this)
         TerminalRuntime.initialize(this)
         RootAccess.initialize(this)
         SettingsDataStore.init(this)

@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.voice.offline.OfflineSpeechPack
+import io.github.mangi.eta.agent.voice.offline.OfflineSpeechRuntimeSettings
 import io.github.mangi.eta.agent.voice.offline.SpeechModelCatalog
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
@@ -27,6 +28,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRadioRow
+import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 
@@ -40,6 +42,9 @@ import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val state by OfflineSpeechPack.state.collectAsState()
+    val runtime by OfflineSpeechRuntimeSettings.state.collectAsState()
+    // 设置页可能晚于 Application 打开；正常路径已在预加载控制器里读过一次，这里只会刷新同一份值。
+    LaunchedEffect(Unit) { OfflineSpeechRuntimeSettings.load(context) }
     var modelPicker by remember { mutableStateOf(false) }
     var confirmDownload by remember { mutableStateOf(false) }
     // 摘要与确认文案都带下载体积，体积随所选模型变化。
@@ -48,6 +53,7 @@ internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
     val canChoose = !state.downloading && !state.checking
     // 分段 DSL 的构建块不是组合作用域，来源文案必须先在这里解析好再传进去。
     val sourceLabels = speechSourceLabels(state.model.sources)
+    val idleReleaseLabels = speechIdleReleaseLabels()
 
     EtaSegmentedColumn(modifier = modifier) {
         item(key = "speech_model") {
@@ -114,6 +120,32 @@ internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }
+        // 常驻策略只对已校验的语音包有意义；未就绪时先灰掉预加载开关。
+        item(key = "speech_prewarm") {
+            EtaSwitchRow(
+                title = stringResource(R.string.speech_prewarm),
+                summary = stringResource(R.string.speech_prewarm_summary),
+                checked = runtime.prewarmOnStart,
+                enabled = state.ready,
+                onCheckedChange = { enabled ->
+                    OfflineSpeechRuntimeSettings.save(context, runtime.copy(prewarmOnStart = enabled))
+                },
+            )
+        }
+        item(key = "speech_idle_release") {
+            EtaSegmentedDropdownRow(
+                title = stringResource(R.string.speech_idle_release),
+                summary = stringResource(R.string.speech_idle_release_summary),
+                items = idleReleaseLabels,
+                selectedIndex = OfflineSpeechRuntimeSettings.idleReleaseOptions
+                    .indexOf(runtime.idleReleaseMinutes).coerceAtLeast(0),
+                onItemSelected = { index ->
+                    OfflineSpeechRuntimeSettings.idleReleaseOptions.getOrNull(index)?.let { minutes ->
+                        OfflineSpeechRuntimeSettings.save(context, runtime.copy(idleReleaseMinutes = minutes))
+                    }
+                },
+            )
         }
     }
 
@@ -190,5 +222,22 @@ private fun speechSourceLabel(id: SpeechModelCatalog.SourceId): String = stringR
 private fun speechSourceLabels(sources: List<SpeechModelCatalog.Source>): List<String> {
     val labels = ArrayList<String>(sources.size)
     for (source in sources) labels += stringResource(source.id.labelRes)
+    return labels
+}
+
+@Composable
+private fun speechIdleReleaseLabels(): List<String> {
+    val options = OfflineSpeechRuntimeSettings.idleReleaseOptions
+    val labels = ArrayList<String>(options.size)
+    for (minutes in options) {
+        labels += stringResource(
+            when (minutes) {
+                5 -> R.string.speech_idle_release_5
+                10 -> R.string.speech_idle_release_10
+                30 -> R.string.speech_idle_release_30
+                else -> R.string.speech_idle_release_never
+            },
+        )
+    }
     return labels
 }

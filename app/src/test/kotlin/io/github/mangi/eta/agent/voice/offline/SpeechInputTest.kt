@@ -19,10 +19,13 @@ class SpeechInputTest {
         assertTrue(SpeechInputPolicy.canEnable(true, false, false))
     }
     @Test fun initialSilenceAndLongSessionHaveFiniteDeadlines() {
-        assertFalse(SpeechInputPolicy.timedOut(7_999, false))
-        assertTrue(SpeechInputPolicy.timedOut(8_000, false))
-        assertFalse(SpeechInputPolicy.timedOut(8_000, true))
-        assertTrue(SpeechInputPolicy.timedOut(60_000, true))
+        // 总时长从开麦算起；8 秒无语音从引擎就绪后算起，预加载耗时不算进说话窗口。
+        assertFalse(SpeechInputPolicy.timedOut(7_999, 7_999, false))
+        assertFalse(SpeechInputPolicy.timedOut(30_000, 0, false))
+        assertTrue(SpeechInputPolicy.timedOut(30_000, 8_000, false))
+        assertFalse(SpeechInputPolicy.timedOut(8_000, 8_000, true))
+        assertTrue(SpeechInputPolicy.timedOut(60_000, 0, true))
+        assertTrue(SpeechInputPolicy.timedOut(60_000, 0, false))
     }
     @Test fun partialTextReplacesOnlyCurrentDictation() {
         val draft = SpeechDraft("原有文字", 4, 4)

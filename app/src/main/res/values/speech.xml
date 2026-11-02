@@ -16,6 +16,14 @@
     <string name="speech_source">Download source</string>
     <string name="speech_source_hugging_face">Hugging Face</string>
     <string name="speech_source_model_scope">ModelScope</string>
+    <string name="speech_prewarm">Prewarm at launch</string>
+    <string name="speech_prewarm_summary">Load the selected offline model in the background after launch so the first utterance needs no wait. The model stays in memory; not recommended on low-memory devices</string>
+    <string name="speech_idle_release">Release when idle</string>
+    <string name="speech_idle_release_summary">Keep the model after the last recognition and release it after the timeout; the next use reloads it</string>
+    <string name="speech_idle_release_5">5 minutes</string>
+    <string name="speech_idle_release_10">10 minutes</string>
+    <string name="speech_idle_release_30">30 minutes</string>
+    <string name="speech_idle_release_never">Never</string>
     <string name="speech_pack_summary">%1$s · Works offline after download</string>
     <string name="speech_privacy">Recording starts only on tap. Audio stays on device. Tap again or pause after speaking to stop. Text stays in the composer and is not sent automatically. Leaving chat or backgrounding the app stops recording</string>
     <string name="speech_download_confirm">Download about %1$s of offline speech model files from %2$s? Data charges may apply. Enable speech input manually after verification. Upstream model licensing is not declared; use only as permitted by applicable rights</string>

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import io.github.mangi.eta.agent.voice.offline.OfflineSpeechPack
+import io.github.mangi.eta.agent.voice.offline.OfflineSpeechPrewarm
 import io.github.mangi.eta.agent.voice.offline.OfflineSpeechSession
 import io.github.mangi.eta.agent.voice.tts.DoubaoSpeech
 import io.github.mangi.eta.agent.voice.tts.SpeechPlayback
@@ -83,6 +84,8 @@ internal class VoiceModeController(
     init {
         DoubaoVoiceConfig.load(app)
         OfflineSpeechPack.initialize(app)
+        // 浮窗 / 系统助理也走主进程的控制器；install 幂等，补上没经过 Application 的入口。
+        OfflineSpeechPrewarm.install(app)
         scope.launch {
             DoubaoVoiceConfig.state.collect { config ->
                 state.value.mode?.let { if (!VoiceEntryPolicy.enabled(config, it)) stop() }
@@ -142,6 +145,7 @@ internal class VoiceModeController(
                             app,
                             mode = VoiceEntryMode.UNIVERSAL,
                             settings = recognitionSettings,
+                            diagnostic = trace,
                             onListening = {
                                 trace.mark("recognition.listening")
                                 mutableState.value = mutableState.value.copy(phase = VoiceModePhase.Listening)

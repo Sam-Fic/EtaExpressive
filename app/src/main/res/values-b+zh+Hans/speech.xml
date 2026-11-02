@@ -16,6 +16,14 @@
     <string name="speech_source">下载来源</string>
     <string name="speech_source_hugging_face">Hugging Face</string>
     <string name="speech_source_model_scope">ModelScope</string>
+    <string name="speech_prewarm">启动时预加载</string>
+    <string name="speech_prewarm_summary">启动后在后台加载所选离线模型，首次说话免等待；模型会常驻内存，低内存设备不建议开启</string>
+    <string name="speech_idle_release">空闲释放模型</string>
+    <string name="speech_idle_release_summary">最后一次识别后保持模型，超时自动释放，下次使用重新加载</string>
+    <string name="speech_idle_release_5">5 分钟</string>
+    <string name="speech_idle_release_10">10 分钟</string>
+    <string name="speech_idle_release_30">30 分钟</string>
+    <string name="speech_idle_release_never">不自动释放</string>
     <string name="speech_pack_summary">%1$s · 下载后离线使用</string>
     <string name="speech_privacy">仅点击后收音，不上传录音。再次点击或说完停顿后停止，文字留在输入框，不自动发送。离开聊天或切到后台停止收音</string>
     <string name="speech_download_confirm">将从 %2$s 下载约 %1$s 的离线语音模型，可能产生流量费用。下载校验完成后仍需手动开启。模型权重的上游授权尚未明确，请仅按适用授权使用</string>
