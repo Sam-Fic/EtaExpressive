@@ -6,8 +6,8 @@ ROOT = Path(__file__).resolve().parents[3] / 'src/main/kotlin/io/github/mangi/et
 
 class MainMergeIntegrationTest(unittest.TestCase):
     def test_inline_controls_retain_authorized_preview_and_safe_close(self):
-        page = (ROOT / 'ui/VirtualDisplayRecoveryScreen.kt').read_text()
-        for text in ('VirtualDisplayRecoveryControls(', 'VirtualDisplayWebPreview.openWithManualClose(context)',
+        page = (ROOT / 'ui/screens/virtualdisplay/VirtualDisplaySections.kt').read_text()
+        for text in ('VirtualDisplayRecoverySection(', 'VirtualDisplayWebPreview.openWithManualClose(context)',
                      'onDispose {', 'VirtualDisplayWebPreview.revoke(context)', 'snapshot.optBoolean("recoverable")'):
             self.assertIn(text, page)
         self.assertEqual(1, page.count('if (!stillInstalled)'))

@@ -83,6 +83,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.components.LocalShellTopBarInset
+import io.github.mangi.eta.ui.screens.virtualdisplay.VirtualDisplayScreen
 import io.github.mangi.eta.ui.HapticsSettingsScreen
 import io.github.mangi.eta.ui.ErrorReconnectSettingsScreen
 import io.github.mangi.eta.ui.ContextCompressionSettingsScreen
@@ -720,8 +721,6 @@ fun AgentAppRoot(
         }
     }
 
-    // 副屏恢复进行中仍然通过这里上报状态。
-    var taskRecoveryWorking by remember { mutableStateOf(false) }
     // 转场期间只写 draw-phase 原子量；布尔值在之后的帧发布，且只在变化时发布，
     // 这样滑动不会让图形层逐帧写 snapshot state。
     val navigationActive = remember { mutableStateOf(false) }
@@ -993,15 +992,18 @@ fun AgentAppRoot(
             composable<AppRoute.AgentTaskPreference> {
                 AgentTaskPreferenceScreen(
                     onBack = ::popRoute,
-                    onRecoveryWorkingChanged = { taskRecoveryWorking = it },
+                    onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) },
                 )
             }
             // Compatibility alias for a restored old back stack; there is no separate recovery page.
             composable<AppRoute.VirtualDisplayRecovery> {
                 AgentTaskPreferenceScreen(
                     onBack = ::popRoute,
-                    onRecoveryWorkingChanged = { taskRecoveryWorking = it },
+                    onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) },
                 )
+            }
+            composable<AppRoute.VirtualDisplay> {
+                VirtualDisplayScreen(onBack = ::popRoute)
             }
             composable<AppRoute.Tools> {
                 // 工具页状态是快照：进页必须重读一次，否则从设置页改完开关再进来，

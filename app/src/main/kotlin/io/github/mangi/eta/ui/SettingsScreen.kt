@@ -71,6 +71,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.accessibility.AccessibilityProtectionClient
+import io.github.mangi.eta.agent.device.AgentTaskSurface
 import io.github.mangi.eta.config.PowerAssistantTarget
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.ui.model.ToolCapabilities
@@ -150,7 +151,6 @@ internal fun SettingsScreen(
         }
     }
     val coroutineScope = rememberCoroutineScope()
-    val taskBackendInstalled = rememberTaskBackendInstalled()
     val listState = rememberLazyListState()
     val anchors = remember { SettingsAnchorIndex() }
     var highlightedKey by remember { mutableStateOf<String?>(null) }
@@ -543,14 +543,17 @@ internal fun SettingsScreen(
                     )
                 }
 
-                if (taskBackendInstalled == true) {
-                    row(key = SettingsKeys.AGENT_TASK_PREFERENCE) {
-                        EtaClickableRow(
-                            title = stringResource(R.string.agent_task_surface_title),
-                            leading = { PreferenceIcon(Icons.Rounded.Layers) },
-                            onClick = { onNavigate(AppRoute.AgentTaskPreference) },
-                        )
-                    }
+                // 入口始终可见：执行位置与虚拟屏视窗走进程内 VirtualDisplayController，
+                // 只依赖 root/LSPosed，不再要求 Magisk 后端模块；模块仅决定网页预览与副屏恢复是否可用。
+                row(key = SettingsKeys.AGENT_TASK_PREFERENCE) {
+                    EtaClickableRow(
+                        title = stringResource(R.string.agent_task_surface_title),
+                        summary = stringResource(
+                            AgentTaskSurface.settingsSummaryRes(AgentTaskSurface.stored()),
+                        ),
+                        leading = { PreferenceIcon(Icons.Rounded.Layers) },
+                        onClick = { onNavigate(AppRoute.AgentTaskPreference) },
+                    )
                 }
 
                 // 下面几项不是能力分组，而是执行行为：关掉不会让某一组工具消失，

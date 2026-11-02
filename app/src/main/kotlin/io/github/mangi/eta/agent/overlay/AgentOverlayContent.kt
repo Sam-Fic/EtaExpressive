@@ -1,6 +1,8 @@
 package io.github.mangi.eta.agent.overlay
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -103,7 +105,7 @@ private val SuccessColor = Color(0xFF34C759)
 private const val SupplementExitDelayMs = 380L
 
 @Composable
-private fun phaseAccent(phase: AgentOverlayPhase): Color = when (phase) {
+internal fun phaseAccent(phase: AgentOverlayPhase): Color = when (phase) {
     AgentOverlayPhase.RUNNING -> MaterialTheme.colorScheme.primary
     AgentOverlayPhase.PAUSED -> Color(0xFFFF9F0A)
     AgentOverlayPhase.FINISHED -> SuccessColor
@@ -171,7 +173,8 @@ private fun AssistantOrb(
     onDragStart: () -> Unit,
     onDrag: (Float, Float) -> Unit,
 ) {
-    val accent = phaseAccent(phase)
+    // 阶段切换时颜色渐渡，避免光球在一帧内换色。
+    val accent by animateColorAsState(phaseAccent(phase), tween(240), label = "orb_accent")
     // Read pulse only during drawing; 20 Hz is enough for a 2.8-second breathing cycle.
     val pulse = rememberAgentOrbPulse(phase)
     val touchSlop = LocalViewConfiguration.current.touchSlop
@@ -313,8 +316,11 @@ internal fun AgentOverlayBubble(
 
     val accent = phaseAccent(state.phase)
     val statusText = state.status.localizedText()
-    val statusColor = if (state.phase == AgentOverlayPhase.RUNNING) accent
-    else Color(0xFFFF9F0A)
+    val statusColor by animateColorAsState(
+        targetValue = if (state.phase == AgentOverlayPhase.RUNNING) accent else Color(0xFFFF9F0A),
+        animationSpec = tween(240),
+        label = "bubble_status_color",
+    )
 
     AnimatedVisibility(
         visible = visible,
@@ -440,7 +446,7 @@ internal fun AgentOverlayBubble(
 }
 
 @Composable
-private fun SupplementInput(
+internal fun SupplementInput(
     value: String,
     onValueChange: (String) -> Unit,
     onCancel: () -> Unit,

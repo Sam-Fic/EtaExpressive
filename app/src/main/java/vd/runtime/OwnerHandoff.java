@@ -85,11 +85,20 @@ final class OwnerHandoff {
             catch(Exception ignored) { }
         }
         Set<Integer> reusable=states==null ? Collections.<Integer>emptySet() : states.live;
+        // Occupancy is display-scoped: an app already open on the main display cannot occupy the
+        // owner's separate virtual display. A freshly created owner display may legitimately have
+        // no root tasks at all, which is a clean inventory rather than an unreadable one.
         List<LaunchTargetOccupancy.Root> rootDescriptions=new ArrayList<LaunchTargetOccupancy.Root>();
-        for(Object task:current.values()) rootDescriptions.add(describeRoot(task));
+        for(Object task:current.values()) {
+            try { if(number(task,"displayId")==source) rootDescriptions.add(describeRoot(task)); }
+            catch(Exception ex) { throw new OwnerException(LaunchTargetOccupancy.UNKNOWN,
+                    "root display " + ex.getClass().getSimpleName()); }
+        }
+        boolean emptySourceInventory=source>0 && rootDescriptions.isEmpty();
         // Report an observed active target even if the recent-task query later fails.
         LaunchTargetOccupancy.Decision active=LaunchTargetOccupancy.decide(pkg,
-                rootDescriptions, Collections.<LaunchTargetOccupancy.Recent>emptyList(),reusable);
+                rootDescriptions, Collections.<LaunchTargetOccupancy.Recent>emptyList(),reusable,
+                emptySourceInventory);
         if(LaunchTargetOccupancy.ACTIVE.equals(active.code)) throw new OwnerException(active.code,active.detail);
         Set<Integer> present=EndedOwnedRecent.presentIds(rootDescriptions);
         if(present==null || (source>0 && (states==null || !states.escaped.isEmpty())))
@@ -105,6 +114,12 @@ final class OwnerHandoff {
             recentCount=entries.size();
             Set<Integer> exempted=new HashSet<Integer>();
             for(Object task:entries) {
+                // A recent on another display cannot occupy this owner display. An unreadable
+                // display id stays conservative and is still examined.
+                int recentDisplay;
+                try { recentDisplay=number(task,"displayId"); }
+                catch(Exception ex) { recentDisplay=-1; }
+                if(recentDisplay>=0 && recentDisplay!=source) continue;
                 LaunchTargetOccupancy.Recent recent=describeRecent(task);
                 EndedOwnedRecent.Recent ended=describeEndedRecent(task,pkg,recent);
                 Task identity=owned.get(ended.identityId());
@@ -117,7 +132,8 @@ final class OwnerHandoff {
         }
         catch(Exception ex) { throw new OwnerException(LaunchTargetOccupancy.UNKNOWN,
                 "recent inventory " + ex.getClass().getSimpleName()); }
-        LaunchTargetOccupancy.Decision result=LaunchTargetOccupancy.decide(pkg,rootDescriptions,recentDescriptions,reusable);
+        LaunchTargetOccupancy.Decision result=LaunchTargetOccupancy.decide(pkg,rootDescriptions,
+                recentDescriptions,reusable,emptySourceInventory);
         if(LaunchTargetOccupancy.RECENT.equals(result.code)) throw new OwnerException(result.code,result.detail);
         // Count the RAW page, not the filtered list: exempted entries cannot hide truncation.
         if(recentCount>=256) throw new OwnerException(LaunchTargetOccupancy.UNKNOWN,

@@ -13,15 +13,26 @@ import io.github.mangi.eta.agent.runtime.AgentEvent
  * runtime callers must also pass the originating session's frozen surface mode.
  */
 internal object AgentOverlayVisibilityPolicy {
-    fun allowsOverlay(taskSurfaceMode: AgentTaskSurfaceMode): Boolean =
-        taskSurfaceMode == AgentTaskSurfaceMode.FOREGROUND
+    /**
+     * 前台驾驶沿用光球/气泡；后台任务只有虚拟屏真正激活时才允许显示顶部胶囊。
+     * 后台运行尚未创建副屏时保持完全安静，避免仅凭“选了后台模式”就弹出浮窗。
+     */
+    fun allowsOverlay(
+        taskSurfaceMode: AgentTaskSurfaceMode,
+        virtualDisplayActive: Boolean = false,
+    ): Boolean = taskSurfaceMode == AgentTaskSurfaceMode.FOREGROUND || virtualDisplayActive
 
     /** 运行开始时：前台，或还没选的“每次询问”（可能选前台），都先准备好悬浮窗状态。 */
-    fun mayUseOverlay(taskSurfaceMode: AgentTaskSurfaceMode): Boolean =
-        taskSurfaceMode != AgentTaskSurfaceMode.BACKGROUND
+    fun mayUseOverlay(
+        taskSurfaceMode: AgentTaskSurfaceMode,
+        virtualDisplayActive: Boolean = false,
+    ): Boolean = taskSurfaceMode != AgentTaskSurfaceMode.BACKGROUND || virtualDisplayActive
 
-    fun shouldRevealFor(event: AgentEvent, taskSurfaceMode: AgentTaskSurfaceMode): Boolean =
-        allowsOverlay(taskSurfaceMode) && shouldRevealFor(event)
+    fun shouldRevealFor(
+        event: AgentEvent,
+        taskSurfaceMode: AgentTaskSurfaceMode,
+        virtualDisplayActive: Boolean = false,
+    ): Boolean = allowsOverlay(taskSurfaceMode, virtualDisplayActive) && shouldRevealFor(event)
 
     fun shouldDismissEntrySurfaceFor(event: AgentEvent, taskSurfaceMode: AgentTaskSurfaceMode): Boolean =
         allowsOverlay(taskSurfaceMode) && shouldDismissEntrySurfaceFor(event)
@@ -29,7 +40,8 @@ internal object AgentOverlayVisibilityPolicy {
     fun shouldShowResultCard(
         taskSurfaceMode: AgentTaskSurfaceMode,
         hasExecutedForegroundTool: Boolean,
-    ): Boolean = allowsOverlay(taskSurfaceMode) && hasExecutedForegroundTool
+        virtualDisplayActive: Boolean = false,
+    ): Boolean = allowsOverlay(taskSurfaceMode, virtualDisplayActive) && hasExecutedForegroundTool
 
     fun shouldRevealFor(event: AgentEvent): Boolean = when (event) {
         is AgentEvent.AssistantBlockStart ->

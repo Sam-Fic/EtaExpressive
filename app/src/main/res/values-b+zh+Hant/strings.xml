@@ -391,6 +391,12 @@
   <string name="overlay_dismiss">關閉</string>
   <string name="overlay_expand">展開</string>
   <string name="overlay_collapse">收合</string>
+  <string name="overlay_capsule_toggle">Agent 狀態：%1$s。點按展開或收合</string>
+  <string name="overlay_virtual_canvas_auto">自動操作</string>
+  <string name="overlay_virtual_canvas_takeover">手動接管</string>
+  <string name="overlay_virtual_takeover">接管</string>
+  <string name="overlay_virtual_continue">繼續</string>
+  <string name="overlay_virtual_fullscreen">全螢幕</string>
   <string name="tool_observe_screen">查看畫面</string>
   <string name="tool_tap">點按</string>
   <string name="tool_tap_element">點按元素</string>

@@ -1,18 +1,16 @@
 package io.github.mangi.eta.ui
-import io.github.mangi.eta.ui.components.etaRippleConfiguration
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,47 +20,62 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.AgentTaskSurface
 import io.github.mangi.eta.agent.device.AgentTaskSurfaceMode
+import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
+import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.WithoutPressRipple
+import io.github.mangi.eta.ui.components.etaRippleConfiguration
 import io.github.mangi.eta.ui.haptics.TouchHaptics
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
-/** 二级页骨架（EtaScaffoldPage）：大标题顶栏 + KernelSU 式分段单选组与虚拟屏恢复入口。 */
+/** 二级页骨架（EtaScaffoldPage）：大标题顶栏 + 执行位置单选组 + 虚拟屏实时画面入口。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AgentTaskPreferenceScreen(
     onBack: () -> Unit,
-    onRecoveryWorkingChanged: (Boolean) -> Unit = {},
+    onOpenVirtualDisplay: () -> Unit = {},
 ) {
-    val moduleInstalled = rememberTaskBackendInstalled()
-    var previouslyInstalled by remember { mutableStateOf(false) }
-    var recoveryWorking by remember { mutableStateOf(false) }
-    LaunchedEffect(moduleInstalled, recoveryWorking) {
-        if (moduleInstalled == true) previouslyInstalled = true
-        if (moduleInstalled == false && !recoveryWorking) onBack()
-    }
-    // A RESUMED recheck temporarily returns null. Do not dispose the browser's preview controls.
-    if (!previouslyInstalled && moduleInstalled != true) return
-
     val view = LocalView.current
     var selected by remember { mutableStateOf(AgentTaskSurface.stored()) }
+    // 只订阅去重后的「运行中 / 应用名 / 显示 ID」：实时帧以 6fps 更新时本页不跟着重组。
+    val display by remember {
+        VirtualDisplayController.snapshots
+            .map { Triple(it.active, it.appName, it.displayId) }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(
+        initialValue = VirtualDisplayController.snapshots.value.let {
+            Triple(it.active, it.appName, it.displayId)
+        },
+    )
+    val (displayActive, displayApp, _) = display
+    // 实时画面走进程内 VirtualDisplayController，不依赖 Magisk 后端模块；
+    // 模块只影响虚拟屏页里的网页预览与副屏恢复，因此入口摘要只反映真实运行状态。
+    val entrySummary = when {
+        displayActive && displayApp.isNotBlank() ->
+            stringResource(R.string.vd_screen_entry_running, displayApp)
+        displayActive -> stringResource(R.string.vd_screen_entry_running_generic)
+        else -> stringResource(R.string.vd_screen_entry_idle)
+    }
     CompositionLocalProvider(LocalRippleConfiguration provides etaRippleConfiguration()) {
         WithoutPressRipple {
             EtaScaffoldPage(
                 title = stringResource(R.string.agent_task_surface_title),
-                // 骨架的返回钮不支持禁用态：恢复进行中用软门槛守住，不放行返回。
-                onBack = { if (!recoveryWorking) onBack() },
+                onBack = onBack,
             ) {
                 item(key = "surface-mode") {
                     // KernelSU 式分段列表：一组的单选项用分段形状 + 表面底色表达，
                     // 不再用整块 Card 包一层列表。间距取官方 SegmentedGap。
-                    Column(
+                    EtaSegmentedColumn(
                         modifier = Modifier
                             .padding(
                                 start = EtaGroupHorizontalPadding,
@@ -70,11 +83,11 @@ internal fun AgentTaskPreferenceScreen(
                                 bottom = EtaSegmentedGroupSpacing,
                             )
                             .selectableGroup(),
-                        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+                        title = stringResource(R.string.agent_task_surface_group_title),
                     ) {
-                        AgentTaskSurfaceMode.entries.forEachIndexed { index, mode ->
-                            val canSelect = AgentTaskSurface.allowsPersist(mode)
-                            EtaSegmentedItem(index = index, count = AgentTaskSurfaceMode.entries.size) {
+                        AgentTaskSurfaceMode.entries.forEach { mode ->
+                            item(key = mode.name) {
+                                val canSelect = AgentTaskSurface.allowsPersist(mode)
                                 EtaSegmentedRow(
                                     choiceRow = true,
                                     modifier = Modifier.selectable(
@@ -111,18 +124,24 @@ internal fun AgentTaskPreferenceScreen(
                         }
                     }
                 }
-                item(key = "virtual-display-recovery") {
-                    VirtualDisplayRecoveryControls(
+                item(key = "virtual-display-entry") {
+                    EtaSegmentedColumn(
                         modifier = Modifier.padding(
                             start = EtaGroupHorizontalPadding,
                             end = EtaGroupHorizontalPadding,
                             bottom = EtaSegmentedGroupSpacing,
                         ),
-                        onWorkingChanged = {
-                            recoveryWorking = it
-                            onRecoveryWorkingChanged(it)
-                        },
-                    )
+                        title = stringResource(R.string.vd_screen_title),
+                    ) {
+                        item(key = "live-view") {
+                            EtaClickableRow(
+                                title = stringResource(R.string.vd_screen_entry_title),
+                                summary = entrySummary,
+                                leading = { PreferenceIcon(Icons.Rounded.DesktopWindows) },
+                                onClick = onOpenVirtualDisplay,
+                            )
+                        }
+                    }
                 }
             }
         }

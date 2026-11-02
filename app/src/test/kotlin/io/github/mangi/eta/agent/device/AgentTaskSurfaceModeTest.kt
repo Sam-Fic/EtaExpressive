@@ -224,14 +224,6 @@ class AgentTaskSurfaceModeTest {
     }
 
     @Test
-    fun taskPreferenceEntryRequiresInstalledBackendRegardlessOfStoredMode() {
-        AgentTaskSurfaceMode.entries.forEach { mode ->
-            assertFalse(AgentTaskSurface.settingsEntryVisible(moduleInstalled = false, stored = mode))
-            assertTrue(AgentTaskSurface.settingsEntryVisible(moduleInstalled = true, stored = mode))
-        }
-    }
-
-    @Test
     fun everyModeCanBeSavedWithItsOwnSummary() {
         assertTrue(AgentTaskSurface.allowsPersist(AgentTaskSurfaceMode.FOREGROUND))
         assertTrue(AgentTaskSurface.allowsPersist(AgentTaskSurfaceMode.BACKGROUND))

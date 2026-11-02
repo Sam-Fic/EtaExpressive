@@ -52,6 +52,36 @@ class AgentVirtualRunOverlayPolicyTest {
         assertTrue(AgentOverlayVisibilityPolicy.shouldShowResultCard(mode, true))
     }
 
+    @Test
+    fun `active virtual display lets background runs use the capsule surface`() {
+        for (mode in listOf(AgentTaskSurfaceMode.BACKGROUND, AgentTaskSurfaceMode.ASK)) {
+            assertTrue(AgentOverlayVisibilityPolicy.allowsOverlay(mode, virtualDisplayActive = true))
+            for (event in toolEvents()) {
+                assertEquals(
+                    "$mode: $event",
+                    AgentOverlayVisibilityPolicy.shouldRevealFor(event),
+                    AgentOverlayVisibilityPolicy.shouldRevealFor(event, mode, virtualDisplayActive = true),
+                )
+                // 关闭聊天入口仍是前台专属：后台 run 不应替用户收起主界面。
+                assertFalse(
+                    "$mode: $event",
+                    AgentOverlayVisibilityPolicy.shouldDismissEntrySurfaceFor(event, mode),
+                )
+            }
+            assertFalse(
+                AgentOverlayVisibilityPolicy.shouldShowResultCard(
+                    mode, hasExecutedForegroundTool = false, virtualDisplayActive = true,
+                )
+            )
+            assertTrue(
+                AgentOverlayVisibilityPolicy.shouldShowResultCard(
+                    mode, hasExecutedForegroundTool = true, virtualDisplayActive = true,
+                )
+            )
+        }
+        assertFalse(AgentOverlayVisibilityPolicy.allowsOverlay(AgentTaskSurfaceMode.BACKGROUND))
+    }
+
     private fun toolEvents(): List<AgentEvent> = listOf(
         "launch_app", "open_uri", "observe_screen", "tap", "tap_area", "tap_element",
         "long_press", "long_press_element", "swipe", "scroll", "scroll_element",

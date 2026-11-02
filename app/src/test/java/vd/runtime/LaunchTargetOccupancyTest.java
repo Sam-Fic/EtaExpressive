@@ -326,4 +326,30 @@ public class LaunchTargetOccupancyTest {
         assertEquals(LaunchTargetOccupancy.UNKNOWN, LaunchTargetOccupancy.decide(TARGET,
                 Arrays.asList(self(191, TARGET)), Collections.<LaunchTargetOccupancy.Recent>emptyList(), null).code);
     }
+
+    // ---- Display-scoped inventory: an empty root list may be proven clean ----
+    @Test public void provenCleanEmptyOwnerInventoryIsNotUnknown() {
+        // A freshly created owner display legitimately has no roots. When the caller proved the
+        // inventory was readable, an empty list means "nothing is open here", not "unknown".
+        LaunchTargetOccupancy.Decision clean = LaunchTargetOccupancy.decide(TARGET,
+                Collections.<LaunchTargetOccupancy.Root>emptyList(),
+                Collections.<LaunchTargetOccupancy.Recent>emptyList(),
+                Collections.<Integer>emptySet(), true);
+        assertFalse(clean.rejects());
+        // Without the proof the same empty list stays conservative.
+        assertEquals(LaunchTargetOccupancy.UNKNOWN, LaunchTargetOccupancy.decide(TARGET,
+                Collections.<LaunchTargetOccupancy.Root>emptyList(),
+                Collections.<LaunchTargetOccupancy.Recent>emptyList(),
+                Collections.<Integer>emptySet(), false).code);
+        // A null inventory is never clean, even with the flag set.
+        assertEquals(LaunchTargetOccupancy.UNKNOWN, LaunchTargetOccupancy.decide(TARGET, null,
+                Collections.<LaunchTargetOccupancy.Recent>emptyList(),
+                Collections.<Integer>emptySet(), true).code);
+        // The proof only explains the empty list; a target recent must still refuse.
+        assertEquals(LaunchTargetOccupancy.RECENT, LaunchTargetOccupancy.decide(TARGET,
+                Collections.<LaunchTargetOccupancy.Root>emptyList(),
+                Collections.singletonList(new LaunchTargetOccupancy.Recent(
+                        null, null, null, TARGET, null, true)),
+                Collections.<Integer>emptySet(), true).code);
+    }
 }

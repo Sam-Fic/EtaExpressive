@@ -107,15 +107,6 @@ internal object AgentContextAppToolCatalog {
             )
             .put(
                 AgentToolSchema.function(
-                    name = "inspect_virtual_backend",
-                    description = "Run a read-only Root backend check with the in-app probe without starting a virtual display. A successful query does not grant authorisation; mutations_enabled and session_authenticated are always false, and it never migrates, restores or closes apps.",
-                    parameters = JSONObject()
-                        .put("type", "object")
-                        .put("properties", JSONObject())
-                )
-            )
-            .put(
-                AgentToolSchema.function(
                     name = "keep_virtual_result",
                     description = "Mark the tasks this virtual-display session should deliver. Prefer task_ids; you may also select by packages launched in this run. This only marks them: you must then call finish_virtual_session to verify the migration and the close.",
                     parameters = JSONObject()
@@ -161,7 +152,7 @@ internal object AgentContextAppToolCatalog {
             )
         // 虚拟显示只有 GUI 工具会用到；关闭屏幕开关时一并隐藏，避免留下必然无用的入口。
         if (!screenTools) {
-            val virtual = setOf("inspect_virtual_backend", "keep_virtual_result")
+            val virtual = setOf("keep_virtual_result")
             for (index in tools.length() - 1 downTo 0) {
                 val name = tools.getJSONObject(index).optJSONObject("function")?.optString("name")
                 if (name in virtual) tools.remove(index)

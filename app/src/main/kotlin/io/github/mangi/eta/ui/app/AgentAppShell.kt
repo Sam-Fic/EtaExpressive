@@ -437,6 +437,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.TerminalDaemonTasks -> stringResource(R.string.terminal_daemon_tasks)
     is AppRoute.Tools -> stringResource(R.string.route_tools)
     is AppRoute.AgentTaskPreference -> stringResource(R.string.agent_task_surface_title)
+    is AppRoute.VirtualDisplay -> stringResource(R.string.vd_screen_title)
     is AppRoute.VirtualDisplayRecovery -> stringResource(R.string.vd_recovery_title)
     is AppRoute.Haptics -> stringResource(R.string.haptics_title)
     is AppRoute.Skills -> stringResource(R.string.route_skills)

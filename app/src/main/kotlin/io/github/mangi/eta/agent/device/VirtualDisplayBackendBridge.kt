@@ -11,7 +11,9 @@ import vd.android.ProbeInventoryProtocol
  * ok / query_supported 只表示这次只读查询成功，不表示会话已认证或允许变更。
  */
 internal object VirtualDisplayBackendBridge {
-    fun inspect(context: Context): JSONObject {
+    fun inspect(context: Context): JSONObject = decorate(context, inspectProbe(context))
+
+    private fun inspectProbe(context: Context): JSONObject {
         val resolved = resolveClasspath(context)
         val classpath = resolved.path
         if (classpath == null) {
@@ -37,6 +39,23 @@ internal object VirtualDisplayBackendBridge {
             result.exitCode,
             result.timedOut,
             result.truncated,
+        )
+    }
+
+    /**
+     * 探针只描述 Root 任务清单，不描述也不认证当前 owner 会话；ready/session_authenticated
+     * 永远是 false。把本地会话单独标出，避免模型把 focusedTaskId 当成虚拟屏任务。
+     */
+    private fun decorate(context: Context, result: JSONObject): JSONObject = result.apply {
+        val session = VirtualDisplaySession.recoveryStatus(context)
+        put("session_present", session.optBoolean("present"))
+        put("session_display_id", session.optInt("displayId", -1))
+        put("session_phase", session.optString("phase"))
+        put("focusedTaskIdScope", "main_display")
+        put(
+            "note",
+            "Read-only Root inventory probe. ready and session_authenticated are always false; " +
+                "this does not describe or authenticate the active owner session.",
         )
     }
 

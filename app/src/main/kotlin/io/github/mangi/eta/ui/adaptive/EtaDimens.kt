@@ -72,4 +72,7 @@ object EtaDimens {
 
     /** 空态装饰形状（M3E 形状）的边长：图标坐在上面，形状在下缘露出一截。 */
     val EmptyStateShapeSize = 128.dp
+
+    /** 虚拟屏舞台在窄屏下的最大高度：再高就会把状态/控制分组挤出首屏。 */
+    val VirtualDisplayStageMaxHeight = 480.dp
 }

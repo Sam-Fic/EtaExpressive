@@ -3,6 +3,8 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 UI = ROOT / "src/main/kotlin/io/github/mangi/eta/ui"
+SECTIONS = UI / "screens/virtualdisplay/VirtualDisplaySections.kt"
+
 
 class VirtualDisplaySettingsUiTest(unittest.TestCase):
     def test_recovery_is_only_nested_under_task_preferences(self):
@@ -10,25 +12,26 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         task = (UI / "AgentTaskPreferenceScreen.kt").read_text()
         self.assertNotIn("VirtualDisplayRecoveryPreference", settings)
         self.assertNotIn("vd_recovery_title", settings)
-        self.assertIn("if (taskBackendInstalled == true)", settings)
+        # 入口始终可见：进程内虚拟屏不依赖 Magisk 后端模块。
+        self.assertIn("row(key = SettingsKeys.AGENT_TASK_PREFERENCE)", settings)
+        self.assertIn("onNavigate(AppRoute.AgentTaskPreference)", settings)
+        self.assertNotIn("if (taskBackendInstalled == true)", settings)
         self.assertNotIn("onOpenRecovery", task)
-        self.assertIn("VirtualDisplayRecoveryControls(", task)
-        self.assertIn("moduleInstalled != true", task)
+        self.assertNotIn("VirtualDisplayRecoveryControls(", task)
+        self.assertIn("virtual-display-entry", task)
+        self.assertIn("onOpenVirtualDisplay", task)
+        self.assertNotIn("moduleInstalled != true", task)
 
     def test_task_preference_page_is_material3_with_radio_group(self):
         task = (UI / "AgentTaskPreferenceScreen.kt").read_text()
         for text in (
-            "import androidx.compose.material3.Scaffold",
-            "import androidx.compose.material3.TopAppBar",
-            "import androidx.compose.material3.ListItem",
+            "EtaScaffoldPage(",
+            "EtaSegmentedRow(",
             "import androidx.compose.material3.RadioButton",
-            "Scaffold(",
-            "TopAppBar(",
-            "EtaTopBarBackButton(",
             "selectableGroup()",
             "Modifier.selectable(",
             "role = Role.RadioButton",
-            "verticalScroll(",
+            "EtaSegmentedColumn(",
         ):
             self.assertIn(text, task)
         self.assertNotIn("MiuixScaffoldPage", task)
@@ -38,7 +41,7 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         self.assertIn("AgentTaskSurface.stored()", task)
 
     def test_recovery_is_inline_controls_not_separate_page(self):
-        page = (UI / "VirtualDisplayRecoveryScreen.kt").read_text()
+        page = SECTIONS.read_text()
         self.assertNotIn("Scaffold(", page)
         self.assertNotIn("TopAppBar(", page)
         self.assertIn("Row(", page)
@@ -46,6 +49,11 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         # 四个操作各只有一个入口；按钮文字不允许折行。
         self.assertEqual(4, page.count("TouchHaptics.click(view)"))
         self.assertEqual(4, page.count("maxLines = 1"))
+        self.assertEqual(2, page.count("FlowRow("))
+        self.assertIn("EtaSegmentedColumn(", page)
+        self.assertIn("EtaSegmentedItemContainer {", page)
+        self.assertNotIn("Card(", page)
+        self.assertNotIn("surfaceContainerHigh", page)
         self.assertIn("VirtualDisplayWebPreview.openWithManualClose(context)", page)
         self.assertNotIn("VirtualDisplayWebPreview.open(context)", page)
         self.assertNotIn("vd_preview_control_open", page)
@@ -67,16 +75,19 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         root = (UI / "app/AgentAppRoot.kt").read_text()
         self.assertIn("composable<AppRoute.VirtualDisplayRecovery>", root)
         self.assertNotIn("VirtualDisplayRecoveryScreen(onBack = ::popRoute)", root)
-        self.assertIn("onBack = ::popRoute,\n                    onRecoveryWorkingChanged = { taskRecoveryWorking = it },", root)
+        self.assertNotIn("taskRecoveryWorking", root)
+        self.assertIn("onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) }", root)
 
     def test_task_preference_routes_are_plain_composables_without_swipe_parameter(self):
         root = (UI / "app/AgentAppRoot.kt").read_text()
         # M3 壳层不再给二级页挂手势返回参数：swipeDismiss / NavSwipeDirection 这套
-        # miuix 时代的秒级返回开关已整体删除，两条路由都是普通 composable。
+        # miuix 时代的秒级返回开关已整体删除，路由都是普通 composable。
         for gone in ("NavSwipeDirection", "taskPreferenceSwipeDismiss", "swipeDismiss"):
             self.assertNotIn(gone, root)
         self.assertIn("composable<AppRoute.AgentTaskPreference> {", root)
         self.assertIn("composable<AppRoute.VirtualDisplayRecovery> {", root)
+        self.assertIn("composable<AppRoute.VirtualDisplay> {", root)
+        self.assertIn("VirtualDisplayScreen(onBack = ::popRoute)", root)
 
     def test_installation_is_rechecked_on_resume_not_live_backend_status(self):
         source = (UI / "TaskBackendInstallation.kt").read_text()
@@ -87,7 +98,7 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         self.assertIn("awaitCancellation()", source)
 
     def test_leaving_page_keeps_pairing_and_revocation_is_explicit(self):
-        page = (UI / "VirtualDisplayRecoveryScreen.kt").read_text()
+        page = SECTIONS.read_text()
         cleanup = page.split("DisposableEffect(Unit) {", 1)[1].split("val snapshot", 1)[0]
         self.assertIn("onDispose {", cleanup)
         self.assertIn("onWorkingChanged(false)", cleanup)
@@ -101,6 +112,7 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         self.assertIn("webPaired = false", revoke_button)
         self.assertNotIn("Lifecycle.Event.ON_PAUSE", page)
         self.assertNotIn("Lifecycle.Event.ON_STOP", page)
+
 
 if __name__ == "__main__":
     unittest.main()

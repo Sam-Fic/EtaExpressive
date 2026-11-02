@@ -783,6 +783,9 @@ internal object VirtualDisplaySession {
                 val visible=c.status()
                 val packages=body(visible).optJSONArray("sourcePackages")
                 if(!visible.ok || packages==null)return text(reply(false,"SCREEN_CONTENT_UNKNOWN"))
+                // An empty owner display may otherwise return a mirrored main-display frame or a
+                // blank surface. Never publish coordinates for content the virtual display does not own.
+                if(packages.length()==0)return text(reply(false,"NO_VISIBLE_CONTENT","副屏当前没有可观察的内容，请先启动目标应用"))
                 if((0 until packages.length()).any { packages.getString(it) in excludedPackages })return text(reply(false,"SCREENSHOT_EXCLUDED_PACKAGE"))
                 val shot=c.snapshot();if(!shot.ok)return text(body(shot))
                 val data=body(shot);val encoded=data.optString("data")

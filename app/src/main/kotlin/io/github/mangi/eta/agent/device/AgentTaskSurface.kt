@@ -36,7 +36,8 @@ internal enum class AgentTaskSurfaceMode(val wire: String, val labelRes: Int) {
 /**
  * 前台直接在当前屏幕执行，后台走副屏。
  * ASK 在第一次界面操作前弹窗，由用户为本次 run 选定前台或后台；选定前界面工具一律拦下。
- * 设置入口仅在后端模块已安装时可见；不改变已保存的执行模式。
+ * 设置入口始终可见：执行位置与虚拟屏视窗走进程内 VirtualDisplayController，只依赖 root/LSPosed；
+ * 外部后端模块只决定网页预览与副屏恢复是否可用，不再影响入口可见性。
  */
 internal object AgentTaskSurface {
     const val PREF_KEY = "agent_task_surface"
@@ -121,11 +122,6 @@ internal object AgentTaskSurface {
     }
 
     fun effective(): AgentTaskSurfaceMode = AgentTaskSurfaceMode.resolve(stored(), moduleInstalled())
-
-    fun settingsEntryVisible(): Boolean = settingsEntryVisible(moduleInstalled(), stored())
-
-    fun settingsEntryVisible(moduleInstalled: Boolean, @Suppress("UNUSED_PARAMETER") stored: AgentTaskSurfaceMode): Boolean =
-        moduleInstalled
 
     fun settingsSummaryRes(stored: AgentTaskSurfaceMode): Int = when (stored) {
         AgentTaskSurfaceMode.FOREGROUND -> stored.labelRes

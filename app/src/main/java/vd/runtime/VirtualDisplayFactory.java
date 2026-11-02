@@ -35,7 +35,13 @@ final class VirtualDisplayFactory {
     /** uid 0 owns this package, which satisfies the display service's package-vs-uid check. */
     static final String OWNER_PACKAGE = "android";
 
-    static final int DEFAULT_FLAGS = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC;
+    /**
+     * A public display that only renders content launched into it. Without
+     * {@code OWN_CONTENT_ONLY} an empty display falls back to mirroring the default display,
+     * which makes a failed launch look like a valid screenshot of the wrong app.
+     */
+    static final int DEFAULT_FLAGS = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+            | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY;
 
     private static final String ACTIVITY_THREAD_CLASS = "android.app.ActivityThread";
     private static final String DISPLAY_MANAGER_GLOBAL_CLASS =

@@ -52,7 +52,6 @@ internal object AgentToolGroups {
             "wait", "wait_for_text", "wait_for_package", "open_system_panel",
             "get_clipboard", "set_clipboard",
             "start_virtual_session", "keep_virtual_result", "finish_virtual_session",
-            "inspect_virtual_backend",
         ),
     )
 

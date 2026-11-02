@@ -12,25 +12,16 @@ import org.junit.Test
 
 class VirtualDisplayToolContractTest {
     @Test
-    fun inspectVirtualBackendIsRootOnlyAndTakesNoArguments() {
+    fun inspectVirtualBackendIsDiagnosticOnlyAndNotAdvertised() {
+        // 只读探针固定返回 ready=false / session_authenticated=false，模型曾把它误当成
+        // 当前虚拟会话状态。保留 Root 分类与手动调用能力，但不再向模型宣传。
         val rooted = catalog(rootAvailable = true)
-        assertTrue("inspect_virtual_backend" in rooted.names())
+        assertFalse("inspect_virtual_backend" in rooted.names())
+        assertFalse("inspect_virtual_backend" in AgentToolGroups.SCREEN_GROUP.toolNames)
         assertEquals(
             RootRequirement.REQUIRED,
             AgentToolRequirements.rootRequirement("inspect_virtual_backend"),
         )
-        val function = rooted.function("inspect_virtual_backend")
-        val parameters = function.getJSONObject("parameters")
-        assertEquals("object", parameters.getString("type"))
-        assertEquals(0, parameters.getJSONObject("properties").length())
-        assertEquals(0, parameters.optJSONArray("required")?.length() ?: 0)
-        val description = function.getString("description")
-        assertTrue(description.contains("mutations_enabled"))
-        assertTrue(description.contains("session_authenticated"))
-        assertTrue(description.contains("false"))
-        assertTrue(description.contains("does not grant authorisation"))
-        assertFalse(description.contains("vd start"))
-
         val rootless = AgentToolRequirements.project(rooted, rootAvailable = false)
         assertFalse("inspect_virtual_backend" in rootless.names())
         assertEquals(

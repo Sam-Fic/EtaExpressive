@@ -2,6 +2,7 @@ package io.github.mangi.eta.agent.tool
 
 import android.content.Context
 import android.app.ActivityOptions
+import android.graphics.Rect
 import android.view.Display
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
 import android.content.Intent
@@ -31,6 +32,7 @@ import io.github.mangi.eta.agent.model.AgentToolGroup
 import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
+import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
 import io.github.mangi.eta.agent.runtime.GuiControlCoordinator
 import io.github.mangi.eta.agent.virtualdisplay.CanvasRoutingPolicy
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
@@ -1004,6 +1006,14 @@ internal class AgentLocalTools(
         }
     }
 
+    /** 主屏手势可能落到顶部胶囊上；副屏手势与胶囊窗口不在同一显示域，无需避让。 */
+    private fun <T> withCapsuleClearance(displayId: Int, area: Rect, gesture: () -> T): T =
+        if (CanvasRoutingPolicy.isVirtualDisplay(displayId)) gesture()
+        else AgentOverlayClearance.around(area, gesture)
+
+    private fun gestureBounds(x1: Int, y1: Int, x2: Int = x1, y2: Int = y1): Rect =
+        Rect(minOf(x1, x2), minOf(y1, y2), maxOf(x1, x2) + 1, maxOf(y1, y2) + 1)
+
     private fun observeScreen(args: JSONObject): AgentModelClient.ToolResult {
         publishedObservation.set(PublishedObservation())
         val startedAt = SystemClock.elapsedRealtime()
@@ -1075,8 +1085,10 @@ internal class AgentLocalTools(
         if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
             AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
         }
-        showTap(point.x, point.y, displayId)
-        return deviceController.tap(point.x, point.y, displayId)
+        return withCapsuleClearance(displayId, gestureBounds(point.x, point.y)) {
+            showTap(point.x, point.y, displayId)
+            deviceController.tap(point.x, point.y, displayId)
+        }
     }
 
     private fun tapArea(args: JSONObject): String {
@@ -1095,8 +1107,10 @@ internal class AgentLocalTools(
         if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
             AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
         }
-        showTap(point.x, point.y, displayId)
-        return deviceController.tap(point.x, point.y, displayId)
+        return withCapsuleClearance(displayId, gestureBounds(point.x, point.y)) {
+            showTap(point.x, point.y, displayId)
+            deviceController.tap(point.x, point.y, displayId)
+        }
     }
 
     private fun tapElement(args: JSONObject): String {
@@ -1107,7 +1121,9 @@ internal class AgentLocalTools(
         if (node == null) {
             return errorResult("INVALID_NODE_INDEX", "观察快照中不存在节点 index=$index")
         }
-        val result = deviceController.tapElement(observation, index)
+        val result = withCapsuleClearance(displayId, gestureBounds(node.centerX, node.centerY)) {
+            deviceController.tapElement(observation, index)
+        }
         if (result.isOkJson()) {
             if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
                 AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.TAP)
@@ -1126,7 +1142,9 @@ internal class AgentLocalTools(
         if (node == null) {
             return errorResult("INVALID_NODE_INDEX", "观察快照中不存在节点 index=$index")
         }
-        val result = deviceController.longPressElement(observation, index, durationMs)
+        val result = withCapsuleClearance(displayId, gestureBounds(node.centerX, node.centerY)) {
+            deviceController.longPressElement(observation, index, durationMs)
+        }
         if (result.isOkJson()) {
             if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
                 AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.LONG_PRESS)
@@ -1148,8 +1166,10 @@ internal class AgentLocalTools(
         if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
             AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.LONG_PRESS)
         }
-        showLongPress(point.x, point.y, durationMs, displayId)
-        return deviceController.longPress(point.x, point.y, durationMs, displayId)
+        return withCapsuleClearance(displayId, gestureBounds(point.x, point.y)) {
+            showLongPress(point.x, point.y, durationMs, displayId)
+            deviceController.longPress(point.x, point.y, durationMs, displayId)
+        }
     }
 
     private fun swipe(args: JSONObject): String {
@@ -1170,15 +1190,17 @@ internal class AgentLocalTools(
         if (!CanvasRoutingPolicy.isVirtualDisplay(displayId)) {
             AgentHapticFeedback.perform(context, AgentHapticFeedback.Type.SWIPE)
         }
-        showSwipe(start.x, start.y, end.x, end.y, durationMs, displayId)
-        return deviceController.swipe(
-            start.x,
-            start.y,
-            end.x,
-            end.y,
-            durationMs,
-            displayId,
-        )
+        return withCapsuleClearance(displayId, gestureBounds(start.x, start.y, end.x, end.y)) {
+            showSwipe(start.x, start.y, end.x, end.y, durationMs, displayId)
+            deviceController.swipe(
+                start.x,
+                start.y,
+                end.x,
+                end.y,
+                durationMs,
+                displayId,
+            )
+        }
     }
 
     private fun scrollElement(args: JSONObject): String {

@@ -11,6 +11,7 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     AppRoute.Terminal -> FrameDiagnosticPage.Terminal
     AppRoute.Tools -> FrameDiagnosticPage.Tools
     AppRoute.AgentTaskPreference -> FrameDiagnosticPage.AgentTaskPreference
+    AppRoute.VirtualDisplay -> FrameDiagnosticPage.AgentTaskPreference
     AppRoute.VirtualDisplayRecovery -> FrameDiagnosticPage.AgentTaskPreference
     AppRoute.Haptics -> FrameDiagnosticPage.Haptics
     AppRoute.Skills -> FrameDiagnosticPage.Skills

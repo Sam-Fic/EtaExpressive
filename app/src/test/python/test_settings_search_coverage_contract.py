@@ -35,7 +35,8 @@ class SettingsSearchCoverageContractTest(unittest.TestCase):
         search = SEARCH.read_text()
         # 搜索页不再自带条目表，改为消费主页同一份目录。
         self.assertNotIn("SettingsSearchEntry(", search)
-        self.assertIn("settingsCatalog(taskBackendInstalled = taskBackendInstalled)", search)
+        self.assertIn("settingsCatalog()", search)
+        self.assertNotIn("rememberTaskBackendInstalled", search)
         self.assertIn("hit.entry.destination", search)
 
     def test_every_catalog_entry_has_keywords(self):

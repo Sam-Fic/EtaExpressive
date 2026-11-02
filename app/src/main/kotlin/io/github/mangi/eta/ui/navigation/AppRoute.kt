@@ -23,6 +23,10 @@ sealed interface AppRoute {
     data object AgentTaskPreference : AppRoute
 
     @Serializable
+    // 虚拟屏实时视窗：入口在 AgentTaskPreference，不在设置主页单独出现。
+    data object VirtualDisplay : AppRoute
+
+    @Serializable
     // Deserialization compatibility only; renders AgentTaskPreference, with no separate entry in UI.
     data object VirtualDisplayRecovery : AppRoute
 

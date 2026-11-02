@@ -235,12 +235,24 @@ final class LaunchTargetOccupancy {
      */
     static Decision decide(String target, List<Root> roots, List<Recent> recents,
             java.util.Set<Integer> reusableTaskIds) {
+        return decide(target, roots, recents, reusableTaskIds, false);
+    }
+
+    /**
+     * Same policy, with one explicit proof: when the caller has verified that the source display
+     * exists and its root inventory is readable, an empty list means "nothing is open there", not
+     * "the inventory could not be read". A newly created owner display legitimately starts empty.
+     * {@code null} is always unknown; only an empty, non-null list may be treated as clean.
+     */
+    static Decision decide(String target, List<Root> roots, List<Recent> recents,
+            java.util.Set<Integer> reusableTaskIds, boolean emptyRootsProvenClean) {
         if (target == null || target.isEmpty())
             return new Decision(UNKNOWN, "target package missing");
         if (reusableTaskIds == null) return new Decision(UNKNOWN, "owned inventory missing");
         String unknown = null;
         int reuse = -1;
-        if (roots == null || roots.isEmpty()) unknown = "root inventory empty";
+        if (roots == null) unknown = "root inventory empty";
+        else if (roots.isEmpty() && !emptyRootsProvenClean) unknown = "root inventory empty";
         if (recents == null) unknown = "recent inventory missing";
         for (Root root : roots == null ? java.util.Collections.<Root>emptyList() : roots) {
             if (root == null) { if (unknown == null) unknown = "null root"; continue; }

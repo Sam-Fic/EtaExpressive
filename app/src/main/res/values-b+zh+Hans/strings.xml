@@ -384,6 +384,12 @@
   <string name="overlay_dismiss">关闭</string>
   <string name="overlay_expand">展开</string>
   <string name="overlay_collapse">收起</string>
+  <string name="overlay_capsule_toggle">Agent 状态：%1$s。点按展开或收起</string>
+  <string name="overlay_virtual_canvas_auto">自动操作</string>
+  <string name="overlay_virtual_canvas_takeover">手动接管</string>
+  <string name="overlay_virtual_takeover">接管</string>
+  <string name="overlay_virtual_continue">继续</string>
+  <string name="overlay_virtual_fullscreen">全屏</string>
   <string name="tool_observe_screen">观察屏幕</string>
   <string name="tool_tap">点击</string>
   <string name="tool_tap_element">点击元素</string>

@@ -28,14 +28,14 @@ class FinalDeliveryIntegrationTest(unittest.TestCase):
         self.assertIn('AgentContextCompactionUi.applyMarker(', handler)
 
     def test_four_inline_actions_only_preview_uses_full_preview_entry(self):
-        controls = self.source('ui/VirtualDisplayRecoveryScreen.kt')
+        controls = self.source('ui/screens/virtualdisplay/VirtualDisplaySections.kt')
         actions = controls.split('FlowRow(', 1)[1]
         self.assertEqual(4, actions.count('TouchHaptics.click(view)'))
         self.assertEqual(1, actions.count('VirtualDisplayWebPreview.openWithManualClose(context)'))
         self.assertNotIn('VirtualDisplayWebPreview.open(context)', actions)
         self.assertIn('VirtualDisplayWebPreview.revoke(context)', actions)
         self.assertNotIn('VirtualDisplayWebPreview.stop()', actions)
-        self.assertIn('onClick = { TouchHaptics.click(view); refresh() }', actions)
+        self.assertRegex(actions, r'TouchHaptics\.click\(view\)\s+refresh\(\)')
         self.assertIn('recover(context.applicationContext)', actions)
 
     def test_dynamic_configuration_error_has_explicit_recovery(self):

@@ -23,6 +23,7 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.Terminal::class,
     AppRoute.Tools::class,
     AppRoute.AgentTaskPreference::class,
+    AppRoute.VirtualDisplay::class,
     AppRoute.VirtualDisplayRecovery::class,
     AppRoute.Haptics::class,
     AppRoute.Skills::class,

@@ -369,6 +369,12 @@
   <string name="overlay_dismiss">Dismiss</string>
   <string name="overlay_expand">Expand</string>
   <string name="overlay_collapse">Collapse</string>
+  <string name="overlay_capsule_toggle">Agent status: %1$s. Tap to expand or collapse</string>
+  <string name="overlay_virtual_canvas_auto">Auto control</string>
+  <string name="overlay_virtual_canvas_takeover">Manual control</string>
+  <string name="overlay_virtual_takeover">Take over</string>
+  <string name="overlay_virtual_continue">Resume</string>
+  <string name="overlay_virtual_fullscreen">Fullscreen</string>
   <string name="overlay_supplement">Add input</string>
   <string name="overlay_supplement_hint">Add instructions and Eta will continue the current task</string>
   <string name="overlay_send">Send</string>

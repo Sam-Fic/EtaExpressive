@@ -155,11 +155,9 @@ internal data class SettingsEntry(
  *
  * 主页按组渲染这些行，搜索页直接过滤同一份列表——新增设置项只要在这里加一条并在主页
  * 挂上同一个 [SettingsKeys] 常量，两处同时生效，不会再出现「主页有、搜索搜不到」。
- *
- * @param taskBackendInstalled 与主页同一判定：任务后端未安装时不收录「任务界面」入口。
  */
 @Composable
-internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry> {
+internal fun settingsCatalog(): List<SettingsEntry> {
     val groupLlmProviders = stringResource(R.string.settings_llm_providers)
     val groupModelFeatures = stringResource(R.string.settings_model_features)
     val groupContextExtensions = stringResource(R.string.settings_context_extensions)
@@ -437,19 +435,17 @@ internal fun settingsCatalog(taskBackendInstalled: Boolean?): List<SettingsEntry
                 destination = SettingsDestination.Route(AppRoute.Tools),
             ),
         )
-        if (taskBackendInstalled == true) {
-            add(
-                SettingsEntry(
-                    key = SettingsKeys.AGENT_TASK_PREFERENCE,
-                    title = stringResource(R.string.agent_task_surface_title),
-                    summary = null,
-                    keywords = "task 任务 后台 守护 虚拟屏 任务界面 偏好",
-                    icon = Icons.Rounded.Layers,
-                    group = groupToolCapabilities,
-                    destination = SettingsDestination.Route(AppRoute.AgentTaskPreference),
-                ),
-            )
-        }
+        add(
+            SettingsEntry(
+                key = SettingsKeys.AGENT_TASK_PREFERENCE,
+                title = stringResource(R.string.agent_task_surface_title),
+                summary = null,
+                keywords = "task 任务 后台 守护 虚拟屏 任务界面 偏好",
+                icon = Icons.Rounded.Layers,
+                group = groupToolCapabilities,
+                destination = SettingsDestination.Route(AppRoute.AgentTaskPreference),
+            ),
+        )
         add(
             SettingsEntry(
                 key = SettingsKeys.TOOL_SHELL,

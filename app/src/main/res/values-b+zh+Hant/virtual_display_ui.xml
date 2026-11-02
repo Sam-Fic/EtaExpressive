@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="agent_task_surface_group_title">執行位置</string>
+    <string name="vd_screen_title">虛擬螢幕</string>
+    <string name="vd_screen_entry_title">即時畫面</string>
+    <string name="vd_screen_entry_running">執行中 · %1$s</string>
+    <string name="vd_screen_entry_running_generic">執行中</string>
+    <string name="vd_screen_entry_idle">未啟動</string>
+    <string name="vd_screen_state_live">即時</string>
+    <string name="vd_screen_state_preparing">正在準備第一幀…</string>
+    <string name="vd_screen_state_controlling">接管中</string>
+    <string name="vd_screen_state_released">已釋放</string>
+    <string name="vd_screen_empty_title">沒有即時畫面</string>
+    <string name="vd_screen_empty_summary">背景任務在虛擬螢幕執行時，畫面會出現在這裡；後端模組管理的副螢幕請使用下方網頁預覽</string>
+    <string name="vd_screen_released_title">虛擬螢幕已釋放</string>
+    <string name="vd_screen_released_summary">副螢幕已關閉；仍可在下方撤銷瀏覽器授權或執行恢復</string>
+    <string name="vd_screen_info_title">狀態</string>
+    <string name="vd_screen_info_app">應用程式</string>
+    <string name="vd_screen_info_resolution">解析度</string>
+    <string name="vd_screen_info_display_id">顯示 ID</string>
+    <string name="vd_screen_info_picture">畫面</string>
+    <string name="vd_screen_value_none">—</string>
+    <string name="vd_screen_control_title">控制</string>
+    <string name="vd_screen_takeover">手動接管</string>
+    <string name="vd_screen_takeover_summary">畫面上的點按與滑動會直接傳送給應用程式；在畫面內拖動時本頁不捲動</string>
+    <string name="vd_screen_handoff">移交給主螢幕</string>
+    <string name="vd_screen_handoff_summary">把應用程式移到實體主螢幕，並關閉虛擬螢幕</string>
+    <string name="vd_screen_handoff_working">正在移交到主螢幕…</string>
+    <string name="vd_screen_handoff_failed">無法移轉應用程式，虛擬螢幕已釋放</string>
+    <string name="vd_screen_close">關閉虛擬螢幕</string>
+    <string name="vd_screen_close_summary">釋放虛擬螢幕，螢幕上的應用程式會隨之關閉</string>
+    <string name="vd_screen_close_confirm_title">關閉虛擬螢幕？</string>
+    <string name="vd_screen_close_confirm_message">螢幕上的應用程式會被關閉，Agent 任務無法繼續在該螢幕執行</string>
+    <string name="vd_screen_web_title">網頁預覽</string>
+    <string name="vd_screen_web_summary">為本機瀏覽器授權，唯讀查看即時畫面</string>
+    <string name="vd_screen_web_paired">已授權瀏覽器</string>
+    <string name="vd_screen_web_not_paired">未授權瀏覽器</string>
+    <string name="vd_screen_stage_description">%1$s 的即時畫面</string>
+    <string name="vd_screen_stage_takeover_hint">點按接管畫面</string>
+    <string name="vd_screen_unknown_app">未知應用程式</string>
+</resources>

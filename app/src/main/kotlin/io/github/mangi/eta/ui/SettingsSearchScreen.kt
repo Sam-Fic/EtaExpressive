@@ -72,9 +72,8 @@ internal fun SettingsSearchScreen(
     onBack: () -> Unit,
     onFocusInSettings: (String) -> Unit,
 ) {
-    // 与主页同一判定：任务后端未安装时不收录「任务界面」入口。
-    val taskBackendInstalled = rememberTaskBackendInstalled()
-    val entries = settingsCatalog(taskBackendInstalled = taskBackendInstalled)
+    // 与主页同一判定：入口不再依赖后端模块，搜索索引始终收录。
+    val entries = settingsCatalog()
 
     EtaSearchPage(
         searchPlaceholder = stringResource(R.string.settings_search_hint),
