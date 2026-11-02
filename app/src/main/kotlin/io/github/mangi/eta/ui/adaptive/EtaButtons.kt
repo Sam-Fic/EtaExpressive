@@ -43,19 +43,27 @@ fun EtaTopBarBackButton(
     enabled: Boolean = true,
     contentDescription: String? = null,
 ) {
-    IconButton(
-        modifier = modifier.padding(horizontal = 10.dp),
-        onClick = onClick,
-        enabled = enabled,
-        colors = IconButtonDefaults.iconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
-    ) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-            contentDescription = contentDescription,
-        )
+    // 纯图标按钮：有标签时同时提供长按提示，没有标签则保持原样（由调用方自查）。
+    val button: @Composable () -> Unit = {
+        IconButton(
+            modifier = modifier.padding(horizontal = 10.dp),
+            onClick = onClick,
+            enabled = enabled,
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = contentDescription,
+            )
+        }
+    }
+    if (contentDescription != null) {
+        EtaTooltip(text = contentDescription, content = button)
+    } else {
+        button()
     }
 }
 

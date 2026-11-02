@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 
 /**
@@ -23,6 +24,8 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
  *
  * @param icon 取自 `Icons.Rounded.*`，与兄弟页保持同一套圆角图标。
  * @param contentDescription 无障碍与长按提示的唯一文案，必须传具体动作而不是「按钮」。
+ * @param tooltipText 需要区分标签与提示时才传，默认与 [contentDescription] 同源。
+ * @param disabledTooltipText 禁用时优先展示的提示（写原因）；为空则沿用 [tooltipText]。
  */
 @Composable
 internal fun TopBarIconButton(
@@ -31,6 +34,8 @@ internal fun TopBarIconButton(
     onClick: () -> Unit,
     destructive: Boolean = false,
     enabled: Boolean = true,
+    tooltipText: String = contentDescription,
+    disabledTooltipText: String? = null,
 ) {
     val view = LocalView.current
     val colors = if (destructive) {
@@ -40,14 +45,18 @@ internal fun TopBarIconButton(
     } else {
         IconButtonDefaults.iconButtonColors()
     }
-    M3IconButton(
-        onClick = {
-            TouchHaptics.click(view)
-            onClick()
-        },
-        enabled = enabled,
-        colors = colors,
+    EtaTooltip(
+        text = if (!enabled && disabledTooltipText != null) disabledTooltipText else tooltipText,
     ) {
-        Icon(imageVector = icon, contentDescription = contentDescription)
+        M3IconButton(
+            onClick = {
+                TouchHaptics.click(view)
+                onClick()
+            },
+            enabled = enabled,
+            colors = colors,
+        ) {
+            Icon(imageVector = icon, contentDescription = contentDescription)
+        }
     }
 }

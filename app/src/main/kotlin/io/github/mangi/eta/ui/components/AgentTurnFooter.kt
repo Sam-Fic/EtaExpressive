@@ -38,36 +38,23 @@ import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
 import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import kotlinx.coroutines.delay
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text as M3Text
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox as M3TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.rememberTooltipState
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 /**
- * 官方 M3 Expressive 提示气泡：`TooltipBox` + `PlainTooltip` + `rememberTooltipState`，
- * 位置与配色全部取官方 `TooltipDefaults`，不自定义尺寸或颜色。
+ * 消息操作条的长按提示。实现已收编到 `ui/adaptive/EtaTooltips` 的 [EtaTooltip]，
+ * 这里只保留旧名以兼容存量调用点；新代码请直接用 [EtaTooltip]。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FooterTooltipBox(
     text: String,
     enabled: Boolean,
     content: @Composable () -> Unit,
 ) {
-    val state = rememberTooltipState()
-    M3TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-        tooltip = { PlainTooltip { M3Text(text = text, style = etaTextStyle(EtaType.Caption)) } },
-        state = state,
-        enableUserInput = enabled,
-        content = content,
-    )
+    EtaTooltip(text = text, enabled = enabled, content = content)
 }
 
 /**

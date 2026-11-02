@@ -18,7 +18,6 @@ import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,21 +69,16 @@ internal fun TopBarOverflowMenu(
     onDeleteCurrentConversation: () -> Unit = {},
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val view = LocalView.current
 
     Box {
-        IconButton(
+        TopBarIconButton(
+            icon = Icons.Rounded.MoreVert,
+            contentDescription = stringResource(R.string.action_more),
             onClick = {
-                TouchHaptics.click(view)
                 onRefreshKimiWeb()
                 menuExpanded = true
             },
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.MoreVert,
-                contentDescription = stringResource(R.string.action_more),
-            )
-        }
+        )
 
         EtaMenuPopup(
             expanded = menuExpanded,

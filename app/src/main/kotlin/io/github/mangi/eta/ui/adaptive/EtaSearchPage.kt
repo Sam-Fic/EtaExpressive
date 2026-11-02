@@ -160,11 +160,14 @@ fun EtaSearchScaffold(
                     actions = {
                         // 有输入内容时才出现清除按钮。
                         if (showClear && query.isNotEmpty()) {
-                            IconButton(onClick = { onQueryChange("") }) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Close,
-                                    contentDescription = stringResource(R.string.action_close),
-                                )
+                            val clearDescription = stringResource(R.string.action_close)
+                            EtaTooltip(text = clearDescription) {
+                                IconButton(onClick = { onQueryChange("") }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = clearDescription,
+                                    )
+                                }
                             }
                         }
                         actions()

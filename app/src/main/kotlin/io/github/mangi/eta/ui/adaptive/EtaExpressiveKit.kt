@@ -120,10 +120,46 @@ enum class EtaButtonStyle { Filled, Tonal, TonalEmphasis, SurfaceHighest, Outlin
  * @param shapes 官方 [IconButtonShapes] 形状对；传官方 `IconButtonDefaults.shapes()` 即
  *   开启 M3E 按压 morph（圆 → 方圆角），不传保持官方默认的固定形状。
  * @param stretch 为 true 时横向拉伸占满剩余宽度（用于“最后的按钮向右拉伸”的行布局）。
+ * @param tooltipText 长按提示文案，默认与 [contentDescription] 同源；纯图标按钮按规范
+ *   必须带长按提示。传 `null` 可显式关闭；外层已包 [EtaTooltip] 时自动跳过，不会叠两层。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun EtaIconButton(
+    icon: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: EtaIconSize = EtaIconSize.M,
+    style: EtaButtonStyle = EtaButtonStyle.Tonal,
+    enabled: Boolean = true,
+    fillWidth: Boolean = false,
+    shapes: IconButtonShapes? = null,
+    tooltipText: String? = contentDescription,
+) {
+    val button: @Composable () -> Unit = {
+        EtaIconButtonBase(
+            icon = icon,
+            contentDescription = contentDescription,
+            onClick = onClick,
+            modifier = modifier,
+            size = size,
+            style = style,
+            enabled = enabled,
+            fillWidth = fillWidth,
+            shapes = shapes,
+        )
+    }
+    if (tooltipText != null && !LocalEtaTooltipActive.current) {
+        EtaTooltip(text = tooltipText, content = button)
+    } else {
+        button()
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun EtaIconButtonBase(
     icon: ImageVector,
     contentDescription: String?,
     onClick: () -> Unit,
