@@ -4,6 +4,52 @@ All notable changes to **EtaExpressive** are documented here. Entries are groupe
 
 <!-- Ordered newest-first; generated from git tag history. -->
 
+## [v5.3.20] - 2026-11-02
+
+### Features
+
+- feat(remote): 远程智能体支持连接局域网服务器，含管理与连接诊断；升为侧栏胶囊，断线提示并入输入框状态胶囊
+
+- feat(remote): 远程协议目录化——注册表单点接入、可选方法给语义默认、协议名进服务器配置行；接入 OpenCode v2 作为第二远程协议
+
+- feat(remote): 服务器编辑独立成页（表单 + 协议 + 连接诊断，入栈转场）
+
+- feat(remote): 自动重连到上限判死，胶囊重试钮与点会话行触发复活
+
+- feat(agent): 对话生成中可切换模型/助手，仅下一轮生效；回复自动朗读的会话与运行身份判定
+
+- feat(media-search): 检索服务加索引代数与三级缓存，匹配度阈值下推为检索时参数；切分类走本地筛选不再重搜
+
+- feat(ui): 滚动截断统一用 DstIn 蒙版淡出并修复主对话流黑带；使用统计热力图补边缘淡出
+
+### Fixes
+
+- fix(agent): 日程门禁从「设备控制」迁到「个人数据」
+
+- fix(ui): 多选勾选行走官方 checked 变体，恢复选中形状 morph 动画
+
+- fix(ui): 提问卡并入工作组分段列表，相接圆角随相邻行取内圆
+
+- fix(ui): 重连分割线断开组内分段列表，断点两侧工具卡取段末/段首大圆角
+
+- fix(agent): 修复 CI 编译报错——补 GuiControlChanged 分支、clearText displayId 与准入会话声明
+
+### Performance
+
+- perf(media): 模型文件校验加指纹缓存，消除每次 embed 与状态查询的全量 SHA-256
+
+### Refactor
+
+- refactor(ui): 间距节奏全库收敛与结构统一，列表行字阶与配色交给官方槽位默认
+
+- refactor(tools): 工具能力收拢为「一张卡一个开关」，分组开关移出设置页
+
+- refactor(ui): 用户气泡图片条改普通横滚加两端淡出，退役非收纳轮播
+
+### Build
+
+- build(ci): 单测 worker 堆提到 2GB、Gradle daemon 提到 3GB，解决 Robolectric 与 PTY 用例共用 512MB 堆导致的无限期停滞
+
 ## [v5.3.19] - 2026-10-31
 
 ### Features
