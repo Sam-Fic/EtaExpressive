@@ -1729,6 +1729,12 @@
   <string name="recipe_enable_summary">An enabled recipe appears in the model tool list from the next request on</string>
   <string name="recipe_edit_one">Edit this recipe</string>
   <string name="recipe_edit_title">Edit %1$s</string>
+  <string name="recipe_name">Name</string>
+  <string name="recipe_name_hint">Shown to the model as %1$s; 3–40 lowercase letters, digits or underscores</string>
+  <string name="recipe_name_invalid">Use 3–40 lowercase letters, digits or underscores, starting with a letter</string>
+  <string name="recipe_name_reserved">That name collides with a built-in tool — pick another</string>
+  <string name="recipe_name_taken">A recipe with that name already exists — pick another</string>
+  <string name="recipe_rename_partial">Renamed, but recipes referencing it could not all be updated</string>
   <string name="recipe_description">What it does</string>
   <string name="recipe_steps_section">Steps · %1$d</string>
   <string name="recipe_delete_title">Delete recipe</string>

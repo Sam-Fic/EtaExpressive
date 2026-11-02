@@ -1745,6 +1745,12 @@
   <string name="recipe_enable_summary">啟用後，這份配方會從下一輪要求起出現在模型的工具清單裡</string>
   <string name="recipe_edit_one">編輯這份配方</string>
   <string name="recipe_edit_title">編輯 %1$s</string>
+  <string name="recipe_name">名稱</string>
+  <string name="recipe_name_hint">模型端會顯示為 %1$s；只能用 3 到 40 位小寫字母、數字、底線</string>
+  <string name="recipe_name_invalid">名稱只能用 3 到 40 位小寫字母、數字、底線，且以字母開頭</string>
+  <string name="recipe_name_reserved">與內建工具同名，換一個名稱</string>
+  <string name="recipe_name_taken">已有同名配方，換一個名稱</string>
+  <string name="recipe_rename_partial">已改名，但有引用它的配方沒能一起更新</string>
   <string name="recipe_description">它做什麼</string>
   <string name="recipe_steps_section">步驟 · %1$d</string>
   <string name="recipe_delete_title">刪除配方</string>

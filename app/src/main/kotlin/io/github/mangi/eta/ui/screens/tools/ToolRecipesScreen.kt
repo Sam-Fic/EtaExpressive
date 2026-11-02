@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.screens.tools
 
 import android.content.Context
+import android.content.res.Resources
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material.icons.Icons
@@ -51,10 +53,15 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolRecipeStore
 import io.github.mangi.eta.agent.tool.ToolRecipe
+import io.github.mangi.eta.agent.tool.ToolRecipeConstants
+import io.github.mangi.eta.agent.tool.ToolRecipeReservedNames
 import io.github.mangi.eta.agent.tool.ToolRecipeShareException
 import io.github.mangi.eta.agent.tool.ToolRecipeShareFormat
 import io.github.mangi.eta.agent.tool.ToolRecipeStep
@@ -123,14 +130,21 @@ internal class ToolRecipeRuntime private constructor(context: Context) {
     fun delete(name: String): Boolean = store.delete(name).also { refresh() }
 
     /** 覆盖保存（导入 / 编辑共用）：不做存在性检查，由调用方决定。 */
-    fun save(recipe: ToolRecipe): Boolean =
-        when (val result = store.save(recipe)) {
-            is AgentToolRecipeStore.SaveResult.Ok -> {
-                refresh(); true
-            }
+    fun save(recipe: ToolRecipe): AgentToolRecipeStore.SaveResult =
+        store.save(recipe).also { refresh() }
 
-            is AgentToolRecipeStore.SaveResult.Failed -> false
-        }
+    /**
+     * 保存编辑结果。
+     *
+     * @param original 打开编辑页时的快照——名字变了就走 [AgentToolRecipeStore.rename]，
+     *                 顺带把其它配方里的 compose 引用改掉；否则组合链会在改名后指向不存在的配方。
+     */
+    fun save(original: ToolRecipe, updated: ToolRecipe): AgentToolRecipeStore.SaveResult =
+        (if (updated.name == original.name) {
+            store.save(updated)
+        } else {
+            store.rename(original.name, updated)
+        }).also { refresh() }
 
     companion object {
         @Volatile
@@ -312,14 +326,17 @@ internal fun ToolRecipesScreen(
             recipe = recipe,
             // Root 依赖按完整配方图算（组合链上游也要 Root），与列表页同一份快照。
             rootNeeded = recipe.name in rootNeeding,
+            // 改名查重要用同一份快照：编辑页里就地能判出「已有同名」，不必等落盘失败。
+            takenNames = recipes.map { it.name }.toSet(),
             onDismiss = { editing = null },
             onSave = { updated ->
                 scope.launch(Dispatchers.IO) {
-                    val ok = runtime.save(updated)
-                    importReport = if (ok) {
-                        resources.getString(R.string.recipe_saved, updated.name)
-                    } else {
-                        resources.getString(R.string.recipe_save_failed)
+                    importReport = when (val result = runtime.save(recipe, updated)) {
+                        is AgentToolRecipeStore.SaveResult.Ok ->
+                            resources.getString(R.string.recipe_saved, result.recipe.name)
+
+                        is AgentToolRecipeStore.SaveResult.Failed ->
+                            recipeSaveFailureText(resources, result.code)
                     }
                 }
                 editing = null
@@ -373,8 +390,8 @@ internal fun ToolRecipesScreen(
  * 不再手搓内边距与最小行高：行距、左右留白、摘要缩进全交给
  * [EtaSegmentedRow]（官方 `SegmentedListItem` 令牌），页面之间才对得齐。
  *
- * 行本体刻意不可点：进入编辑页只能走行尾溢出菜单的「编辑」。配方行只在「看一眼前三行」
- * 之外没有别的语义，整行承担跳转容易在滑动或点开关时误触。
+ * 行本体刻意不可点：进入编辑页只能走行尾溢出菜单的「编辑」。配方行只是列表里的一个摘要
+ * （名称一行、描述两行），整行承担跳转容易在滑动或点开关时误触。
  */
 @Composable
 private fun RecipeRow(
@@ -403,17 +420,25 @@ private fun RecipeRow(
             )
         },
         content = {
+            // 名称限一行：配方名是模型写的标识符，可以很长（device_health_snapshot 就够两行），
+            // 一行能把同一屏里能看几条配方的节奏保住。完整名字不用在这里想办法塞下——
+            // 行尾溢出菜单里有「编辑」，编辑页顶栏就是完整名称。
             M3Text(
                 text = recipe.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         },
         supportingContent = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (recipe.description.isNotBlank()) {
-                    // 描述完整显示不省略；想看步骤细节再进编辑页。
-                    // 描述行走槽位默认（bodyMedium + onSurfaceVariant），状态行才是更小的元数据。
+                    // 描述限两行：原文由模型写就，几十上百字很常见，不限行会让每条配方吃掉大半屏。
+                    // 想看全文走行尾溢出菜单的「编辑」，编辑页的「它做什么」输入框里是完整描述。
+                    // 与技能页 SkillSwitchRow 同一口径（bodyMedium + onSurfaceVariant + 2 行省略）。
                     M3Text(
                         text = recipe.description,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 M3Text(
@@ -549,10 +574,12 @@ private fun RecipeSwitch(
 }
 
 /**
- * 配方编辑页：审计 + 启停 + 改描述。
+ * 配方编辑页：审计 + 启停 + 改名 + 改描述。
  *
  * 版式对齐兄弟页（KernelSU 式分段列表 + M3 大标题）：
  * - **启用置顶**：开关是这份配方最要紧的状态，放在第一屏第一张卡，用户不必滚动去找；
+ * - **名称**：列表行把名字压成一行会截断，这里给出完整名字并允许改。名字是身份键
+ *   （文件名 + 模型侧工具名 `recipe_<name>` + 其它配方的 compose 引用），所以校验放在落盘前；
  * - 「它做什么」是可编辑的描述，紧随其后——模型靠这段文字决定什么时候调用这个工具；
  * - 步骤与入参是只读的审计信息，逐条分段行展示：前导图标区分操作类型，命令原样透出；
  * - 「工具信息」给出模型侧工具名与 Root 依赖，审这份配方到底做了什么时要看这两项。
@@ -564,12 +591,17 @@ private fun RecipeSwitch(
 private fun RecipeEditPage(
     recipe: ToolRecipe,
     rootNeeded: Boolean,
+    takenNames: Set<String>,
     onDismiss: () -> Unit,
     onSave: (ToolRecipe) -> Unit,
 ) {
+    var name by remember { mutableStateOf(recipe.name) }
     var description by remember { mutableStateOf(recipe.description) }
     var enabled by remember { mutableStateOf(recipe.enabled) }
-    val dirty = description != recipe.description || enabled != recipe.enabled
+    // 名字用 trim 后的值参与校验与保存：粘贴带来的首尾空白不该算进配方名。
+    val trimmedName = name.trim()
+    val nameError = recipeNameError(trimmedName, recipe.name, takenNames)
+    val dirty = trimmedName != recipe.name || description != recipe.description || enabled != recipe.enabled
     val parameters = remember(recipe.parameters) { recipeParameters(recipe.parameters) }
     EtaPageSurface(onDismissRequest = onDismiss) {
         EtaScaffold(
@@ -578,9 +610,18 @@ private fun RecipeEditPage(
             modifier = Modifier.fillMaxSize().imePadding(),
             actions = {
                 // 官方 TextButton（自带涟漪与禁用态）；返回键即取消，不再另摆一条底栏动作。
+                // 名字不合法时保存置灰：坏名字会被当成文件名，拦住比落盘后改正便宜。
                 M3TextButton(
-                    onClick = { onSave(recipe.copy(description = description, enabled = enabled)) },
-                    enabled = dirty,
+                    onClick = {
+                        onSave(
+                            recipe.copy(
+                                name = trimmedName,
+                                description = description,
+                                enabled = enabled,
+                            ),
+                        )
+                    },
+                    enabled = dirty && nameError == null,
                 ) {
                     M3Text(text = stringResource(R.string.action_save))
                 }
@@ -626,7 +667,31 @@ private fun RecipeEditPage(
                     }
                 }
 
-                // ② 它做什么：模型靠这段描述决定什么时候调用这个工具，所以它可编辑。
+                // ② 名称：列表行限一行会截断，这里既显示完整名字也允许改。
+                //    等宽字体——名字是标识符，不是自然语言；单行输入框横向滚动看全整串。
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { M3Text(text = stringResource(R.string.recipe_name)) },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                    supportingText = {
+                        M3Text(
+                            text = nameError ?: stringResource(
+                                R.string.recipe_name_hint,
+                                ToolRecipeConstants.TOOL_PREFIX + trimmedName,
+                            ),
+                        )
+                    },
+                    isError = nameError != null,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Ascii,
+                        imeAction = ImeAction.Next,
+                    ),
+                )
+
+                // ③ 它做什么：模型靠这段描述决定什么时候调用这个工具，所以它可编辑。
                 //    走官方 OutlinedTextField：自带描边圆角与浮动标签，直接落在页面背景上。
                 OutlinedTextField(
                     value = description,
@@ -637,7 +702,7 @@ private fun RecipeEditPage(
                     minLines = 2,
                 )
 
-                // ③ 步骤：逐条分段行。原先把全部步骤塞进一个容器用小字排版，
+                // ④ 步骤：逐条分段行。原先把全部步骤塞进一个容器用小字排版，
                 //    命令一长就被挤成不可读的一坨；这里一条一行，摘要原样透出。
                 EtaSegmentedColumn(
                     title = stringResource(R.string.recipe_steps_section, recipe.steps.size),
@@ -667,7 +732,7 @@ private fun RecipeEditPage(
                     }
                 }
 
-                // ④ 入参：模型调用时要填的实参，写清类型与是否必填。
+                // ⑤ 入参：模型调用时要填的实参，写清类型与是否必填。
                 if (parameters.isNotEmpty()) {
                     EtaSegmentedColumn(
                         title = stringResource(R.string.recipe_params_section, parameters.size),
@@ -722,7 +787,7 @@ private fun RecipeEditPage(
                     }
                 }
 
-                // ⑤ 工具信息：模型侧叫什么名字、要不要 Root——审这份配方时必看两项。
+                // ⑥ 工具信息：模型侧叫什么名字、要不要 Root——审这份配方时必看两项。
                 EtaSegmentedColumn(title = stringResource(R.string.recipe_info_section)) {
                     item {
                         EtaSegmentedRow(
@@ -785,6 +850,41 @@ private fun RecipeEditPage(
             }
         }
     }
+}
+
+/**
+ * 改名时的就地校验，返回给输入框当 supporting text；`null` 表示这个名字可以用。
+ *
+ * 规则与 [ToolRecipeConstants.TOOL_NAME_PATTERN] 同源（模型写配方时走的就是它），
+ * 判据一条不放宽：名字会直接变成文件名，`../` 一类逃逸只能在这里拦。
+ */
+@Composable
+private fun recipeNameError(name: String, currentName: String, takenNames: Set<String>): String? = when {
+    name == currentName -> null
+    !ToolRecipeConstants.TOOL_NAME_PATTERN.matches(name) ->
+        stringResource(R.string.recipe_name_invalid)
+
+    name in ToolRecipeReservedNames.RESERVED -> stringResource(R.string.recipe_name_reserved)
+
+    // 与 store 的查重口径一致：大小写不敏感，且不算自己。
+    takenNames.any { it != currentName && it.equals(name, ignoreCase = true) } ->
+        stringResource(R.string.recipe_name_taken)
+
+    else -> null
+}
+
+/**
+ * 保存失败的错误码 → 文案。
+ *
+ * 错误码由 [AgentToolRecipeStore] 产出，文案只在这里按语言取；取不到的一律落到通用失败文案。
+ * 页面已经就地校验过一遍，走到这里说明是并发改同名 / 磁盘写失败这类兜底情况。
+ */
+private fun recipeSaveFailureText(resources: Resources, code: String): String = when (code) {
+    "INVALID_RECIPE_NAME" -> resources.getString(R.string.recipe_name_invalid)
+    "RESERVED_RECIPE_NAME" -> resources.getString(R.string.recipe_name_reserved)
+    "RECIPE_NAME_TAKEN" -> resources.getString(R.string.recipe_name_taken)
+    "RECIPE_REFERENCE_STALE" -> resources.getString(R.string.recipe_rename_partial)
+    else -> resources.getString(R.string.recipe_save_failed)
 }
 
 /**

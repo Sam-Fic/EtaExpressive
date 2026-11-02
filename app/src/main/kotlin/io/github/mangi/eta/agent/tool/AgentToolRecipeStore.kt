@@ -68,36 +68,114 @@ internal class AgentToolRecipeStore(
      *
      * @return 保存结果：成功返回配方，失败返回错误码与原因。
      */
-    fun save(recipe: ToolRecipe): SaveResult {
+    fun save(recipe: ToolRecipe): SaveResult = lock.write {
+        persistLocked(recipe, previous = loadLocked()[recipe.name])
+    }
+
+    /**
+     * 改名：写到新名字的文件、删掉旧文件，并把其它配方里指向旧名的 [ToolRecipeStep.Compose]
+     * 引用一并改成新名——否则组合链在改名那一刻就断了，而模型只会看到一个「配方不存在」。
+     *
+     * @param from 旧名字（身份键，等于旧文件名）。
+     * @param updated 改名后的完整配方；可以顺带带上同一次编辑里的描述/启用状态，
+     *                避免「改名 + 保存」落盘两次、版本号跳两格。
+     *
+     * 顺序刻意是「先写新文件，再删旧文件，最后改引用」：中途失败最多留下多余副本，
+     * 不会把配方本身弄丢。引用改写失败要如实返回错误——静默留下断掉的 compose 比改名失败更糟。
+     */
+    fun rename(from: String, updated: ToolRecipe): SaveResult {
         lock.write {
-            val existing = loadLocked()[recipe.name]
-            if (existing == null && loadLocked().size >= ToolRecipeConstants.MAX_STORED_RECIPES) {
+            val all = loadLocked()
+            val current = all[from]
+                ?: return SaveResult.Failed("RECIPE_NOT_FOUND", "配方「$from」已不存在")
+            val to = updated.name
+            if (to == from) return persistLocked(updated, previous = current)
+            // 名字会变成文件名：校验必须在落盘之前做，不能让 `../` 这类名字逃出配方目录。
+            if (!ToolRecipeConstants.TOOL_NAME_PATTERN.matches(to)) {
                 return SaveResult.Failed(
-                    "RECIPE_LIMIT_REACHED",
-                    "设备上已有 ${ToolRecipeConstants.MAX_STORED_RECIPES} 份配方；" +
-                        "先停用或删除用不上的，再创建新的，不要反复尝试",
+                    "INVALID_RECIPE_NAME",
+                    "配方名必须是 3 到 40 位小写字母/数字/下划线，且以字母开头；收到「$to」",
                 )
             }
-            val toPersist = recipe.copy(
-                version = (existing?.version ?: 0) + 1,
-                createdAtMillis = existing?.createdAtMillis ?: recipe.createdAtMillis,
-                updatedAtMillis = System.currentTimeMillis(),
-            )
-            val file = fileFor(toPersist.name)
-            val payload = serialize(toPersist)
-            val written = runCatching {
-                recipesDir.mkdirs()
-                val temp = File(recipesDir, "${toPersist.name}.json.tmp")
-                temp.writeText(payload.toString())
-                if (file.exists()) file.delete()
-                temp.renameTo(file)
-            }.isSuccess && file.exists()
-            if (!written) {
-                return SaveResult.Failed("RECIPE_SAVE_FAILED", "配方写入磁盘失败：${toPersist.name}")
+            if (to in ToolRecipeReservedNames.RESERVED) {
+                return SaveResult.Failed("RESERVED_RECIPE_NAME", "配方名「$to」与内置能力冲突")
             }
+            // 大小写不敏感地查重，否则模型侧会看到两个只差大小写的工具。
+            if (all.keys.any { it != from && it.equals(to, ignoreCase = true) }) {
+                return SaveResult.Failed("RECIPE_NAME_TAKEN", "已有同名配方「$to」")
+            }
+            val renamed = when (val written = persistLocked(updated, previous = current)) {
+                is SaveResult.Failed -> return written
+                is SaveResult.Ok -> written.recipe
+            }
+            fileFor(from).takeIf { it.exists() }?.delete()
             cache = null
-            return SaveResult.Ok(toPersist)
+            var staleReferences = 0
+            all.values
+                .filter { it.name != from && from in it.composedRecipes }
+                .forEach { dependent ->
+                    val rewired = dependent.copy(
+                        steps = dependent.steps.map { step ->
+                            if (step is ToolRecipeStep.Compose && step.recipe == from) {
+                                step.copy(recipe = to)
+                            } else {
+                                step
+                            }
+                        },
+                    )
+                    if (persistLocked(rewired, previous = dependent) is SaveResult.Failed) {
+                        staleReferences++
+                    }
+                }
+            return if (staleReferences == 0) {
+                SaveResult.Ok(renamed)
+            } else {
+                SaveResult.Failed(
+                    "RECIPE_REFERENCE_STALE",
+                    "已改名为「$to」，但有 $staleReferences 份引用它的配方没能一起更新",
+                )
+            }
         }
+    }
+
+    /**
+     * 落盘一份配方，调用方必须已持有写锁。
+     *
+     * @param previous 同一次改动前的旧版本：版本号与创建时间从它继承，改名时传旧名字那份。
+     * @param enforceLimit 新增条目是否受 [ToolRecipeConstants.MAX_STORED_RECIPES] 限制。
+     *                     改名会先写新文件再删旧文件，中途条目数会短暂 +1，不能按上限拦下来。
+     */
+    private fun persistLocked(
+        recipe: ToolRecipe,
+        previous: ToolRecipe?,
+        enforceLimit: Boolean = true,
+    ): SaveResult {
+        if (enforceLimit && previous == null && loadLocked().size >= ToolRecipeConstants.MAX_STORED_RECIPES) {
+            return SaveResult.Failed(
+                "RECIPE_LIMIT_REACHED",
+                "设备上已有 ${ToolRecipeConstants.MAX_STORED_RECIPES} 份配方；" +
+                    "先停用或删除用不上的，再创建新的，不要反复尝试",
+            )
+        }
+        val toPersist = recipe.copy(
+            version = (previous?.version ?: 0) + 1,
+            createdAtMillis = previous?.createdAtMillis ?: recipe.createdAtMillis,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+        val file = fileFor(toPersist.name)
+        val payload = serialize(toPersist)
+        val written = runCatching {
+            recipesDir.mkdirs()
+            val temp = File(recipesDir, "${toPersist.name}.json.tmp")
+            temp.writeText(payload.toString())
+            if (file.exists()) file.delete()
+            temp.renameTo(file)
+        }.isSuccess && file.exists()
+        if (!written) {
+            return SaveResult.Failed("RECIPE_SAVE_FAILED", "配方写入磁盘失败：${toPersist.name}")
+        }
+        cache = null
+        return SaveResult.Ok(toPersist)
     }
 
     /** 删除配方。 */

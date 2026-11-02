@@ -226,6 +226,59 @@ class ToolRecipeTest {
     }
 
     @Test
+    fun renameMovesFileAndRewiresComposeReferences() {
+        val dir = tempDir()
+        val store = AgentToolRecipeStore(dir)
+        val base = recipe("base_tool", listOf(ToolRecipeStep.Literal("hello")))
+        store.save(base)
+        store.save(recipe("top_tool", listOf(ToolRecipeStep.Compose("base_tool"))))
+
+        val renamed = store.rename("base_tool", base.copy(name = "renamed_tool"))
+        assertTrue("改名应当成功：$renamed", renamed is AgentToolRecipeStore.SaveResult.Ok)
+
+        // 旧文件必须消失，新文件必须落盘——名字就是文件名。
+        assertEquals(null, store.find("base_tool"))
+        val after = AgentToolRecipeStore(dir).find("renamed_tool")
+        assertNotNull("改名后应当能用新名字读回来", after)
+        // 版本号连续递增，改名不该把历史清零。
+        assertEquals(2, after!!.version)
+
+        // 引用它的配方必须被一起改写，否则组合链在改名那一刻就断了。
+        val dependent = store.find("top_tool")
+        assertNotNull(dependent)
+        assertEquals(
+            "renamed_tool",
+            (dependent!!.steps.first() as ToolRecipeStep.Compose).recipe,
+        )
+    }
+
+    @Test
+    fun renameRejectsTakenName() {
+        val store = AgentToolRecipeStore(tempDir())
+        store.save(recipe("first_tool", listOf(ToolRecipeStep.Literal("x"))))
+        store.save(recipe("second_tool", listOf(ToolRecipeStep.Literal("y"))))
+
+        val result = store.rename("first_tool", recipe("second_tool", listOf(ToolRecipeStep.Literal("x"))))
+        assertTrue(result is AgentToolRecipeStore.SaveResult.Failed)
+        assertEquals("RECIPE_NAME_TAKEN", (result as AgentToolRecipeStore.SaveResult.Failed).code)
+        // 失败不该留下半成品：原名字还在。
+        assertNotNull(store.find("first_tool"))
+    }
+
+    @Test
+    fun renameRejectsNameThatIsNotAPlainIdentifier() {
+        val store = AgentToolRecipeStore(tempDir())
+        val base = recipe("base_tool", listOf(ToolRecipeStep.Literal("x")))
+        store.save(base)
+
+        // 名字会直接拼成文件名，`../` 必须在落盘前被拦下来。
+        val result = store.rename("base_tool", base.copy(name = "../escaped"))
+        assertTrue(result is AgentToolRecipeStore.SaveResult.Failed)
+        assertEquals("INVALID_RECIPE_NAME", (result as AgentToolRecipeStore.SaveResult.Failed).code)
+        assertNotNull(store.find("base_tool"))
+    }
+
+    @Test
     fun schemasHideRootRecipesWhenRootUnavailable() {
         val dir = tempDir()
         val store = AgentToolRecipeStore(dir)
