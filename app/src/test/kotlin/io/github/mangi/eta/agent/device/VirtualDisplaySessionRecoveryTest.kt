@@ -2,6 +2,7 @@ package io.github.mangi.eta.agent.device
 
 import android.app.Application
 import android.content.Context
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -23,11 +24,16 @@ class VirtualDisplaySessionRecoveryTest {
         .getDeclaredField("sessions").apply { isAccessible = true }
         .get(VirtualDisplaySession) as MutableMap<String, Any>
 
-    private fun fixture(run: String, phase: String, closed: Boolean): Any {
+    private fun fixture(run: String, phase: String, closed: Boolean,
+                        adopted: Boolean = false, receipt: JSONObject? = null): Any {
         val type = Class.forName("io.github.mangi.eta.agent.device.VirtualDisplaySession\$Session")
         val session = type.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
         type.getDeclaredField("phase").apply { isAccessible = true }.set(session, phase)
         type.getDeclaredField("closedRun").apply { isAccessible = true }.setBoolean(session, closed)
+        type.getDeclaredField("adopted").apply { isAccessible = true }.setBoolean(session, adopted)
+        if (receipt != null) {
+            type.getDeclaredField("receipt").apply { isAccessible = true }.set(session, receipt)
+        }
         sessions()[run] = session
         return session
     }
@@ -90,6 +96,38 @@ class VirtualDisplaySessionRecoveryTest {
         assertTrue(session.javaClass.getDeclaredField("cleanupOnly")
             .apply { isAccessible = true }.getBoolean(session))
         assertSame(session, sessions()["cancelled"])
+    }
+
+    @Test fun finishedAdoptedSessionFreesTheRunSlotForAFreshStart() {
+        fixture("run", "finished", true, adopted = true,
+            receipt = JSONObject().put("ok", true).put("released", true))
+        // createIfMissing=false keeps this metadata-only: the freed slot reaches the persisted-record
+        // check instead of spawning a real owner.
+        val start = VirtualDisplaySession.start(context, "run", createIfMissing = false)
+        assertEquals("NO_VIRTUAL_SESSION", start.getString("error"))
+        assertNull(sessions()["run"])
+    }
+
+    @Test fun finishedOwnSessionStaysFinished() {
+        fixture("run", "finished", true)
+        val start = VirtualDisplaySession.start(context, "run", createIfMissing = false)
+        assertEquals("SESSION_FINISHED", start.getString("error"))
+    }
+
+    @Test fun adoptedSessionWithoutACleanReleaseStaysFinished() {
+        val session = fixture("run", "finished", true, adopted = true,
+            receipt = JSONObject().put("ok", true).put("released", false))
+        val start = VirtualDisplaySession.start(context, "run", createIfMissing = false)
+        assertEquals("SESSION_FINISHED", start.getString("error"))
+        assertSame(session, sessions()["run"])
+    }
+
+    @Test fun unreachableSessionIsNotAdoptedByALaterRun() {
+        // The earlier run failed before reconnecting, so it has no client that could clean up.
+        fixture("dead", "held", true)
+        val start = VirtualDisplaySession.start(context, "fresh", createIfMissing = false)
+        assertEquals("NO_VIRTUAL_SESSION", start.getString("error"))
+        assertTrue(sessions().isEmpty())
     }
 
     @Test fun failedManualReconnectRemainsRetryableAndPreservesRecord() {

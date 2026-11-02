@@ -39,6 +39,14 @@ class VirtualDisplayRecoveryPolicyTest {
             }
         }
     }
+    @Test fun staleOwnerRecordNeedsThisBootAndBothIdentitiesGone() {
+        assertTrue(VirtualDisplayRecoveryPolicy.staleOwnerGone(true, true, true))
+        // A cross-boot pid or display id may belong to an unrelated owner now.
+        assertFalse(VirtualDisplayRecoveryPolicy.staleOwnerGone(false, true, true))
+        assertFalse(VirtualDisplayRecoveryPolicy.staleOwnerGone(true, false, true))
+        assertFalse(VirtualDisplayRecoveryPolicy.staleOwnerGone(true, true, false))
+    }
+
     @Test fun taskIdentityParsingIsStrict() {
         assertEquals(setOf(16,17), VirtualDisplayRecoveryPolicy.taskIds(listOf(16,17)))
         assertEquals(emptySet<Int>(), VirtualDisplayRecoveryPolicy.taskIds(emptyList<Int>()))
