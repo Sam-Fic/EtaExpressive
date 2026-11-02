@@ -25,6 +25,8 @@ internal data class AgentMemoryReadResult(
     val endLine: Int?,
     val hasMore: Boolean,
     val matchedLines: Int,
+    /** 按标题读取时回显命中的标题（含 `#` 前缀），便于调用方确认取到的是哪一节。 */
+    val section: String? = null,
 )
 
 internal sealed interface AgentMemoryMutation {
@@ -34,6 +36,13 @@ internal sealed interface AgentMemoryMutation {
         override val revision: String,
         val startLine: Int,
         val endLine: Int,
+        val content: String,
+    ) : AgentMemoryMutation
+
+    /** 按标题整节替换；content 为空表示删除该节。 */
+    data class ReplaceSection(
+        override val revision: String,
+        val section: String,
         val content: String,
     ) : AgentMemoryMutation
 
@@ -48,7 +57,15 @@ internal sealed interface AgentMemoryMutation {
 }
 
 internal sealed interface AgentMemoryWriteResult {
-    data class Success(val snapshot: AgentMemorySnapshot) : AgentMemoryWriteResult
+    /**
+     * changed=false 表示写入后内容与之前逐字节一致（例如 append 了空内容），
+     * 让调用方能把"真的写了"与"什么都没发生"区分开，而不是都看到 ok=true。
+     */
+    data class Success(
+        val snapshot: AgentMemorySnapshot,
+        val changed: Boolean = true,
+    ) : AgentMemoryWriteResult
+
     data class Conflict(val snapshot: AgentMemorySnapshot) : AgentMemoryWriteResult
 }
 
@@ -82,6 +99,27 @@ internal class AgentMemoryStore(
         }
     }
 
+    /**
+     * 按标题读取整节。标题匹配忽略大小写与 `#` 前缀；匹配不到或匹配到多节时抛出带可用标题清单的错误，
+     * 避免调用方拿着"空结果"却不知道为什么。
+     */
+    fun readSection(
+        section: String,
+        maxChars: Int = DEFAULT_READ_CHARS,
+    ): AgentMemoryReadResult = withStorageLock {
+        val snapshot = snapshotLocked()
+        val boundedChars = maxChars.coerceIn(MIN_READ_CHARS, MAX_READ_CHARS)
+        val lines = snapshot.content.memoryLines()
+        val match = resolveSection(lines, section)
+        renderRange(
+            snapshot,
+            match.heading.startIndex,
+            match.heading.endIndex,
+            boundedChars,
+            match.heading.raw,
+        )
+    }
+
     fun mutate(mutation: AgentMemoryMutation): AgentMemoryWriteResult = withStorageLock {
         val current = snapshotLocked()
         if (mutation.revision != current.revision) {
@@ -89,11 +127,12 @@ internal class AgentMemoryStore(
         }
         val updated = when (mutation) {
             is AgentMemoryMutation.ReplaceRange -> replaceRange(current, mutation)
+            is AgentMemoryMutation.ReplaceSection -> replaceSection(current, mutation)
             is AgentMemoryMutation.Append -> append(current, mutation.content)
             is AgentMemoryMutation.Clear -> ""
         }
         writeLocked(updated)
-        AgentMemoryWriteResult.Success(snapshotOf(updated))
+        AgentMemoryWriteResult.Success(snapshotOf(updated), changed = updated != current.content)
     }
 
     fun replaceAll(content: String): AgentMemorySnapshot = withStorageLock {
@@ -201,7 +240,9 @@ internal class AgentMemoryStore(
         ) {
             throw AgentMemoryException(
                 code = "MEMORY_RANGE_INVALID",
-                message = "替换行范围无效；请重新读取记忆后再试",
+                message = "替换行范围无效（start/end 需 1 ≤ start ≤ end ≤ ${lines.size}）。" +
+                    "请先用 memory_get(section=…) 或 memory_get(start_line=1, max_chars=32000) 预览实际行号后再试；" +
+                    "若只想改整块内容，改用 mode=\"replace_section\" + section 更稳，不必手算行号。",
             )
         }
         val replacement = mutation.content.memoryLines()
@@ -212,8 +253,48 @@ internal class AgentMemoryStore(
         return lines.joinToString("\n")
     }
 
+    private fun replaceSection(
+        snapshot: AgentMemorySnapshot,
+        mutation: AgentMemoryMutation.ReplaceSection,
+    ): String {
+        val lines = snapshot.content.memoryLines().toMutableList()
+        val heading = resolveSection(lines, mutation.section).heading
+        val replacement = mutation.content.memoryLines()
+        // 空 content = 删除整节（文档化的用法），所以护栏只在"有内容却没带一级标题"时生效。
+        if (heading.level == 1 && replacement.isNotEmpty() && replacement.none { headingLevel(it) == 1 }) {
+            throw AgentMemoryException(
+                code = "MEMORY_SECTION_HEADING_REQUIRED",
+                message = "替换一级章节时，content 必须以同行的一级标题开头（例如 \"${heading.raw}\"）；" +
+                    "只替换正文请改用 mode=\"replace_range\"，删除整节请传空 content。",
+            )
+        }
+        lines.subList(heading.startIndex, heading.endIndex + 1).clear()
+        if (replacement.isNotEmpty()) {
+            lines.addAll(heading.startIndex, replacement)
+        }
+        return lines.joinToString("\n")
+    }
+
     private fun append(snapshot: AgentMemorySnapshot, content: String): String {
         if (content.isEmpty()) return snapshot.content
+        val incomingLevelOne = content.memoryLines()
+            .filter { headingLevel(it) == 1 }
+            .map { it.trimEnd() }
+        if (incomingLevelOne.isNotEmpty()) {
+            val existing = snapshot.content.memoryLines()
+                .filter { headingLevel(it) == 1 }
+                .map { it.trimEnd() }
+                .toSet()
+            val duplicated = incomingLevelOne.filter { it in existing }
+            if (duplicated.isNotEmpty()) {
+                throw AgentMemoryException(
+                    code = "MEMORY_DUPLICATE_HEADING",
+                    message = "追加内容包含已存在的一级标题：${duplicated.joinToString("、")}。" +
+                        "请改用 mode=\"replace_section\" 替换该章节，或换一个未使用过的标题。" +
+                        "（重复的 \"$CORE_HEADING\" 会让新增内容被排除在自动注入的核心记忆之外。）",
+                )
+            }
+        }
         if (snapshot.content.isEmpty()) return content
         return snapshot.content.trimEnd('\n') + "\n" + content
     }
@@ -238,7 +319,7 @@ internal class AgentMemoryStore(
             val separatorLength = if (output.isEmpty()) 0 else 1
             if (output.isNotEmpty() && output.length + separatorLength + rendered.length > maxChars) break
             if (output.isNotEmpty()) output.append('\n')
-            output.append(rendered.take(maxChars - output.length))
+            output.append(safeTake(rendered, maxChars - output.length))
             endIndex++
             if (output.length >= maxChars) break
         }
@@ -252,6 +333,39 @@ internal class AgentMemoryStore(
         )
     }
 
+    private fun renderRange(
+        snapshot: AgentMemorySnapshot,
+        fromIndex: Int,
+        toIndex: Int,
+        maxChars: Int,
+        section: String?,
+    ): AgentMemoryReadResult {
+        val lines = snapshot.content.memoryLines()
+        if (fromIndex > toIndex || fromIndex !in lines.indices || toIndex !in lines.indices) {
+            return AgentMemoryReadResult(snapshot, "", null, null, false, 0, section)
+        }
+        val output = StringBuilder()
+        var endIndex = fromIndex
+        while (endIndex <= toIndex) {
+            val rendered = "${endIndex + 1}: ${lines[endIndex]}"
+            val gap = if (output.isEmpty()) 0 else 1
+            if (output.isNotEmpty() && output.length + gap + rendered.length > maxChars) break
+            if (output.isNotEmpty()) output.append('\n')
+            output.append(safeTake(rendered, maxChars - output.length))
+            endIndex++
+            if (output.length >= maxChars) break
+        }
+        return AgentMemoryReadResult(
+            snapshot = snapshot,
+            content = output.toString(),
+            startLine = fromIndex + 1,
+            endLine = endIndex,
+            hasMore = endIndex <= toIndex,
+            matchedLines = toIndex - fromIndex + 1,
+            section = section,
+        )
+    }
+
     private fun search(
         snapshot: AgentMemorySnapshot,
         query: String,
@@ -261,9 +375,17 @@ internal class AgentMemoryStore(
         val matched = lines.indices.filter { index ->
             lines[index].contains(query, ignoreCase = true)
         }
+        val all = headings(lines)
         val included = linkedSetOf<Int>()
         matched.forEach { index ->
-            for (candidate in (index - SEARCH_CONTEXT_LINES)..(index + SEARCH_CONTEXT_LINES)) {
+            val owner = all.lastOrNull { index >= it.startIndex && index <= it.endIndex }
+            val expandable = owner != null && (owner.endIndex - owner.startIndex + 1) <= MAX_SECTION_EXPANSION_LINES
+            val range = if (owner != null && expandable) {
+                owner.startIndex..owner.endIndex
+            } else {
+                (index - SEARCH_WINDOW_LINES).coerceAtLeast(0)..(index + SEARCH_WINDOW_LINES).coerceAtMost(lines.lastIndex)
+            }
+            range.forEach { candidate ->
                 if (candidate in lines.indices) included += candidate
             }
         }
@@ -278,7 +400,7 @@ internal class AgentMemoryStore(
                 else -> "\n"
             }
             if (output.isNotEmpty() && output.length + gap.length + rendered.length > maxChars) break
-            output.append(gap).append(rendered.take(maxChars - output.length - gap.length))
+            output.append(gap).append(safeTake(rendered, maxChars - output.length - gap.length))
             lastIncluded = index
             renderedCount++
             if (output.length >= maxChars) break
@@ -292,6 +414,77 @@ internal class AgentMemoryStore(
             matchedLines = matched.size,
         )
     }
+
+    private data class MemoryHeading(
+        val startIndex: Int,
+        val endIndex: Int,
+        val level: Int,
+        val raw: String,
+    ) {
+        val title: String get() = headingTitle(raw)
+    }
+
+    private data class ResolvedSection(val heading: MemoryHeading)
+
+    /** 按标题层级切出所有章节（`#` 的区间到下一个同级或更高级标题为止）。 */
+    private fun headings(lines: List<String>): List<MemoryHeading> {
+        val result = mutableListOf<MemoryHeading>()
+        var index = 0
+        while (index < lines.size) {
+            val level = headingLevel(lines[index])
+            if (level == 0) {
+                index++
+                continue
+            }
+            var end = index + 1
+            while (end < lines.size) {
+                val next = headingLevel(lines[end])
+                if (next in 1..level) break
+                end++
+            }
+            result += MemoryHeading(index, end - 1, level, lines[index])
+            index++
+        }
+        return result
+    }
+
+    private fun resolveSection(lines: List<String>, section: String): ResolvedSection {
+        val target = headingTitle(section.trim())
+        if (target.isEmpty()) {
+            throw AgentMemoryException(
+                code = "MEMORY_SECTION_INVALID",
+                message = "section 不能为空；可用标题：\n${availableHeadings(lines)}",
+            )
+        }
+        val all = headings(lines)
+        if (all.isEmpty()) {
+            throw AgentMemoryException(
+                code = "MEMORY_SECTION_NOT_FOUND",
+                message = "记忆文件里没有任何 Markdown 标题。",
+            )
+        }
+        val exact = all.filter { it.title.equals(target, ignoreCase = true) }
+        val candidates = exact.ifEmpty { all.filter { it.title.contains(target, ignoreCase = true) } }
+        return when (candidates.size) {
+            0 -> throw AgentMemoryException(
+                code = "MEMORY_SECTION_NOT_FOUND",
+                message = "未找到标题包含「$section」的章节；可用标题：\n${availableHeadings(lines)}",
+            )
+            1 -> ResolvedSection(candidates.first())
+            else -> throw AgentMemoryException(
+                code = "MEMORY_SECTION_AMBIGUOUS",
+                message = "「$section」匹配到 ${candidates.size} 个章节，请用更完整的标题：\n" +
+                    candidates.joinToString("\n") { "  ${it.raw.trimEnd()}（第 ${it.startIndex + 1} 行）" },
+            )
+        }
+    }
+
+    private fun availableHeadings(lines: List<String>): String =
+        lines.withIndex()
+            .filter { headingLevel(it.value) > 0 }
+            .take(MAX_HEADING_LIST)
+            .joinToString("\n") { "  第 ${it.index + 1} 行  ${it.value.trimEnd()}" }
+            .ifEmpty { "  （无标题）" }
 
     private fun snapshotOf(
         content: String,
@@ -320,10 +513,39 @@ internal class AgentMemoryStore(
         const val MAX_READ_CHARS = 32_000
         const val MIN_READ_CHARS = 1
         const val MAX_WRITE_CONTENT_CHARS = 3_500
+
+        /** `mode="clear"` 必须回传此串，避免一次误调用清空全部记忆。 */
+        const val CLEAR_CONFIRMATION = "DELETE_ALL"
+
         const val FILE_NAME = "MEMORY.md"
         private const val DEFAULT_START_LINE = 1
-        private const val SEARCH_CONTEXT_LINES = 1
+        private const val SEARCH_WINDOW_LINES = 6
+        private const val MAX_SECTION_EXPANSION_LINES = 24
+        private const val MAX_HEADING_LIST = 40
+        private const val CORE_HEADING = "# 核心记忆"
     }
+}
+
+/** 标题层级：返回 `#` 的个数（1..6），不是标题或 `#` 后无空格时返回 0。 */
+private fun headingLevel(line: String): Int {
+    val trimmed = line.trimStart()
+    if (!trimmed.startsWith("#")) return 0
+    val hashes = trimmed.takeWhile { it == '#' }.length
+    if (hashes !in 1..6) return 0
+    if (trimmed.length <= hashes || trimmed[hashes] != ' ') return 0
+    return hashes
+}
+
+/** 去掉 `#` 前缀与首尾空白后的标题文本。 */
+private fun headingTitle(line: String): String =
+    line.trimStart().trimStart('#').trim()
+
+/** 不在截断点切断 UTF-16 代理对（emoji 等）。 */
+private fun safeTake(text: String, limit: Int): String {
+    if (limit <= 0) return ""
+    if (text.length <= limit) return text
+    val end = if (Character.isHighSurrogate(text[limit - 1])) limit - 1 else limit
+    return text.substring(0, end)
 }
 
 internal object AgentMemoryRepository {
@@ -371,6 +593,12 @@ internal object AgentMemoryRepository {
         maxChars: Int = AgentMemoryStore.DEFAULT_READ_CHARS,
         assistantId: String = currentAssistantId(),
     ): AgentMemoryReadResult = storeFor(assistantId).read(query, startLine, maxChars)
+
+    fun readSection(
+        section: String,
+        maxChars: Int = AgentMemoryStore.DEFAULT_READ_CHARS,
+        assistantId: String = currentAssistantId(),
+    ): AgentMemoryReadResult = storeFor(assistantId).readSection(section, maxChars)
 
     fun mutate(
         mutation: AgentMemoryMutation,

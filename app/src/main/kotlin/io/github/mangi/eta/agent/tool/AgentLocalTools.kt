@@ -828,17 +828,29 @@ internal class AgentLocalTools(
     }
 
     private fun memoryGet(args: JSONObject): String = try {
-        val result = AgentMemoryRepository.read(
-            query = args.optString("query").takeIf(String::isNotBlank),
-            startLine = args.optInt("start_line", 1),
-            maxChars = args.optInt("max_chars", 12_000),
-            assistantId = memoryAssistantId,
-        )
-        JSONObject()
+        val section = args.optString("section").takeIf(String::isNotBlank)
+        val query = args.optString("query").takeIf(String::isNotBlank)
+        // section 优先于 query/start_line：标题是比行号更稳的定位方式。
+        val result = if (section != null) {
+            AgentMemoryRepository.readSection(
+                section = section,
+                maxChars = args.optInt("max_chars", 12_000),
+                assistantId = memoryAssistantId,
+            )
+        } else {
+            AgentMemoryRepository.read(
+                query = query,
+                startLine = args.optInt("start_line", 1),
+                maxChars = args.optInt("max_chars", 12_000),
+                assistantId = memoryAssistantId,
+            )
+        }
+        val payload = JSONObject()
             .put("ok", true)
             .put("revision", result.snapshot.revision)
             .put("bytes", result.snapshot.byteSize)
             .put("line_count", result.snapshot.lineCount)
+            .put("section", result.section ?: JSONObject.NULL)
             .put("start_line", result.startLine ?: JSONObject.NULL)
             .put("end_line", result.endLine ?: JSONObject.NULL)
             .put("matched_lines", result.matchedLines)
@@ -852,6 +864,11 @@ internal class AgentLocalTools(
     private fun memoryWrite(args: JSONObject): String = try {
         val revision = args.getString("revision")
         val mutation = when (args.getString("mode")) {
+            "replace_section" -> AgentMemoryMutation.ReplaceSection(
+                revision = revision,
+                section = args.optString("section"),
+                content = args.optString("content"),
+            )
             "replace_range" -> AgentMemoryMutation.ReplaceRange(
                 revision = revision,
                 startLine = args.getInt("start_line"),
