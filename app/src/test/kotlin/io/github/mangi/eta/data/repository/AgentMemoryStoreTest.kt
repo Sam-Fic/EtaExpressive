@@ -94,5 +94,79 @@ class AgentMemoryStoreTest {
         assertEquals(0, cleared.snapshot.lineCount)
     }
 
+    @Test
+    fun replaceSectionReadsAndRewritesWholeSectionByHeading() {
+        val store = store()
+        val initial = store.replaceAll("# 核心记忆\n旧偏好\n## 项目\n旧项目\n# 其他\n保留")
+
+        val section = store.readSection("项目", maxChars = 200)
+        assertEquals("## 项目", section.section)
+        assertEquals(3, section.startLine)
+        assertEquals(4, section.endLine)
+        assertTrue(section.content.contains("旧项目"))
+
+        val replaced = store.mutate(
+            AgentMemoryMutation.ReplaceSection(
+                revision = initial.revision,
+                section = "## 项目",
+                content = "## 项目\n新项目",
+            ),
+        ) as AgentMemoryWriteResult.Success
+        assertTrue(replaced.changed)
+        assertEquals("# 核心记忆\n旧偏好\n## 项目\n新项目\n# 其他\n保留", replaced.snapshot.content)
+
+        val deleted = store.mutate(
+            AgentMemoryMutation.ReplaceSection(
+                revision = replaced.snapshot.revision,
+                section = "项目",
+                content = "",
+            ),
+        ) as AgentMemoryWriteResult.Success
+        assertEquals("# 核心记忆\n新偏好\n# 其他\n保留", deleted.snapshot.content)
+    }
+
+    @Test
+    fun replaceSectionRejectsMissingOrAmbiguousHeadings() {
+        val store = store()
+        val initial = store.replaceAll("# 核心记忆\n# 项目\nA\n# 工作\n# 项目\nB")
+
+        assertThrows(AgentMemoryException::class.java) {
+            store.mutate(AgentMemoryMutation.ReplaceSection(initial.revision, "不存在", "x"))
+        }
+        val ambiguous = assertThrows(AgentMemoryException::class.java) {
+            store.mutate(AgentMemoryMutation.ReplaceSection(initial.revision, "项目", "x"))
+        }
+        assertEquals("MEMORY_SECTION_AMBIGUOUS", ambiguous.code)
+    }
+
+    @Test
+    fun replaceSectionRequiresHeadingLineForLevelOneSection() {
+        val store = store()
+        val initial = store.replaceAll("# 核心记忆\n旧偏好")
+
+        val failure = assertThrows(AgentMemoryException::class.java) {
+            store.mutate(AgentMemoryMutation.ReplaceSection(initial.revision, "核心记忆", "只有正文"))
+        }
+        assertEquals("MEMORY_SECTION_HEADING_REQUIRED", failure.code)
+    }
+
+    @Test
+    fun appendRejectsDuplicateLevelOneHeadingAndReportsUnchangedWrites() {
+        val store = store()
+        val initial = store.replaceAll("# 核心记忆\n旧偏好\n# 项目\n旧项目")
+
+        val failure = assertThrows(AgentMemoryException::class.java) {
+            store.mutate(AgentMemoryMutation.Append(initial.revision, "# 核心记忆\n重复"))
+        }
+        assertEquals("MEMORY_DUPLICATE_HEADING", failure.code)
+        assertEquals(initial, store.snapshot())
+
+        val unchanged = store.mutate(
+            AgentMemoryMutation.ReplaceSection(initial.revision, "项目", "# 项目\n旧项目"),
+        ) as AgentMemoryWriteResult.Success
+        assertFalse(unchanged.changed)
+        assertEquals(initial.content, unchanged.snapshot.content)
+    }
+
     private fun store(): AgentMemoryStore = AgentMemoryStore(temporaryFolder.newFolder())
 }
