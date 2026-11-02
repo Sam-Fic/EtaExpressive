@@ -32,6 +32,71 @@ internal class AgentToolCallValidator(
 
     fun declares(name: String): Boolean = name in schemasByName
 
+    /**
+     * 模型偶尔把声明为 array/object 的参数序列化成 JSON 文本（实测 ask_user 的 options 整段
+     * 被塞进一个字符串）。这类调用本身内容是对的，直接判类型错误会让模型反复重试同一份参数。
+     * 这里只按 Schema 声明的类型把 JSON 文本就地还原，不补造、不改写字段内容；解析失败时
+     * 保持原样，仍由 [validate] 报错。返回值必须用于执行与历史记录，避免校验与执行看到两份参数。
+     */
+    fun normalizeArguments(call: AgentModelClient.ToolCall): AgentModelClient.ToolCall {
+        val schema = schemasByName[call.name]?.parameters ?: return call
+        val arguments = runCatching { JSONObject(call.argumentsJson.ifBlank { "{}" }) }.getOrNull() ?: return call
+        val before = arguments.toString()
+        decodeObjectFields(arguments, schema, schema, depth = 0)
+        if (arguments.toString() == before) return call
+        return call.copy(argumentsJson = arguments.toString())
+    }
+
+    private fun decodeObjectFields(value: JSONObject, schema: JSONObject, root: JSONObject, depth: Int) {
+        if (depth > MAX_SCHEMA_DEPTH) return
+        val properties = resolveSchemaObject(schema, root).optJSONObject("properties") ?: return
+        for (key in value.keys()) {
+            val childSchema = properties.optJSONObject(key) ?: continue
+            val current = value.opt(key)
+            val decoded = decodeValue(current, childSchema, root, depth + 1)
+            if (decoded !== current) value.put(key, decoded)
+        }
+    }
+
+    private fun decodeArrayItems(value: JSONArray, schema: JSONObject, root: JSONObject, depth: Int) {
+        val items = resolveSchemaObject(schema, root).optJSONObject("items") ?: return
+        for (index in 0 until value.length()) {
+            val current = value.opt(index)
+            val decoded = decodeValue(current, items, root, depth + 1)
+            if (decoded !== current) value.put(index, decoded)
+        }
+    }
+
+    private fun decodeValue(value: Any?, schema: JSONObject, root: JSONObject, depth: Int): Any? {
+        if (depth > MAX_SCHEMA_DEPTH) return value
+        val resolved = resolveSchemaObject(schema, root)
+        return when {
+            value is String -> {
+                val decoded = when (resolved.optString("type")) {
+                    "array" -> runCatching { JSONArray(value) }.getOrNull()
+                    "object" -> runCatching { JSONObject(value) }.getOrNull()
+                    else -> null
+                } ?: return value
+                decodeValue(decoded, resolved, root, depth + 1)
+            }
+            value is JSONObject -> {
+                decodeObjectFields(value, resolved, root, depth)
+                value
+            }
+            value is JSONArray -> {
+                decodeArrayItems(value, resolved, root, depth)
+                value
+            }
+            else -> value
+        }
+    }
+
+    private fun resolveSchemaObject(schema: JSONObject, root: JSONObject): JSONObject {
+        val reference = schema.optString("\$ref")
+        if (reference.isBlank()) return schema
+        return resolveReference(root, reference) as? JSONObject ?: schema
+    }
+
     fun validate(call: AgentModelClient.ToolCall): String? {
         val toolSchema = schemasByName[call.name]
             ?: return undeclaredReason(call.name)
@@ -89,7 +154,7 @@ internal class AgentToolCallValidator(
         if (schema.optBoolean("nullable", false) && isJsonNull(value)) return null
         val type = schema.opt("type")
         if (type != null && type != JSONObject.NULL && !matchesType(value, type)) {
-            return "$path 类型应为 ${describeType(type)}"
+            return "$path 类型应为 ${describeType(type)}（实际是 ${describeValue(value)}）"
         }
 
         if (schema.has("const") && !jsonEquals(schema.opt("const"), value)) {
@@ -373,6 +438,17 @@ internal class AgentToolCallValidator(
     private fun describeType(type: Any): String = when (type) {
         is JSONArray -> (0 until type.length()).joinToString(" 或 ") { type.optString(it) }
         else -> type.toString()
+    }
+
+    /** 报错时给出实际收到的类型，模型才知道该把 JSON 文本改回真正的数组/对象。 */
+    private fun describeValue(value: Any?): String = when (value) {
+        is JSONObject -> "object"
+        is JSONArray -> "array"
+        is String -> "string"
+        is Boolean -> "boolean"
+        is Number -> "number"
+        null, JSONObject.NULL -> "null"
+        else -> "unknown"
     }
 
     private fun isJsonNull(value: Any?): Boolean = value == null || value == JSONObject.NULL

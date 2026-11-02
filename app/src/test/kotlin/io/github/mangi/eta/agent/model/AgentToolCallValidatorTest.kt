@@ -2,6 +2,7 @@ package io.github.mangi.eta.agent.model
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -120,6 +121,63 @@ class AgentToolCallValidatorTest {
         assertTrue(reason.contains("屏幕观察与 GUI 操作"))
         assertTrue(reason.contains("未启用"))
         assertFalse(reason.contains("tools_use_group"))
+    }
+
+    @Test
+    fun jsonTextEncodedOptionsAreDecodedBeforeValidation() {
+        // 真实对话里模型把 ask_user 的 options 整段写成字符串，
+        // 参数内容本身正确；框架应还原成数组而不是耗尽三次纠错预算。
+        val validator = validator(
+            JSONObject(
+                """
+                {
+                  "type": "object",
+                  "properties": {
+                    "options": {
+                      "type": "array",
+                      "minItems": 2,
+                      "items": {
+                        "type": "object",
+                        "properties": {"id": {"type": "string"}},
+                        "required": ["id"]
+                      }
+                    }
+                  },
+                  "required": ["options"]
+                }
+                """.trimIndent()
+            )
+        )
+        val raw = call("""{"options":"[{\"id\":\"a\"},{\"id\":\"b\"}]"}""")
+
+        assertNotNull(validator.validate(raw))
+        val normalized = validator.normalizeArguments(raw)
+        assertNull(validator.validate(normalized))
+        val options = JSONObject(normalized.argumentsJson).getJSONArray("options")
+        assertEquals(2, options.length())
+        assertEquals("a", options.getJSONObject(0).getString("id"))
+    }
+
+    @Test
+    fun typeErrorNamesTheReceivedTypeAndKeepsPlainStrings() {
+        val validator = validator(
+            JSONObject(
+                """
+                {
+                  "type": "object",
+                  "properties": {
+                    "note": {"type": "string"},
+                    "options": {"type": "array"}
+                  }
+                }
+                """.trimIndent()
+            )
+        )
+        val plain = call("""{"note":"[not json","options":"[1,2"}""")
+        // 无法解析的字符串保持原样：note 是声明为 string 的字段，不能被当成 JSON 数组。
+        val normalized = validator.normalizeArguments(plain)
+        assertEquals(plain.argumentsJson, normalized.argumentsJson)
+        assertTrue(requireNotNull(validator.validate(normalized)).contains("实际是 string"))
     }
 
     private fun validator(parameters: JSONObject): AgentToolCallValidator =

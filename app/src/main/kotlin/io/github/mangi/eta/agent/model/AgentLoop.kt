@@ -531,7 +531,10 @@ internal class AgentLoop(
             if (originalContent is String && originalContent != "null") {
                 assistantMessage.put("content", continuationText.normalize(originalContent))
             }
+            // 解析后立即按 Schema 还原被模型序列化成 JSON 文本的容器参数；
+            // 历史、校验、执行与卡片展示都使用这一份参数，避免校验通过而执行拿到另一份。
             val toolCalls = AgentConversationCodec.parseToolCalls(assistantMessage)
+                .map(toolCallValidator::normalizeArguments)
             toolCalls.forEachIndexed { index, call -> toolDiagnosticAttempt?.parsed(call, index) }
             toolCalls.filter { AgentSensitiveToolPolicy.isSensitive(it.name) }
                 .forEach { sensitiveToolCallIds += it.id }
