@@ -45,7 +45,20 @@ final class EndedOwnedRecent {
 
     /** Null means absence cannot be proven across ALL root/child arrays. */
     static Set<Integer> presentIds(List<LaunchTargetOccupancy.Root> roots) {
-        if (roots == null || roots.isEmpty()) return null;
+        return presentIds(roots, false);
+    }
+
+    /**
+     * Display-scoped variant: an empty list means "nothing is present" only when the caller has
+     * independently proven that display readable and empty (a freshly created owner display starts
+     * with no roots). {@code null} is always unknown; an empty list without that proof stays
+     * unknown, because nothing about the platform enumeration itself is proven by it.
+     */
+    static Set<Integer> presentIds(List<LaunchTargetOccupancy.Root> roots, boolean emptyProvenClean) {
+        if (roots == null) return null;
+        if (roots.isEmpty()) {
+            return emptyProvenClean ? java.util.Collections.<Integer>emptySet() : null;
+        }
         Set<Integer> rootIds = new HashSet<Integer>();
         Set<Integer> present = new LinkedHashSet<Integer>();
         for (LaunchTargetOccupancy.Root root : roots) {

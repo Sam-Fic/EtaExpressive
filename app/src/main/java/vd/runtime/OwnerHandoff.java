@@ -100,8 +100,16 @@ final class OwnerHandoff {
                 rootDescriptions, Collections.<LaunchTargetOccupancy.Recent>emptyList(),reusable,
                 emptySourceInventory);
         if(LaunchTargetOccupancy.ACTIVE.equals(active.code)) throw new OwnerException(active.code,active.detail);
-        Set<Integer> present=EndedOwnedRecent.presentIds(rootDescriptions);
-        if(present==null || (source>0 && (states==null || !states.escaped.isEmpty())))
+        // presentIds() reports "unknown" for an empty enumeration because absence across ALL root
+        // arrays cannot be proven from it. Here the enumeration is already scoped to one display,
+        // and emptySourceInventory proves that display is readable and holds no roots at all: the
+        // very first launch into a fresh owner display is exactly that case. A null result would
+        // refuse every such launch. Hierarchy-wide absence of an owned id is still proven
+        // independently by states.gone/escaped below.
+        Set<Integer> present=EndedOwnedRecent.presentIds(rootDescriptions,emptySourceInventory);
+        if(present==null)
+            throw new OwnerException(LaunchTargetOccupancy.UNKNOWN,"source display presence unproven");
+        if(source>0 && (states==null || !states.escaped.isEmpty()))
             throw new OwnerException(LaunchTargetOccupancy.UNKNOWN,"owned or child inventory unproven");
         Set<Integer> gone=states==null ? Collections.<Integer>emptySet() : states.gone;
         List<LaunchTargetOccupancy.Recent> recentDescriptions=new ArrayList<LaunchTargetOccupancy.Recent>();

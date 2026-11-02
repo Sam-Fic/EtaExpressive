@@ -132,6 +132,19 @@ public class EndedOwnedRecentTest {
                 ids(), null, new Evidence().recent()));
     }
 
+    @Test public void provenEmptySourceDisplayHasEmptyPresence() {
+        // A freshly created owner display has no roots; that is "nothing present", not "unknown".
+        assertNull(EndedOwnedRecent.presentIds(null, true));
+        assertNull(EndedOwnedRecent.presentIds(null, false));
+        assertEquals(Collections.<Integer>emptySet(), EndedOwnedRecent.presentIds(
+                Collections.<LaunchTargetOccupancy.Root>emptyList(), true));
+        assertNull(EndedOwnedRecent.presentIds(
+                Collections.<LaunchTargetOccupancy.Root>emptyList(), false));
+        // The flag only interprets an empty list; a populated enumeration is unchanged.
+        assertEquals(ids(1, 2), EndedOwnedRecent.presentIds(Arrays.asList(root(1, true, 2)), true));
+        assertNull(EndedOwnedRecent.presentIds(Arrays.asList(root(1, false, 2)), true));
+    }
+
     @Test public void escapedIdentityBlocksReopenEvenWhenAnotherTaskIsGone() {
         assertFalse(EndedOwnedRecent.proves(TARGET, 7, 38, COMPONENT, MARKER, ids(38),
                 ids(99), ids(1), new Evidence().recent()));
