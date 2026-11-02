@@ -32,6 +32,7 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.components.ItemDescriptionDialog
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -133,14 +134,16 @@ private fun SkillOverflowMenu(
     val view = LocalView.current
     val itemCount = if (onDelete != null) 2 else 1
     Box {
-        IconButton(
-            onClick = {
-                TouchHaptics.click(view)
-                expanded = true
-            },
-            enabled = enabled,
-        ) {
-            Icon(imageVector = Icons.Rounded.MoreHoriz, contentDescription = contentDescription)
+        EtaTooltip(text = contentDescription) {
+            IconButton(
+                onClick = {
+                    TouchHaptics.click(view)
+                    expanded = true
+                },
+                enabled = enabled,
+            ) {
+                Icon(imageVector = Icons.Rounded.MoreHoriz, contentDescription = contentDescription)
+            }
         }
         EtaMenuPopup(expanded = expanded, onDismissRequest = { expanded = false }) {
             EtaMenuGroup(index = 0, count = 1) {

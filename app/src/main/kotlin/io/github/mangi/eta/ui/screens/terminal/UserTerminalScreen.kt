@@ -87,6 +87,7 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.app.TerminalBlockUi
 import io.github.mangi.eta.ui.app.UserTerminalStore
 import io.github.mangi.eta.ui.app.UserTerminalUiState
@@ -840,18 +841,20 @@ private fun InputRow(
             )
         },
         trailingIcon = {
-            IconButton(
-                onClick = {
-                    TouchHaptics.click(view)
-                    onSubmit()
-                },
-                enabled = canSend,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.ArrowUpward,
-                    contentDescription = sendDescription,
-                    tint = if (canSend) terminalAccentColor() else terminalMutedForeground(),
-                )
+            EtaTooltip(text = sendDescription) {
+                IconButton(
+                    onClick = {
+                        TouchHaptics.click(view)
+                        onSubmit()
+                    },
+                    enabled = canSend,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ArrowUpward,
+                        contentDescription = sendDescription,
+                        tint = if (canSend) terminalAccentColor() else terminalMutedForeground(),
+                    )
+                }
             }
         },
         textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),

@@ -36,6 +36,7 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -368,13 +369,16 @@ private fun WebSecretField(
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         onValueChange = onValueChange,
         trailingContent = {
-            IconButton(onClick = { visible = !visible }) {
-                Icon(
-                    imageVector = if (visible) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
-                    contentDescription = stringResource(
-                        if (visible) R.string.page_hide_bb0e7e else R.string.page_show_71b677,
-                    ),
-                )
+            val visibilityDescription = stringResource(
+                if (visible) R.string.page_hide_bb0e7e else R.string.page_show_71b677,
+            )
+            EtaTooltip(text = visibilityDescription) {
+                IconButton(onClick = { visible = !visible }) {
+                    Icon(
+                        imageVector = if (visible) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
+                        contentDescription = visibilityDescription,
+                    )
+                }
             }
         },
     )

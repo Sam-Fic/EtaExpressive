@@ -64,6 +64,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.EtaMenuEntry
 import io.github.mangi.eta.ui.adaptive.EtaTextMenu
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -786,12 +787,22 @@ private fun PersonalVoiceRow(
         showChevron = false,
         leading = { Icon(Icons.Rounded.Mic, contentDescription = null) },
         endActions = {
-            IconButton(enabled = previewActive || voice.demo.startsWith("https://"), onClick = { TouchHaptics.click(view); onPreview() }) {
-                Icon(if (previewActive) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
-                    contentDescription = if (previewActive) stringResource(R.string.dv_preview_stop) else stringResource(R.string.dv_preview))
+            val previewDescription = if (previewActive) {
+                stringResource(R.string.dv_preview_stop)
+            } else {
+                stringResource(R.string.dv_preview)
+            }
+            EtaTooltip(text = previewDescription) {
+                IconButton(enabled = previewActive || voice.demo.startsWith("https://"), onClick = { TouchHaptics.click(view); onPreview() }) {
+                    Icon(if (previewActive) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
+                        contentDescription = previewDescription)
+                }
             }
             Box {
-                IconButton(onClick = { TouchHaptics.click(view); menu = true }) { Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.dv_voice_actions)) }
+                val actionsDescription = stringResource(R.string.dv_voice_actions)
+                EtaTooltip(text = actionsDescription) {
+                    IconButton(onClick = { TouchHaptics.click(view); menu = true }) { Icon(Icons.Rounded.MoreVert, contentDescription = actionsDescription) }
+                }
                 EtaTextMenu(
                     expanded = menu,
                     onDismissRequest = { menu = false },

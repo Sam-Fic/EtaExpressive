@@ -28,6 +28,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -115,66 +116,69 @@ internal fun EtaFileActionsButton(
     val haptic = LocalHapticFeedback.current
     var expanded by remember { mutableStateOf(false) }
 
-    IconButton(
-        onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
-            expanded = true
-        },
-        enabled = enabled,
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.MoreVert,
-            contentDescription = stringResource(R.string.action_more),
-        )
-        EtaMenuPopup(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
+    val moreDescription = stringResource(R.string.action_more)
+    EtaTooltip(text = moreDescription) {
+        IconButton(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                expanded = true
+            },
+            enabled = enabled,
         ) {
-            EtaMenuGroup(index = 0, count = 1) {
-                if (canExport) {
-                    DropdownMenuItem(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                            expanded = false
-                            onExport()
-                        },
-                        text = { M3Text(text = stringResource(R.string.linux_files_export)) },
-                        shape = EtaMenuItemShape(index = 0, count = itemCount),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Rounded.FileDownload,
-                                contentDescription = null,
-                                modifier = Modifier.size(MenuDefaults.LeadingIconSize),
-                            )
-                        },
-                    )
-                }
-                if (canDelete) {
-                    DropdownMenuItem(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                            expanded = false
-                            onDelete()
-                        },
-                        text = {
-                            M3Text(
-                                text = stringResource(R.string.action_delete),
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        },
-                        shape = EtaMenuItemShape(
-                            index = if (canExport) 1 else 0,
-                            count = itemCount,
-                        ),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Rounded.DeleteOutline,
-                                contentDescription = null,
-                                modifier = Modifier.size(MenuDefaults.LeadingIconSize),
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                        },
-                    )
+            Icon(
+                imageVector = Icons.Rounded.MoreVert,
+                contentDescription = moreDescription,
+            )
+            EtaMenuPopup(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                EtaMenuGroup(index = 0, count = 1) {
+                    if (canExport) {
+                        DropdownMenuItem(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                expanded = false
+                                onExport()
+                            },
+                            text = { M3Text(text = stringResource(R.string.linux_files_export)) },
+                            shape = EtaMenuItemShape(index = 0, count = itemCount),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.FileDownload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                )
+                            },
+                        )
+                    }
+                    if (canDelete) {
+                        DropdownMenuItem(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                expanded = false
+                                onDelete()
+                            },
+                            text = {
+                                M3Text(
+                                    text = stringResource(R.string.action_delete),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            },
+                            shape = EtaMenuItemShape(
+                                index = if (canExport) 1 else 0,
+                                count = itemCount,
+                            ),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.DeleteOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }

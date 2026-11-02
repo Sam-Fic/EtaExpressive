@@ -124,6 +124,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 internal enum class EtaVoicePhase {
     READY,
@@ -1217,17 +1218,20 @@ private fun SelectedScreenContext(
                 maxLines = 1,
             )
         }
-        IconButton(
-            onClick = onRemove,
-            enabled = enabled,
-            modifier = Modifier.size(30.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Close,
-                contentDescription = stringResource(R.string.voice_screen_remove),
-                modifier = Modifier.size(EtaDimens.StatusIconSize),
-                tint = removeColor,
-            )
+        val removeDescription = stringResource(R.string.voice_screen_remove)
+        EtaTooltip(text = removeDescription) {
+            IconButton(
+                onClick = onRemove,
+                enabled = enabled,
+                modifier = Modifier.size(30.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = removeDescription,
+                    modifier = Modifier.size(EtaDimens.StatusIconSize),
+                    tint = removeColor,
+                )
+            }
         }
     }
 }

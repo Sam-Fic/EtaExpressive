@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.model.ConversationMention
@@ -71,15 +72,19 @@ internal fun ConversationMentionPanel(
                             color = MaterialTheme.colorScheme.primary,
                             style = etaTextStyle(EtaType.Secondary),
                         )
-                        IconButton(
-                            onClick = { state.onRemove(mention.id) },
-                            modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.cmp_remove_mention, mention.title),
-                                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-                            )
+                        val removeDescription =
+                            stringResource(R.string.cmp_remove_mention, mention.title)
+                        EtaTooltip(text = removeDescription) {
+                            IconButton(
+                                onClick = { state.onRemove(mention.id) },
+                                modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = removeDescription,
+                                    modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                                )
+                            }
                         }
                     }
                 }

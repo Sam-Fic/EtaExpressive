@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.runtime.AgentEvent
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.delay
 
@@ -88,25 +89,28 @@ internal fun ContextCompactedSummarySheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(
-                    onClick = {
-                        TouchHaptics.click(view)
-                        @Suppress("DEPRECATION")
-                        clipboardManager.setText(AnnotatedString(summary))
-                        copied = true
-                    },
-                ) {
-                    Icon(
-                        imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                        contentDescription = stringResource(
-                            if (copied) R.string.copy_copied else R.string.ui_copy_4edd1d,
-                        ),
-                        tint = if (copied) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                val copyDescription = stringResource(
+                    if (copied) R.string.copy_copied else R.string.ui_copy_4edd1d,
+                )
+                EtaTooltip(text = copyDescription) {
+                    IconButton(
+                        onClick = {
+                            TouchHaptics.click(view)
+                            @Suppress("DEPRECATION")
+                            clipboardManager.setText(AnnotatedString(summary))
+                            copied = true
                         },
-                    )
+                    ) {
+                        Icon(
+                            imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                            contentDescription = copyDescription,
+                            tint = if (copied) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
                 Box(modifier = Modifier.weight(1f)) {
                     Column(

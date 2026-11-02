@@ -136,6 +136,7 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaType
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
@@ -756,14 +757,17 @@ private fun RemoteStatusComposerPill(
                 Spacer(modifier = Modifier.width(ComposerConcentricGap))
                 if (failed) {
                     // 左端盖同心：40dp 图标钮 + 8dp 内缩，与右侧圆位同一套几何。
-                    IconButton(
-                        onClick = status.onOpenSettings,
-                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Settings,
-                            contentDescription = stringResource(R.string.remote_banner_settings),
-                        )
+                    val settingsDescription = stringResource(R.string.remote_banner_settings)
+                    EtaTooltip(text = settingsDescription) {
+                        IconButton(
+                            onClick = status.onOpenSettings,
+                            modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = settingsDescription,
+                            )
+                        }
                     }
                 }
                 Column(
@@ -795,14 +799,17 @@ private fun RemoteStatusComposerPill(
                     .padding(end = ComposerConcentricGap, bottom = ComposerConcentricGap),
             ) {
                 if (failed) {
-                    FilledIconButton(
-                        onClick = status.onRetry,
-                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = stringResource(R.string.remote_banner_retry),
-                        )
+                    val retryDescription = stringResource(R.string.remote_banner_retry)
+                    EtaTooltip(text = retryDescription) {
+                        FilledIconButton(
+                            onClick = status.onRetry,
+                            modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = retryDescription,
+                            )
+                        }
                     }
                 } else {
                     // 圆容器色取 surfaceContainer（与输入框槽底色同档）、指示器 primary：
@@ -1124,22 +1131,25 @@ private val VoiceTranscriptEdgeFadeWidth = 12.dp
 @Composable
 private fun M3VoiceStopButton(onStop: () -> Unit) {
     val view = LocalView.current
-    FilledTonalIconButton(
-        onClick = {
-            TouchHaptics.click(view)
-            onStop()
-        },
-        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        ),
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Stop,
-            contentDescription = stringResource(R.string.voice_mode_stop),
-            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-        )
+    val stopDescription = stringResource(R.string.voice_mode_stop)
+    EtaTooltip(text = stopDescription) {
+        FilledTonalIconButton(
+            onClick = {
+                TouchHaptics.click(view)
+                onStop()
+            },
+            modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Stop,
+                contentDescription = stopDescription,
+                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            )
+        }
     }
 }
 
@@ -1167,22 +1177,25 @@ private fun voicePhaseText(state: VoiceModeState): String = when {
 @Composable
 private fun M3ComposerCancelButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val view = LocalView.current
-    FilledTonalIconButton(
-        onClick = {
-            TouchHaptics.click(view)
-            onClick()
-        },
-        modifier = modifier.size(IconButtonDefaults.smallContainerSize()),
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        ),
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Close,
-            contentDescription = stringResource(R.string.ui_cancel_edit_c698df),
-            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-        )
+    val cancelDescription = stringResource(R.string.ui_cancel_edit_c698df)
+    EtaTooltip(text = cancelDescription) {
+        FilledTonalIconButton(
+            onClick = {
+                TouchHaptics.click(view)
+                onClick()
+            },
+            modifier = modifier.size(IconButtonDefaults.smallContainerSize()),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = cancelDescription,
+                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            )
+        }
     }
 }
 
@@ -1503,36 +1516,42 @@ private fun M3ComposerQueueStrip(
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                         )
                         if (canSteerNow) {
+                            val steerDescription = stringResource(R.string.chat_queue_steer_now)
+                            EtaTooltip(text = steerDescription) {
+                                IconButton(
+                                    onClick = {
+                                        TouchHaptics.click(view)
+                                        onSteer(item.id)
+                                    },
+                                    modifier = Modifier
+                                        .padding(end = 4.dp)
+                                        .size(IconButtonDefaults.smallContainerSize()),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Bolt,
+                                        contentDescription = steerDescription,
+                                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                                    )
+                                }
+                            }
+                        }
+                        val removeDescription = stringResource(R.string.chat_queue_remove)
+                        EtaTooltip(text = removeDescription) {
                             IconButton(
                                 onClick = {
                                     TouchHaptics.click(view)
-                                    onSteer(item.id)
+                                    onRemove(item.id)
                                 },
                                 modifier = Modifier
                                     .padding(end = 4.dp)
                                     .size(IconButtonDefaults.smallContainerSize()),
                             ) {
                                 Icon(
-                                    imageVector = Icons.Rounded.Bolt,
-                                    contentDescription = stringResource(R.string.chat_queue_steer_now),
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = removeDescription,
                                     modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                                 )
                             }
-                        }
-                        IconButton(
-                            onClick = {
-                                TouchHaptics.click(view)
-                                onRemove(item.id)
-                            },
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .size(IconButtonDefaults.smallContainerSize()),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.chat_queue_remove),
-                                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-                            )
                         }
                     }
                 }

@@ -166,6 +166,7 @@ import io.github.mangi.eta.ui.adaptive.etaSurfaceContainer
 import io.github.mangi.eta.ui.adaptive.etaSurfaceContainerHigh
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 /** 图标按钮的图标弱化透明度（与官方 StandardIconButtonTokens.DisabledOpacity 同值）。 */
 private const val DisabledIconAlpha = 0.38f
@@ -1344,12 +1345,15 @@ internal fun VoiceModeStatusPanel(
                 style = etaTextStyle(EtaType.Body),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    imageVector = Icons.Rounded.Stop,
-                    contentDescription = stringResource(R.string.voice_mode_stop),
-                    modifier = Modifier.size(EtaDimens.StatusIconSize),
-                )
+            val stopDescription = stringResource(R.string.voice_mode_stop)
+            EtaTooltip(text = stopDescription) {
+                IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.Stop,
+                        contentDescription = stopDescription,
+                        modifier = Modifier.size(EtaDimens.StatusIconSize),
+                    )
+                }
             }
         }
         val detail = listOfNotNull(
