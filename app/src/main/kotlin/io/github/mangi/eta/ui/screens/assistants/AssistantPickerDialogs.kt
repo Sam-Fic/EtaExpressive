@@ -40,6 +40,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.AssistantAvatar
@@ -334,11 +335,14 @@ internal fun AssistantRow(
                     )
                 }
                 Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreHoriz,
-                            contentDescription = stringResource(R.string.assistant_more_named, profile.name),
-                        )
+                    val moreDescription = stringResource(R.string.assistant_more_named, profile.name)
+                    EtaTooltip(text = moreDescription) {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(
+                                imageVector = Icons.Rounded.MoreHoriz,
+                                contentDescription = moreDescription,
+                            )
+                        }
                     }
                     EtaMenuPopup(
                         expanded = menuExpanded,

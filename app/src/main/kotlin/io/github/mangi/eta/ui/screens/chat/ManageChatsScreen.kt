@@ -47,6 +47,7 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.components.streamDiagnosticDraw
@@ -267,39 +268,43 @@ private fun ManageChatRow(
                 trailingContent = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // 置顶开关：选中态给官方 secondaryContainer 容器，一眼可辨。
-                        IconToggleButton(
-                            checked = conversation.isPinned,
-                            onCheckedChange = { checked ->
-                                TouchHaptics.toggle(view, checked)
-                                onTogglePin()
-                            },
-                            colors = IconButtonDefaults.iconToggleButtonColors(
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                checkedContainerColor =
-                                    MaterialTheme.colorScheme.secondaryContainer,
-                                checkedContentColor =
-                                    MaterialTheme.colorScheme.onSecondaryContainer,
-                            ),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.PushPin,
-                                contentDescription = pinDescription,
-                            )
+                        EtaTooltip(text = pinDescription) {
+                            IconToggleButton(
+                                checked = conversation.isPinned,
+                                onCheckedChange = { checked ->
+                                    TouchHaptics.toggle(view, checked)
+                                    onTogglePin()
+                                },
+                                colors = IconButtonDefaults.iconToggleButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    checkedContainerColor =
+                                        MaterialTheme.colorScheme.secondaryContainer,
+                                    checkedContentColor =
+                                        MaterialTheme.colorScheme.onSecondaryContainer,
+                                ),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.PushPin,
+                                    contentDescription = pinDescription,
+                                )
+                            }
                         }
                         // 删除：破坏性动作取官方 error 角色色。
-                        M3IconButton(
-                            onClick = {
-                                TouchHaptics.click(view)
-                                onDelete()
-                            },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.DeleteOutline,
-                                contentDescription = deleteDescription,
-                            )
+                        EtaTooltip(text = deleteDescription) {
+                            M3IconButton(
+                                onClick = {
+                                    TouchHaptics.click(view)
+                                    onDelete()
+                                },
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.DeleteOutline,
+                                    contentDescription = deleteDescription,
+                                )
+                            }
                         }
                     }
                 },

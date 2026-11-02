@@ -185,6 +185,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.etaOnSurface
 import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
 import io.github.mangi.eta.ui.adaptive.etaPrimary
@@ -2914,28 +2915,30 @@ private fun ChatCodeBlock(
                     color = etaOnSurfaceVariant(),
                     modifier = Modifier.weight(1f),
                 )
-                ChatIconAction(
-                    onClick = {
-                        @Suppress("DEPRECATION")
-                        clipboardManager.setText(AnnotatedString(code))
-                        copied = true
-                    },
-                    minWidth = 28.dp,
-                    minHeight = 28.dp,
-                ) {
-                    Icon(
-                        imageVector = if (copied) Icons.Rounded.Check
-                            else Icons.Rounded.ContentCopy,
-                        contentDescription = stringResource(
-                            if (copied) R.string.copy_copied else R.string.copy_code,
-                        ),
-                        modifier = Modifier.size(EtaDimens.MicroIconSize),
-                        tint = if (copied) {
-                            etaPrimary()
-                        } else {
-                            etaOnSurfaceVariant().copy(alpha = 0.8f)
+                EtaTooltip(text = stringResource(R.string.copy_code)) {
+                    ChatIconAction(
+                        onClick = {
+                            @Suppress("DEPRECATION")
+                            clipboardManager.setText(AnnotatedString(code))
+                            copied = true
                         },
-                    )
+                        minWidth = 28.dp,
+                        minHeight = 28.dp,
+                    ) {
+                        Icon(
+                            imageVector = if (copied) Icons.Rounded.Check
+                                else Icons.Rounded.ContentCopy,
+                            contentDescription = stringResource(
+                                if (copied) R.string.copy_copied else R.string.copy_code,
+                            ),
+                            modifier = Modifier.size(EtaDimens.MicroIconSize),
+                            tint = if (copied) {
+                                etaPrimary()
+                            } else {
+                                etaOnSurfaceVariant().copy(alpha = 0.8f)
+                            },
+                        )
+                    }
                 }
             }
             ChatHairlineDivider(modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp))
@@ -3970,28 +3973,30 @@ private fun ToolCommandBlock(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            ChatIconAction(
-                onClick = {
-                    @Suppress("DEPRECATION")
-                    clipboardManager.setText(AnnotatedString(command))
-                    copied = true
-                },
-                minWidth = 28.dp,
-                minHeight = 28.dp,
-            ) {
-                Icon(
-                    imageVector = if (copied) Icons.Rounded.Check
-                        else Icons.Rounded.ContentCopy,
-                    contentDescription = stringResource(
-                        if (copied) R.string.copy_copied else R.string.copy_command,
-                    ),
-                    modifier = Modifier.size(EtaDimens.StatusIconSize),
-                    tint = if (copied) {
-                        etaPrimary()
-                    } else {
-                        etaOnSurfaceVariant().copy(alpha = 0.8f)
+            EtaTooltip(text = stringResource(R.string.copy_command)) {
+                ChatIconAction(
+                    onClick = {
+                        @Suppress("DEPRECATION")
+                        clipboardManager.setText(AnnotatedString(command))
+                        copied = true
                     },
-                )
+                    minWidth = 28.dp,
+                    minHeight = 28.dp,
+                ) {
+                    Icon(
+                        imageVector = if (copied) Icons.Rounded.Check
+                            else Icons.Rounded.ContentCopy,
+                        contentDescription = stringResource(
+                            if (copied) R.string.copy_copied else R.string.copy_command,
+                        ),
+                        modifier = Modifier.size(EtaDimens.StatusIconSize),
+                        tint = if (copied) {
+                            etaPrimary()
+                        } else {
+                            etaOnSurfaceVariant().copy(alpha = 0.8f)
+                        },
+                    )
+                }
             }
         }
         ChatHairlineDivider(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
@@ -4060,20 +4065,22 @@ private fun ToolDetailBlock(
             } else {
                 Spacer(modifier = Modifier.weight(1f))
             }
-            ChatIconAction(
-                onClick = {
-                    clipboardManager.setText(AnnotatedString(text))
-                    copied = true
-                },
-                minWidth = 28.dp,
-                minHeight = 28.dp,
-            ) {
-                Icon(
-                    imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                    contentDescription = if (copied) stringResource(R.string.copy_copied) else copyLabel,
-                    modifier = Modifier.size(EtaDimens.StatusIconSize),
-                    tint = if (copied) etaPrimary() else etaOnSurfaceVariant().copy(alpha = 0.8f),
-                )
+            EtaTooltip(text = copyLabel) {
+                ChatIconAction(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(text))
+                        copied = true
+                    },
+                    minWidth = 28.dp,
+                    minHeight = 28.dp,
+                ) {
+                    Icon(
+                        imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                        contentDescription = if (copied) stringResource(R.string.copy_copied) else copyLabel,
+                        modifier = Modifier.size(EtaDimens.StatusIconSize),
+                        tint = if (copied) etaPrimary() else etaOnSurfaceVariant().copy(alpha = 0.8f),
+                    )
+                }
             }
         }
         ChatHairlineDivider(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))

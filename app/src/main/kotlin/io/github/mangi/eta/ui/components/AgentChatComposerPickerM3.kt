@@ -57,6 +57,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.model.AgentContextUsageUi
@@ -142,26 +143,29 @@ internal fun M3ComposerPickerSheet(
                 // 远程会话下助手页签没有可配置的东西（助手在服务器上，本机也改不了），
                 // 留着这个入口只会把人带进一个和当前会话无关的页面。
                 if (!(remoteAgentName != null && tabIndex == 1)) {
-                    IconButton(
-                        onClick = {
-                            onDismiss()
-                            if (tabIndex == 0) onOpenModelProviders() else onOpenAssistants()
+                    val configureDescription = stringResource(
+                        if (tabIndex == 0) {
+                            R.string.composer_configure_models
+                        } else {
+                            R.string.composer_configure_assistants
                         },
-                    ) {
-                        Icon(
-                            imageVector = if (tabIndex == 0) {
-                                Icons.Rounded.Memory
-                            } else {
-                                Icons.Rounded.SmartToy
+                    )
+                    EtaTooltip(text = configureDescription) {
+                        IconButton(
+                            onClick = {
+                                onDismiss()
+                                if (tabIndex == 0) onOpenModelProviders() else onOpenAssistants()
                             },
-                            contentDescription = stringResource(
-                                if (tabIndex == 0) {
-                                    R.string.composer_configure_models
+                        ) {
+                            Icon(
+                                imageVector = if (tabIndex == 0) {
+                                    Icons.Rounded.Memory
                                 } else {
-                                    R.string.composer_configure_assistants
+                                    Icons.Rounded.SmartToy
                                 },
-                            ),
-                        )
+                                contentDescription = configureDescription,
+                            )
+                        }
                     }
                 }
             }

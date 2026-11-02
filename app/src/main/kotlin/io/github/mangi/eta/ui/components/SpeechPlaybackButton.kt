@@ -23,6 +23,7 @@ import io.github.mangi.eta.agent.voice.ReplyReadAloudController
 import io.github.mangi.eta.agent.voice.tts.SpeechPlayback
 import io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 /**
  * 朗读开关按钮。`index`/`count` 传入时渲染进连体按钮组：官方 ToggleButton
@@ -45,7 +46,46 @@ internal fun SpeechPlaybackButton(
     val active = state.owner == messageId || autoReading
     val description = stringResource(if (active) R.string.tts_stop else R.string.tts_read)
     if (count > 0) {
-        EtaConnectedIconAction(
+        EtaTooltip(text = description) {
+            EtaConnectedIconAction(
+                onClick = {
+                    if (autoReading) {
+                        ReplyReadAloudController.stopCurrent()
+                    } else {
+                        SpeechPlayback.toggle(context, messageId, text)
+                    }
+                },
+                enabled = !state.recording,
+                index = index,
+                count = count,
+                // 朗读中 / 自动朗读中保持官方 ToggleButton 选中态（胶囊 + primary 容器）。
+                checked = active,
+            ) {
+                if (active && state.preparing) {
+                    // M3E Loading Indicator：官方 `LoadingIndicator` 的 indeterminate 重载——
+                    // 一块在官方默认形状序列（圆/软星/三角/胶囊…）之间变形并旋转的图形，
+                    // 与输入区 morph 指示器同属 M3E 组件族。无容器圆底（containerColor
+                    // 走 Unspecified，不绘制背景），直接取按钮内容色，缩进 20dp 图标槽；
+                    // 官方默认 48dp 容器被外层 size 收敛，与实际渲染尺寸无关。
+                    LoadingIndicator(
+                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                        color = LocalContentColor.current,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (active) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
+                        contentDescription = description,
+                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                    )
+                }
+            }
+        }
+        return
+    }
+    // 官方 IconButton（无尺寸覆盖，走官方默认档），配色只引用官方 colorScheme 角色。
+    EtaTooltip(text = description) {
+        androidx.compose.material3.IconButton(
+            modifier = Modifier.semantics { contentDescription = description },
             onClick = {
                 if (autoReading) {
                     ReplyReadAloudController.stopCurrent()
@@ -54,58 +94,23 @@ internal fun SpeechPlaybackButton(
                 }
             },
             enabled = !state.recording,
-            index = index,
-            count = count,
-            // 朗读中 / 自动朗读中保持官方 ToggleButton 选中态（胶囊 + primary 容器）。
-            checked = active,
         ) {
             if (active && state.preparing) {
-                // M3E Loading Indicator：官方 `LoadingIndicator` 的 indeterminate 重载——
-                // 一块在官方默认形状序列（圆/软星/三角/胶囊…）之间变形并旋转的图形，
-                // 与输入区 morph 指示器同属 M3E 组件族。无容器圆底（containerColor
-                // 走 Unspecified，不绘制背景），直接取按钮内容色，缩进 20dp 图标槽；
-                // 官方默认 48dp 容器被外层 size 收敛，与实际渲染尺寸无关。
                 LoadingIndicator(
-                    modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
-                    color = LocalContentColor.current,
+                    modifier = Modifier.size(EtaDimens.StatusIconSize),
+                    color = MaterialTheme.colorScheme.primary,
                 )
             } else {
                 Icon(
                     imageVector = if (active) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
-                    contentDescription = description,
-                    modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                    contentDescription = null,
+                    tint = if (active) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                 )
             }
-        }
-        return
-    }
-    // 官方 IconButton（无尺寸覆盖，走官方默认档），配色只引用官方 colorScheme 角色。
-    androidx.compose.material3.IconButton(
-        modifier = Modifier.semantics { contentDescription = description },
-        onClick = {
-            if (autoReading) {
-                ReplyReadAloudController.stopCurrent()
-            } else {
-                SpeechPlayback.toggle(context, messageId, text)
-            }
-        },
-        enabled = !state.recording,
-    ) {
-        if (active && state.preparing) {
-            LoadingIndicator(
-                modifier = Modifier.size(EtaDimens.StatusIconSize),
-                color = MaterialTheme.colorScheme.primary,
-            )
-        } else {
-            Icon(
-                imageVector = if (active) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
-                contentDescription = null,
-                tint = if (active) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
         }
     }
 }

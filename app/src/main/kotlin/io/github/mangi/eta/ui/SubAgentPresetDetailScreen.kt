@@ -61,6 +61,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
 import io.github.mangi.eta.ui.components.LocalConversationSubAgentEditor
@@ -428,9 +429,12 @@ private fun SubAgentProfileHeaderRow(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box {
-                    IconButton(enabled = editable, onClick = {
-                        if (editable) { TouchHaptics.click(view); menuExpanded = true }
-                    }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.sas_more_for, profile.name)) }
+                    val moreDescription = stringResource(R.string.sas_more_for, profile.name)
+                    EtaTooltip(text = moreDescription) {
+                        IconButton(enabled = editable, onClick = {
+                            if (editable) { TouchHaptics.click(view); menuExpanded = true }
+                        }) { Icon(Icons.Rounded.MoreVert, moreDescription) }
+                    }
                     if (editable) SubAgentDropdownMenu(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },

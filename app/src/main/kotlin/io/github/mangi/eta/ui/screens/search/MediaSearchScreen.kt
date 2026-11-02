@@ -101,6 +101,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSlider
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.etaRandomDecorativeShape
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
@@ -418,14 +419,17 @@ internal fun MediaSearchScreen(
             actions = {
                 // 语义检索每次都要跑嵌入模型，不能随输入实时触发，所以顶栏常驻一个显式按钮。
                 // 用放大镜图标表示（与设置主页的搜索入口同一套图标）。
-                IconButton(
-                    onClick = { runSearch() },
-                    enabled = query.trim().isNotEmpty() && ready && !searching,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = stringResource(R.string.media_action_search),
-                    )
+                val searchDescription = stringResource(R.string.media_action_search)
+                EtaTooltip(text = searchDescription) {
+                    IconButton(
+                        onClick = { runSearch() },
+                        enabled = query.trim().isNotEmpty() && ready && !searching,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = searchDescription,
+                        )
+                    }
                 }
             },
             topContent = {
@@ -1076,17 +1080,20 @@ private fun MediaSelectionBar(
                 )
                 // 删除文件是破坏性操作：图标用 error 色区分（官方裸 IconButton，容器/图标
                 // 尺寸与 EtaIconButton 的 `Standard` + S 档一致），执行前另有确认弹窗。
-                IconButton(
-                    onClick = onDeleteFiles,
-                    enabled = selectedCount > 0 && !busy,
-                    modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Delete,
-                        contentDescription = stringResource(R.string.media_action_delete_files),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-                    )
+                val deleteDescription = stringResource(R.string.media_action_delete_files)
+                EtaTooltip(text = deleteDescription) {
+                    IconButton(
+                        onClick = onDeleteFiles,
+                        enabled = selectedCount > 0 && !busy,
+                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = deleteDescription,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                        )
+                    }
                 }
             }
         }

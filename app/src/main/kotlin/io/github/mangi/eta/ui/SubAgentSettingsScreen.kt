@@ -51,6 +51,7 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
@@ -244,13 +245,17 @@ internal fun SubAgentSettingsScreen(
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             // 溢出操作走就地弹出菜单，与详情页子代理标题行保持一致，不再拉起底部面板。
                                             Box {
-                                                IconButton(
-                                                    enabled = editable,
-                                                    modifier = Modifier.size(IconButtonDefaults.mediumContainerSize()),
-                                                    onClick = {
-                                                        if (editable) { TouchHaptics.click(view); groupMenuExpanded = true }
-                                                    },
-                                                ) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.sas_group_more_for, preset.name)) }
+                                                val groupMoreDescription =
+                                                    stringResource(R.string.sas_group_more_for, preset.name)
+                                                EtaTooltip(text = groupMoreDescription) {
+                                                    IconButton(
+                                                        enabled = editable,
+                                                        modifier = Modifier.size(IconButtonDefaults.mediumContainerSize()),
+                                                        onClick = {
+                                                            if (editable) { TouchHaptics.click(view); groupMenuExpanded = true }
+                                                        },
+                                                    ) { Icon(Icons.Rounded.MoreVert, groupMoreDescription) }
+                                                }
                                                 if (editable) SubAgentDropdownMenu(
                                                     expanded = groupMenuExpanded,
                                                     onDismissRequest = { groupMenuExpanded = false },
@@ -449,8 +454,11 @@ private fun SubAgentConversationSection(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                             )
-                            IconButton(enabled = panelEnabled, onClick = onAddProfile) {
-                                Icon(Icons.Rounded.Add, stringResource(R.string.sap_add_profile))
+                            val addProfileDescription = stringResource(R.string.sap_add_profile)
+                            EtaTooltip(text = addProfileDescription) {
+                                IconButton(enabled = panelEnabled, onClick = onAddProfile) {
+                                    Icon(Icons.Rounded.Add, addProfileDescription)
+                                }
                             }
                         }
                     }
