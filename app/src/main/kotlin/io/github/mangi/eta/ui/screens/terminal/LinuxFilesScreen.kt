@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
@@ -58,6 +57,7 @@ import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -241,15 +241,12 @@ internal fun LinuxFilesScreen(
         onBack = { if (openFilePath != null) closeFile() else onBack() },
         actions = {
             // 页面级操作收进顶栏：浏览目录时可直接重新列举当前目录。
-            IconButton(
+            TopBarIconButton(
+                icon = Icons.Rounded.Refresh,
+                contentDescription = stringResource(R.string.page_refresh_38108e),
                 onClick = { listRevision++ },
                 enabled = installed && !busy && openFilePath == null,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Refresh,
-                    contentDescription = stringResource(R.string.page_refresh_38108e),
-                )
-            }
+            )
         },
     ) {
         materialLinuxFileItems(

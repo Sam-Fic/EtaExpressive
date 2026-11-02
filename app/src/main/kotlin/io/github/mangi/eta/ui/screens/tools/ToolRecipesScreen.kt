@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
@@ -83,6 +84,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -90,7 +92,6 @@ import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.material3.Text as M3Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -247,17 +248,11 @@ internal fun ToolRecipesScreen(
             )
         },
         actions = {
-            M3IconButton(
-                onClick = {
-                    TouchHaptics.click(view)
-                    scope.launch(Dispatchers.IO) { runtime.refresh() }
-                },
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Refresh,
-                    contentDescription = stringResource(R.string.action_refresh),
-                )
-            }
+            TopBarIconButton(
+                icon = Icons.Rounded.Refresh,
+                contentDescription = stringResource(R.string.action_refresh),
+                onClick = { scope.launch(Dispatchers.IO) { runtime.refresh() } },
+            )
         },
     ) {
         item(key = "summary") {
@@ -584,8 +579,8 @@ private fun RecipeSwitch(
  * - 步骤与入参是只读的审计信息，逐条分段行展示：前导图标区分操作类型，命令原样透出；
  * - 「工具信息」给出模型侧工具名与 Root 依赖，审这份配方到底做了什么时要看这两项。
  *
- * 保存挂在顶栏动作位（与助手编辑页同款），返回键即取消：没有改动时保存键置灰，
- * 避免一次空保存把配方版本号顶上去。
+ * 保存挂在顶栏动作位（`Icons.Rounded.Save` 图标按钮，与远程智能体编辑页同款），返回键即取消：
+ * 没有改动时保存键置灰，避免一次空保存把配方版本号顶上去。
  */
 @Composable
 private fun RecipeEditPage(
@@ -609,9 +604,12 @@ private fun RecipeEditPage(
             onBack = onDismiss,
             modifier = Modifier.fillMaxSize().imePadding(),
             actions = {
-                // 官方 TextButton（自带涟漪与禁用态）；返回键即取消，不再另摆一条底栏动作。
+                // 保存走顶栏图标按钮（远程智能体编辑页、助手编辑页同款）：文字按钮在
+                // 大标题旁显得像正文，图标按钮与返回箭头左右对称，也不挤占标题宽度。
                 // 名字不合法时保存置灰：坏名字会被当成文件名，拦住比落盘后改正便宜。
-                M3TextButton(
+                TopBarIconButton(
+                    icon = Icons.Rounded.Save,
+                    contentDescription = stringResource(R.string.action_save),
                     onClick = {
                         onSave(
                             recipe.copy(
@@ -622,9 +620,7 @@ private fun RecipeEditPage(
                         )
                     },
                     enabled = dirty && nameError == null,
-                ) {
-                    M3Text(text = stringResource(R.string.action_save))
-                }
+                )
             },
         ) { padding, scrollConnection, _ ->
             Column(

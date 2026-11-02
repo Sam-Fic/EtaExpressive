@@ -65,6 +65,7 @@ import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.EtaMenuEntry
 import io.github.mangi.eta.ui.adaptive.EtaTextMenu
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.launch
 
@@ -168,7 +169,11 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
         onBack = { TouchHaptics.click(view); back() },
         actions = {
             if (home) Box {
-                IconButton(onClick = { TouchHaptics.click(view); settingsMenu = true }) { Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.dv_settings_cd)) }
+                TopBarIconButton(
+                    icon = Icons.Rounded.MoreVert,
+                    contentDescription = stringResource(R.string.dv_settings_cd),
+                    onClick = { settingsMenu = true },
+                )
                 EtaTextMenu(
                     expanded = settingsMenu,
                     onDismissRequest = { settingsMenu = false },

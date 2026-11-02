@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +48,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.components.streamDiagnosticDraw
 import io.github.mangi.eta.ui.components.streamDiagnosticMeasure
 import io.github.mangi.eta.ui.components.streamDiagnosticPlacement
@@ -197,38 +197,6 @@ internal fun ManageChatsScreen(
             },
         ) {
         }
-    }
-}
-
-/**
- * 顶栏图标按钮。M3 用官方图标按钮（容器尺寸取 `IconButtonDefaults` 官方令牌，
- * 破坏性动作用 `IconButtonDefaults.iconButtonColors` 搭配 error 角色色）。
- */
-@Composable
-internal fun TopBarIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    destructive: Boolean = false,
-    enabled: Boolean = true,
-) {
-    val view = LocalView.current
-    val colors = if (destructive) {
-        IconButtonDefaults.iconButtonColors(
-            contentColor = MaterialTheme.colorScheme.error,
-        )
-    } else {
-        IconButtonDefaults.iconButtonColors()
-    }
-    M3IconButton(
-        onClick = {
-            TouchHaptics.click(view)
-            onClick()
-        },
-        enabled = enabled,
-        colors = colors,
-    ) {
-        Icon(imageVector = icon, contentDescription = contentDescription)
     }
 }
 

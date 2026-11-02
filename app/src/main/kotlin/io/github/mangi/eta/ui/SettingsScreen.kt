@@ -85,6 +85,7 @@ import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.components.StreamPerformanceDiagnostics
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.components.streamDiagnosticMeasure
 import io.github.mangi.eta.ui.components.streamDiagnosticPlacement
 import io.github.mangi.eta.ui.components.streamDiagnosticDraw
@@ -112,7 +113,6 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.LocalEtaSegmentedRowContainerColor
 import androidx.compose.material3.Text as M3StatusText
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.MaterialTheme as M3MaterialTheme
 
 /** 搜索命中后回到主页，聚焦行高亮的持续时间。 */
@@ -284,12 +284,11 @@ internal fun SettingsScreen(
         listModifier = Modifier.streamDiagnosticMeasure("settings.lazy.measure").streamDiagnosticPlacement("settings.lazy.place").streamDiagnosticDraw("settings.lazy.draw"),
         actions = {
             // 搜索入口：大标题栏只保留这一个单搜索图标，点击进独立搜索页。
-            M3IconButton(onClick = { onNavigate(AppRoute.SettingsSearch) }) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = stringResource(R.string.settings_search_hint),
-                )
-            }
+            TopBarIconButton(
+                icon = Icons.Rounded.Search,
+                contentDescription = stringResource(R.string.settings_search_hint),
+                onClick = { onNavigate(AppRoute.SettingsSearch) },
+            )
         },
     ) {
             anchors.reset()

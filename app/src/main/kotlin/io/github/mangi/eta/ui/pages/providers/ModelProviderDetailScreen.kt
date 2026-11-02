@@ -54,6 +54,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.data.model.AnthropicProviderSetting
 import io.github.mangi.eta.data.model.CustomProviderSetting
@@ -79,7 +80,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -275,18 +275,15 @@ internal fun ModelProviderDetailScreen(
         title = title,
         onBack = onBack,
         actions = {
-            // M3：保存走顶栏图标按钮（KernelSU 模板编辑器同款），不再占用页面底部。
-            IconButton(
+            // 保存走顶栏图标按钮（KernelSU 模板编辑器同款），不再占用页面底部。
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(
+                    if (isNew) R.string.page_create_fcbd09 else R.string.page_save_configuration_817af1,
+                ),
                 onClick = onSaveProvider,
                 enabled = !isSaving && !creationCommitted,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Save,
-                    contentDescription = stringResource(
-                        if (isNew) R.string.page_create_fcbd09 else R.string.page_save_configuration_817af1,
-                    ),
-                )
-            }
+            )
         },
     ) { paddingValues, scrollBehavior, sidePadding ->
         Column(

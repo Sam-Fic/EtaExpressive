@@ -59,6 +59,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.navigation.AppRoute
 import io.github.mangi.eta.ui.navigation.NewProviderType
@@ -66,7 +67,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.material3.Text as M3Text
@@ -141,15 +141,11 @@ internal fun ModelProviderListScreen(
             listState = listState,
             actions = {
                 // 搜索入口：大标题栏只保留这一个单搜索图标，点击进独立搜索页。
-                M3IconButton(onClick = {
-                    TouchHaptics.click(view)
-                    onNavigate(AppRoute.ModelProviderSearch)
-                }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = stringResource(R.string.ui_search_provider_74e049),
-                    )
-                }
+                TopBarIconButton(
+                    icon = Icons.Rounded.Search,
+                    contentDescription = stringResource(R.string.ui_search_provider_74e049),
+                    onClick = { onNavigate(AppRoute.ModelProviderSearch) },
+                )
             },
         ) {
             materialProviderListContent(

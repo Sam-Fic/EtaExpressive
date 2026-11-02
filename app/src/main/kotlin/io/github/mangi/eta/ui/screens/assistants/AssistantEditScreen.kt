@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,6 +44,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.components.AssistantAvatar
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.components.rememberAssistantAvatarBitmap
 import io.github.mangi.eta.ui.model.SkillItemUi
 import io.github.mangi.eta.ui.screens.skills.SkillSwitchRow
@@ -51,7 +54,6 @@ import kotlinx.coroutines.withContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.material3.Text as M3Text
 
 @Composable
@@ -178,10 +180,14 @@ internal fun AssistantEditScreen(
         title = stringResource(R.string.assistant_edit_title),
         onBack = onBack,
         actions = {
-            // 官方 TextButton（自带涟漪与禁用态）。
-            M3TextButton(onClick = ::save, enabled = saveEnabled) {
-                M3Text(text = stringResource(R.string.action_save))
-            }
+            // 顶栏动作一律纯图标（TopBarIconButton）：文字按钮挨着大标题会被读成正文，
+            // 图标与返回箭头左右对称，也不挤占标题宽度。
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(R.string.action_save),
+                onClick = ::save,
+                enabled = saveEnabled,
+            )
         },
     ) {
         item(key = "preview") {

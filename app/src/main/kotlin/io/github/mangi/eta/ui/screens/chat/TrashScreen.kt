@@ -42,6 +42,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
 
@@ -71,30 +72,20 @@ internal fun TrashScreen(
         title = stringResource(R.string.drawer_trash_title),
         onBack = onBack,
         actions = {
-            M3IconButton(
+            TopBarIconButton(
+                icon = Icons.Rounded.Search,
+                contentDescription = stringResource(R.string.trash_search_title),
                 onClick = onOpenSearch,
                 enabled = trash.isNotEmpty(),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = stringResource(R.string.trash_search_title),
-                )
-            }
-            M3IconButton(
-                onClick = {
-                    TouchHaptics.click(view)
-                    confirmEmpty = true
-                },
+            )
+            // 清空回收站是不可逆动作：图标与涟漪同取 error 色，交给 destructive 统一处理。
+            TopBarIconButton(
+                icon = Icons.Rounded.DeleteSweep,
+                contentDescription = stringResource(R.string.drawer_trash_empty_action),
+                onClick = { confirmEmpty = true },
+                destructive = true,
                 enabled = trash.isNotEmpty(),
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.DeleteSweep,
-                    contentDescription = stringResource(R.string.drawer_trash_empty_action),
-                )
-            }
+            )
         },
     ) {
         if (trash.isEmpty()) {

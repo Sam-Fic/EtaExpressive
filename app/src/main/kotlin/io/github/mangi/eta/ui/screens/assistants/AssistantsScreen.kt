@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,13 +32,12 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.navigation.AppRoute
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text as M3Text
@@ -98,12 +98,11 @@ internal fun AssistantsScreen(
         },
         actions = {
             // 搜索入口：大标题栏只保留这一个单搜索图标，点击进独立搜索页。
-            M3IconButton(onClick = { onNavigate(AppRoute.AssistantSearch(picker = picker)) }) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = stringResource(R.string.assistant_search),
-                )
-            }
+            TopBarIconButton(
+                icon = Icons.Rounded.Search,
+                contentDescription = stringResource(R.string.assistant_search),
+                onClick = { onNavigate(AppRoute.AssistantSearch(picker = picker)) },
+            )
         },
     ) {
         // 主页不过滤（query 恒空即全量），搜索交给独立搜索页。
