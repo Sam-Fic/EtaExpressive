@@ -139,6 +139,61 @@ internal object Prefs {
         const val AGENT_COMPRESS_MODEL_ID = "agent_compress_model_id"
         const val AGENT_COMPRESS_CUSTOM_MODEL_ENABLED = "agent_compress_custom_model_enabled"
         const val AGENT_COMPRESS_ENDPOINT_MODE = "agent_compress_endpoint_mode"
+
+        // ── 判断模型（工具组路由）────────────────────────────────
+        // 凭证不单独存储：复用 provider 体系，baseUrl / apiKey 都在
+        // `model_providers` 行上，这里只记 providerId 与 modelId。
+        //
+        // M1 只落地配置与影子模式：总开关默认关、影子默认开，所有决策结果只写日志，
+        // 不参与工具目录与提示词组装（收窄/粘性属 M2）。
+        const val AGENT_DECISION_MODEL_ENABLED = "agent_decision_model_enabled"
+        /** 影子模式：调用判断模型但只记录，不改变任何行为。 */
+        const val AGENT_DECISION_SHADOW = "agent_decision_shadow"
+        const val AGENT_DECISION_MODE = "agent_decision_mode"
+        const val AGENT_DECISION_PROVIDER_ID = "agent_decision_provider_id"
+        /** 主模型（建议 lingdt-decision-1.0）。 */
+        const val AGENT_DECISION_MODEL_ID = "agent_decision_model_id"
+        /** 可选升级模型（建议 lingdt-decision-1.0-27b）；空 = 不升级。 */
+        const val AGENT_DECISION_ESCALATION_MODEL_ID = "agent_decision_escalation_model_id"
+        /** 升级模型所属 provider；留空 = 复用判断模型 provider。 */
+        const val AGENT_DECISION_ESCALATION_PROVIDER_ID = "agent_decision_escalation_provider_id"
+        const val AGENT_DECISION_PROTOCOL = "agent_decision_protocol"
+        /**
+         * 自定义决策端点；空 = 从 provider.baseUrl 推导。
+         *
+         * 允许三种形态：完整 chat 端点（`.../v1/chat/completions`）、完整决策端点
+         * （`.../v1/systemone`）、只到 `/v1` 或裸 host；归一化见
+         * `AgentDecisionEndpoint.normalize`。
+         */
+        const val AGENT_DECISION_ENDPOINT_OVERRIDE = "agent_decision_endpoint_override"
+        const val AGENT_DECISION_TIMEOUT_MS = "agent_decision_timeout_ms"
+        const val AGENT_DECISION_FAILURE_POLICY = "agent_decision_failure_policy"
+        /** 送判的最近轮数；0 = 只看当前输入，上限 10。 */
+        const val AGENT_DECISION_HISTORY_TURNS = "agent_decision_history_turns"
+        const val AGENT_DECISION_STICKY_TTL_TURNS = "agent_decision_sticky_ttl_turns"
+        /** 混合模型路由开关（M3 起可开）。 */
+        const val AGENT_DECISION_ESCALATION_ENABLED = "agent_decision_escalation_enabled"
+        /**
+         * 升级触发阈值（百分比，0 = 不按置信度升级）。
+         *
+         * 主模型 `tool_groups` 的置信度低于该值、且请求被判定需要工具时，才用升级模型复判。
+         * 与 `AGENT_DECISION_ESCALATION_MODEL_ID` 一起生效；只存整数，避免浮点 prefs。
+         */
+        const val AGENT_DECISION_ESCALATION_CONFIDENCE_PCT = "agent_decision_escalation_confidence_pct"
+
+        // 取值常量：设置页与运行时共用，避免两处硬编码字符串漂移。
+        const val AGENT_DECISION_PROTOCOL_SYSTEMONE = "systemone"
+        const val AGENT_DECISION_MODE_CONTROL = "control"
+        const val AGENT_DECISION_MODE_ADVISE = "advise"
+        const val AGENT_DECISION_FAILURE_OPEN = "fail_open"
+        const val AGENT_DECISION_FAILURE_CLOSED = "fail_closed"
+
+        const val AGENT_DECISION_TIMEOUT_DEFAULT_MS = 3000
+        const val AGENT_DECISION_TIMEOUT_MAX_MS = 10_000
+        const val AGENT_DECISION_HISTORY_TURNS_DEFAULT = 3
+        const val AGENT_DECISION_HISTORY_TURNS_MAX = 10
+        const val AGENT_DECISION_STICKY_TTL_DEFAULT = 2
+        const val AGENT_DECISION_ESCALATION_CONFIDENCE_DEFAULT_PCT = 60
         const val AGENT_TTS_MODE = "agent_tts_mode"
         const val AGENT_TTS_MODEL_PROVIDER_ID = "agent_tts_model_provider_id"
         const val AGENT_TTS_MODEL_ID = "agent_tts_model_id"
@@ -204,6 +259,10 @@ internal object Prefs {
             AGENT_THINKING_ENABLED to true,
             AGENT_AUTO_COMPRESS_ENABLED to false,
             AGENT_COMPRESS_CUSTOM_MODEL_ENABLED to false,
+            AGENT_DECISION_MODEL_ENABLED to false,
+            // 影子模式默认开：即使总开关被打开，也先只记录不生效。
+            AGENT_DECISION_SHADOW to true,
+            AGENT_DECISION_ESCALATION_ENABLED to false,
             AGENT_TTS_AUTO_READ to false,
             AGENT_TTS_STREAM_SYNTH to true,
             // 默认停止：与改动前的实际行为一致（进入后台即停止自动朗读）。
@@ -236,6 +295,9 @@ internal object Prefs {
             AGENT_THINKING_ENABLED,
             AGENT_AUTO_COMPRESS_ENABLED,
             AGENT_COMPRESS_CUSTOM_MODEL_ENABLED,
+            AGENT_DECISION_MODEL_ENABLED,
+            AGENT_DECISION_SHADOW,
+            AGENT_DECISION_ESCALATION_ENABLED,
             AGENT_TTS_AUTO_READ,
             AGENT_TTS_STREAM_SYNTH,
             AGENT_TTS_AUTO_READ_BACKGROUND,

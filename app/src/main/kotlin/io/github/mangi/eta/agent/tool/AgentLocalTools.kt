@@ -162,6 +162,13 @@ internal class AgentLocalTools(
     },
     /** 当前会话 id，用于把子代理组应用到本会话。 */
     private val agentConversationId: String = "",
+    /**
+     * 判断模型收窄后的可打开组（M2，control 模式）；null = 未接管。
+     *
+     * 只用于**区分错误来源**：同一个被拒的组，可能是用户关掉的，也可能是判断模型本轮
+     * 没选它。两者的补救方式不同，文案必须分开（决策收窄可以用「一键放行」恢复）。
+     */
+    private val decisionAllowedGroups: () -> Set<String>? = { null },
 ) : AgentModelClient.ToolExecutor, AutoCloseable {
 
     /** ASK 只在第一次界面操作前问一次，之后整轮 run 都用选定的位置。 */
@@ -361,6 +368,26 @@ internal class AgentLocalTools(
         val group = AgentToolGroups.group(requested)
         if (group == null || !group.deferredByDefault) {
             return AgentToolGroupCatalog.unknownGroup(requested, known)
+        }
+        // 决策收窄：gate 允许、但判断模型本轮没有选中它。与「用户关闭」区分来源，
+        // 否则用户会以为是自己误关了开关，找不到恢复入口。
+        val decisionLimit = decisionAllowedGroups()
+        if (decisionLimit != null && toolGroupGate(group) && requested !in decisionLimit) {
+            // 空集 = fail-closed：判断模型不可用且用户选择了保守策略，此时「一键放行」
+            // 不是正确的补救方式，必须换一条文案，避免误导。
+            if (decisionLimit.isEmpty()) {
+                return errorResult(
+                    "TOOL_GROUP_DECISION_CLOSED",
+                    "判断模型不可用，已进入保守模式，本次只保留基础交互；" +
+                        "如需恢复，请让用户在判断模型设置页关闭「失败即保守」或点「一键放行」。",
+                )
+            }
+            return errorResult(
+                "TOOL_GROUP_NARROWED_BY_DECISION",
+                "本次运行未启用「${AgentToolGroups.label(group.id)}」：判断模型按当前请求收窄了工具组。" +
+                    "如需使用，请让用户到判断模型设置页点「一键放行」（会关闭判断模型接管），" +
+                    "或把模式改为「建议模式」后重试。",
+            )
         }
         // 开关关闭的组不允许打开：否则会成功返回 next_turn，而组内工具永远不会出现。
         if (requested !in availability.openable && requested !in availability.opened) {
