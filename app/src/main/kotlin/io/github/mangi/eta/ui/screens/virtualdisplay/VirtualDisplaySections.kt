@@ -208,17 +208,21 @@ internal fun VirtualDisplayControlSection(
             )
         }
         item(key = "control-close") {
+            val closeEnabled = enabled && status.active
+            // error 是显式覆盖色，不吃 EtaSegmentedRow 的禁用处理；禁用时压到 38%，
+            // 与可点击态区分（同 PreferenceIcon / PersonalVoicesScreen 的禁用约定）。
+            val closeColor = MaterialTheme.colorScheme.error.copy(alpha = if (closeEnabled) 1f else 0.38f)
             EtaSegmentedRow(
-                enabled = enabled && status.active,
+                enabled = closeEnabled,
                 onClick = onClose,
                 content = {
                     Text(
                         text = stringResource(R.string.vd_screen_close),
-                        color = MaterialTheme.colorScheme.error,
+                        color = closeColor,
                     )
                 },
                 supportingContent = { Text(stringResource(R.string.vd_screen_close_summary)) },
-                trailingContent = { EtaTrailingChevron(tint = MaterialTheme.colorScheme.error) },
+                trailingContent = { EtaTrailingChevron(tint = closeColor) },
             )
         }
     }
