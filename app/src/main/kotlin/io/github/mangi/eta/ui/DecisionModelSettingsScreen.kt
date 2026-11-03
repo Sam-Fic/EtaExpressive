@@ -2,17 +2,21 @@ package io.github.mangi.eta.ui
 
 import android.content.SharedPreferences
 import android.widget.Toast
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Api
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Visibility
-import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.decision.AgentDecisionAnswer
 import io.github.mangi.eta.agent.decision.AgentDecisionCache
@@ -40,30 +46,41 @@ import io.github.mangi.eta.agent.decision.AgentDecisionTelemetry
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaNoticeBlockPadding
 import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import io.github.mangi.eta.ui.adaptive.EtaTooltipIconButton
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 /**
  * 判断模型（工具组路由）设置页。
  *
- * M2 起影子关闭时配置真正生效；影子打开时页面顶部明确标注「只记录不生效」。
+ * 影子关闭时配置真正生效；影子打开时页面顶部明确标注「只记录不生效」。
  * 页面只读写 `Prefs`：运行时的 overlay 是 run 级内存态，不回写这里。
+ *
+ * 分组顺序固定为：总开关 → 运行模式 → 模型与端点 → 连通性 → 高级 → 诊断与遥测 → 清理。
+ * 依赖关系只用禁用态与副标题表达，不隐藏行——用户始终能看见「有这项、为什么现在不能用」。
  */
 @Composable
 internal fun DecisionModelSettingsScreen(
@@ -132,14 +149,18 @@ internal fun DecisionModelSettingsScreen(
     var escalationPickerState by remember { mutableStateOf(AgentModelPickerUiState()) }
     var showEscalationDialog by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(AgentDecisionDiagnostics.last) }
-    // M4：进程内统计（设置页是 App 级页面，拿不到「当前会话」，因此看全局汇总）。
+    // 进程内统计（设置页是 App 级页面，拿不到「当前会话」，因此看全局汇总）。
     var telemetry by remember { mutableStateOf(AgentDecisionTelemetry.globalSnapshot()) }
     var modelPickerState by remember { mutableStateOf(AgentModelPickerUiState()) }
     var showModelDialog by remember { mutableStateOf(false) }
     var isLoadingModels by remember { mutableStateOf(writable) }
-    // 连通性测试：用表单当前值直发一次最小决策请求，不经过 Router 的缓存/粘滞/统计。
+    // 连通性测试：用表单当前值直发一次最小判断请求，不经过 Router 的缓存/粘滞/统计。
     var connectivityResult by remember { mutableStateOf<DecisionConnectivityResult?>(null) }
     var connectivityRunning by remember { mutableStateOf(false) }
+    var connectivityDetailsExpanded by remember { mutableStateOf(false) }
+    // 诊断与遥测是只读区，默认折叠，避免默认占满整屏。
+    var diagnosticsExpanded by remember { mutableStateOf(false) }
+    var showCleanupDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(prefs) {
         prefs?.let { currentPrefs ->
@@ -252,6 +273,9 @@ internal fun DecisionModelSettingsScreen(
                         Prefs.Keys.AGENT_DECISION_ESCALATION_CONFIDENCE_DEFAULT_PCT,
                     )
 
+                Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE ->
+                    emptyGroupRescue = Prefs.isEnabled(Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE)
+
                 Prefs.Keys.AGENT_DECISION_ENDPOINT_OVERRIDE ->
                     endpointOverride = Prefs.getString(Prefs.Keys.AGENT_DECISION_ENDPOINT_OVERRIDE)
             }
@@ -315,8 +339,19 @@ internal fun DecisionModelSettingsScreen(
         endpointErrorRes != null -> stringResource(endpointErrorRes)
         else -> stringResource(R.string.decision_model_endpoint_pending)
     }
-    val missingCredentials = enabled && !shadow && (providerId.isBlank() || modelId.isBlank())
-    // 最近一次决策的只读摘要；没有跑过就没有数据，不显示伪造的默认值。
+
+    // 总开关关闭 = 本页所有配置都不生效；用统一闸门禁用，避免逐行重复判断。
+    val controlsEnabled = writable && enabled
+    val modelReady = providerId.isNotBlank() && modelId.isNotBlank()
+    val missingCredentials = enabled && !shadow && !modelReady
+    val modeSummary = buildString {
+        append(stringResource(R.string.decision_model_mode_summary))
+        if (shadow) {
+            append(" · ")
+            append(stringResource(R.string.decision_model_shadow_inline_note))
+        }
+    }
+    // 最近一次判断的只读摘要；没有跑过就没有数据，不显示伪造的默认值。
     val diagnosticsSummary = diagnostics?.let { result ->
         stringResource(
             R.string.decision_model_diagnostics_summary,
@@ -327,9 +362,7 @@ internal fun DecisionModelSettingsScreen(
             result.usage,
         )
     }
-    // M4：本进程内的决策统计；命中率/漏判率都由快照计算，不在这里重复口径。
-    val hasTelemetry = telemetry.decisions + telemetry.cacheHits + telemetry.degraded > 0
-    val telemetrySummary = if (!hasTelemetry) {
+    val telemetrySummary = if (telemetry.decisions == 0 && telemetry.cacheHits == 0 && telemetry.degraded == 0) {
         stringResource(R.string.decision_model_telemetry_empty)
     } else {
         stringResource(
@@ -347,18 +380,30 @@ internal fun DecisionModelSettingsScreen(
         decisionReasonText(telemetry.degradedReasons),
     )
 
+    // 语义文案在组合期取好：`Modifier.semantics {}` 不是 @Composable 上下文，里面不能读资源。
+    val switchOnText = stringResource(R.string.decision_model_switch_on)
+    val switchOffText = stringResource(R.string.decision_model_switch_off)
+    val expandedText = stringResource(R.string.decision_model_expanded)
+    val collapsedText = stringResource(R.string.decision_model_collapsed)
+
+    val groupPadding = Modifier.padding(
+        start = EtaGroupHorizontalPadding,
+        end = EtaGroupHorizontalPadding,
+        bottom = EtaSegmentedGroupSpacing,
+    )
+
     EtaScaffoldPage(title = stringResource(R.string.ui_decision_model_settings_title), onBack = onBack) {
         item(key = "decision_notice") {
             EtaNoticeText(
-                title = if (shadow) {
-                    stringResource(R.string.decision_model_shadow_notice_title)
-                } else {
-                    stringResource(R.string.decision_model_shadow_off_notice_title)
+                title = when {
+                    !enabled -> stringResource(R.string.decision_model_disabled_notice_title)
+                    shadow -> stringResource(R.string.decision_model_shadow_notice_title)
+                    else -> stringResource(R.string.decision_model_shadow_off_notice_title)
                 },
-                summary = if (shadow) {
-                    stringResource(R.string.decision_model_shadow_notice_summary)
-                } else {
-                    stringResource(R.string.decision_model_shadow_off_notice_summary)
+                summary = when {
+                    !enabled -> stringResource(R.string.decision_model_disabled_notice_summary)
+                    shadow -> stringResource(R.string.decision_model_shadow_notice_summary)
+                    else -> stringResource(R.string.decision_model_shadow_off_notice_summary)
                 },
                 modifier = Modifier.padding(
                     start = EtaGroupHorizontalPadding,
@@ -382,48 +427,69 @@ internal fun DecisionModelSettingsScreen(
             }
         }
 
-        item(key = "decision_enabled") {
+        // ── 总开关 ────────────────────────────────────────────────────────
+        item(key = "decision_master") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
+                title = stringResource(R.string.decision_model_group_master),
+                modifier = groupPadding,
             ) {
-                item {
+                item(key = "master_enabled") {
                     EtaSwitchRow(
                         title = stringResource(R.string.decision_model_enabled_title),
                         summary = stringResource(R.string.decision_model_enabled_summary),
                         checked = enabled,
                         enabled = writable,
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Psychology) },
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Psychology, enabled = enabled) },
+                        modifier = Modifier.semantics {
+                            stateDescription = if (enabled) switchOnText else switchOffText
+                        },
                         onCheckedChange = { value ->
                             Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_MODEL_ENABLED, value)
                             enabled = value
                         },
                     )
                 }
-                item {
-                    EtaSwitchRow(
-                        title = stringResource(R.string.decision_model_shadow_title),
-                        summary = stringResource(R.string.decision_model_shadow_summary),
-                        checked = shadow,
-                        enabled = writable,
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Visibility) },
-                        onCheckedChange = { value ->
-                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_SHADOW, value)
-                            shadow = value
+                item(key = "master_release") {
+                    // 「一键放行」= 直接关闭总开关（本实现选这一分支），不新增会话级 override：
+                    // 语义简单、跨进程可预期，且用户能随时重新打开。
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_release_title),
+                        summary = stringResource(R.string.decision_model_release_summary),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.PowerSettingsNew, enabled = controlsEnabled) },
+                        enabled = controlsEnabled,
+                        showChevron = false,
+                        onClick = {
+                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_MODEL_ENABLED, false)
+                            enabled = false
                         },
                     )
                 }
-                item {
+            }
+        }
+
+        // ── 运行模式与影子 ────────────────────────────────────────────────
+        item(key = "decision_mode") {
+            EtaSegmentedColumn(
+                title = stringResource(R.string.decision_model_group_mode),
+                modifier = groupPadding,
+            ) {
+                item(key = "mode") {
                     EtaSegmentedDropdownRow(
                         title = stringResource(R.string.decision_model_mode_title),
-                        summary = stringResource(R.string.decision_model_mode_summary),
+                        summary = modeSummary,
+                        description = stringResource(
+                            R.string.decision_model_dropdown_description,
+                            stringResource(R.string.decision_model_mode_title),
+                            if (mode == Prefs.Keys.AGENT_DECISION_MODE_ADVISE) {
+                                stringResource(R.string.decision_model_mode_advise)
+                            } else {
+                                stringResource(R.string.decision_model_mode_control)
+                            },
+                        ),
                         icon = Icons.Rounded.Psychology,
                         items = modeOptions,
                         selectedIndex = if (mode == Prefs.Keys.AGENT_DECISION_MODE_ADVISE) 1 else 0,
-                        enabled = writable,
+                        enabled = controlsEnabled,
                         onItemSelected = { index ->
                             val value = if (index == 1) {
                                 Prefs.Keys.AGENT_DECISION_MODE_ADVISE
@@ -435,103 +501,42 @@ internal fun DecisionModelSettingsScreen(
                         },
                     )
                 }
-                item {
+                item(key = "shadow") {
                     EtaSwitchRow(
-                        title = stringResource(R.string.decision_model_empty_group_rescue_title),
-                        summary = stringResource(R.string.decision_model_empty_group_rescue_summary),
-                        checked = emptyGroupRescue,
-                        // 只影响 control：advise 不接管枚举。
-                        enabled = writable &&
-                            mode == Prefs.Keys.AGENT_DECISION_MODE_CONTROL &&
-                            !shadow,
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Build) },
+                        title = stringResource(R.string.decision_model_shadow_title),
+                        summary = stringResource(R.string.decision_model_shadow_summary),
+                        checked = shadow,
+                        enabled = controlsEnabled,
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Visibility, enabled = controlsEnabled) },
+                        modifier = Modifier.semantics {
+                            stateDescription = if (shadow) switchOnText else switchOffText
+                        },
                         onCheckedChange = { value ->
-                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE, value)
-                            emptyGroupRescue = value
+                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_SHADOW, value)
+                            shadow = value
                         },
                     )
                 }
             }
         }
 
+        // ── 模型与端点 ────────────────────────────────────────────────────
         item(key = "decision_model") {
             EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
+                title = stringResource(R.string.decision_model_group_model),
+                modifier = groupPadding,
             ) {
-                item {
+                item(key = "model") {
                     EtaClickableRow(
                         title = stringResource(R.string.decision_model_model_title),
-                        summary = modelPickerState.selectedModel?.displayName
+                        summary = modelPickerState.selectedModel?.let { "${it.providerName} · ${it.displayName}" }
                             ?: stringResource(R.string.decision_model_not_selected),
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Memory) },
-                        enabled = writable,
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Memory, enabled = controlsEnabled) },
+                        enabled = controlsEnabled,
                         onClick = { showModelDialog = true },
                     )
                 }
-            }
-        }
-
-        item(key = "decision_escalation") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            ) {
-                item {
-                    EtaSwitchRow(
-                        title = stringResource(R.string.decision_model_escalation_enabled_title),
-                        summary = stringResource(R.string.decision_model_escalation_enabled_summary),
-                        checked = escalationEnabled,
-                        enabled = writable,
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Psychology) },
-                        onCheckedChange = { value ->
-                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_ESCALATION_ENABLED, value)
-                            escalationEnabled = value
-                        },
-                    )
-                }
-                item {
-                    EtaClickableRow(
-                        title = stringResource(R.string.decision_model_escalation_model_title),
-                        summary = escalationPickerState.selectedModel?.displayName
-                            ?: stringResource(R.string.decision_model_escalation_model_not_selected),
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Memory) },
-                        enabled = writable && escalationEnabled,
-                        onClick = { showEscalationDialog = true },
-                    )
-                }
-                item {
-                    EtaSegmentedDropdownRow(
-                        title = stringResource(R.string.decision_model_escalation_confidence_title),
-                        summary = stringResource(R.string.decision_model_escalation_confidence_summary),
-                        items = confidenceOptions,
-                        selectedIndex = nearestIndex(CONFIDENCE_VALUES, confidencePct),
-                        enabled = writable && escalationEnabled,
-                        onItemSelected = { index ->
-                            val value = CONFIDENCE_VALUES[index]
-                            Prefs.putInt(Prefs.Keys.AGENT_DECISION_ESCALATION_CONFIDENCE_PCT, value)
-                            confidencePct = value
-                        },
-                    )
-                }
-            }
-        }
-
-        item(key = "decision_endpoint") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            ) {
-                item {
+                item(key = "endpoint") {
                     EtaSegmentedTextField(
                         label = stringResource(R.string.decision_model_endpoint_title),
                         value = endpointOverride,
@@ -539,7 +544,7 @@ internal fun DecisionModelSettingsScreen(
                             Prefs.putString(Prefs.Keys.AGENT_DECISION_ENDPOINT_OVERRIDE, value)
                             endpointOverride = value
                         },
-                        enabled = writable,
+                        enabled = controlsEnabled,
                         singleLine = true,
                         placeholder = { Text(stringResource(R.string.decision_model_endpoint_placeholder)) },
                         isError = endpointErrorRes != null,
@@ -547,82 +552,28 @@ internal fun DecisionModelSettingsScreen(
                             Text(
                                 text = endpointDisplay,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (endpointErrorRes != null) MaterialTheme.colorScheme.error
-                                else LocalContentColor.current.copy(alpha = 0.7f),
+                                color = if (endpointErrorRes != null) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             )
                         },
                     )
                 }
-            }
-        }
-
-        item(key = "decision_connectivity") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            ) {
-                item {
-                    EtaClickableRow(
-                        title = stringResource(R.string.decision_model_connectivity_title),
-                        summary = when {
-                            connectivityRunning -> stringResource(R.string.decision_model_connectivity_running)
-                            connectivityResult != null -> stringResource(R.string.decision_model_connectivity_done)
-                            else -> stringResource(R.string.decision_model_connectivity_summary)
-                        },
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Speed) },
-                        enabled = writable && !connectivityRunning && providerId.isNotBlank() &&
-                            modelId.isNotBlank(),
-                        showChevron = false,
-                        onClick = {
-                            connectivityRunning = true
-                            scope.launch {
-                                connectivityResult = probeDecisionConnectivity(
-                                    providerId = providerId,
-                                    modelId = modelId,
-                                    endpointOverride = endpointOverride,
-                                    timeoutMs = timeoutMs,
-                                )
-                                connectivityRunning = false
-                            }
-                        },
-                    )
-                }
-                connectivityResult?.let { result ->
-                    item {
-                        EtaNoticeText(
-                            title = stringResource(
-                                if (result.success) {
-                                    R.string.decision_model_connectivity_ok_title
-                                } else {
-                                    R.string.decision_model_connectivity_fail_title
-                                },
-                            ),
-                            summary = connectivitySummary(result),
-                        )
-                    }
-                }
-            }
-        }
-
-        item(key = "decision_runtime") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            ) {
-                item {
+                item(key = "timeout") {
                     EtaSegmentedDropdownRow(
                         title = stringResource(R.string.decision_model_timeout_title),
                         summary = stringResource(R.string.decision_model_timeout_summary),
+                        description = stringResource(
+                            R.string.decision_model_dropdown_description,
+                            stringResource(R.string.decision_model_timeout_title),
+                            timeoutOptions[nearestIndex(TIMEOUT_VALUES, timeoutMs.coerceIn(500, 10_000))],
+                        ),
                         icon = Icons.Rounded.Timer,
                         items = timeoutOptions,
                         selectedIndex = nearestIndex(TIMEOUT_VALUES, timeoutMs.coerceIn(500, 10_000)),
-                        enabled = writable,
+                        enabled = controlsEnabled,
                         onItemSelected = { index ->
                             val value = TIMEOUT_VALUES[index]
                             Prefs.putInt(Prefs.Keys.AGENT_DECISION_TIMEOUT_MS, value)
@@ -630,13 +581,220 @@ internal fun DecisionModelSettingsScreen(
                         },
                     )
                 }
-                item {
+                item(key = "protocol") {
+                    // 协议在 M1 只有一个实现；按只读行展示，避免给用户一个点了没反应的菜单。
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_protocol_title),
+                        summary = stringResource(R.string.decision_model_protocol_summary),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Api) },
+                        showChevron = false,
+                        onClick = null,
+                    )
+                }
+            }
+        }
+
+        // ── 连通性 ────────────────────────────────────────────────────────
+        item(key = "decision_connectivity") {
+            EtaSegmentedColumn(
+                title = stringResource(R.string.decision_model_group_connectivity),
+                modifier = groupPadding,
+            ) {
+                item(key = "connectivity_probe") {
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_connectivity_title),
+                        summary = when {
+                            connectivityRunning -> stringResource(R.string.decision_model_connectivity_running)
+                            connectivityResult != null -> stringResource(R.string.decision_model_connectivity_done)
+                            !modelReady -> stringResource(R.string.decision_model_connectivity_need_model)
+                            else -> stringResource(R.string.decision_model_connectivity_summary)
+                        },
+                        enabled = controlsEnabled && modelReady && !connectivityRunning,
+                        showChevron = false,
+                        onClick = null,
+                        endActions = {
+                            // 纯图标动作：长按必须能看 Tooltip（见 accessibility-tooltips.md）。
+                            EtaTooltipIconButton(
+                                icon = Icons.Rounded.Speed,
+                                contentDescription = stringResource(R.string.decision_model_connectivity_title),
+                                tooltipText = if (connectivityRunning) {
+                                    stringResource(R.string.decision_model_connectivity_running)
+                                } else {
+                                    stringResource(R.string.decision_model_connectivity_title)
+                                },
+                                disabledTooltipText = if (!modelReady) {
+                                    stringResource(R.string.decision_model_connectivity_need_model)
+                                } else {
+                                    null
+                                },
+                                enabled = controlsEnabled && modelReady && !connectivityRunning,
+                                onClick = {
+                                    connectivityRunning = true
+                                    connectivityDetailsExpanded = false
+                                    scope.launch {
+                                        connectivityResult = probeDecisionConnectivity(
+                                            providerId = providerId,
+                                            modelId = modelId,
+                                            endpointOverride = endpointOverride,
+                                            timeoutMs = timeoutMs,
+                                        )
+                                        connectivityRunning = false
+                                    }
+                                },
+                            )
+                        },
+                    )
+                }
+                connectivityResult?.let { result ->
+                    item(key = "connectivity_status") {
+                        EtaClickableRow(
+                            title = stringResource(
+                                if (result.success) {
+                                    R.string.decision_model_connectivity_ok_title
+                                } else {
+                                    R.string.decision_model_connectivity_fail_title
+                                },
+                            ),
+                            summary = connectivityStatusLine(result),
+                            leading = {
+                                Icon(
+                                    imageVector = if (result.success) {
+                                        Icons.Rounded.CheckCircle
+                                    } else {
+                                        Icons.Rounded.ErrorOutline
+                                    },
+                                    contentDescription = null,
+                                    tint = if (result.success) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
+                                )
+                            },
+                            showChevron = false,
+                            onClick = null,
+                        )
+                    }
+                    item(key = "connectivity_details_toggle") {
+                        EtaClickableRow(
+                            title = stringResource(
+                                if (connectivityDetailsExpanded) {
+                                    R.string.decision_model_connectivity_details_hide
+                                } else {
+                                    R.string.decision_model_connectivity_details_show
+                                },
+                            ),
+                            showChevron = true,
+                            onClick = { connectivityDetailsExpanded = !connectivityDetailsExpanded },
+                        )
+                    }
+                    item(key = "connectivity_details", visible = connectivityDetailsExpanded) {
+                        EtaSegmentedItemContainer {
+                            Column(modifier = Modifier.padding(EtaNoticeBlockPadding)) {
+                                EtaText(
+                                    text = stringResource(
+                                        R.string.decision_model_connectivity_detail_endpoint,
+                                        result.endpoint,
+                                    ),
+                                    style = EtaTextStyle.Footnote,
+                                )
+                                EtaText(
+                                    text = stringResource(
+                                        R.string.decision_model_connectivity_detail_model,
+                                        result.model,
+                                    ),
+                                    style = EtaTextStyle.Footnote,
+                                )
+                                val errorText = result.detail.ifBlank { result.reason }
+                                if (!result.success) {
+                                    EtaText(
+                                        text = stringResource(
+                                            R.string.decision_model_connectivity_detail_error,
+                                            errorText,
+                                        ),
+                                        style = EtaTextStyle.Footnote,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 高级 ──────────────────────────────────────────────────────────
+        item(key = "decision_advanced") {
+            EtaSegmentedColumn(
+                title = stringResource(R.string.decision_model_group_advanced),
+                modifier = groupPadding,
+            ) {
+                item(key = "escalation_enabled") {
+                    EtaSwitchRow(
+                        title = stringResource(R.string.decision_model_escalation_enabled_title),
+                        summary = stringResource(R.string.decision_model_escalation_enabled_summary),
+                        checked = escalationEnabled,
+                        enabled = controlsEnabled,
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Psychology, enabled = controlsEnabled) },
+                        modifier = Modifier.semantics {
+                            stateDescription = if (escalationEnabled) switchOnText else switchOffText
+                        },
+                        onCheckedChange = { value ->
+                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_ESCALATION_ENABLED, value)
+                            escalationEnabled = value
+                        },
+                    )
+                }
+                item(key = "escalation_model") {
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_escalation_model_title),
+                        summary = if (!escalationEnabled) {
+                            stringResource(R.string.decision_model_escalation_requires_enabled)
+                        } else {
+                            escalationPickerState.selectedModel?.displayName
+                                ?: stringResource(R.string.decision_model_escalation_model_not_selected)
+                        },
+                        leading = {
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Memory,
+                                enabled = controlsEnabled && escalationEnabled,
+                            )
+                        },
+                        enabled = controlsEnabled && escalationEnabled,
+                        onClick = { showEscalationDialog = true },
+                    )
+                }
+                item(key = "escalation_confidence") {
+                    EtaSegmentedDropdownRow(
+                        title = stringResource(R.string.decision_model_escalation_confidence_title),
+                        summary = stringResource(R.string.decision_model_escalation_confidence_summary),
+                        description = stringResource(
+                            R.string.decision_model_dropdown_description,
+                            stringResource(R.string.decision_model_escalation_confidence_title),
+                            confidenceOptions[nearestIndex(CONFIDENCE_VALUES, confidencePct)],
+                        ),
+                        items = confidenceOptions,
+                        selectedIndex = nearestIndex(CONFIDENCE_VALUES, confidencePct),
+                        enabled = controlsEnabled && escalationEnabled,
+                        onItemSelected = { index ->
+                            val value = CONFIDENCE_VALUES[index]
+                            Prefs.putInt(Prefs.Keys.AGENT_DECISION_ESCALATION_CONFIDENCE_PCT, value)
+                            confidencePct = value
+                        },
+                    )
+                }
+                item(key = "failure_policy") {
                     EtaSegmentedDropdownRow(
                         title = stringResource(R.string.decision_model_failure_policy_title),
                         summary = stringResource(R.string.decision_model_failure_policy_summary),
+                        description = stringResource(
+                            R.string.decision_model_dropdown_description,
+                            stringResource(R.string.decision_model_failure_policy_title),
+                            failureOptions[if (failurePolicy == Prefs.Keys.AGENT_DECISION_FAILURE_CLOSED) 1 else 0],
+                        ),
                         items = failureOptions,
                         selectedIndex = if (failurePolicy == Prefs.Keys.AGENT_DECISION_FAILURE_CLOSED) 1 else 0,
-                        enabled = writable,
+                        enabled = controlsEnabled,
                         onItemSelected = { index ->
                             val value = if (index == 1) {
                                 Prefs.Keys.AGENT_DECISION_FAILURE_CLOSED
@@ -648,13 +806,18 @@ internal fun DecisionModelSettingsScreen(
                         },
                     )
                 }
-                item {
+                item(key = "history_turns") {
                     EtaSegmentedDropdownRow(
                         title = stringResource(R.string.decision_model_history_turns_title),
                         summary = stringResource(R.string.decision_model_history_turns_summary),
+                        description = stringResource(
+                            R.string.decision_model_dropdown_description,
+                            stringResource(R.string.decision_model_history_turns_title),
+                            turnOptions[nearestIndex(HISTORY_TURN_VALUES, historyTurns.coerceIn(0, 10))],
+                        ),
                         items = turnOptions,
                         selectedIndex = nearestIndex(HISTORY_TURN_VALUES, historyTurns.coerceIn(0, 10)),
-                        enabled = writable,
+                        enabled = controlsEnabled,
                         onItemSelected = { index ->
                             val value = HISTORY_TURN_VALUES[index]
                             Prefs.putInt(Prefs.Keys.AGENT_DECISION_HISTORY_TURNS, value)
@@ -662,87 +825,139 @@ internal fun DecisionModelSettingsScreen(
                         },
                     )
                 }
-                item {
-                    // 协议在 M1 只有一个实现；按只读行展示，避免给用户一个点了没反应的菜单。
-                    EtaClickableRow(
-                        title = stringResource(R.string.decision_model_protocol_title),
-                        summary = stringResource(R.string.decision_model_protocol_summary),
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Api) },
-                        showChevron = false,
-                        onClick = null,
-                    )
-                }
-                item {
-                    // 「一键放行」= 直接关闭总开关（本实现选这一分支）。
-                    // 不新增会话级 override：语义简单、跨进程可预期，且用户能随时重新打开。
-                    // 下一轮 run 的 route() 会看到 enabled=false，直接返回 null（全量放行）。
-                    EtaClickableRow(
-                        title = stringResource(R.string.decision_model_release_title),
-                        summary = stringResource(R.string.decision_model_release_summary),
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Visibility) },
-                        enabled = writable && enabled,
-                        onClick = {
-                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_MODEL_ENABLED, false)
-                            enabled = false
+                item(key = "empty_group_rescue") {
+                    // 只影响控制模式：建议模式不接管枚举，影子模式不生效。
+                    EtaSwitchRow(
+                        title = stringResource(R.string.decision_model_empty_group_rescue_title),
+                        summary = stringResource(R.string.decision_model_empty_group_rescue_summary),
+                        checked = emptyGroupRescue,
+                        enabled = controlsEnabled &&
+                            mode == Prefs.Keys.AGENT_DECISION_MODE_CONTROL &&
+                            !shadow,
+                        leading = {
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Build,
+                                enabled = controlsEnabled &&
+                                    mode == Prefs.Keys.AGENT_DECISION_MODE_CONTROL &&
+                                    !shadow,
+                            )
+                        },
+                        modifier = Modifier.semantics {
+                            stateDescription = if (emptyGroupRescue) switchOnText else switchOffText
+                        },
+                        onCheckedChange = { value ->
+                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE, value)
+                            emptyGroupRescue = value
                         },
                     )
                 }
             }
         }
 
+        // ── 诊断与遥测（只读，默认折叠）────────────────────────────────────
         item(key = "decision_diagnostics") {
-            // 只读诊断：数据来自最近一次 decision.route（内存态），不读日志文件、不触发新请求。
-            EtaNoticeText(
-                title = stringResource(R.string.decision_model_diagnostics_title),
-                summary = diagnosticsSummary
-                    ?: stringResource(R.string.decision_model_diagnostics_empty),
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            )
+            EtaSegmentedColumn(
+                title = stringResource(R.string.decision_model_group_diagnostics),
+                modifier = groupPadding,
+            ) {
+                item(key = "diagnostics_toggle") {
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_diagnostics_title),
+                        summary = diagnosticsSummary
+                            ?: stringResource(R.string.decision_model_diagnostics_empty),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Memory) },
+                        showChevron = true,
+                        modifier = Modifier.semantics {
+                            stateDescription = if (diagnosticsExpanded) expandedText else collapsedText
+                        },
+                        onClick = { diagnosticsExpanded = !diagnosticsExpanded },
+                    )
+                }
+                item(key = "diagnostics_body", visible = diagnosticsExpanded) {
+                    EtaSegmentedItemContainer {
+                        Column(modifier = Modifier.padding(EtaNoticeBlockPadding)) {
+                            EtaText(
+                                text = stringResource(R.string.decision_model_diagnostics_title),
+                                style = EtaTextStyle.Title,
+                            )
+                            EtaText(
+                                text = diagnosticsSummary
+                                    ?: stringResource(R.string.decision_model_diagnostics_empty),
+                                style = EtaTextStyle.Secondary,
+                            )
+                            EtaText(
+                                text = stringResource(R.string.decision_model_telemetry_title),
+                                style = EtaTextStyle.Title,
+                                modifier = Modifier.padding(top = EtaDimens.SpaceMd),
+                            )
+                            EtaText(text = telemetrySummary, style = EtaTextStyle.Secondary)
+                            EtaText(text = telemetryReasons, style = EtaTextStyle.Footnote)
+                            EtaText(
+                                text = stringResource(R.string.decision_model_status_summary),
+                                style = EtaTextStyle.Footnote,
+                                modifier = Modifier.padding(top = EtaDimens.SpaceMd),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
-        item(key = "decision_telemetry") {
-            // M4：进程内统计，只读；与上一块的「最近一次」并列展示，样式复用既有 EtaNoticeText。
-            EtaNoticeText(
-                title = stringResource(R.string.decision_model_telemetry_title),
-                summary = "$telemetrySummary\n$telemetryReasons",
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            )
-        }
-
+        // ── 清理 ──────────────────────────────────────────────────────────
         item(key = "decision_cleanup") {
-            EtaClickableRow(
-                title = stringResource(R.string.decision_model_cleanup_title),
-                summary = stringResource(R.string.decision_model_cleanup_summary),
-                leading = { PreferenceIcon(icon = Icons.Rounded.DeleteSweep) },
-                onClick = {
-                    AgentDecisionCache.clear()
-                    AgentDecisionStickyStore.clear()
-                    AgentDecisionTelemetry.reset()
-                    telemetry = AgentDecisionTelemetry.globalSnapshot()
-                    Toast.makeText(context, R.string.decision_model_cleanup_done, Toast.LENGTH_SHORT).show()
-                },
-            )
+            EtaSegmentedColumn(
+                title = stringResource(R.string.decision_model_group_cleanup),
+                modifier = groupPadding,
+            ) {
+                item(key = "cleanup") {
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_cleanup_title),
+                        summary = stringResource(R.string.decision_model_cleanup_summary),
+                        showChevron = false,
+                        enabled = writable,
+                        onClick = null,
+                        endActions = {
+                            // 破坏性动作走二次确认；图标按钮自带长按 Tooltip。
+                            EtaTooltipIconButton(
+                                icon = Icons.Rounded.DeleteSweep,
+                                contentDescription = stringResource(R.string.decision_model_cleanup_title),
+                                enabled = writable,
+                                destructive = true,
+                                onClick = { showCleanupDialog = true },
+                            )
+                        },
+                    )
+                }
+            }
         }
+    }
 
-        item(key = "decision_logs") {
-            EtaNoticeText(
-                title = stringResource(R.string.decision_model_status_title),
-                summary = stringResource(R.string.decision_model_status_summary),
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            )
-        }
+    if (showCleanupDialog) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.decision_model_cleanup_confirm_title),
+            summary = stringResource(R.string.decision_model_cleanup_confirm_summary),
+            onDismissRequest = { showCleanupDialog = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.decision_model_cleanup_title),
+                    destructive = true,
+                    onCancel = { showCleanupDialog = false },
+                    onConfirm = {
+                        AgentDecisionCache.clear()
+                        AgentDecisionStickyStore.clear()
+                        AgentDecisionTelemetry.reset()
+                        telemetry = AgentDecisionTelemetry.globalSnapshot()
+                        showCleanupDialog = false
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.decision_model_cleanup_done),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                )
+            },
+        )
     }
 
     CompressModelPickerDialog(
@@ -844,7 +1059,7 @@ private data class DecisionConnectivityResult(
 )
 
 /**
- * 用设置页**当前表单值**直发一次最小决策请求。
+ * 用设置页**当前表单值**直发一次最小判断请求。
  *
  * 与运行期链路解耦：不读 Router 缓存/粘滞，不写遥测；provider 行只用来取 baseUrl 与 key，
  * 请求里的 `model` 用 provider 行里的 API 模型名（设置页存的是记录 id）。
@@ -953,8 +1168,12 @@ private fun summarizeDecisionAnswers(answers: Map<String, AgentDecisionAnswer>):
         "$id=$compact"
     }.ifBlank { "-" }
 
+/**
+ * 结果行只放「状态 + 耗时 + 时间」，URL/model/错误收进可展开详情，
+ * 避免一次失败默认占满整屏。
+ */
 @Composable
-private fun connectivitySummary(result: DecisionConnectivityResult): String {
+private fun connectivityStatusLine(result: DecisionConnectivityResult): String {
     val clock = remember(result.atMillis) {
         SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(result.atMillis))
     }
@@ -969,19 +1188,10 @@ private fun connectivitySummary(result: DecisionConnectivityResult): String {
         stringResource(
             R.string.decision_model_connectivity_fail_line,
             stringResource(connectivityReasonRes(result.reason)),
-            result.detail.ifBlank { result.reason },
+            result.latencyMs.toInt(),
         )
     }
-    val requestLine = stringResource(
-        R.string.decision_model_connectivity_request_line,
-        result.endpoint,
-        result.model,
-    )
-    return listOf(
-        firstLine,
-        requestLine,
-        stringResource(R.string.decision_model_connectivity_time_line, clock),
-    ).joinToString("\n")
+    return firstLine + " · " + stringResource(R.string.decision_model_connectivity_time_line, clock)
 }
 
 /** 把客户端 reason 归一到可读分类；原始 reason 仍保留在 detail 里。 */
