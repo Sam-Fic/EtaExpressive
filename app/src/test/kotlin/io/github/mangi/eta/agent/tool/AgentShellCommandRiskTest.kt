@@ -40,7 +40,7 @@ class AgentShellCommandRiskTest {
             "rm -rf /data/*",
             "rm -rf /system/",
             "rm -rf /data/adb",
-            "rm -rf $HOME/*",
+            "rm -rf \$HOME/*",
         ).forEach { assertLevel(AgentRiskLevel.FATAL, it) }
     }
 
