@@ -133,6 +133,7 @@ import io.github.mangi.eta.ui.model.liveContextUsage
 import io.github.mangi.eta.ui.model.compressionContextUsage
 import io.github.mangi.eta.ui.model.cacheDisplayName
 import io.github.mangi.eta.ui.model.toOutboundModelImage
+import io.github.mangi.eta.ui.model.toRequestModelImage
 import io.github.mangi.eta.ui.model.visibleFileReferences
 import io.github.mangi.eta.ui.model.shouldBlockSendForContextWindow
 import io.github.mangi.eta.ui.model.AgentSkillsUiState
@@ -4034,8 +4035,10 @@ internal class AgentAppState(
                 }
             }
             val supportsVideo = config.supportsVideo
-            val modelImages = images.map { p ->
-                p.toOutboundModelImage(supportsVideo).copy(source = "user_attach")
+            // 附件在发请求前从原始引用重编码成「尽量无损」档（无损 WebP 1920，超预算按阶梯降级），
+            // 不再把聊天里的 1024 有损预览发给模型。视频、编码失败或旧草稿仍回退预览 dataUrl。
+            val modelImages = images.map { pending ->
+                pending.toRequestModelImage(appContext, supportsVideo).copy(source = "user_attach")
             }
             val compressModelConfig = resolveCompressModelConfig(config)
             val billedForCompression = if (!historyRewritten && validReceiptRoute) billedPromptTokens(state) else null

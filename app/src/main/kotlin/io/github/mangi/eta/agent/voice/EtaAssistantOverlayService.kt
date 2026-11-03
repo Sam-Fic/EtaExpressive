@@ -76,6 +76,7 @@ import io.github.mangi.eta.ui.app.AgentRunMessageProjector
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.cacheDisplayName
+import io.github.mangi.eta.ui.model.toRequestModelImage
 import io.github.mangi.eta.ui.model.encodeUserMessageImages
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
@@ -649,11 +650,12 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         val normalized = prompt.trim()
         if (normalized.isBlank() || activeRunId != null) return
         val attachment = screenContextAttachment.takeIf { uiState.screenContext.selected }
-        // 屏幕上下文图片在前，用户附件图片 / 视频在后，与应用内发送路径的顺序一致。
-        val runImages = attachment?.let { listOf(it.image) }.orEmpty() +
-            composerState.outboundImages()
+        // 待发附件先在 Main 快照，真正编码放到 runJob 的 IO 线程：附件要从原始引用重编码成
+        // 「尽量无损」档，不能在主线程上解码大图。屏幕上下文图片本就是原生无损档，原样使用。
+        val pendingForRun = composerState.pendingImages
+        val supportsVideo = composerState.selectedModel?.supportsVideo == true
         val previewImages = attachment?.let { listOf(it.previewDataUrl) }.orEmpty() +
-            composerState.pendingImages.map { it.dataUrl }
+            pendingForRun.map { it.dataUrl }
         // 文件 / 文件夹引用按应用内同一编码写进用户消息（正文 + 引用信封）。
         val fileReferences = composerState.pendingFileReferences.map { it.reference }
         val runtimePrompt = AgentFileReferencePromptCodec.format(normalized, fileReferences)
@@ -674,6 +676,11 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         )
         updateSoftInput(visible = false)
         runJob = scope.launch {
+            // 屏幕上下文图片在前，用户附件图片 / 视频在后，与应用内发送路径的顺序一致。
+            val runImages = attachment?.let { listOf(it.image) }.orEmpty() +
+                withContext(Dispatchers.IO) {
+                    pendingForRun.map { it.toRequestModelImage(this@EtaAssistantOverlayService, supportsVideo) }
+                }
             // 输入区携带的模型 / 助手 / 思考档位 / 工具开关 → 运行时配置；
             // 取不到（理论上不会）时退回默认配置。
             val config = composerState.buildRunConfig() ?: AgentModelClient.loadConfig()

@@ -36,7 +36,6 @@ import io.github.mangi.eta.ui.model.AgentModelPickerProjector
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import io.github.mangi.eta.ui.model.PendingFileReferenceUi
 import io.github.mangi.eta.ui.model.PendingImageUi
-import io.github.mangi.eta.ui.model.toOutboundModelImage
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -416,12 +415,6 @@ internal class EtaAssistantComposerState(
             thinkingEnabled = permitted.enablesReasoning,
             reasoningEffort = permitted,
         )
-    }
-
-    /** 待发图片按选中模型的能力编码（不支持视频时降级为缩略图）。 */
-    fun outboundImages(): List<AgentModelClient.ModelImage> {
-        val supportsVideo = selectedModel?.supportsVideo == true
-        return pendingImages.map { it.toOutboundModelImage(supportsVideo) }
     }
 
     private fun releasePersistableUriPermission(uri: String) {

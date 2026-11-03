@@ -1,6 +1,8 @@
 package io.github.mangi.eta.ui.model
 
+import android.content.Context
 import androidx.compose.runtime.Immutable
+import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.model.AgentContextBudget
 import io.github.mangi.eta.agent.model.AgentFileReference
 import io.github.mangi.eta.agent.model.AgentFileReferenceKind
@@ -384,6 +386,20 @@ internal fun PendingImageUi.toOutboundModelImage(supportsVideo: Boolean): AgentM
     } else {
         toLiveModelImage()
     }
+
+/**
+ * 真正发给模型的附件：从原始引用（[PendingImageUi.uri]）重编码为「尽量无损」档，
+ * 而不是复用 [dataUrl] 这份 1024 有损预览。编码失败、视频或旧草稿缺少原始引用时，
+ * 回退 [toOutboundModelImage]（即预览），保证老数据仍可发送。**必须在 IO 线程调用。**
+ */
+internal fun PendingImageUi.toRequestModelImage(
+    context: Context,
+    supportsVideo: Boolean,
+): AgentModelClient.ModelImage {
+    if (isVideo) return toOutboundModelImage(supportsVideo)
+    val encoded = AgentImageCodec.attachmentModelFromReference(context, uri)
+    return encoded ?: toOutboundModelImage(supportsVideo)
+}
 
 internal fun PendingImageUi.cacheDisplayName(index: Int): String {
     if (isVideo) {
