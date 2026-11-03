@@ -62,6 +62,7 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.ModelProviderAuthMethod::class,
     AppRoute.ModelProviderNew::class,
     AppRoute.ContextCompression::class,
+    AppRoute.DecisionModel::class,
     AppRoute.Assistants::class,
     AppRoute.AssistantSearch::class,
     AppRoute.AssistantEdit::class,

@@ -50,6 +50,7 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     is AppRoute.ModelProviderAuthMethod -> FrameDiagnosticPage.ModelProviderAuthMethod
     is AppRoute.ModelProviderNew -> FrameDiagnosticPage.ModelProviderNew
     AppRoute.ContextCompression -> FrameDiagnosticPage.ContextCompression
+    AppRoute.DecisionModel -> FrameDiagnosticPage.Settings
     is AppRoute.Assistants -> FrameDiagnosticPage.Assistants
     is AppRoute.AssistantSearch -> FrameDiagnosticPage.Assistants
     is AppRoute.AssistantEdit -> FrameDiagnosticPage.AssistantEdit

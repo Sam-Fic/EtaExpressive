@@ -149,6 +149,10 @@ sealed interface AppRoute {
     @Serializable
     data object ContextCompression : AppRoute
 
+    /** 判断模型（工具组路由）设置页；M1 阶段只展示配置与影子说明。 */
+    @Serializable
+    data object DecisionModel : AppRoute
+
     @Serializable
     data class Assistants(val picker: Boolean = false) : AppRoute
 

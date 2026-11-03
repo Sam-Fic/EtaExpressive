@@ -335,6 +335,14 @@ internal fun SettingsScreen(
                     )
                 }
 
+                row(key = SettingsKeys.DECISION_MODEL) {
+                    EtaClickableRow(
+                        title = stringResource(R.string.route_decision_model),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Psychology) },
+                        onClick = { onNavigate(AppRoute.DecisionModel) },
+                    )
+                }
+
                 row(key = SettingsKeys.AUXILIARY_VISION) {
                     EtaClickableRow(
                         title = stringResource(R.string.auxiliary_vision_title),

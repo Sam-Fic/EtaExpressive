@@ -477,6 +477,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.ModelProviderAuthMethod -> stringResource(R.string.provider_auth_method_title)
     is AppRoute.ModelProviderNew -> stringResource(R.string.route_new_provider)
     is AppRoute.ContextCompression -> stringResource(R.string.route_context_compression)
+    is AppRoute.DecisionModel -> stringResource(R.string.route_decision_model)
     is AppRoute.UsageStats -> stringResource(R.string.stats_page_title)
     is AppRoute.ManageChats -> stringResource(R.string.history_page_title)
     is AppRoute.ManageFolders -> stringResource(R.string.folders_page_title)

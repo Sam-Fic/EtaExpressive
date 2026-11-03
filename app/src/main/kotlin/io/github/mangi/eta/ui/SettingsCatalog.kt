@@ -60,6 +60,7 @@ internal object SettingsKeys {
 
     // 模型功能
     const val CONTEXT_COMPRESSION = "context_compression"
+    const val DECISION_MODEL = "decision_model"
     const val AUXILIARY_VISION = "auxiliary_vision"
     const val TITLE_MODEL = "title_model"
     const val ERROR_RECONNECT = "error_reconnect"
@@ -203,6 +204,17 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 icon = Icons.Rounded.Compress,
                 group = groupModelFeatures,
                 destination = SettingsDestination.Route(AppRoute.ContextCompression),
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.DECISION_MODEL,
+                title = stringResource(R.string.route_decision_model),
+                summary = null,
+                keywords = "decision model routing 判断模型 工具组 路由 systemone 影子模式",
+                icon = Icons.Rounded.Psychology,
+                group = groupModelFeatures,
+                destination = SettingsDestination.Route(AppRoute.DecisionModel),
             ),
         )
         add(
