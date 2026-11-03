@@ -449,17 +449,6 @@ internal fun settingsCatalog(): List<SettingsEntry> {
         )
         add(
             SettingsEntry(
-                key = SettingsKeys.AGENT_TASK_PREFERENCE,
-                title = stringResource(R.string.agent_task_surface_title),
-                summary = null,
-                keywords = "task 任务 后台 守护 虚拟屏 任务界面 偏好",
-                icon = Icons.Rounded.Layers,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Route(AppRoute.AgentTaskPreference),
-            ),
-        )
-        add(
-            SettingsEntry(
                 key = SettingsKeys.TOOL_SHELL,
                 title = stringResource(R.string.settings_shell_tools),
                 summary = stringResource(R.string.settings_shell_tools_summary),
@@ -504,6 +493,17 @@ internal fun settingsCatalog(): List<SettingsEntry> {
         )
 
         // ── 运行环境 ────────────────────────────────────────────
+        add(
+            SettingsEntry(
+                key = SettingsKeys.AGENT_TASK_PREFERENCE,
+                title = stringResource(R.string.agent_task_surface_title),
+                summary = null,
+                keywords = "task execution surface 执行位置 前台 后台 虚拟屏 副屏 实时画面 任务",
+                icon = Icons.Rounded.DesktopWindows,
+                group = groupRuntimeEnvironment,
+                destination = SettingsDestination.Route(AppRoute.AgentTaskPreference),
+            ),
+        )
         add(
             SettingsEntry(
                 key = SettingsKeys.LINUX_ENVIRONMENT,

@@ -91,7 +91,7 @@
     <string name="capability_workspace_delete_message">Delete “%1$s”? This cannot be undone</string>
     <string name="capability_workspace_delete_dir_message">Delete the folder “%1$s” and all of its contents? This cannot be undone</string>
     <string name="settings_tools_list">Tool List</string>
-    <string name="agent_task_surface_title">Agent Task Preference</string>
+    <string name="agent_task_surface_title">Execution location &amp; virtual display</string>
     <string name="agent_task_surface_ask">Ask each time</string>
     <string name="agent_task_surface_foreground">Run in foreground</string>
     <string name="agent_task_surface_background">Run in background</string>

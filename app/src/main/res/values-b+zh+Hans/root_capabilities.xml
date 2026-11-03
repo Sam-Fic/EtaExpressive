@@ -91,7 +91,7 @@
     <string name="capability_workspace_delete_message">确定删除“%1$s”？此操作无法撤销</string>
     <string name="capability_workspace_delete_dir_message">确定删除文件夹“%1$s”及其全部内容？此操作无法撤销</string>
     <string name="settings_tools_list">工具列表</string>
-    <string name="agent_task_surface_title">Agent任务偏好</string>
+    <string name="agent_task_surface_title">执行位置与虚拟屏</string>
     <string name="agent_task_surface_ask">每次询问</string>
     <string name="agent_task_surface_foreground">前台执行</string>
     <string name="agent_task_surface_background">后台执行</string>

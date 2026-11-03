@@ -31,7 +31,7 @@ import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.TouchApp
@@ -550,19 +550,6 @@ internal fun SettingsScreen(
                     )
                 }
 
-                // 入口始终可见：执行位置与虚拟屏视窗走进程内 VirtualDisplayController，
-                // 只依赖 root/LSPosed，不再要求 Magisk 后端模块；模块仅决定网页预览与副屏恢复是否可用。
-                row(key = SettingsKeys.AGENT_TASK_PREFERENCE) {
-                    EtaClickableRow(
-                        title = stringResource(R.string.agent_task_surface_title),
-                        summary = stringResource(
-                            AgentTaskSurface.settingsSummaryRes(AgentTaskSurface.stored()),
-                        ),
-                        leading = { PreferenceIcon(Icons.Rounded.Layers) },
-                        onClick = { onNavigate(AppRoute.AgentTaskPreference) },
-                    )
-                }
-
                 // 下面几项不是能力分组，而是执行行为：关掉不会让某一组工具消失，
                 // 只改变「怎么执行 / 允许执行到什么程度」。因此留在设置页，
                 // 与工具页的卡片开关互不重复；被它们挡住的工具行会在工具页置灰并指到这里。
@@ -616,6 +603,19 @@ internal fun SettingsScreen(
                 anchors = anchors,
                 highlightedKey = highlightedKey,
             ) {
+                // 入口始终可见：执行位置与虚拟屏视窗走进程内 VirtualDisplayController，
+                // 只依赖 root/LSPosed，不再要求 Magisk 后端模块；模块仅决定网页预览与副屏恢复是否可用。
+                row(key = SettingsKeys.AGENT_TASK_PREFERENCE) {
+                    EtaClickableRow(
+                        title = stringResource(R.string.agent_task_surface_title),
+                        summary = stringResource(
+                            AgentTaskSurface.settingsSummaryRes(AgentTaskSurface.stored()),
+                        ),
+                        leading = { PreferenceIcon(Icons.Rounded.DesktopWindows) },
+                        onClick = { onNavigate(AppRoute.AgentTaskPreference) },
+                    )
+                }
+
                 row(key = SettingsKeys.LINUX_ENVIRONMENT) {
                     EtaClickableRow(
                         title = stringResource(R.string.ui_linux_tool_environment_314d22),
