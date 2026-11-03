@@ -37,6 +37,11 @@ internal object AgentToolCatalog {
          * null = 不接管；空集 = fail-closed，只剩基础交互。
          */
         openableGroupLimit: Set<String>? = null,
+        /**
+         * control 收窄到空集时仍保留 `tools_use_group`（见 [AgentToolGroupCatalog.appendTo]）。
+         * 只对「决策接管且枚举为空」生效；用户把工具组全关时不恢复。
+         */
+        allowEmptyGroupTool: Boolean = false,
     ): JSONArray {
         // 组开关只决定「参与下发」；延迟折叠与单工具禁用统一在最后一次过滤完成，
         // 目录过滤、索引行与 tools_use_group 枚举共用同一份可用性判定，
@@ -102,6 +107,9 @@ internal object AgentToolCatalog {
         AgentToolGroupCatalog.appendTo(
             emitted,
             openableIds = openable,
+            // 只在「决策接管且被收窄到空集」时保留工具；gate 全被关掉时仍需返回 true 让模型
+            // 看到「组已在设置中关闭」的解释性错误。
+            allowEmpty = allowEmptyGroupTool && openableGroupLimit != null && openable.isEmpty(),
         )
         if (AgentFileSystemTier.allowsFileTools(fileSystemTier)) {
             AgentFileVisionToolCatalog.appendTo(emitted)

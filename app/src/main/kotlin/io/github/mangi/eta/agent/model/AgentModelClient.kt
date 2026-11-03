@@ -195,6 +195,8 @@ internal object AgentModelClient {
                 openedToolGroups = openedToolGroups,
                 // 决策收窄后的可打开组；null 时不限制（advise / fail-open）。
                 openableGroupLimit = decisionOpenableLimit,
+                // control 收窄到空集时是否仍保留 tools_use_group（默认开，见 Prefs）。
+                allowEmptyGroupTool = Prefs.isEnabled(Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE),
                 // 单工具禁用集：每轮重读，用户在两轮之间改工具清单页也能生效。
                 disabledTools = Prefs.disabledTools(),
                 // 命令执行是独立开关：关掉它仍可读写文件，但不能跑 shell。

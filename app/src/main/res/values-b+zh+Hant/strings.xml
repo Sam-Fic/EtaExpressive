@@ -127,6 +127,8 @@
   <string name="decision_model_mode_summary">控制模式依判斷結果收窄工具組；建議模式只在日誌裡記錄建議。</string>
   <string name="decision_model_mode_control">控制模式</string>
   <string name="decision_model_mode_advise">建議模式</string>
+  <string name="decision_model_empty_group_rescue_title">控制模式下保留組自救</string>
+  <string name="decision_model_empty_group_rescue_summary">控制模式沒有選中任何工具組時，仍保留 tools_use_group：模型漏選時會收到解釋性錯誤，而不是遇到「工具不存在」。建議開啟。</string>
   <string name="decision_model_model_title">判斷模型</string>
   <string name="decision_model_picker_title">選擇判斷模型</string>
   <string name="decision_model_not_selected">未選擇</string>

@@ -1962,6 +1962,8 @@
   <string name="decision_model_mode_summary">Control narrows tool groups by the decision result; advise only records suggestions in the log.</string>
   <string name="decision_model_mode_control">Control</string>
   <string name="decision_model_mode_advise">Advise</string>
+  <string name="decision_model_empty_group_rescue_title">Keep group rescue in control</string>
+  <string name="decision_model_empty_group_rescue_summary">When control mode selects no tool group, still expose tools_use_group: a missed group returns an explanatory error instead of a missing tool. Recommended on.</string>
   <string name="decision_model_model_title">Decision model</string>
   <string name="decision_model_picker_title">Decision model</string>
   <string name="decision_model_not_selected">Not selected</string>

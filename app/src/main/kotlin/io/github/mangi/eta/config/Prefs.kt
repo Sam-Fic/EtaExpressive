@@ -180,6 +180,13 @@ internal object Prefs {
          * 与 `AGENT_DECISION_ESCALATION_MODEL_ID` 一起生效；只存整数，避免浮点 prefs。
          */
         const val AGENT_DECISION_ESCALATION_CONFIDENCE_PCT = "agent_decision_escalation_confidence_pct"
+        /**
+         * control 模式下 `openableGroupLimit` 为空时，仍向模型下发 `tools_use_group`。
+         *
+         * 默认开：判断模型漏选（或判定为闲聊）时，模型至少能拿到解释性错误，
+         * 而不是面对一个「工具不存在」的死胡同——后者会让它反复重试别的工具名。
+         */
+        const val AGENT_DECISION_EMPTY_GROUP_RESCUE = "agent_decision_empty_group_rescue"
 
         // 取值常量：设置页与运行时共用，避免两处硬编码字符串漂移。
         const val AGENT_DECISION_PROTOCOL_SYSTEMONE = "systemone"
@@ -263,6 +270,8 @@ internal object Prefs {
             // 影子模式默认开：即使总开关被打开，也先只记录不生效。
             AGENT_DECISION_SHADOW to true,
             AGENT_DECISION_ESCALATION_ENABLED to false,
+            // 默认开：control 漏选时保留 tools_use_group，让模型拿到解释性错误而不是死胡同。
+            AGENT_DECISION_EMPTY_GROUP_RESCUE to true,
             AGENT_TTS_AUTO_READ to false,
             AGENT_TTS_STREAM_SYNTH to true,
             // 默认停止：与改动前的实际行为一致（进入后台即停止自动朗读）。
@@ -298,6 +307,7 @@ internal object Prefs {
             AGENT_DECISION_MODEL_ENABLED,
             AGENT_DECISION_SHADOW,
             AGENT_DECISION_ESCALATION_ENABLED,
+            AGENT_DECISION_EMPTY_GROUP_RESCUE,
             AGENT_TTS_AUTO_READ,
             AGENT_TTS_STREAM_SYNTH,
             AGENT_TTS_AUTO_READ_BACKGROUND,

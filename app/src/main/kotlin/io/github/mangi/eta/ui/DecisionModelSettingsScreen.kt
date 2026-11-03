@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Api
+import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Psychology
@@ -124,6 +125,9 @@ internal fun DecisionModelSettingsScreen(
                 Prefs.Keys.AGENT_DECISION_ESCALATION_CONFIDENCE_DEFAULT_PCT,
             ),
         )
+    }
+    var emptyGroupRescue by remember {
+        mutableStateOf(Prefs.isEnabled(Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE))
     }
     var escalationPickerState by remember { mutableStateOf(AgentModelPickerUiState()) }
     var showEscalationDialog by remember { mutableStateOf(false) }
@@ -428,6 +432,22 @@ internal fun DecisionModelSettingsScreen(
                             }
                             Prefs.putString(Prefs.Keys.AGENT_DECISION_MODE, value)
                             mode = value
+                        },
+                    )
+                }
+                item {
+                    EtaSwitchRow(
+                        title = stringResource(R.string.decision_model_empty_group_rescue_title),
+                        summary = stringResource(R.string.decision_model_empty_group_rescue_summary),
+                        checked = emptyGroupRescue,
+                        // 只影响 control：advise 不接管枚举。
+                        enabled = writable &&
+                            mode == Prefs.Keys.AGENT_DECISION_MODE_CONTROL &&
+                            !shadow,
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Build) },
+                        onCheckedChange = { value ->
+                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE, value)
+                            emptyGroupRescue = value
                         },
                     )
                 }

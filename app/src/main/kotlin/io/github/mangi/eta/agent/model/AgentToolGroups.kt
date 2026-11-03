@@ -427,8 +427,32 @@ internal data class AgentToolGroup(
 internal object AgentToolGroupCatalog {
     const val USE_GROUP = "tools_use_group"
 
-    fun appendTo(tools: JSONArray, openableIds: List<String>, disabled: Boolean = false) {
-        if (openableIds.isEmpty() || disabled) return
+    /**
+     * @param allowEmpty openableIds 为空时仍下发工具。control 模式把可打开组收窄到空集
+     * （闲聊或判断模型未选中任何组）时，若直接摘掉工具，模型只能看到「工具不存在」，
+     * 容易改试其他工具名并连续被拒；保留工具可以让它拿到一条解释性错误。
+     * 此时不写 `enum`（空数组在部分网关会被判为非法 schema），改用描述说明本轮无可用组。
+     */
+    fun appendTo(
+        tools: JSONArray,
+        openableIds: List<String>,
+        disabled: Boolean = false,
+        allowEmpty: Boolean = false,
+    ) {
+        if (disabled || (openableIds.isEmpty() && !allowEmpty)) return
+        val empty = openableIds.isEmpty()
+        val groupProperty = JSONObject()
+            .put("type", "string")
+            .put(
+                "description",
+                if (empty) {
+                    "No deferred group can be opened in this run. Calling this tool returns an " +
+                        "explanatory error; do not retry it and do not guess other group ids."
+                } else {
+                    "Deferred group id from the system-prompt index."
+                },
+            )
+        if (!empty) groupProperty.put("enum", JSONArray(openableIds))
         tools.put(
             AgentToolSchema.function(
                 name = USE_GROUP,
@@ -438,16 +462,7 @@ internal object AgentToolGroupCatalog {
                     "never grants permissions the device or settings would otherwise deny.",
                 parameters = JSONObject()
                     .put("type", "object")
-                    .put(
-                        "properties",
-                        JSONObject().put(
-                            "group",
-                            JSONObject()
-                                .put("type", "string")
-                                .put("enum", JSONArray(openableIds))
-                                .put("description", "Deferred group id from the system-prompt index."),
-                        ),
-                    )
+                    .put("properties", JSONObject().put("group", groupProperty))
                     .put("required", JSONArray().put("group"))
                     .put("additionalProperties", false),
             ),
