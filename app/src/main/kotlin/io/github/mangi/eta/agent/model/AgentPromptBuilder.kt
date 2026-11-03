@@ -34,6 +34,20 @@ internal object AgentPromptBuilder {
          * 真相，因此提示从目录取名字，而不是各处各写一份清单。
          */
         callableTools: Set<String>? = null,
+        /**
+         * 闲聊态关段（M2.2，仅 control 模式）：跳过技能索引、记忆、延迟组索引与子代理规则。
+         *
+         * **有意取舍**：段序变化会让这一轮的 prefix cache 失效一次。闲聊本来不需要这些
+         * 上下文，省下的 token 与注意力高于一次缓存重建；下一轮需要工具时整段恢复，
+         * 缓存也会在那一轮重新建立。身份人格、能力说明、已关闭能力说明**必须常驻**，
+         * 静默省略会让模型谎称自己没有某个能力。
+         */
+        trimChatSections: Boolean = false,
+        /**
+         * 决策收窄后的可打开组上限；null = 不限制。只影响组索引与 `tools_use_group` 的枚举，
+         * 已打开组的指引块仍按实际目录下发。
+         */
+        openableGroupLimit: Set<String>? = null,
     ): JSONArray {
         val messages = buildSystemMessages(
             config, skillContext, memoryContext, rootAvailable, delegationAvailable, shellTools,
@@ -42,6 +56,8 @@ internal object AgentPromptBuilder {
             disabledCapabilities = disabledCapabilities,
             delegationEngaged = delegationEngaged,
             callableTools = callableTools,
+            trimChatSections = trimChatSections,
+            openableGroupLimit = openableGroupLimit,
         )
         onSystemCount(messages.length())
         appendHistoryForModel(history, messages)
@@ -135,8 +151,11 @@ internal object AgentPromptBuilder {
          * 连续三次直接终止整轮。
          */
         callableTools: Set<String>? = null,
+        /** 闲聊态关段；见 [buildInitialMessages]。 */
+        trimChatSections: Boolean = false,
+        /** 决策收窄后的可打开组上限；null 不限制。 */
+        openableGroupLimit: Set<String>? = null,
     ): JSONArray {
-        // Only point at the detection section when this round actually carries one.
         val environmentRule = if (shellTools != null) {
             "environment 按下方本机命令检测选择"
         } else {
@@ -159,7 +178,14 @@ internal object AgentPromptBuilder {
                 else -> Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS)
             }
         }
-        val availability = AgentToolGroups.availability(openedToolGroups, gate)
+        val availability = AgentToolGroups.availability(openedToolGroups, gate).let { full ->
+            if (openableGroupLimit == null) {
+                full
+            } else {
+                // 决策收窄：索引不能宣传一个 gate 允许、但被判断模型排除的组。
+                full.copy(openable = full.openable.filterTo(mutableSetOf()) { it in openableGroupLimit })
+            }
+        }
         /** 该组的工具本轮是否真的在目录里：组开关允许，且延迟组已被打开。 */
         fun active(groupId: String): Boolean {
             val group = AgentToolGroups.group(groupId) ?: return false
@@ -187,7 +213,7 @@ internal object AgentPromptBuilder {
         if (config.systemPrompt.isNotBlank()) {
             messages.put(systemMessage(config.systemPrompt))
         }
-        if (delegationAvailable) {
+        if (delegationAvailable && (!trimChatSections || delegationEngaged)) {
             messages.put(systemMessage(delegationRule(::named)))
             if (delegationEngaged) messages.put(systemMessage(DELEGATION_RESULT_RULE))
         }
@@ -484,15 +510,20 @@ internal object AgentPromptBuilder {
             messages.optJSONObject(messages.length() - 1)
                 ?.put(AnthropicPromptCaching.SYSTEM_BOUNDARY_KEY, true)
         }
-        buildMemorySystemMessage(memoryContext, ::named)?.let(messages::put)
-        buildSkillSystemMessage(skillContext, ::named)?.let(messages::put)
+        // 闲聊态（control）：技能索引与记忆整段跳过；身份/能力/已关闭能力说明保持常驻。
+        if (!trimChatSections) {
+            buildMemorySystemMessage(memoryContext, ::named)?.let(messages::put)
+            buildSkillSystemMessage(skillContext, ::named)?.let(messages::put)
+        }
         // 延迟工具组索引：只下发一行说明，整组 schema 由 tools_use_group 按需展开。
         //
         // [availability] 与上面各段指引用的是同一份判定，也与 AgentToolCatalog.build 同源：
         // 索引宣传一个「能打开」的组，打开后下一轮却拿不到工具，是最糟的体验
         // （模型白花一轮且被反复误导）。入口收窄、子代理最小配置都走这条路径。
-        AgentToolGroups.indexMessage(availability)?.let { index ->
-            messages.put(systemMessage(index))
+        if (!trimChatSections) {
+            AgentToolGroups.indexMessage(availability)?.let { index ->
+                messages.put(systemMessage(index))
+            }
         }
 
         // 被关闭的能力：用户关掉某个开关后，工具从目录里消失，但能力本身还在。

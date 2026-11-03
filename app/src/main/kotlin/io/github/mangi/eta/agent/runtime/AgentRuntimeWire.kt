@@ -776,6 +776,12 @@ internal object AgentRuntimeWire {
                 putString("status", event.status.wireValue)
             }
 
+            is AgentEvent.DecisionFallback -> {
+                putString(KEY_TYPE, "decision_fallback")
+                putString("policy", event.policy)
+                putString("reason", event.reason)
+            }
+
             is AgentEvent.RunStarted -> {
                 putString(KEY_TYPE, "run_started")
                 putInt("initial_images", event.initialImages)
@@ -984,6 +990,11 @@ internal object AgentRuntimeWire {
     fun eventFromBundle(bundle: Bundle): AgentEvent? = when (bundle.getString(KEY_TYPE)) {
         "gui_control_changed" -> GuiControlStatus.fromWireValue(bundle.getString("status").orEmpty())
             ?.let { AgentEvent.GuiControlChanged(it) }
+
+        "decision_fallback" -> AgentEvent.DecisionFallback(
+            policy = bundle.getString("policy").orEmpty(),
+            reason = bundle.getString("reason").orEmpty(),
+        )
 
         "run_started" -> AgentEvent.RunStarted(
             initialImages = bundle.getInt("initial_images"),

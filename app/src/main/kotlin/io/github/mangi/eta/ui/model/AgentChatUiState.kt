@@ -140,6 +140,8 @@ enum class SystemNoticeCode(val wireValue: String) {
     RuntimeFailed("runtime_failed"),
     ModelRetry("model_retry"),
     Interrupted("interrupted"),
+    /** 判断模型降级（fail-open / fail-closed）；详情文字由事件里的策略决定。 */
+    DecisionFallback("decision_fallback"),
     Completed("completed");
 
     companion object {

@@ -2,6 +2,7 @@ package io.github.mangi.eta.agent.model
 
 import io.github.mangi.eta.agent.media.AgentHistoryImageHydrator
 import io.github.mangi.eta.agent.media.isVideoMedia
+import io.github.mangi.eta.agent.decision.AgentDecisionPlan
 import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.agent.runtime.AgentRunCancelledException
 import io.github.mangi.eta.agent.runtime.AgentRunController
@@ -114,6 +115,11 @@ internal object AgentModelClient {
         onHistorySnapshot: ((Int, List<ConversationMessage>) -> String)? = null,
         // The parent owner freezes this value; other model callers do not inherit its preference.
         interactiveModeEnabled: Boolean = false,
+        /**
+         * 判断模型的 run 级 overlay（M2）。null = 不接管：目录、提示、枚举全部保持现状。
+         * 只读本参数，不写回 Prefs；跨轮通过 [initialOpenedGroups] 与每轮重建保持一致。
+         */
+        decision: AgentDecisionPlan? = null,
     ): ModelResponse.Text {
         config.validate()
         val initialCapabilities = capabilitiesProvider()
@@ -160,7 +166,13 @@ internal object AgentModelClient {
         // 都要先白付一轮 tools_use_group（真实会话里反复发生），模型也会因为「刚调过却报未声明」
         // 而怀疑参数没有送达。
         val initialOpenedGroups = openedToolGroupsProvider() +
-            AgentToolGroups.deferredGroupsOf(historyToolNames(outboundHistory))
+            AgentToolGroups.deferredGroupsOf(historyToolNames(outboundHistory)) +
+            // 决策预开：control 下 allowed 全集、advise 下只预开 selected∪sticky∪历史保护。
+            decision?.openedGroups.orEmpty()
+        // control 成功/fail-closed 时限制 tools_use_group 的枚举；null 表示不接管。
+        val decisionOpenableLimit = decision?.openableGroupLimit
+        // 闲聊态关段只在 control 成功时由 router 置位，prompt builder 直接据此裁剪。
+        val trimChatSections = decision?.chatOnly == true
         fun toolsFor(
             capabilities: AgentToolCapabilities,
             memoryEnabled: Boolean = memoryContext.enabled,
@@ -181,6 +193,8 @@ internal object AgentModelClient {
                 capabilities = capabilities,
                 localWebSearch = !config.usesHostedWebSearch,
                 openedToolGroups = openedToolGroups,
+                // 决策收窄后的可打开组；null 时不限制（advise / fail-open）。
+                openableGroupLimit = decisionOpenableLimit,
                 // 单工具禁用集：每轮重读，用户在两轮之间改工具清单页也能生效。
                 disabledTools = Prefs.disabledTools(),
                 // 命令执行是独立开关：关掉它仍可读写文件，但不能跑 shell。
@@ -218,6 +232,8 @@ internal object AgentModelClient {
             // 提示点名的工具必须真的在目录里：缺席的工具连名字都不出现在提示里。
             callableTools = AgentToolCatalog.toolNames(tools),
             onSystemCount = { systemCount = it },
+            trimChatSections = trimChatSections,
+            openableGroupLimit = decisionOpenableLimit,
         )
         var transcriptStartIndex = messages.length()
         val traceFormatter = AgentTraceFormatter(
@@ -319,6 +335,9 @@ internal object AgentModelClient {
                                 .capture().toDisabledState(),
                             // 缺席的工具连名字都不出现在提示里，避免模型调一个必然被拒的工具。
                             callableTools = AgentToolCatalog.toolNames(nextTools),
+                            // 决策 overlay 在本 run 内不变：每轮重建继续沿用同一裁剪与枚举上限。
+                            trimChatSections = trimChatSections,
+                            openableGroupLimit = decisionOpenableLimit,
                         )
                         // 系统前缀的条数会随「本轮打开了哪些工具组」变化（指引块与组索引都是条件消息）。
                         // JSONArray.put(index, …) 是替换不是插入，按索引覆写会在前缀变长时盖掉历史与用户消息，

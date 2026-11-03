@@ -20,6 +20,17 @@ internal sealed interface AgentEvent {
         override fun toLogLine(): String = "gui_control_changed status=${status.wireValue}"
     }
 
+    /**
+     * 判断模型降级（fail-open / fail-closed）。
+     *
+     * 只用于对话内提示，不进入模型上下文，也不改变本轮已经算好的 overlay。
+     * [policy] 取 `fail_open` / `fail_closed`；[reason] 是机器可读原因（如 `timeout`）。
+     */
+    data class DecisionFallback(val policy: String, val reason: String) : AgentEvent {
+        override fun toLogLine(): String =
+            "decision_fallback policy=${policy.toSafeLogToken()} reason=${reason.toSafeLogToken()}"
+    }
+
     companion object {
         /**
          * 协议标记：compressorLabel 取该值表示「仅修剪、非摘要」。

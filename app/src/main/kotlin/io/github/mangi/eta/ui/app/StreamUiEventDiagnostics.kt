@@ -50,6 +50,7 @@ internal object StreamUiEventDiagnostics {
         }
         is AgentEvent.RunStarted -> "ui.event.runStarted"
         is AgentEvent.GuiControlChanged -> "ui.event.guiControl"
+        is AgentEvent.DecisionFallback -> "ui.event.decisionFallback"
         is AgentEvent.RoundStarted -> "ui.event.roundStarted"
         is AgentEvent.ModelRetryScheduled -> "ui.event.modelRetry"
         is AgentEvent.ErrorReconnectChanged -> "ui.event.reconnect"

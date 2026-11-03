@@ -32,6 +32,11 @@ internal object AgentToolCatalog {
         disabledTools: Set<String> = emptySet(),
         /** 文件系统与命令执行档位；决定 read/write/shell 工具各自是否下发。 */
         fileSystemTier: AgentFileSystemTier.Tier = AgentFileSystemTier.of(terminalTools, shellTools = true),
+        /**
+         * 判断模型收窄后的可打开组上限（control 模式）。
+         * null = 不接管；空集 = fail-closed，只剩基础交互。
+         */
+        openableGroupLimit: Set<String>? = null,
     ): JSONArray {
         // 组开关只决定「参与下发」；延迟折叠与单工具禁用统一在最后一次过滤完成，
         // 目录过滤、索引行与 tools_use_group 枚举共用同一份可用性判定，
@@ -90,9 +95,13 @@ internal object AgentToolCatalog {
         if (personalTools) AgentMediaSearchToolCatalog.appendTo(emitted)
         // 只要存在「开关允许、但尚未打开」的组，就下发一个 tools_use_group。
         // 枚举只列这些组：全部打开、或开关全关时都不该出现一个必然失败或有多个空选项的工具。
+        // 决策收窄（control）时再按 openableGroupLimit 过滤：提示里不能点名一个 gate 允许、
+        // 但被判断模型排除的组，否则模型会反复尝试一个必然被拒的组。
+        val openable = AgentToolGroups.openableIds(groupAvailability)
+            .filter { groupId -> openableGroupLimit == null || groupId in openableGroupLimit }
         AgentToolGroupCatalog.appendTo(
             emitted,
-            openableIds = AgentToolGroups.openableIds(groupAvailability),
+            openableIds = openable,
         )
         if (AgentFileSystemTier.allowsFileTools(fileSystemTier)) {
             AgentFileVisionToolCatalog.appendTo(emitted)

@@ -89,6 +89,7 @@ internal fun AgentTurnFooter(
                 SystemNoticeCode.ModelRetry -> R.string.system_notice_model_retry
                 SystemNoticeCode.RuntimeFailed -> R.string.system_notice_runtime_failed
                 SystemNoticeCode.Interrupted -> R.string.system_notice_interrupted
+                SystemNoticeCode.DecisionFallback -> R.string.system_notice_decision_fallback
                 SystemNoticeCode.Completed -> R.string.system_notice_completed
             })
             if (message.code == SystemNoticeCode.RuntimeFailed) label

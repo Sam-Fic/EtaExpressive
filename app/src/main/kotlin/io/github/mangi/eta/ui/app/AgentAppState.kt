@@ -6516,6 +6516,28 @@ internal class AgentAppState(
                             .associate { it.id to it.content })
                 }
             }
+            is AgentEvent.DecisionFallback -> {
+                // 判断模型不可用时的对话内提示。一次 run 只插一条，重复事件直接忽略。
+                val detail = appContext.getString(
+                    if (event.policy == "fail_closed") {
+                        R.string.system_notice_decision_fallback_closed
+                    } else {
+                        R.string.system_notice_decision_fallback_open
+                    },
+                )
+                updateMessages(runId) { messages ->
+                    val noticeId = "decision-fallback-$runId"
+                    if (messages.any { it.id == noticeId }) {
+                        messages
+                    } else {
+                        messages + SystemNoticeMessageUi(
+                            noticeId,
+                            SystemNoticeCode.DecisionFallback,
+                            detail,
+                        )
+                    }
+                }
+            }
             is AgentEvent.ProviderResponseStarted,
             is AgentEvent.ToolImagesAttached,
             is AgentEvent.GuiControlChanged,
@@ -7405,6 +7427,7 @@ internal class AgentAppState(
                                 SystemNoticeCode.ModelRetry -> R.string.system_notice_model_retry
                                 SystemNoticeCode.RuntimeFailed -> R.string.system_notice_runtime_failed
                                 SystemNoticeCode.Interrupted -> R.string.system_notice_interrupted
+                                SystemNoticeCode.DecisionFallback -> R.string.system_notice_decision_fallback
                                 SystemNoticeCode.Completed -> R.string.system_notice_completed
                             },
                         )

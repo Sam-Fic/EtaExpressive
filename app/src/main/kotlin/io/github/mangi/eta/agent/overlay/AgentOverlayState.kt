@@ -165,6 +165,8 @@ internal fun AgentOverlayState.applyEvent(event: AgentEvent): AgentOverlayState 
 
     is AgentEvent.GuiControlChanged -> this
 
+    is AgentEvent.DecisionFallback -> this
+
     is AgentEvent.AutoCompactWaiting -> this
 
     is AgentEvent.ContextCompactionStarted -> copy(
