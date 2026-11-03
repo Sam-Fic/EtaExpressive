@@ -1296,6 +1296,11 @@ open class AgentAccessibilityService : AccessibilityService() {
         )
     }
 
+    /** 窗口 bitmap 尺寸与 bounds 不一致时按双线性采样，避免最近邻缩放把文字画出硬边。 */
+    private val windowBitmapPaint = Paint(
+        Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG
+    )
+
     private fun convertToSoftwareBitmap(screenshot: ScreenshotResult): Bitmap? =
         screenshot.hardwareBuffer.use { hardwareBuffer ->
             val wrapped = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
@@ -1340,7 +1345,8 @@ open class AgentAccessibilityService : AccessibilityService() {
                     // 把窗口 bitmap 缩放到其 bounds 尺寸绘制，处理 takeScreenshotOfWindow
                     // 返回尺寸与 bounds 不一致（逻辑像素 vs 物理像素）的情况。
                     val src = Rect(0, 0, bmp.width, bmp.height)
-                    canvas.drawBitmap(bmp, src, RectF(bounds), null)
+                    // 尺寸不一致时必须过滤采样，否则最近邻缩放会让文字出现硬边与锯齿。
+                    canvas.drawBitmap(bmp, src, RectF(bounds), windowBitmapPaint)
                 }
             }
             output
