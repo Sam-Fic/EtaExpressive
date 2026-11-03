@@ -5,6 +5,8 @@
     <string name="credits_entry_eta_upstream">The upstream project this fork is based on.</string>
     <string name="credits_entry_y248">Reference repository: many practical features come from this branch.</string>
     <string name="credits_entry_pi">Core reference for the agent runtime, including the agent loop, tool calling, steering, and transcript state management.</string>
+    <string name="credits_entry_dsh">DeepSeek\'s open-source proactive agent prototype. The source of the session-dispatch concept: a main session that only routes and assesses, the ticket/mandate/admission pipeline, and behavioral laws of structured questions and honest reporting.</string>
+    <string name="credits_entry_taiji">An AI agent desktop workspace. The reference for the dispatch console\'s session form and mechanics: the tool-allowlisted dispatch mode, self-contained briefs, notify-once completion claims, and the anti-injection discipline.</string>
     <string name="credits_entry_omnibot">Reference project for Android AI agents.</string>
     <string name="credits_entry_libxposed">Modern Xposed API.</string>
     <string name="credits_entry_zafiro">Style reference for the user chat bubbles. Its bubble design closely resembles the sample bubbles in Google Material Design 3 Expressive, so it was adopted and adapted for this project.</string>

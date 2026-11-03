@@ -33,6 +33,7 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.SettingsSearch::class,
     AppRoute.SystemTakeover::class,
     AppRoute.About::class,
+    AppRoute.AboutCredits::class,
     AppRoute.SpeechSettings::class,
     AppRoute.TtsSettings::class,
     AppRoute.VoiceSettings::class,

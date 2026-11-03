@@ -1357,7 +1357,13 @@ fun AgentAppRoot(
                 )
             }
             composable<AppRoute.About> {
-                io.github.mangi.eta.ui.AboutScreen(onBack = ::popRoute)
+                io.github.mangi.eta.ui.AboutScreen(
+                    onBack = ::popRoute,
+                    onOpenCredits = { pushRoute(AppRoute.AboutCredits) },
+                )
+            }
+            composable<AppRoute.AboutCredits> {
+                io.github.mangi.eta.ui.AboutCreditsScreen(onBack = ::popRoute)
             }
             composable<AppRoute.AuxiliaryVision> {
                 io.github.mangi.eta.ui.ModelFeatureSettingsScreen(

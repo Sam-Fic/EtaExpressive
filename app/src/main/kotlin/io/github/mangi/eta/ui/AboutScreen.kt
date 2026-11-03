@@ -6,17 +6,12 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Code
@@ -34,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -45,12 +39,9 @@ import io.github.mangi.eta.data.model.AppUpdateOffer
 import io.github.mangi.eta.data.repository.AppUpdateRepository
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
-import io.github.mangi.eta.ui.adaptive.EtaPageSurface
-import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.components.AppUpdateDialog
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import kotlinx.coroutines.launch
@@ -81,13 +72,12 @@ private data class CreditEntry(
  * 80dp 白底圆角图标 + 应用名 + 版本号的居中 hero，下方为分段链接列表。
  */
 @Composable
-internal fun AboutScreen(onBack: () -> Unit) {
+internal fun AboutScreen(onBack: () -> Unit, onOpenCredits: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val currentVersion = remember { AppUpdateRepository.currentVersionName(context) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateOffer by remember { mutableStateOf<AppUpdateOffer?>(null) }
-    var showCredits by remember { mutableStateOf(false) }
 
     EtaScaffoldPage(
         title = stringResource(R.string.ui_about_bed172),
@@ -189,7 +179,7 @@ internal fun AboutScreen(onBack: () -> Unit) {
                                 icon = Icons.Rounded.Description,
                             )
                         },
-                        onClick = { showCredits = true },
+                        onClick = onOpenCredits,
                     )
                 }
             }
@@ -201,10 +191,6 @@ internal fun AboutScreen(onBack: () -> Unit) {
         currentVersion = currentVersion,
         onDismiss = { updateOffer = null },
     )
-
-    if (showCredits) {
-        AboutCreditsPage(onBack = { showCredits = false })
-    }
 }
 
 /**
@@ -247,13 +233,14 @@ private fun AboutHero(versionName: String) {
 }
 
 /**
- * 关于页「参考与致谢」子页：整屏弹窗内的分页面。
+ * 关于页「参考与致谢」子页（独立路由，复用 NavHost 的入栈/出栈转场）。
  *
- * 条目行统一由 [EtaSegmentedItemContainer] 提供 surfaceBright 底板与首末外圆角，
- * 行本身只承载文字；说明与链接各占一行，长说明换行时不会被压成单行省略。
+ * 条目行与 About 主页同款：EtaClickableRow 直接放在 [EtaSegmentedColumn] 里，
+ * `surfaceBright` 底板与首末外圆角由分段列提供；说明与链接各占一行，
+ * 长说明换行时不会被压成单行省略。
  */
 @Composable
-private fun AboutCreditsPage(onBack: () -> Unit) {
+internal fun AboutCreditsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val entries = listOf(
         CreditEntry(
@@ -270,6 +257,16 @@ private fun AboutCreditsPage(onBack: () -> Unit) {
             name = "earendil-works/pi",
             summary = stringResource(R.string.credits_entry_pi),
             url = "https://github.com/earendil-works/pi",
+        ),
+        CreditEntry(
+            name = "deepseek-ai/dsh-superagent-prototype",
+            summary = stringResource(R.string.credits_entry_dsh),
+            url = "https://github.com/deepseek-ai/dsh-superagent-prototype",
+        ),
+        CreditEntry(
+            name = "zhushanwen321/tai-ji",
+            summary = stringResource(R.string.credits_entry_taiji),
+            url = "https://github.com/zhushanwen321/tai-ji",
         ),
         CreditEntry(
             name = "omnimind-ai/OmniBot",
@@ -298,43 +295,32 @@ private fun AboutCreditsPage(onBack: () -> Unit) {
         ),
     )
 
-    EtaPageSurface(onDismissRequest = onBack) {
-        EtaScaffold(
-            title = stringResource(R.string.credits_section_title),
-            onBack = onBack,
-            modifier = Modifier.fillMaxSize(),
-        ) { padding, scrollConnection, _ ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
-                    .nestedScroll(scrollConnection)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = EtaGroupHorizontalPadding)
-                    .padding(bottom = EtaSegmentedGroupSpacing)
-                    .navigationBarsPadding(),
-                verticalArrangement = Arrangement.spacedBy(EtaSegmentedGroupSpacing),
+    EtaScaffoldPage(
+        title = stringResource(R.string.credits_section_title),
+        onBack = onBack,
+    ) {
+        item(key = "credits_entries") {
+            EtaSegmentedColumn(
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
             ) {
-                EtaSegmentedColumn {
-                    entries.forEach { entry ->
-                        item(key = entry.name) {
-                            EtaSegmentedItemContainer {
-                                CreditsEntryRow(
-                                    entry = entry,
-                                    onClick = { openExternalUrl(context, entry.url) },
-                                )
-                            }
-                        }
+                entries.forEach { entry ->
+                    item(key = entry.name) {
+                        CreditsEntryRow(
+                            entry = entry,
+                            onClick = { openExternalUrl(context, entry.url) },
+                        )
                     }
                 }
-                // 总结性致谢不带链接，直接排在页面背景上。
-                Text(
-                    text = stringResource(R.string.credits_thanks),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
+        }
+        // 总结性致谢不带链接，直接排在页面背景上。
+        item(key = "credits_thanks") {
+            Text(
+                text = stringResource(R.string.credits_thanks),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
+            )
         }
     }
 }

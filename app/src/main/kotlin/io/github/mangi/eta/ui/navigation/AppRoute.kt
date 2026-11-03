@@ -54,6 +54,10 @@ sealed interface AppRoute {
     @Serializable
     data object About : AppRoute
 
+    /** 关于页「参考与致谢」子页；静态列表没有不可序列化状态，独立路由才能复用 NavHost 的入栈/出栈转场。 */
+    @Serializable
+    data object AboutCredits : AppRoute
+
     @Serializable
     data object SpeechSettings : AppRoute
 

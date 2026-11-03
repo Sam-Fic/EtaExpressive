@@ -198,6 +198,8 @@ Eta 先从现有 Android 上的模型、上下文与工具做起。真正落地�
 - [Eta](https://github.com/Mangi-11/Eta)：本项目基于的上游项目。
 - [y2485871697/Eta](https://github.com/y2485871697/Eta)：参考仓库，大量实用功能均来自此分支。
 - [Pi Coding Agent](https://github.com/earendil-works/pi)：Agent Runtime 的核心参考，包括 Agent Loop、Tool Calling、steering 与 transcript 状态管理。
+- [dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype)：DeepSeek 开源的主动式 agent 研究原型。「调度智能体」的理念来源：主 Session 只路由与研判、工单/授权/准入流水线，以及结构化提问、如实汇报等行为律。
+- [TaiJi（太极）](https://github.com/zhushanwen321/tai-ji)：AI Agent 桌面工作台。「调度台」的会话形态与机制参考：受限工具白名单的调度模式、自包含 brief、notify-once 完成通知债权与防注入纪律。
 - [OmniBot](https://github.com/omnimind-ai/OmniBot)：Android AI Agent 方向的参考项目。
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API。
 - [Zafiro](https://github.com/niki914/zafiro)：用户对话气泡的样式参考。其气泡设计与 Google Material Design 3 Expressive 的示例气泡高度相似，因此采用并适配到本项目。

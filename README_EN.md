@@ -153,6 +153,8 @@ These implementation notes are currently in Chinese:
 
 - [Eta](https://github.com/Mangi-11/Eta): the upstream project this fork is based on.
 - [Pi Coding Agent](https://github.com/earendil-works/pi): the main reference for the agent runtime, including the agent loop, tool calling, steering, and transcript state management.
+- [dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype): DeepSeek's open-source proactive agent prototype. The source of the session-dispatch concept: a main session that only routes and assesses, the ticket/mandate/admission pipeline, and behavioral laws of structured questions and honest reporting.
+- [TaiJi](https://github.com/zhushanwen321/tai-ji): an AI agent desktop workspace. The reference for the dispatch console's session form and mechanics: the tool-allowlisted dispatch mode, self-contained briefs, notify-once completion claims, and the anti-injection discipline.
 - [OmniBot](https://github.com/omnimind-ai/OmniBot): a reference project for AI agents on Android.
 - [libxposed API](https://github.com/libxposed/api): the modern Xposed API.
 - [y2485871697/Eta](https://github.com/y2485871697/Eta): reference fork; many UI improvements and useful features come from this branch.

@@ -447,6 +447,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.SettingsSearch -> stringResource(R.string.settings_search_hint)
     is AppRoute.SystemTakeover -> stringResource(R.string.ui_system_assistant_takes_over_f46043)
     is AppRoute.About -> stringResource(R.string.ui_about_bed172)
+    is AppRoute.AboutCredits -> stringResource(R.string.credits_section_title)
     is AppRoute.VoiceSettings -> stringResource(R.string.voice_title)
     is AppRoute.DoubaoVoices -> stringResource(R.string.dv_my_voices)
     is AppRoute.MimoVoices -> stringResource(R.string.pv_mimo_voice)
