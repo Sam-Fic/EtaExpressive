@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="credits_section_title">参考与致谢</string>
+    <string name="credits_section_summary">README 中的致谢清单</string>
+    <string name="credits_entry_eta_upstream">本项目基于的上游项目。</string>
+    <string name="credits_entry_y248">参考仓库，大量实用功能均来自此分支。</string>
+    <string name="credits_entry_pi">Agent Runtime 的核心参考，包括 Agent Loop、Tool Calling、steering 与 transcript 状态管理。</string>
+    <string name="credits_entry_omnibot">Android AI Agent 方向的参考项目。</string>
+    <string name="credits_entry_libxposed">现代 Xposed API。</string>
+    <string name="credits_entry_zafiro">用户对话气泡的样式参考。其气泡设计与 Google Material Design 3 Expressive 的示例气泡高度相似，因此采用并适配到本项目。</string>
+    <string name="credits_entry_m3">Google Material Design 3 Expressive 官方站点，本程序的界面设计语言与视觉风格均参考自其中的示例与规范。</string>
+    <string name="credits_entry_kernelsu">本应用「外观与主题」子设置页面的设计参考。</string>
+    <string name="credits_thanks">感谢所有在手机上本地部署运行的开源模型——包括语音合成与识别模型、Embedding 模型等——它们让 EtaExpressive 能够在不依赖云端的情况下完成语音交互、语义检索与本地推理。</string>
+</resources>

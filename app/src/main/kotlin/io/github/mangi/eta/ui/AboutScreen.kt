@@ -6,15 +6,21 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -38,9 +45,12 @@ import io.github.mangi.eta.data.model.AppUpdateOffer
 import io.github.mangi.eta.data.repository.AppUpdateRepository
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaPageSurface
+import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.components.AppUpdateDialog
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import kotlinx.coroutines.launch
@@ -59,6 +69,13 @@ private fun openExternalUrl(context: Context, url: String) {
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }
 
+/** 「参考与致谢」条目：项目名 + 一句话说明 + 外链。 */
+private data class CreditEntry(
+    val name: String,
+    val summary: String,
+    val url: String,
+)
+
 /**
  * 关于页（KernelSU `AboutMaterial` 对应物）：
  * 80dp 白底圆角图标 + 应用名 + 版本号的居中 hero，下方为分段链接列表。
@@ -70,6 +87,7 @@ internal fun AboutScreen(onBack: () -> Unit) {
     val currentVersion = remember { AppUpdateRepository.currentVersionName(context) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateOffer by remember { mutableStateOf<AppUpdateOffer?>(null) }
+    var showCredits by remember { mutableStateOf(false) }
 
     EtaScaffoldPage(
         title = stringResource(R.string.ui_about_bed172),
@@ -161,6 +179,19 @@ internal fun AboutScreen(onBack: () -> Unit) {
                         onClick = { openExternalUrl(context, AUTHOR_REPOSITORIES_URL) },
                     )
                 }
+
+                item {
+                    EtaClickableRow(
+                        title = stringResource(R.string.credits_section_title),
+                        summary = stringResource(R.string.credits_section_summary),
+                        leading = {
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Description,
+                            )
+                        },
+                        onClick = { showCredits = true },
+                    )
+                }
             }
         }
     }
@@ -170,6 +201,10 @@ internal fun AboutScreen(onBack: () -> Unit) {
         currentVersion = currentVersion,
         onDismiss = { updateOffer = null },
     )
+
+    if (showCredits) {
+        AboutCreditsPage(onBack = { showCredits = false })
+    }
 }
 
 /**
@@ -209,4 +244,112 @@ private fun AboutHero(versionName: String) {
             style = MaterialTheme.typography.bodyMedium,
         )
     }
+}
+
+/**
+ * 关于页「参考与致谢」子页：整屏弹窗内的分页面。
+ *
+ * 条目行统一由 [EtaSegmentedItemContainer] 提供 surfaceBright 底板与首末外圆角，
+ * 行本身只承载文字；说明与链接各占一行，长说明换行时不会被压成单行省略。
+ */
+@Composable
+private fun AboutCreditsPage(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val entries = listOf(
+        CreditEntry(
+            name = "Mangi-11/Eta",
+            summary = stringResource(R.string.credits_entry_eta_upstream),
+            url = "https://github.com/Mangi-11/Eta",
+        ),
+        CreditEntry(
+            name = "y2485871697/Eta",
+            summary = stringResource(R.string.credits_entry_y248),
+            url = "https://github.com/y2485871697/Eta",
+        ),
+        CreditEntry(
+            name = "earendil-works/pi",
+            summary = stringResource(R.string.credits_entry_pi),
+            url = "https://github.com/earendil-works/pi",
+        ),
+        CreditEntry(
+            name = "omnimind-ai/OmniBot",
+            summary = stringResource(R.string.credits_entry_omnibot),
+            url = "https://github.com/omnimind-ai/OmniBot",
+        ),
+        CreditEntry(
+            name = "libxposed/api",
+            summary = stringResource(R.string.credits_entry_libxposed),
+            url = "https://github.com/libxposed/api",
+        ),
+        CreditEntry(
+            name = "niki914/zafiro",
+            summary = stringResource(R.string.credits_entry_zafiro),
+            url = "https://github.com/niki914/zafiro",
+        ),
+        CreditEntry(
+            name = "m3.material.io",
+            summary = stringResource(R.string.credits_entry_m3),
+            url = "https://m3.material.io",
+        ),
+        CreditEntry(
+            name = "tiann/KernelSU",
+            summary = stringResource(R.string.credits_entry_kernelsu),
+            url = "https://github.com/tiann/KernelSU",
+        ),
+    )
+
+    EtaPageSurface(onDismissRequest = onBack) {
+        EtaScaffold(
+            title = stringResource(R.string.credits_section_title),
+            onBack = onBack,
+            modifier = Modifier.fillMaxSize(),
+        ) { padding, scrollConnection, _ ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .nestedScroll(scrollConnection)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = EtaGroupHorizontalPadding)
+                    .padding(bottom = EtaSegmentedGroupSpacing)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(EtaSegmentedGroupSpacing),
+            ) {
+                EtaSegmentedColumn {
+                    entries.forEach { entry ->
+                        item(key = entry.name) {
+                            EtaSegmentedItemContainer {
+                                CreditsEntryRow(
+                                    entry = entry,
+                                    onClick = { openExternalUrl(context, entry.url) },
+                                )
+                            }
+                        }
+                    }
+                }
+                // 总结性致谢不带链接，直接排在页面背景上。
+                Text(
+                    text = stringResource(R.string.credits_thanks),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** 单条致谢：项目名 + 多行说明，链接单独占最后一行，整行点击打开浏览器。 */
+@Composable
+private fun CreditsEntryRow(entry: CreditEntry, onClick: () -> Unit) {
+    val summary = buildString {
+        append(entry.summary)
+        append('\n')
+        append(entry.url)
+    }
+    EtaClickableRow(
+        title = entry.name,
+        summary = summary,
+        onClick = onClick,
+    )
 }
