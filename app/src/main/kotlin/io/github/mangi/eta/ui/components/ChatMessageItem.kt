@@ -68,7 +68,6 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.automirrored.rounded.CallSplit
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
@@ -192,6 +191,7 @@ import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.etaSurfaceContainerHigh
 import io.github.mangi.eta.ui.adaptive.foregroundColor
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.agent.browser.AgentBrowserSession
 import io.github.mangi.eta.agent.browser.BrowserSessionSnapshot
 import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
@@ -4207,10 +4207,10 @@ private fun RunTraceRow(
             color = etaOnSurface(),
             modifier = Modifier.weight(1f),
         )
-        Icon(
-            imageVector = Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            modifier = Modifier.size(EtaDimens.StatusIconSize),
+        // 对话流里的紧凑入口行：沿用 16dp 状态图标槽与 0.7 alpha 的弱化着色，
+        // 只把图标资源与方向语义收敛到共享箭头。
+        EtaTrailingChevron(
+            size = EtaDimens.StatusIconSize,
             tint = etaOnSurfaceVariant().copy(alpha = 0.7f),
         )
     }

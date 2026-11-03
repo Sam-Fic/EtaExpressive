@@ -15,11 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.SegmentedListItem
@@ -45,6 +41,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaActionRowPadding
+import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.etaSegmentedRowColors
 import kotlin.math.roundToInt
 
@@ -301,9 +298,8 @@ internal fun AgentWorkSegmentedBubble(
                     // 收起态是 onSurfaceVariant，展开态随底色变成 onTertiaryContainer，
                     // 与标题/前导图标成对；不要传 Color.Unspecified——那会关掉着色，
                     // 图标按自身黑色绘制，深色主题下几乎不可见。
-                    Icon(
-                        imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        contentDescription = null,
+                    EtaExpandChevron(
+                        expanded = expanded,
                         tint = LocalContentColor.current,
                     )
                 }

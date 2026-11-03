@@ -1,7 +1,6 @@
 package io.github.mangi.eta.ui.pages.providers
 
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,18 +14,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Dns
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -36,11 +31,13 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.data.model.CustomProviderSetting
 import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.components.providerBrandLogoRes as sharedProviderBrandLogoRes
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
@@ -239,13 +236,7 @@ internal fun ProviderClickableRow(
         null
     }
     val trailing: (@Composable () -> Unit)? = if (showChevron) {
-        {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        { EtaTrailingChevron() }
     } else {
         null
     }
@@ -295,12 +286,6 @@ internal fun ProviderExpandableRow(
     showChevron: Boolean = true,
     endActions: (@Composable RowScope.() -> Unit)? = null,
 ) {
-    val target = if (expanded) 180f else 0f
-    val rotation by animateFloatAsState(
-        targetValue = target,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>(),
-        label = "provider-expand-chevron",
-    )
     val supportingText = summary
     val supporting: (@Composable () -> Unit)? = if (supportingText != null) {
         {
@@ -318,11 +303,7 @@ internal fun ProviderExpandableRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // 尾槽顺序统一：开关永远最右，展开箭头在其左侧。
                 if (showChevron) {
-                    Icon(
-                        imageVector = Icons.Rounded.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.rotate(rotation),
-                    )
+                    EtaExpandChevron(expanded = expanded)
                     // 与 EtaClickableRow 同一口径：尾槽内部元素间距统一 12dp。
                     if (endActions != null) {
                         Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))

@@ -40,6 +40,14 @@ object EtaDimens {
 
     // ── 尺寸 / 笔画 ──
 
+    /**
+     * 行尾箭头（静态导航 / 展开收起）的标准图标尺寸。
+     *
+     * 与官方 ListItem 行尾图标的 24dp 对齐；需要沿用官方控件自身尺寸的调用点
+     * （如 AssistChip 的 18dp trailingIcon）显式传 `size` 覆盖。
+     */
+    val TrailingChevronSize = 24.dp
+
     /** 状态标记图标（工具行、朗读按钮等 16dp 状态槽）。 */
     val StatusIconSize = 16.dp
 

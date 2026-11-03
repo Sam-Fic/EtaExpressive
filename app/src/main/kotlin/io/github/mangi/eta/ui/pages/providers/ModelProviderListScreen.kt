@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
@@ -48,6 +47,7 @@ import io.github.mangi.eta.data.model.typeLabel
 import io.github.mangi.eta.data.repository.ProviderRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.adaptive.EtaCard
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
@@ -58,6 +58,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -478,20 +479,18 @@ private fun ProviderListItem(
         selectionMode -> null
         else -> {
             {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
+                ) {
                     if (showCurrentMark) {
                         Icon(
                             imageVector = Icons.Rounded.Check,
                             contentDescription = stringResource(R.string.ui_current_25e74d),
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 8.dp),
                         )
                     }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    EtaTrailingChevron()
                 }
             }
         }

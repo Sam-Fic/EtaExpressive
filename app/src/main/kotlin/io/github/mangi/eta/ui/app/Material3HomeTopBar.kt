@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.app
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -10,17 +9,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddComment
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.SplitButtonLayout
@@ -32,13 +30,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
+import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
@@ -114,11 +112,6 @@ internal fun Material3HomeTopBar(
             // 形状 / 尺寸 / 内边距 / 图标尺寸全部取 SplitButtonDefaults 默认值：
             // 尾段在 checked（菜单展开）时按默认 checkedShape 形变为全圆角胶囊。
             var menuExpanded by remember { mutableStateOf(false) }
-            val arrowRotation by animateFloatAsState(
-                targetValue = if (menuExpanded) 180f else 0f,
-                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>(),
-                label = "m3-topbar-menu-arrow",
-            )
             SplitButtonLayout(
                 leadingButton = {
                     SplitButtonDefaults.TonalLeadingButton(
@@ -161,12 +154,12 @@ internal fun Material3HomeTopBar(
                                     contentColor = MaterialTheme.colorScheme.onSurface,
                                 ),
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                                // 官方 SplitButton 尾段：尺寸取官方 18dp 图标槽，旋转走共享箭头。
+                                EtaExpandChevron(
+                                    expanded = menuExpanded,
                                     contentDescription = stringResource(R.string.action_more),
-                                    modifier = Modifier
-                                        .size(SplitButtonDefaults.TrailingIconSize)
-                                        .graphicsLayer { rotationZ = arrowRotation },
+                                    tint = LocalContentColor.current,
+                                    size = SplitButtonDefaults.TrailingIconSize,
                                 )
                             }
                         }

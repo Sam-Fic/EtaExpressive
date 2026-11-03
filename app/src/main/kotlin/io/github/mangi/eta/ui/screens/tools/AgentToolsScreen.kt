@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.screens.tools
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,9 +8,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -22,7 +19,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -33,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -177,11 +174,6 @@ private fun ToolCapabilityHeaderRow(
     val stateText = stringResource(
         if (expanded) R.string.tools_group_state_expanded else R.string.tools_group_state_collapsed,
     )
-    val rotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>(),
-        label = "tool-group-expand-chevron",
-    )
     EtaSegmentedRow(
         onClick = { onExpandedChange(!expanded) },
         modifier = Modifier.semantics { this.stateDescription = stateText },
@@ -199,11 +191,7 @@ private fun ToolCapabilityHeaderRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // 尾槽顺序统一：开关永远最右，箭头在其左侧。
                 // 组头开关与下方各工具行的开关同列，避免同卡片内出现 36dp 错位。
-                Icon(
-                    imageVector = Icons.Rounded.ExpandMore,
-                    contentDescription = null,
-                    modifier = Modifier.rotate(rotation),
-                )
+                EtaExpandChevron(expanded = expanded)
                 Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
                 EtaSwitch(
                     checked = capability.switchEnabled,

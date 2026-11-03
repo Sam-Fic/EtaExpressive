@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -57,6 +56,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
 import io.github.mangi.eta.ui.components.ListEmptyState
@@ -281,11 +281,7 @@ internal fun SubAgentSettingsScreen(
                                                     )
                                                 }
                                             }
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
+                                            EtaTrailingChevron()
                                         }
                                     },
                                 ) {

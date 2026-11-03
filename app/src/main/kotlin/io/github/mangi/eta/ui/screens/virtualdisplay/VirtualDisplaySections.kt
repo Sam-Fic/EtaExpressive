@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -36,7 +35,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -57,6 +55,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaStatusDot
+import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.rememberTaskBackendInstalled
@@ -205,7 +204,7 @@ internal fun VirtualDisplayControlSection(
                 onClick = onHandoff,
                 content = { Text(stringResource(R.string.vd_screen_handoff)) },
                 supportingContent = { Text(stringResource(R.string.vd_screen_handoff_summary)) },
-                trailingContent = { RowChevron() },
+                trailingContent = { EtaTrailingChevron() },
             )
         }
         item(key = "control-close") {
@@ -219,19 +218,10 @@ internal fun VirtualDisplayControlSection(
                     )
                 },
                 supportingContent = { Text(stringResource(R.string.vd_screen_close_summary)) },
-                trailingContent = { RowChevron(tint = MaterialTheme.colorScheme.error) },
+                trailingContent = { EtaTrailingChevron(tint = MaterialTheme.colorScheme.error) },
             )
         }
     }
-}
-
-@Composable
-private fun RowChevron(tint: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
-    Icon(
-        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-        contentDescription = null,
-        tint = tint,
-    )
 }
 
 /**

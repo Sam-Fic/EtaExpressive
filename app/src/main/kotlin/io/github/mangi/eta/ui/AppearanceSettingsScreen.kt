@@ -45,9 +45,7 @@ import androidx.compose.material.icons.filled.Brightness7
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Circle
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
@@ -111,6 +109,7 @@ import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
@@ -125,7 +124,6 @@ import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaTonalCard
-import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
 import io.github.mangi.eta.ui.components.lazyRowEdgeFade
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.app.LocalAppearanceSettings
@@ -466,12 +464,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
                     },
                     holdDownState = iconExpanded,
                     endActions = {
-                        Icon(
-                            imageVector = if (iconExpanded) Icons.Rounded.ExpandMore else Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                            tint = etaOnSurfaceVariant(),
-                        )
+                        EtaExpandChevron(expanded = iconExpanded)
                     },
                 )
             }
@@ -561,12 +554,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
                     holdDownState = appearance.morphLoadingIndicator && morphLoadingExpanded,
                     endActions = {
                         if (appearance.morphLoadingIndicator) {
-                            Icon(
-                                imageVector = if (morphLoadingExpanded) {
-                                    Icons.Rounded.ExpandMore
-                                } else {
-                                    Icons.Rounded.ChevronRight
-                                },
+                            EtaExpandChevron(
+                                expanded = morphLoadingExpanded,
                                 contentDescription = stringResource(
                                     if (morphLoadingExpanded) {
                                         R.string.appearance_morph_loading_collapse
@@ -574,8 +563,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
                                         R.string.appearance_morph_loading_expand
                                     },
                                 ),
-                                modifier = Modifier.align(Alignment.CenterVertically),
-                                tint = etaOnSurfaceVariant(),
                             )
                             // 尾槽顺序统一：开关在最右、展开箭头在左，中间留 12dp。
                             Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))

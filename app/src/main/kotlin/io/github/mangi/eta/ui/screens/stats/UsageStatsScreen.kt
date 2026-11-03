@@ -21,8 +21,6 @@ import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.RocketLaunch
@@ -56,12 +54,14 @@ import io.github.mangi.eta.data.repository.formatStatCount
 import io.github.mangi.eta.data.repository.formatTokenCount
 import io.github.mangi.eta.data.repository.heatmapAlpha
 import io.github.mangi.eta.data.repository.heatmapQuartiles
+import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
@@ -439,7 +439,6 @@ private fun UsageFilterGroup(
     val summary = filterSummaryText(start, end, matchedPreset)
         ?: stringResource(R.string.stats_model_filter_collapsed)
     val titleText = stringResource(R.string.stats_model_filter_title)
-    val expandIcon = if (expanded) Icons.Rounded.ExpandMore else Icons.Rounded.ChevronRight
 
     EtaSegmentedColumn(modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing)) {
         item(key = "header") {
@@ -456,11 +455,7 @@ private fun UsageFilterGroup(
                     )
                 },
                 trailingContent = {
-                    Icon(
-                        imageVector = expandIcon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    EtaExpandChevron(expanded = expanded)
                 },
             )
         }
@@ -552,11 +547,7 @@ private fun UsageBoundRow(
             )
         },
         trailingContent = {
-            Icon(
-                imageVector = Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            EtaTrailingChevron()
         },
     )
 }
@@ -707,11 +698,7 @@ private fun ProviderUsageGroup(
                         M3Text(text = model.displayName)
                     },
                     trailingContent = {
-                        Icon(
-                            imageVector = if (expanded) Icons.Rounded.ExpandMore else Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        EtaExpandChevron(expanded = expanded)
                     },
                 )
             }

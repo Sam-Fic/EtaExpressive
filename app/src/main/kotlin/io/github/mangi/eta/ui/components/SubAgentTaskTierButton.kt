@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -17,6 +16,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.delegation.SubAgentTaskTier
+import io.github.mangi.eta.ui.adaptive.EtaDownChevron
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShapes
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
@@ -61,7 +61,8 @@ internal fun SubAgentChoiceField(
                 overflow = TextOverflow.Ellipsis,
             )
         },
-        trailingContent = { Icon(Icons.Rounded.ExpandMore, contentDescription = null) },
+        // 下拉菜单的箭头不随开合旋转，固定朝下。
+        trailingContent = { EtaDownChevron() },
     )
 }
 
@@ -163,7 +164,14 @@ internal fun SubAgentTaskTierButton(
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
-                trailingIcon = { Icon(Icons.Rounded.ExpandMore, contentDescription = null) },
+                // 官方 AssistChip 的 trailingIcon 槽位固定 18dp，覆盖共享箭头的默认 24dp；
+                // 下拉箭头保持常朝下，不随菜单开合旋转。
+                trailingIcon = {
+                    EtaDownChevron(
+                        tint = LocalContentColor.current,
+                        size = AssistChipDefaults.IconSize,
+                    )
+                },
             )
         } else SubAgentChoiceField(label, tier?.let { stringResource(it.labelRes) } ?: stringResource(R.string.stt_unset), enabled, if (isTaskTierRow) stringResource(R.string.stt_set_task_tier) else stringResource(R.string.stt_desc_set_for, label),
             onClick = { if (latestEnabled) { TouchHaptics.click(view); expanded = !expanded } })
