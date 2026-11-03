@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddComment
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -55,7 +55,9 @@ internal fun Material3HomeTopBar(
     title: String,
     onOpenConversationPane: () -> Unit,
     onRenameCurrentConversation: () -> Unit,
-    onNewConversation: () -> Unit,
+    /** 非调度台会话时显示右侧「回到调度台」按钮（原「新建对话」位，写法相同、功能换了）。 */
+    showBackToConsole: Boolean = false,
+    onBackToConsole: () -> Unit = {},
     onOpenTerminal: () -> Unit,
     onLaunchKimiWeb: () -> Unit,
     kimiWebLabel: String,
@@ -194,20 +196,24 @@ internal fun Material3HomeTopBar(
                 },
             )
         }
-        val newConversationDescription = stringResource(R.string.action_new_conversation)
-        FooterTooltipBox(text = newConversationDescription, enabled = true) {
-            EtaIconButton(
-                icon = Icons.Rounded.AddComment,
-                contentDescription = newConversationDescription,
-                onClick = {
-                    TouchHaptics.click(view)
-                    onNewConversation()
-                },
-                size = EtaIconSize.S,
-                // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
-                style = EtaButtonStyle.SurfaceHighest,
-                shapes = IconButtonDefaults.shapes(),
-            )
+        // 主页纯化为调度台：「新建对话」入口收进会话侧栏 FAB；这里只在打开其他会话时
+        // 显示「回到调度台」——按钮写法沿用原新建按钮（TooltipBox + EtaIconButton + morph）。
+        if (showBackToConsole) {
+            val backToConsoleDescription = stringResource(R.string.action_back_to_dispatch_console)
+            FooterTooltipBox(text = backToConsoleDescription, enabled = true) {
+                EtaIconButton(
+                    icon = Icons.Rounded.Home,
+                    contentDescription = backToConsoleDescription,
+                    onClick = {
+                        TouchHaptics.click(view)
+                        onBackToConsole()
+                    },
+                    size = EtaIconSize.S,
+                    // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+                    style = EtaButtonStyle.SurfaceHighest,
+                    shapes = IconButtonDefaults.shapes(),
+                )
+            }
         }
     }
 }

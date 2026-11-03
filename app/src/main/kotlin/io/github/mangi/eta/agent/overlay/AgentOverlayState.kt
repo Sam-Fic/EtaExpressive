@@ -168,6 +168,7 @@ internal fun AgentOverlayState.applyEvent(event: AgentEvent): AgentOverlayState 
     is AgentEvent.DecisionFallback -> this
 
     is AgentEvent.AutoCompactWaiting -> this
+    is AgentEvent.DispatchCreated -> this
 
     is AgentEvent.ContextCompactionStarted -> copy(
         phase = AgentOverlayPhase.RUNNING,

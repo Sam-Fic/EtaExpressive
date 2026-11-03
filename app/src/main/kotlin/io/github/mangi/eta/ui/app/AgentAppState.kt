@@ -444,6 +444,12 @@ internal class AgentAppState(
         conversationDeletedAt = initialConversations.deletedAt
         conversationFolders = initialConversations.folders
         hydrateConversations()
+        // 派发结算通知：Runtime 侧只发布，注入（steer / 普通一轮）由 UI 自己的通路完成。
+        scope.launch {
+            io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.notices.collect { notice ->
+                handleDispatchNotice(notice)
+            }
+        }
     }
 
     /**
@@ -483,13 +489,132 @@ internal class AgentAppState(
                 conversationCompletionMarkers = snapshot.completionMarkerIds - listOfNotNull(snapshot.selectedConversationId)
                 conversationDeletedAt = snapshot.deletedAt
                 conversationFolders = snapshot.folders
+                conversationDispatchMarks = snapshot.dispatchMarkedIds
                 homeState = selectedConversationId?.let(::conversationState) ?: newDraftChatState()
                 conversationPaneState = conversationPaneState.copy(selectedConversationId = selectedConversationId)
                 refreshConversationSummaries()
                 // 启动水合后先清一次过期回收站：App 长期不开回收站页也能按留存期落盘清理。
                 purgeExpiredTrash()
+                // 主页纯化为调度台：冷启动确保调度台会话存在并选中。
+                ensureDispatchConsoleSelected()
             }
         }
+    }
+
+    // ============================================================ 调度台（Session Dispatch）
+
+    private val handledDispatchNotices =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** 派生会话标记（调度台所建或接续中）；内存投影，真相在 conversations 两列。 */
+    private var conversationDispatchMarks by mutableStateOf(setOf<String>())
+
+    /** 冷启动/回到主页都落到调度台会话；缺失即创建（固定 id，助手=内置调度台，置顶）。 */
+    fun ensureDispatchConsoleSelected() {
+        if (!conversationsHydrated) return
+        val consoleId = dispatchConsoleId() ?: createDispatchConsole()
+        if (selectedConversationId != consoleId) selectConversation(consoleId)
+    }
+
+    private fun dispatchConsoleId(): String? = conversationsById.entries
+        .firstOrNull { it.value.assistantId == io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID }
+        ?.key
+
+    /** 当前选中会话是否为调度台本身；顶栏「回到调度台」按钮以此为显隐依据。 */
+    val currentIsDispatchConsole: Boolean
+        get() = selectedConversationId != null && selectedConversationId == dispatchConsoleId()
+
+    private fun createDispatchConsole(): String {
+        val conversationId = "dispatch-console"
+        val draft = newDraftChatState().copy(
+            assistantId = io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID,
+        )
+        conversationSelectionVersion += 1
+        conversationSelectionJob?.cancel()
+        fileAttachmentOwnerVersion += 1
+        selectedConversationId = conversationId
+        homeState = draft
+        updateConversation(conversationId, draft)
+        conversationTitles = conversationTitles + (conversationId to "调度台")
+        conversationPinned = conversationPinned + conversationId
+        conversationUpdatedAt = conversationUpdatedAt + (conversationId to System.currentTimeMillis())
+        persistConversations()
+        return conversationId
+    }
+
+    private fun handleDispatchNotice(notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.Notice) {
+        // 恰一次：replay 兜底 Activity 重建，这里按 dispatchId+结果去重。
+        if (!handledDispatchNotices.add("${notice.dispatchId}:${notice.outcome.name}")) return
+        scope.launch(Dispatchers.Main.immediate) {
+            markDispatchManaged(notice.conversationId)
+            materializeDispatchConversation(notice.conversationId, notice.title)
+            deliverDispatchNotice(notice.toConsoleText())
+        }
+    }
+
+    private fun markDispatchManaged(conversationId: String) {
+        if (conversationId.isBlank() || conversationId in conversationDispatchMarks) return
+        conversationDispatchMarks = conversationDispatchMarks + conversationId
+        refreshConversationSummaries()
+    }
+
+    /** 派生会话不在内存时从 Room 物化（通知与 DispatchCreated 事件共用）。 */
+    private fun materializeDispatchConversation(conversationId: String, title: String) {
+        if (conversationId.isBlank() || conversationsById.containsKey(conversationId)) return
+        scope.launch(Dispatchers.Main.immediate) {
+            val state = runCatching {
+                withContext(Dispatchers.IO) {
+                    AgentConversationStore.loadConversation(appContext, conversationId)
+                }
+            }.getOrNull() ?: return@launch
+            if (conversationsById.containsKey(conversationId)) return@launch
+            conversationsById = conversationsById + (conversationId to state)
+            if (title.isNotBlank() && conversationTitles[conversationId].isNullOrBlank()) {
+                conversationTitles = conversationTitles + (conversationId to title)
+            }
+            conversationUpdatedAt = conversationUpdatedAt + (conversationId to System.currentTimeMillis())
+            refreshConversationSummaries()
+        }
+    }
+
+    /** 结算回报注入调度台：在跑→steer 插话；空闲→按普通一轮起跑；暂停/未知→排队。 */
+    private fun deliverDispatchNotice(text: String) {
+        val consoleId = dispatchConsoleId() ?: return
+        val state = conversationState(consoleId) ?: return
+        val activeRunId = state.activeRunId
+        when {
+            activeRunId != null && state.isStreaming && !state.isPaused -> {
+                val steered = runCatching {
+                    AgentRuntimeClient(appContext, AndroidAgentLogger).steerRun(activeRunId, text)
+                }.getOrDefault(false)
+                if (!steered) enqueueQueuedMessage(consoleId, text)
+            }
+            activeRunId == null && !state.isStreaming && !state.isPaused ->
+                dispatchNoticeAsConsoleTurn(consoleId, state, text)
+            else -> enqueueQueuedMessage(consoleId, text)
+        }
+    }
+
+    private fun dispatchNoticeAsConsoleTurn(
+        consoleId: String,
+        state: AgentChatHomeUiState,
+        text: String,
+    ) {
+        val runId = "run-${UUID.randomUUID()}"
+        val userMessage = UserMessageUi(id = "user-$runId", content = text)
+        val messages = state.messages + userMessage
+        val userHistoryMessage = AgentModelClient.buildUserHistoryMessage(text, emptyList())
+        launchConversationRun(
+            conversationId = consoleId,
+            runId = runId,
+            prompt = text,
+            images = emptyList(),
+            history = state.history,
+            userHistoryMessage = userHistoryMessage,
+            messages = messages,
+            state = state,
+            reasoningEffort = state.reasoningEffort,
+        )
     }
 
     // UI and Runtime use explicit owners. A selected UI owner is never a Runtime lookup key.
@@ -6510,6 +6635,12 @@ internal class AgentAppState(
                     requestOwnerContext(id)
                 }
             }
+            is AgentEvent.DispatchCreated -> {
+                // 派发落定：物化目标会话并触发一次恢复式挂接，让子 run 的流式事件进到会话里。
+                markDispatchManaged(event.conversationId)
+                materializeDispatchConversation(event.conversationId, event.title)
+                refreshRuntimeResults()
+            }
             is AgentEvent.RoundStarted -> {
                 val source = conversationIdForRun(runId)?.let(::conversationState)
                 if (source != null && event.historySnapshotId.isNotBlank()) {
@@ -7390,6 +7521,7 @@ internal class AgentAppState(
                 // 暂停不算回复中：暂停后运行已挂起，抽屉行尾不应继续转 loading。
                 isActiveRun = state.isStreaming && !state.isPaused,
                 hasCompletionMarker = id in conversationCompletionMarkers,
+                isDispatchManaged = id in conversationDispatchMarks,
                 folderId = conversationFolderIds[id],
                 environment = environment,
             )
@@ -8667,6 +8799,7 @@ internal data class ConversationSummaryKey(
     val isPinned: Boolean,
     val isActiveRun: Boolean,
     val hasCompletionMarker: Boolean,
+    val isDispatchManaged: Boolean = false,
     val folderId: String?,
     val environment: ConversationSummaryEnvironment,
 )

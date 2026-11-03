@@ -24,6 +24,8 @@ internal object AgentToolCatalog {
         skillGitHubDiscovery: Boolean = false,
         skillGitHubInstall: Boolean = false,
         memoryTools: Boolean = false,
+        /** 调度台专用：只在调度助手身份的 run 里下发（见 AgentDispatchAssistant）。 */
+        dispatchTools: Boolean = false,
         capabilities: AgentToolCapabilities = AgentToolCapabilities(rootAvailable = true),
         localWebSearch: Boolean = true,
         /** 已按需打开的工具组 id；未打开的延迟组不下发，只留一行索引。 */
@@ -92,6 +94,7 @@ internal object AgentToolCatalog {
             )
         }
         if (memoryTools) AgentMemoryToolCatalog.appendTo(emitted)
+        if (dispatchTools) AgentDispatchToolCatalog.appendTo(emitted)
         if (extensionsTools) {
             AgentSelfSettingsToolCatalog.appendTo(emitted)
         }

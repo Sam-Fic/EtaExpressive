@@ -192,6 +192,23 @@ internal sealed interface AgentEvent {
             "user_supplement_received index=$index, chars=${text.length}"
     }
 
+    /**
+     * 调度台派发落定：工作会话已创建/复用并起跑。UI 据此把目标会话物化进内存列表
+     * 并挂接活跃 run；恢复重放时同一事件也用于重建派生会话的存在性。
+     */
+    data class DispatchCreated(
+        val conversationId: String,
+        val title: String,
+        /** 调度台会话 id；非空表示该会话由调度台派生（归属与抽屉标记的依据）。 */
+        val dispatchParentId: String,
+        val dispatchId: String,
+        val runId: String,
+    ) : AgentEvent {
+        override fun toLogLine(): String =
+            "dispatch_created conversation=${conversationId.toSafeLogToken()} " +
+                "dispatch_id=${dispatchId.toSafeLogToken()} run_id=${runId.toSafeLogToken()}"
+    }
+
     data class ToolStarted(
         val round: Int,
         val toolCallId: String,

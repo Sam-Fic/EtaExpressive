@@ -10,6 +10,8 @@ import io.github.mangi.eta.agent.delegation.*
 import io.github.mangi.eta.agent.decision.AgentDecisionMismatch
 import io.github.mangi.eta.agent.decision.AgentDecisionRouter
 import io.github.mangi.eta.agent.browser.ChildBrowserSession
+import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
+import io.github.mangi.eta.agent.model.AgentDispatchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityKeeper
@@ -131,6 +133,8 @@ internal class AgentRuntimeRunExecutor(
             unownedSkillRoot = runSkillsRoot
             val skillContext = SkillContext(installedSkills = runSkillEntries)
             val memoryEnabled = AgentMemoryRepository.isEnabled(assistant.id)
+            // 调度工具是调度台身份的专属能力：闸门在身份，不在全局开关。
+            val dispatchEnabled = assistant.id == io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID
             val memoryContext = if (memoryEnabled) runCatching {
                 AgentMemoryContextBuilder.build(AgentMemoryRepository.snapshot(assistant.id), request.config.contextWindow)
             }.getOrElse { throwable ->
@@ -429,6 +433,29 @@ internal class AgentRuntimeRunExecutor(
                         AgentChildTaskGroups.execute(childSessionId, groupGeneration, call,
                             currentRunId = request.runId, replacementGeneration = replacementGeneration)
                     }
+                } else if (call.name in AgentDispatchToolCatalog.TOOL_NAMES) {
+                    // 调度台派发族：不进 AgentLocalTools，直接走协调器（只调度、不执行）。
+                    val coordinator = AgentDispatchRuntime.coordinator
+                    if (!dispatchEnabled || coordinator == null) {
+                        AgentModelClient.ToolResult(
+                            org.json.JSONObject()
+                                .put("ok", false)
+                                .put("code", "DISPATCH_TOOLS_UNAVAILABLE")
+                                .put("message", "调度工具只在「调度台」身份下可用")
+                                .toString(),
+                            sensitive = true,
+                        )
+                    } else {
+                        AgentModelClient.ToolResult(
+                            coordinator.executeTool(
+                                name = call.name,
+                                argumentsJson = call.argumentsJson,
+                                orchestratorConversationId = request.effectiveModelSessionId,
+                                orchestratorSession = session,
+                                orchestratorConfig = request.config,
+                            ).toString(),
+                        )
+                    }
                 } else routingExecutor.execute(call)
             }
             val compactPolicy = runBlocking { AgentCompressionPolicy.resolve(request.config) }
@@ -486,6 +513,7 @@ internal class AgentRuntimeRunExecutor(
                 calibratedInputTokens = request.calibratedInputTokens,
                 allowUnmeasuredContextSend = request.allowUnmeasuredContextSend,
                 skillContext = skillContext, memoryContext = memoryContext,
+                dispatchTools = dispatchEnabled,
                 skillContextProvider = {
                     check(AssistantRepository.currentProfile(assistant.id) != null) { "任务所属助手已删除" }
                     SkillContext(installedSkills = executor.currentSkillEntries())

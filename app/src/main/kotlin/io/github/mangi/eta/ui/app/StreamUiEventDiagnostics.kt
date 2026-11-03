@@ -60,6 +60,7 @@ internal object StreamUiEventDiagnostics {
         is AgentEvent.ChildContextUpdated -> "ui.event.childContext"
         is AgentEvent.UsageReceived -> if (event.projected) "ui.event.usage.projected" else "ui.event.usage.receipt"
         is AgentEvent.UserSupplementReceived -> "ui.event.supplement"
+        is AgentEvent.DispatchCreated -> "ui.event.dispatchCreated"
         is AgentEvent.ToolStarted -> "ui.event.toolStarted"
         is AgentEvent.ToolFinished -> "ui.event.toolFinished"
         is AgentEvent.HostedToolStarted -> "ui.event.hostedToolStarted"

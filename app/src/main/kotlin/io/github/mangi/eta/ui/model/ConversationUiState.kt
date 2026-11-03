@@ -33,6 +33,8 @@ data class ConversationSummaryUi(
     val isPinned: Boolean = false,
     val isActiveRun: Boolean = false,
     val hasCompletionMarker: Boolean = false,
+    /** 该会话由调度台所建或接续使用中；抽屉行前显示派生标记。 */
+    val isDispatchManaged: Boolean = false,
     val folderId: String? = null,
     // Captured with timeLabel; consumers must not classify it using a live clock.
     val isToday: Boolean = false,

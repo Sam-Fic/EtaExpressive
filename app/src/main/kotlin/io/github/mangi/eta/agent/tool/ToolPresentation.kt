@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.AdsClick
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Computer
 import androidx.compose.material.icons.rounded.Code
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.ScreenshotMonitor
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.Smartphone
@@ -132,6 +134,11 @@ internal object ToolPresentation {
         "cancel_task" -> R.string.tool_cancel_task
         "memory_get" -> R.string.tool_memory_get
         "memory_write" -> R.string.tool_memory_write
+        "conversations_list" -> R.string.tool_conversations_list
+        "conversation_history" -> R.string.tool_conversation_history
+        "conversation_status" -> R.string.tool_conversation_status
+        "task_dispatch" -> R.string.tool_task_dispatch
+        "task_abort" -> R.string.tool_task_abort
         "press_key" -> R.string.tool_press_key
         "open_system_panel" -> R.string.tool_open_system_panel
         "set_alarm" -> R.string.tool_set_alarm
@@ -282,6 +289,9 @@ internal object ToolPresentation {
         "continue_task", "manage_agent_workspace" -> SubAgents
         "memory_get" -> Icons.Rounded.Psychology
         "memory_write" -> Icons.Rounded.Psychology
+        "conversations_list", "conversation_history", "conversation_status" -> Icons.Rounded.History
+        "task_dispatch" -> Icons.Rounded.Send
+        "task_abort" -> Icons.Rounded.Cancel
         "press_key" -> Icons.Rounded.KeyboardCommandKey
         "open_system_panel" -> Icons.Rounded.WebAsset
         "read_image" -> Icons.Rounded.Image

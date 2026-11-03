@@ -35,6 +35,15 @@ internal data class ConversationEntity(
     /** 回收站：非空表示已软删除、待恢复或永久清理的时间戳；恢复后回到 null。 */
     @ColumnInfo(name = "deleted_at")
     val deletedAt: Long? = null,
+    /** 调度台所建的工作会话：值为调度台会话 id；用户手建的会话为 null。 */
+    @ColumnInfo(name = "dispatch_parent_id")
+    val dispatchParentId: String? = null,
+    /**
+     * 最近一次被调度台接续派发的时间；非空表示会话处于（或曾经处于）派发管理下。
+     * 与 [dispatchParentId] 共同决定抽屉的「派生会话」标记；fork 出的副本两列皆空。
+     */
+    @ColumnInfo(name = "dispatch_managed_at")
+    val dispatchManagedAt: Long? = null,
 )
 
 internal data class ConversationMetadata(

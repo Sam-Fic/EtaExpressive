@@ -36,6 +36,9 @@ internal object AgentRuntimeWire {
     const val AGENT_UI_HANDOFF_SOURCE = "agent_ui"
     const val ETA_VOICE_HANDOFF_SOURCE = "eta_voice"
 
+    /** 调度台派发：handoff.payload 携带 [io.github.mangi.eta.agent.dispatch.AgentDispatchPayload]。 */
+    const val ETA_DISPATCH_HANDOFF_SOURCE = "eta_dispatch"
+
     internal class PayloadTooLargeException(sizeBytes: Int) : IllegalArgumentException(
         "Agent Runtime 请求元数据过大（$sizeBytes bytes）；请缩短输入或会话历史后重试"
     )
@@ -790,6 +793,15 @@ internal object AgentRuntimeWire {
                 putBoolean("terminal_tools", event.terminalTools)
             }
 
+            is AgentEvent.DispatchCreated -> {
+                putString(KEY_TYPE, "dispatch_created")
+                putString("conversation_id", event.conversationId)
+                putString("title", event.title)
+                putString("dispatch_parent_id", event.dispatchParentId)
+                putString("dispatch_id", event.dispatchId)
+                putString("run_id", event.runId)
+            }
+
             is AgentEvent.RoundStarted -> {
                 putString(KEY_TYPE, "round_started")
                 putInt("round", event.round)
@@ -1001,6 +1013,14 @@ internal object AgentRuntimeWire {
             initialImageBytes = bundle.getInt("initial_image_bytes"),
             toolCount = bundle.getInt("tool_count"),
             terminalTools = bundle.getBoolean("terminal_tools"),
+        )
+
+        "dispatch_created" -> AgentEvent.DispatchCreated(
+            conversationId = bundle.getString("conversation_id").orEmpty(),
+            title = bundle.getString("title").orEmpty(),
+            dispatchParentId = bundle.getString("dispatch_parent_id").orEmpty(),
+            dispatchId = bundle.getString("dispatch_id").orEmpty(),
+            runId = bundle.getString("run_id").orEmpty(),
         )
 
         "round_started" -> AgentEvent.RoundStarted(

@@ -26,8 +26,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         McpServerEntity::class,
         MediaIndexEntity::class,
         MediaSourceEntity::class,
+        DispatchClaimEntity::class,
     ],
-    version = 38,
+    version = 39,
     exportSchema = false,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
@@ -37,6 +38,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
     abstract fun skillDao(): SkillDao
     abstract fun mcpServerDao(): McpServerDao
     abstract fun mediaIndexDao(): MediaIndexDao
+    abstract fun dispatchClaimDao(): DispatchClaimDao
 
     companion object {
         @Volatile
@@ -82,6 +84,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
                         MIGRATION_35_36,
                         MIGRATION_36_37,
                         MIGRATION_37_38,
+                        MIGRATION_38_39,
                     )
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
@@ -304,6 +307,27 @@ internal abstract class EtaDatabase : RoomDatabase() {
         internal val MIGRATION_37_38 = Migration(37, 38) { database ->
             database.execSQL("DROP TABLE IF EXISTS agent_schedules")
             database.execSQL("DROP TABLE IF EXISTS agent_alarms")
+        }
+
+        // 调度台所建的工作会话标记：dispatch_parent_id 非空表示由该调度台会话派生。
+        internal val MIGRATION_38_39 = Migration(38, 39) { database ->
+            database.execSQL("ALTER TABLE conversations ADD COLUMN dispatch_parent_id TEXT")
+            database.execSQL("ALTER TABLE conversations ADD COLUMN dispatch_managed_at INTEGER")
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS dispatch_claims (" +
+                    "dispatch_id TEXT NOT NULL, " +
+                    "conversation_id TEXT NOT NULL, " +
+                    "brief TEXT NOT NULL, " +
+                    "origin_text TEXT NOT NULL, " +
+                    "run_id TEXT, " +
+                    "state TEXT NOT NULL, " +
+                    "created_at INTEGER NOT NULL, " +
+                    "PRIMARY KEY(dispatch_id))"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_dispatch_claims_conversation_id " +
+                    "ON dispatch_claims(conversation_id)"
+            )
         }
 
         internal val MIGRATION_30_31 = Migration(30, 31) { database ->

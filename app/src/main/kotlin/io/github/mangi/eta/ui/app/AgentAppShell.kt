@@ -80,6 +80,9 @@ internal fun AgentAppShell(
     onToggleConversationPane: () -> Unit = onOpenConversationPane,
     onDismissConversationPane: () -> Unit,
     onNewConversation: () -> Unit,
+    /** 非调度台会话时首页顶栏显示「回到调度台」按钮；调度台本身与远程目标不显示。 */
+    showBackToConsole: Boolean = false,
+    onBackToConsole: () -> Unit = {},
     onOpenTerminal: () -> Unit,
     onLaunchKimiWeb: () -> Unit,
     kimiWebLabel: String,
@@ -187,6 +190,8 @@ internal fun AgentAppShell(
                             onBack = onBack,
                             onOpenConversationPane = onToggleConversationPane,
                             onNewConversation = onNewConversation,
+                            showBackToConsole = showBackToConsole,
+                            onBackToConsole = onBackToConsole,
                             onRenameCurrentConversation = {
                                 val pane = conversationPaneState
                                 val conversation = pane?.selectedConversationId?.let { id ->
@@ -286,6 +291,9 @@ private fun AgentTopBar(
     onOpenConversationPane: () -> Unit,
     onNewConversation: () -> Unit,
     onRenameCurrentConversation: () -> Unit = {},
+    /** 非调度台会话时首页顶栏显示「回到调度台」按钮（原「新建对话」位）。 */
+    showBackToConsole: Boolean = false,
+    onBackToConsole: () -> Unit = {},
     onOpenTerminal: () -> Unit,
     onLaunchKimiWeb: () -> Unit,
     kimiWebLabel: String,
@@ -383,12 +391,14 @@ private fun AgentTopBar(
             scrollBehavior.state.heightOffsetLimit = 0f
             scrollBehavior.state.heightOffset = 0f
         }
-        // 首页：菜单 + 会话标题拆分按钮 + 新建对话，一行排开（聊天舞台保持紧凑）。
+        // 首页：菜单 + 会话标题拆分按钮，一行排开（聊天舞台保持紧凑）。
+        // 新建对话按钮已移除：主页纯化为调度台，入口统一在会话侧栏的 FAB。
         Material3HomeTopBar(
             title = titleForRoute(route, currentConversationTitle),
             onOpenConversationPane = onOpenConversationPane,
             onRenameCurrentConversation = onRenameCurrentConversation,
-            onNewConversation = onNewConversation,
+            showBackToConsole = showBackToConsole,
+            onBackToConsole = onBackToConsole,
             onOpenTerminal = onOpenTerminal,
             onLaunchKimiWeb = onLaunchKimiWeb,
             kimiWebLabel = kimiWebLabel,

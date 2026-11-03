@@ -42,6 +42,9 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
+import io.github.mangi.eta.agent.dispatch.AgentDispatchCoordinator
+import io.github.mangi.eta.agent.dispatch.AgentDispatchPayload
+import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.device.OwnerDisplayPresence
 import io.github.mangi.eta.agent.device.VirtualDisplaySession
@@ -211,6 +214,20 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private val supplementsByRunId = linkedMapOf<String, RunSupplements>()
     @Volatile
     private var lastCompletedRunContext: CompletedRunContext? = null
+
+    /**
+     * 调度域：协调器 + 每会话最近一次 run 触碰时间（含是否派发来源）。
+     * touch 供派发续跑的历史组合判断「这会话被非派发 run 动过没有」。
+     */
+    private val dispatchCoordinator: AgentDispatchCoordinator = AgentDispatchCoordinator(
+        context = this,
+        startRun = { request -> startRun(request) },
+        stopRun = { runId -> runCatching { cancelRun(runId); true }.getOrDefault(false) },
+        activeConversationIds = { runs.snapshots().map { it.conversationId }.toSet() },
+        activeRunIdFor = { conversationId ->
+            runs.snapshots().firstOrNull { it.conversationId == conversationId }?.runId
+        },
+    )
     private val hideToken = Any()
     private val pendingHistorySnapshots = ConcurrentHashMap<String, AgentRuntimeHistoryTransfer.PreparedHistory>()
     private val pendingResultTranscripts =
@@ -220,6 +237,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     override fun onCreate() {
         super.onCreate()
+        AgentDispatchRuntime.coordinator = dispatchCoordinator
+        // 重启对账：armed 判死发声、queued 重新派发（见 AgentDispatchCoordinator.recoverClaims）。
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { dispatchCoordinator.recoverClaims() }
+                .onFailure { throwable ->
+                    AndroidAgentLogger.error(
+                        "Dispatch claim recovery failed: type=${throwable.safeLogType()}"
+                    )
+                }
+        }
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
@@ -830,9 +857,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             }
         }
         synchronized(supplementsLock) {
-            val extras = RunSupplements(conversationId = request.handoff
-                ?.takeIf { it.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE }
-                ?.payload?.let { AgentUiHandoffPayload.from(it).conversationId }.orEmpty())
+            // 派发 run 也登记会话归属：MSG_CANCEL_CONVERSATION 按这里找到该会话的全部 run。
+            val extras = RunSupplements(conversationId = when (request.handoff?.source) {
+                AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE ->
+                    request.handoff.payload.let { AgentUiHandoffPayload.from(it).conversationId }
+                AgentRuntimeWire.ETA_DISPATCH_HANDOFF_SOURCE ->
+                    request.handoff.payload.let { AgentDispatchPayload.from(it)?.conversationId }.orEmpty()
+                else -> ""
+            })
             if (request.handoff?.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE) {
                 val payload = AgentUiHandoffPayload.from(request.handoff.payload)
                 extras.items += payload.supplements
@@ -1174,6 +1206,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         request: AgentRuntimeWire.RunRequest,
         result: AgentRuntimeWire.RunResult
     ) {
+        // 调度域挂钩对所有 run 生效（在 handoff 早退之前）：未知 runId 在账本里静默忽略，
+        // 但每个会话的组合历史都在这里记录——它是接续派发比 UI 历史文件新的权威来源。
+        dispatchCoordinator.onRunTerminal(request, result)
         val handoff = request.handoff ?: return
         AgentRuntimeResultStore.add(
             this,
@@ -1293,6 +1328,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private fun cancelRun(runId: String) {
         if (runId.isBlank()) return
+        // 派发债权先行按「已停止」结算：晚到的终态结算因账本幂等而无效，避免通知悬挂。
+        dispatchCoordinator.onRunAborted(runId)
         val targets = AgentChildTaskGroups.captureRunStopTargets(runId)
         // Explicit whole-task cancellation is not a terminal network failure or a second choice.
         stopMainRun(runId, AgentChildControlPolicy.Reason.USER_CANCEL)

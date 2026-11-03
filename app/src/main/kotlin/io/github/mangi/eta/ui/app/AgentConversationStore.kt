@@ -71,6 +71,8 @@ internal object AgentConversationStore {
         val folders: List<ConversationFolderUi> = emptyList(),
         /** 回收站：会话 id -> 软删除时间。仅包含 deleted_at 非空的行。 */
         val deletedAt: Map<String, Long> = emptyMap(),
+        /** 派生会话标记：调度台所建或接续过的会话 id；抽屉行前图标的依据。 */
+        val dispatchMarkedIds: Set<String> = emptySet(),
     )
 
     private val saveMutex = Mutex()
@@ -638,6 +640,7 @@ internal object AgentConversationStore {
             deletedAt = conversations.mapNotNull { conversation ->
                 conversation.deletedAt?.let { conversation.id to it }
             }.toMap(),
+            dispatchMarkedIds = dao.dispatchMarkedConversations().map { it.id }.toSet(),
         )
     }
 

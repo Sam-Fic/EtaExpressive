@@ -812,6 +812,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         var status = state.status
         var phase = state.phase
         when (event) {
+            // 派发落定与语音表面无关：语音入口不经调度，忽略即可。
+            is AgentEvent.DispatchCreated -> Unit
             is AgentEvent.QuestionRequested -> {
                 messages = runMessageProjector.requestQuestion(event.request.conversationId, runId, event, messages)
                 status = EtaVoiceStatus.WaitingForAnswer

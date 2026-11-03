@@ -59,7 +59,7 @@ internal object AssistantRepository {
         directory().mkdirs()
         avatarsDirectory().mkdirs()
         val active = withIndexLock {
-            val snapshot = migrateDefaultPrompt(readIndex() ?: seedDefault())
+            val snapshot = seedDispatcher(migrateDefaultPrompt(readIndex() ?: seedDefault()))
             publish(snapshot)
             snapshot.activeId
         }
@@ -184,6 +184,7 @@ internal object AssistantRepository {
     fun delete(id: String) {
         val nextActive = withIndexLock {
             ensureReady()
+            require(id != io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID) { "内置调度台不能删除" }
             val remaining = profiles.value.filterNot { it.id == id }
             require(remaining.isNotEmpty()) { "必须保留至少一个助手" }
             val next = if (activeId.value == id) remaining.first().id else activeId.value
@@ -314,6 +315,22 @@ internal object AssistantRepository {
         avatarFile(current.avatarFileName)?.delete()
         current.avatarFileName?.let(::invalidateAvatarBitmaps)
         return update(current.copy(avatarFileName = null))
+    }
+
+    /** 内置调度台：缺失即补种（老档案升级也生效）；删除闸见 [delete]。 */
+    private fun seedDispatcher(snapshot: Snapshot): Snapshot {
+        if (snapshot.profiles.any { it.id == io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID }) {
+            return snapshot
+        }
+        val dispatcher = io.github.mangi.eta.data.model.AssistantProfile(
+            id = io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID,
+            name = io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_NAME,
+            prompt = io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_PROMPT,
+            createdAt = System.currentTimeMillis(),
+        )
+        val next = Snapshot(snapshot.activeId, snapshot.profiles + dispatcher)
+        writeIndex(next)
+        return next
     }
 
     private fun seedDefault(): Snapshot {

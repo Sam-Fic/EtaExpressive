@@ -72,6 +72,7 @@ internal object AgentEventJsonCodec {
         is AgentEvent.GuiControlChanged -> this
         is AgentEvent.DecisionFallback -> this
         is AgentEvent.RunStarted -> this
+        is AgentEvent.DispatchCreated -> this
         is AgentEvent.RoundStarted -> copy(historySnapshotId = "")
         is AgentEvent.ModelRetryScheduled -> copy(reasonDetail = "")
         is AgentEvent.ErrorReconnectChanged -> copy(reasonDetail = "")

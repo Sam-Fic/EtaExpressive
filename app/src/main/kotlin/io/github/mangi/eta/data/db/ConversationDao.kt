@@ -99,6 +99,17 @@ internal interface ConversationDao {
     @Query("SELECT EXISTS(SELECT 1 FROM conversation_messages WHERE id = :id)")
     suspend fun messageIdExists(id: String): Boolean
 
+    // 派生会话标记：两列的真相只由调度域写（Coordinator/迁移），元数据 partial update 不碰它们，
+    // 避免 UI 全量保存与调度域 touch 之间的覆盖竞态。
+    @Query(
+        "SELECT id, dispatch_parent_id, dispatch_managed_at FROM conversations " +
+            "WHERE deleted_at IS NULL AND (dispatch_parent_id IS NOT NULL OR dispatch_managed_at IS NOT NULL)"
+    )
+    suspend fun dispatchMarkedConversations(): List<DispatchMarkRow>
+
+    @Query("UPDATE conversations SET dispatch_managed_at = :at WHERE id = :id")
+    suspend fun touchDispatchManaged(id: String, at: Long)
+
     @Query("UPDATE conversation_messages SET id = :newId " +
         "WHERE conversation_id = :conversationId AND id = :oldId AND id <> :newId " +
         "AND NOT EXISTS(SELECT 1 FROM conversation_messages WHERE id = :newId)")
@@ -246,6 +257,13 @@ internal interface ConversationDao {
     }
 }
 
+
+/** 派生标记投影：调度台所建（parent）或被接续过（managed）。 */
+internal data class DispatchMarkRow(
+    val id: String,
+    @ColumnInfo(name = "dispatch_parent_id") val dispatchParentId: String?,
+    @ColumnInfo(name = "dispatch_managed_at") val dispatchManagedAt: Long?,
+)
 
 internal data class UsageContentRow(
     val type: String,

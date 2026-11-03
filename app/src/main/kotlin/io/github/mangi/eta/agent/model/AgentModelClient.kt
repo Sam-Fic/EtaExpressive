@@ -90,6 +90,8 @@ internal object AgentModelClient {
         runController: AgentRunController = AgentRunController(),
         skillContext: SkillContext = SkillContext.EMPTY,
         memoryContext: AgentMemoryContext = AgentMemoryContext.DISABLED,
+        /** 调度台身份才为 true：目录追加派发工具（见 AgentDispatchAssistant / AgentDispatchToolCatalog）。 */
+        dispatchTools: Boolean = false,
         skillContextProvider: () -> SkillContext = { skillContext },
         memoryContextProvider: () -> AgentMemoryContext = { memoryContext },
         additionalTools: JSONArray = JSONArray(),
@@ -190,6 +192,7 @@ internal object AgentModelClient {
                 skillGitHubDiscovery = true,
                 skillGitHubInstall = true,
                 memoryTools = memoryEnabled,
+                dispatchTools = dispatchTools,
                 capabilities = capabilities,
                 localWebSearch = !config.usesHostedWebSearch,
                 openedToolGroups = openedToolGroups,

@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.runtime
 
+import io.github.mangi.eta.agent.dispatch.AgentDispatchPayload
 import java.security.MessageDigest
 
 /** 入口、归档与浏览器共同使用的会话身份；外部归档标识保持已发布算法不变。 */
@@ -9,6 +10,10 @@ internal object AgentConversationIdentity {
     fun fromHandoff(handoff: AgentRuntimeWire.EntryHandoff?, fallbackRunId: String): String {
         if (handoff?.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE) {
             AgentUiHandoffPayload.from(handoff.payload).conversationId.takeIf(String::isNotBlank)?.let { return it }
+        } else if (handoff?.source == AgentRuntimeWire.ETA_DISPATCH_HANDOFF_SOURCE) {
+            AgentDispatchPayload.from(handoff.payload)?.let { payload ->
+                payload.conversationId.takeIf(String::isNotBlank)?.let { return it }
+            }
         } else if (handoff != null) {
             AgentExternalArchivePayload.from(handoff.payload)?.let { payload ->
                 return archiveConversationId(handoff.source, payload.conversationKey)

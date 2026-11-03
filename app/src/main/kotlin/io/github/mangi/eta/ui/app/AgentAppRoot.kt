@@ -595,6 +595,14 @@ fun AgentAppRoot(
                     createConversation()
                 }
             },
+            // 非调度台会话（且非远程目标）时，顶栏右侧显示「回到调度台」。
+            showBackToConsole = agentState.selectedTarget is io.github.mangi.eta.ui.remote.ChatTarget.Local &&
+                !agentState.currentIsDispatchConsole,
+            onBackToConsole = {
+                focusManager.clearFocus(force = true)
+                keyboard?.hide()
+                agentState.ensureDispatchConsoleSelected()
+            },
             onOpenTerminal = { pushRoute(AppRoute.Terminal) },
             onLaunchKimiWeb = {
                 requestExecutionNotifications()
@@ -759,6 +767,10 @@ fun AgentAppRoot(
             composable<AppRoute.Home> {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
+                // 主页纯化为调度台：每次回到主页都落到调度台会话（远程目标除外）。
+                androidx.compose.runtime.LaunchedEffect(remote) {
+                    if (remote == null) agentState.ensureDispatchConsoleSelected()
+                }
                 RoutedShell(route = AppRoute.Home, underlapTopBar = true) {
                     // 远程会话只有「服务器上那个助手」一个，本机无法切换。
                     // 把名字往下传（CompositionLocal），助手列表据此只显示这一项。

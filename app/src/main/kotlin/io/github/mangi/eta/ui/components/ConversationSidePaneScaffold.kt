@@ -71,6 +71,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Search
@@ -1410,6 +1411,15 @@ private fun Material3ConversationRow(
                     onLongClick = { showActionMenu = true },
                     onLongClickLabel = stringResource(R.string.action_conversation_menu),
                     modifier = Modifier.fillMaxWidth(),
+                    leadingContent = if (conversation.isDispatchManaged) ({
+                        // 派生会话标记：调度台所建或接续使用中（fork 出的副本不继承）。
+                        Icon(
+                            imageVector = Icons.Rounded.AccountTree,
+                            contentDescription = stringResource(R.string.conversation_dispatch_managed),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }) else null,
                     trailingContent = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
