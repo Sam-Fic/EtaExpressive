@@ -5,13 +5,11 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Api
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
@@ -57,11 +55,10 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
-import io.github.mangi.eta.ui.adaptive.EtaTooltipIconButton
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import java.text.SimpleDateFormat
@@ -153,6 +150,9 @@ internal fun DecisionModelSettingsScreen(
     var telemetry by remember { mutableStateOf(AgentDecisionTelemetry.globalSnapshot()) }
     var modelPickerState by remember { mutableStateOf(AgentModelPickerUiState()) }
     var showModelDialog by remember { mutableStateOf(false) }
+    // 自定义端点收进弹窗编辑：草稿在打开时快照，确认才落盘（同 token 弹窗模式）。
+    var showEndpointDialog by remember { mutableStateOf(false) }
+    var endpointDraft by remember { mutableStateOf("") }
     var isLoadingModels by remember { mutableStateOf(writable) }
     // 连通性测试：用表单当前值直发一次最小判断请求，不经过 Router 的缓存/粘滞/统计。
     var connectivityResult by remember { mutableStateOf<DecisionConnectivityResult?>(null) }
@@ -315,31 +315,6 @@ internal fun DecisionModelSettingsScreen(
         stringResource(R.string.decision_model_escalation_confidence_pct, 80),
     )
 
-    // 端点预览：纯函数归一化，与运行时 `AgentDecisionEvaluator` 用的是同一份实现，
-    // 所以这里显示的就是实际请求地址，不是「大概会拼成这样」。
-    // 只看 override 也能预览：用户还没选 provider 但已经填了完整地址时，
-    // 不该退化成「选择 provider 与模型后可预览」（那会让人误以为填的地址无效）。
-    val endpointResolution = if (providerBaseUrl != null || endpointOverride.isNotBlank()) {
-        AgentDecisionEndpoint.normalize(providerBaseUrl.orEmpty(), endpointOverride)
-    } else {
-        null
-    }
-    val endpointErrorRes = (endpointResolution as? AgentDecisionEndpoint.Resolution.Invalid)?.reason?.let { reason ->
-        when (reason) {
-            AgentDecisionEndpoint.REASON_SCHEME -> R.string.decision_model_endpoint_error_https
-            AgentDecisionEndpoint.REASON_QUERY -> R.string.decision_model_endpoint_error_query
-            AgentDecisionEndpoint.REASON_HOST -> R.string.decision_model_endpoint_error_host
-            else -> R.string.decision_model_endpoint_error_malformed
-        }
-    }
-    val endpointDisplay = when {
-        endpointResolution is AgentDecisionEndpoint.Resolution.Success ->
-            stringResource(R.string.decision_model_endpoint_resolved, endpointResolution.url)
-
-        endpointErrorRes != null -> stringResource(endpointErrorRes)
-        else -> stringResource(R.string.decision_model_endpoint_pending)
-    }
-
     // 总开关关闭 = 本页所有配置都不生效；用统一闸门禁用，避免逐行重复判断。
     val controlsEnabled = writable && enabled
     val modelReady = providerId.isNotBlank() && modelId.isNotBlank()
@@ -393,24 +368,27 @@ internal fun DecisionModelSettingsScreen(
     )
 
     EtaScaffoldPage(title = stringResource(R.string.ui_decision_model_settings_title), onBack = onBack) {
-        item(key = "decision_notice") {
-            EtaNoticeText(
-                title = when {
-                    !enabled -> stringResource(R.string.decision_model_disabled_notice_title)
-                    shadow -> stringResource(R.string.decision_model_shadow_notice_title)
-                    else -> stringResource(R.string.decision_model_shadow_off_notice_title)
-                },
-                summary = when {
-                    !enabled -> stringResource(R.string.decision_model_disabled_notice_summary)
-                    shadow -> stringResource(R.string.decision_model_shadow_notice_summary)
-                    else -> stringResource(R.string.decision_model_shadow_off_notice_summary)
-                },
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            )
+        // 只在「已关闭」或「影子模式」这两个非默认态给提示；影子关闭是常态，不再常驻一条说明。
+        if (!enabled || shadow) {
+            item(key = "decision_notice") {
+                EtaNoticeText(
+                    title = if (!enabled) {
+                        stringResource(R.string.decision_model_disabled_notice_title)
+                    } else {
+                        stringResource(R.string.decision_model_shadow_notice_title)
+                    },
+                    summary = if (!enabled) {
+                        stringResource(R.string.decision_model_disabled_notice_summary)
+                    } else {
+                        stringResource(R.string.decision_model_shadow_notice_summary)
+                    },
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedGroupSpacing,
+                    ),
+                )
+            }
         }
 
         if (missingCredentials) {
@@ -446,21 +424,6 @@ internal fun DecisionModelSettingsScreen(
                         onCheckedChange = { value ->
                             Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_MODEL_ENABLED, value)
                             enabled = value
-                        },
-                    )
-                }
-                item(key = "master_release") {
-                    // 「一键放行」= 直接关闭总开关（本实现选这一分支），不新增会话级 override：
-                    // 语义简单、跨进程可预期，且用户能随时重新打开。
-                    EtaClickableRow(
-                        title = stringResource(R.string.decision_model_release_title),
-                        summary = stringResource(R.string.decision_model_release_summary),
-                        leading = { PreferenceIcon(icon = Icons.Rounded.PowerSettingsNew, enabled = controlsEnabled) },
-                        enabled = controlsEnabled,
-                        showChevron = false,
-                        onClick = {
-                            Prefs.putBoolean(Prefs.Keys.AGENT_DECISION_MODEL_ENABLED, false)
-                            enabled = false
                         },
                     )
                 }
@@ -537,27 +500,13 @@ internal fun DecisionModelSettingsScreen(
                     )
                 }
                 item(key = "endpoint") {
-                    EtaSegmentedTextField(
-                        label = stringResource(R.string.decision_model_endpoint_title),
-                        value = endpointOverride,
-                        onValueChange = { value ->
-                            Prefs.putString(Prefs.Keys.AGENT_DECISION_ENDPOINT_OVERRIDE, value)
-                            endpointOverride = value
-                        },
+                    // 编辑收进弹窗：行外只留标题，输入框与说明都在弹窗里（同「判断模型」行的编辑模式）。
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_endpoint_title),
                         enabled = controlsEnabled,
-                        singleLine = true,
-                        placeholder = { Text(stringResource(R.string.decision_model_endpoint_placeholder)) },
-                        isError = endpointErrorRes != null,
-                        supportingContent = {
-                            Text(
-                                text = endpointDisplay,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (endpointErrorRes != null) {
-                                    MaterialTheme.colorScheme.error
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
+                        onClick = {
+                            endpointDraft = endpointOverride
+                            showEndpointDialog = true
                         },
                     )
                 }
@@ -581,16 +530,6 @@ internal fun DecisionModelSettingsScreen(
                         },
                     )
                 }
-                item(key = "protocol") {
-                    // 协议在 M1 只有一个实现；按只读行展示，避免给用户一个点了没反应的菜单。
-                    EtaClickableRow(
-                        title = stringResource(R.string.decision_model_protocol_title),
-                        summary = stringResource(R.string.decision_model_protocol_summary),
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Api) },
-                        showChevron = false,
-                        onClick = null,
-                    )
-                }
             }
         }
 
@@ -601,6 +540,7 @@ internal fun DecisionModelSettingsScreen(
                 modifier = groupPadding,
             ) {
                 item(key = "connectivity_probe") {
+                    // 整行可点击、图标走行首装饰位，与普通设置行同款排版（见「清除日志」行）。
                     EtaClickableRow(
                         title = stringResource(R.string.decision_model_connectivity_title),
                         summary = when {
@@ -609,39 +549,25 @@ internal fun DecisionModelSettingsScreen(
                             !modelReady -> stringResource(R.string.decision_model_connectivity_need_model)
                             else -> stringResource(R.string.decision_model_connectivity_summary)
                         },
-                        enabled = controlsEnabled && modelReady && !connectivityRunning,
-                        showChevron = false,
-                        onClick = null,
-                        endActions = {
-                            // 纯图标动作：长按必须能看 Tooltip（见 accessibility-tooltips.md）。
-                            EtaTooltipIconButton(
+                        leading = {
+                            PreferenceIcon(
                                 icon = Icons.Rounded.Speed,
-                                contentDescription = stringResource(R.string.decision_model_connectivity_title),
-                                tooltipText = if (connectivityRunning) {
-                                    stringResource(R.string.decision_model_connectivity_running)
-                                } else {
-                                    stringResource(R.string.decision_model_connectivity_title)
-                                },
-                                disabledTooltipText = if (!modelReady) {
-                                    stringResource(R.string.decision_model_connectivity_need_model)
-                                } else {
-                                    null
-                                },
                                 enabled = controlsEnabled && modelReady && !connectivityRunning,
-                                onClick = {
-                                    connectivityRunning = true
-                                    connectivityDetailsExpanded = false
-                                    scope.launch {
-                                        connectivityResult = probeDecisionConnectivity(
-                                            providerId = providerId,
-                                            modelId = modelId,
-                                            endpointOverride = endpointOverride,
-                                            timeoutMs = timeoutMs,
-                                        )
-                                        connectivityRunning = false
-                                    }
-                                },
                             )
+                        },
+                        enabled = controlsEnabled && modelReady && !connectivityRunning,
+                        onClick = {
+                            connectivityRunning = true
+                            connectivityDetailsExpanded = false
+                            scope.launch {
+                                connectivityResult = probeDecisionConnectivity(
+                                    providerId = providerId,
+                                    modelId = modelId,
+                                    endpointOverride = endpointOverride,
+                                    timeoutMs = timeoutMs,
+                                )
+                                connectivityRunning = false
+                            }
                         },
                     )
                 }
@@ -910,22 +836,13 @@ internal fun DecisionModelSettingsScreen(
                 modifier = groupPadding,
             ) {
                 item(key = "cleanup") {
+                    // 整行可点击、图标走行首装饰位；破坏性动作仍由对话框二次确认兜底。
                     EtaClickableRow(
                         title = stringResource(R.string.decision_model_cleanup_title),
                         summary = stringResource(R.string.decision_model_cleanup_summary),
-                        showChevron = false,
+                        leading = { PreferenceIcon(icon = Icons.Rounded.DeleteSweep, enabled = writable) },
                         enabled = writable,
-                        onClick = null,
-                        endActions = {
-                            // 破坏性动作走二次确认；图标按钮自带长按 Tooltip。
-                            EtaTooltipIconButton(
-                                icon = Icons.Rounded.DeleteSweep,
-                                contentDescription = stringResource(R.string.decision_model_cleanup_title),
-                                enabled = writable,
-                                destructive = true,
-                                onClick = { showCleanupDialog = true },
-                            )
-                        },
+                        onClick = { showCleanupDialog = true },
                     )
                 }
             }
@@ -958,6 +875,66 @@ internal fun DecisionModelSettingsScreen(
                 )
             },
         )
+    }
+
+    if (showEndpointDialog) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.decision_model_endpoint_title),
+            summary = stringResource(R.string.decision_model_endpoint_dialog_summary),
+            onDismissRequest = { showEndpointDialog = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.action_save),
+                    onCancel = { showEndpointDialog = false },
+                    onConfirm = {
+                        Prefs.putString(Prefs.Keys.AGENT_DECISION_ENDPOINT_OVERRIDE, endpointDraft)
+                        endpointOverride = endpointDraft
+                        showEndpointDialog = false
+                    },
+                )
+            },
+        ) {
+            // 端点预览跟随草稿实时刷新：纯函数归一化，与运行时 `AgentDecisionEvaluator`
+            // 用的是同一份实现，所以这里显示的就是实际请求地址。
+            // 只看草稿也能预览：用户还没选 provider 但已经填了完整地址时，
+            // 不该退化成「选择 provider 与模型后可预览」（那会让人误以为填的地址无效）。
+            val draftResolution = if (providerBaseUrl != null || endpointDraft.isNotBlank()) {
+                AgentDecisionEndpoint.normalize(providerBaseUrl.orEmpty(), endpointDraft)
+            } else {
+                null
+            }
+            val draftErrorRes =
+                (draftResolution as? AgentDecisionEndpoint.Resolution.Invalid)?.reason?.let { reason ->
+                    when (reason) {
+                        AgentDecisionEndpoint.REASON_SCHEME -> R.string.decision_model_endpoint_error_https
+                        AgentDecisionEndpoint.REASON_QUERY -> R.string.decision_model_endpoint_error_query
+                        AgentDecisionEndpoint.REASON_HOST -> R.string.decision_model_endpoint_error_host
+                        else -> R.string.decision_model_endpoint_error_malformed
+                    }
+                }
+            EtaTextField(
+                value = endpointDraft,
+                onValueChange = { endpointDraft = it },
+                label = stringResource(R.string.decision_model_endpoint_field_label),
+                isError = draftErrorRes != null,
+            )
+            Text(
+                text = when {
+                    draftResolution is AgentDecisionEndpoint.Resolution.Success ->
+                        stringResource(R.string.decision_model_endpoint_resolved, draftResolution.url)
+
+                    draftErrorRes != null -> stringResource(draftErrorRes)
+                    else -> stringResource(R.string.decision_model_endpoint_pending)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (draftErrorRes != null) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
     }
 
     CompressModelPickerDialog(

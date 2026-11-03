@@ -221,6 +221,7 @@ fun EtaTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     singleLine: Boolean = true,
+    isError: Boolean = false,
 ) {
     OutlinedTextField(
         value = value,
@@ -228,6 +229,7 @@ fun EtaTextField(
         modifier = modifier.fillMaxWidth(),
         label = { Text(text = label) },
         singleLine = singleLine,
+        isError = isError,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
     )
