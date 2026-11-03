@@ -2321,6 +2321,26 @@
   <string name="decision_model_cleanup_title">清理缓存与粘性状态</string>
   <string name="decision_model_cleanup_summary">清空决策缓存、粘性组和统计计数；不会改动任何设置</string>
   <string name="decision_model_cleanup_done">已清理</string>
+  <string name="decision_model_connectivity_title">测试连通性</string>
+  <string name="decision_model_connectivity_summary">用上方当前值（不是已保存的值）发一次最小决策请求。</string>
+  <string name="decision_model_connectivity_running">发送中…</string>
+  <string name="decision_model_connectivity_done">点一下重新测试</string>
+  <string name="decision_model_connectivity_ok_title">连接正常</string>
+  <string name="decision_model_connectivity_fail_title">连接失败</string>
+  <string name="decision_model_connectivity_ok_line">HTTP %1$d · %2$d ms · answers=%3$s</string>
+  <string name="decision_model_connectivity_fail_line">%1$s · %2$s</string>
+  <string name="decision_model_connectivity_request_line">URL: %1$s\nmodel: %2$s</string>
+  <string name="decision_model_connectivity_time_line">时间 %1$s</string>
+  <string name="decision_model_connectivity_reason_auth">认证失败（401）</string>
+  <string name="decision_model_connectivity_reason_forbidden">模型或端点不被允许（403）</string>
+  <string name="decision_model_connectivity_reason_not_found">端点或模型不存在（404）</string>
+  <string name="decision_model_connectivity_reason_timeout">请求超时</string>
+  <string name="decision_model_connectivity_reason_network">网络错误</string>
+  <string name="decision_model_connectivity_reason_protocol">响应不符合协议</string>
+  <string name="decision_model_connectivity_reason_parse">响应解析失败</string>
+  <string name="decision_model_connectivity_reason_config">provider 或模型不可用</string>
+  <string name="decision_model_connectivity_reason_http">HTTP 错误</string>
+  <string name="decision_model_connectivity_reason_other">请求失败</string>
   <string name="decision_model_mode_title">模式</string>
   <string name="decision_model_mode_summary">控制模式按判断结果收窄工具组；建议模式只在日志里记录建议。</string>
   <string name="decision_model_mode_control">控制模式</string>

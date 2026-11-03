@@ -103,6 +103,26 @@
   <string name="decision_model_cleanup_title">清理快取與黏性狀態</string>
   <string name="decision_model_cleanup_summary">清空決策快取、黏性組和統計計數；不會改動任何設定</string>
   <string name="decision_model_cleanup_done">已清理</string>
+  <string name="decision_model_connectivity_title">測試連通性</string>
+  <string name="decision_model_connectivity_summary">用上方目前的值（不是已儲存的值）發一次最小決策請求。</string>
+  <string name="decision_model_connectivity_running">傳送中…</string>
+  <string name="decision_model_connectivity_done">點一下重新測試</string>
+  <string name="decision_model_connectivity_ok_title">連線正常</string>
+  <string name="decision_model_connectivity_fail_title">連線失敗</string>
+  <string name="decision_model_connectivity_ok_line">HTTP %1$d · %2$d ms · answers=%3$s</string>
+  <string name="decision_model_connectivity_fail_line">%1$s · %2$s</string>
+  <string name="decision_model_connectivity_request_line">URL: %1$s\nmodel: %2$s</string>
+  <string name="decision_model_connectivity_time_line">時間 %1$s</string>
+  <string name="decision_model_connectivity_reason_auth">驗證失敗（401）</string>
+  <string name="decision_model_connectivity_reason_forbidden">模型或端點不被允許（403）</string>
+  <string name="decision_model_connectivity_reason_not_found">端點或模型不存在（404）</string>
+  <string name="decision_model_connectivity_reason_timeout">請求逾時</string>
+  <string name="decision_model_connectivity_reason_network">網路錯誤</string>
+  <string name="decision_model_connectivity_reason_protocol">回應不符合協定</string>
+  <string name="decision_model_connectivity_reason_parse">回應解析失敗</string>
+  <string name="decision_model_connectivity_reason_config">provider 或模型無法使用</string>
+  <string name="decision_model_connectivity_reason_http">HTTP 錯誤</string>
+  <string name="decision_model_connectivity_reason_other">請求失敗</string>
   <string name="decision_model_mode_title">模式</string>
   <string name="decision_model_mode_summary">控制模式依判斷結果收窄工具組；建議模式只在日誌裡記錄建議。</string>
   <string name="decision_model_mode_control">控制模式</string>

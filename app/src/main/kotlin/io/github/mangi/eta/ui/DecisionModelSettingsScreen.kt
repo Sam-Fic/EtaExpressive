@@ -8,6 +8,7 @@ import androidx.compose.material.icons.rounded.Api
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.LocalContentColor
@@ -25,9 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.decision.AgentDecisionAnswer
 import io.github.mangi.eta.agent.decision.AgentDecisionCache
+import io.github.mangi.eta.agent.decision.AgentDecisionClientConfig
 import io.github.mangi.eta.agent.decision.AgentDecisionDiagnostics
 import io.github.mangi.eta.agent.decision.AgentDecisionEndpoint
+import io.github.mangi.eta.agent.decision.AgentDecisionModelClient
+import io.github.mangi.eta.agent.decision.AgentDecisionOutcome
+import io.github.mangi.eta.agent.decision.AgentDecisionQuestion
 import io.github.mangi.eta.agent.decision.AgentDecisionStickyStore
 import io.github.mangi.eta.agent.decision.AgentDecisionTelemetry
 import io.github.mangi.eta.config.Prefs
@@ -46,6 +52,10 @@ import io.github.mangi.eta.ui.model.AgentModelPickerUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -123,6 +133,9 @@ internal fun DecisionModelSettingsScreen(
     var modelPickerState by remember { mutableStateOf(AgentModelPickerUiState()) }
     var showModelDialog by remember { mutableStateOf(false) }
     var isLoadingModels by remember { mutableStateOf(writable) }
+    // 连通性测试：用表单当前值直发一次最小决策请求，不经过 Router 的缓存/粘滞/统计。
+    var connectivityResult by remember { mutableStateOf<DecisionConnectivityResult?>(null) }
+    var connectivityRunning by remember { mutableStateOf(false) }
 
     LaunchedEffect(prefs) {
         prefs?.let { currentPrefs ->
@@ -523,6 +536,57 @@ internal fun DecisionModelSettingsScreen(
             }
         }
 
+        item(key = "decision_connectivity") {
+            EtaSegmentedColumn(
+                modifier = Modifier.padding(
+                    start = EtaGroupHorizontalPadding,
+                    end = EtaGroupHorizontalPadding,
+                    bottom = EtaSegmentedGroupSpacing,
+                ),
+            ) {
+                item {
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_connectivity_title),
+                        summary = when {
+                            connectivityRunning -> stringResource(R.string.decision_model_connectivity_running)
+                            connectivityResult != null -> stringResource(R.string.decision_model_connectivity_done)
+                            else -> stringResource(R.string.decision_model_connectivity_summary)
+                        },
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Speed) },
+                        enabled = writable && !connectivityRunning && providerId.isNotBlank() &&
+                            modelId.isNotBlank(),
+                        showChevron = false,
+                        onClick = {
+                            connectivityRunning = true
+                            scope.launch {
+                                connectivityResult = probeDecisionConnectivity(
+                                    providerId = providerId,
+                                    modelId = modelId,
+                                    endpointOverride = endpointOverride,
+                                    timeoutMs = timeoutMs,
+                                )
+                                connectivityRunning = false
+                            }
+                        },
+                    )
+                }
+                connectivityResult?.let { result ->
+                    item {
+                        EtaNoticeText(
+                            title = stringResource(
+                                if (result.success) {
+                                    R.string.decision_model_connectivity_ok_title
+                                } else {
+                                    R.string.decision_model_connectivity_fail_title
+                                },
+                            ),
+                            summary = connectivitySummary(result),
+                        )
+                    }
+                }
+            }
+        }
+
         item(key = "decision_runtime") {
             EtaSegmentedColumn(
                 modifier = Modifier.padding(
@@ -745,3 +809,175 @@ private fun decisionReasonText(reasons: Map<String, Int>): String =
         .sortedByDescending { it.value }
         .joinToString(",") { "${it.key}:${it.value}" }
         .ifBlank { "-" }
+
+/** 连通性测试结果；只用于展示，不写回任何偏好，也不进入 Router 的缓存/粘滞/统计。 */
+private data class DecisionConnectivityResult(
+    val success: Boolean,
+    val reason: String,
+    val httpStatus: Int?,
+    val latencyMs: Long,
+    val endpoint: String,
+    val model: String,
+    val answers: String,
+    val detail: String,
+    val atMillis: Long,
+)
+
+/**
+ * 用设置页**当前表单值**直发一次最小决策请求。
+ *
+ * 与运行期链路解耦：不读 Router 缓存/粘滞，不写遥测；provider 行只用来取 baseUrl 与 key，
+ * 请求里的 `model` 用 provider 行里的 API 模型名（设置页存的是记录 id）。
+ */
+private suspend fun probeDecisionConnectivity(
+    providerId: String,
+    modelId: String,
+    endpointOverride: String,
+    timeoutMs: Int,
+): DecisionConnectivityResult {
+    val atMillis = System.currentTimeMillis()
+    if (providerId.isBlank() || modelId.isBlank()) {
+        return DecisionConnectivityResult(
+            success = false,
+            reason = "missing_config",
+            httpStatus = null,
+            latencyMs = 0,
+            endpoint = "-",
+            model = "-",
+            answers = "",
+            detail = "",
+            atMillis = atMillis,
+        )
+    }
+    val runtime = withContext(Dispatchers.IO) {
+        RuntimeConfigRepository.configForProviderAndModel(providerId, modelId)
+    } ?: return DecisionConnectivityResult(
+        success = false,
+        reason = "config_missing",
+        httpStatus = null,
+        latencyMs = 0,
+        endpoint = "-",
+        model = modelId,
+        answers = "",
+        detail = "",
+        atMillis = atMillis,
+    )
+
+    val endpoint = when (val resolution = AgentDecisionEndpoint.normalize(runtime.baseUrl, endpointOverride)) {
+        is AgentDecisionEndpoint.Resolution.Success -> resolution.url
+        is AgentDecisionEndpoint.Resolution.Invalid -> return DecisionConnectivityResult(
+            success = false,
+            reason = "invalid_endpoint",
+            httpStatus = null,
+            latencyMs = 0,
+            endpoint = "invalid(${resolution.reason})",
+            model = runtime.model,
+            answers = "",
+            detail = resolution.reason,
+            atMillis = atMillis,
+        )
+    }
+
+    val config = AgentDecisionClientConfig(
+        baseUrl = endpoint,
+        apiKey = runtime.apiKey,
+        model = runtime.model,
+        timeoutMs = timeoutMs.coerceIn(500, 10_000),
+    )
+    val state = JSONObject()
+        .put("user_input", "open the browser and read the current page")
+        .put("current_time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
+    val questions = listOf(
+        AgentDecisionQuestion.Noul(
+            id = "connectivity_probe",
+            instructions = "Decide whether the text describes an explicit request to run a tool.",
+            trueCriterion = "The text asks to open a browser, read a page, or otherwise run a tool.",
+            falseCriterion = "The text is chit-chat or otherwise needs no tool.",
+        ),
+    )
+
+    return when (val outcome = AgentDecisionModelClient.complete(config, state, questions)) {
+        is AgentDecisionOutcome.Success -> DecisionConnectivityResult(
+            success = true,
+            reason = "ok",
+            httpStatus = outcome.response.httpStatus,
+            latencyMs = outcome.response.latencyMs,
+            endpoint = endpoint,
+            model = runtime.model,
+            answers = summarizeDecisionAnswers(outcome.response.answers),
+            detail = "",
+            atMillis = atMillis,
+        )
+        is AgentDecisionOutcome.Failure -> DecisionConnectivityResult(
+            success = false,
+            reason = outcome.reason,
+            httpStatus = outcome.httpStatus,
+            latencyMs = outcome.latencyMs,
+            endpoint = endpoint,
+            model = runtime.model,
+            answers = "",
+            detail = outcome.detail.ifBlank { outcome.errorDesc },
+            atMillis = atMillis,
+        )
+    }
+}
+
+private fun summarizeDecisionAnswers(answers: Map<String, AgentDecisionAnswer>): String =
+    answers.entries.joinToString(",") { (id, answer) ->
+        val compact = when (answer) {
+            is AgentDecisionAnswer.Noul -> String.format(Locale.US, "%.2f", answer.probability)
+            is AgentDecisionAnswer.Choice -> "${answer.choice}(${String.format(Locale.US, "%.2f", answer.confidence)})"
+            is AgentDecisionAnswer.MultiChoice -> answer.choices.sorted().joinToString("+")
+            is AgentDecisionAnswer.Score -> String.format(Locale.US, "%.2f", answer.score)
+        }
+        "$id=$compact"
+    }.ifBlank { "-" }
+
+@Composable
+private fun connectivitySummary(result: DecisionConnectivityResult): String {
+    val clock = remember(result.atMillis) {
+        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(result.atMillis))
+    }
+    val firstLine = if (result.success) {
+        stringResource(
+            R.string.decision_model_connectivity_ok_line,
+            result.httpStatus ?: 200,
+            result.latencyMs.toInt(),
+            result.answers,
+        )
+    } else {
+        stringResource(
+            R.string.decision_model_connectivity_fail_line,
+            stringResource(connectivityReasonRes(result.reason)),
+            result.detail.ifBlank { result.reason },
+        )
+    }
+    val requestLine = stringResource(
+        R.string.decision_model_connectivity_request_line,
+        result.endpoint,
+        result.model,
+    )
+    return listOf(
+        firstLine,
+        requestLine,
+        stringResource(R.string.decision_model_connectivity_time_line, clock),
+    ).joinToString("\n")
+}
+
+/** 把客户端 reason 归一到可读分类；原始 reason 仍保留在 detail 里。 */
+private fun connectivityReasonRes(reason: String): Int = when {
+    reason == "http_401" -> R.string.decision_model_connectivity_reason_auth
+    reason == "http_403" -> R.string.decision_model_connectivity_reason_forbidden
+    reason == "http_404" -> R.string.decision_model_connectivity_reason_not_found
+    reason == "timeout" -> R.string.decision_model_connectivity_reason_timeout
+    reason == "network_error" -> R.string.decision_model_connectivity_reason_network
+    reason == "invalid_json" || reason == "missing_error_code" ||
+        reason.startsWith("error_code_") -> R.string.decision_model_connectivity_reason_protocol
+    reason == "invalid_answer" -> R.string.decision_model_connectivity_reason_parse
+    reason == "missing_config" || reason == "config_missing" ||
+        reason == "invalid_endpoint" || reason == "missing_api_key" ||
+        reason == "missing_model" || reason == "invalid_base_url" ->
+        R.string.decision_model_connectivity_reason_config
+    reason.startsWith("http_") -> R.string.decision_model_connectivity_reason_http
+    else -> R.string.decision_model_connectivity_reason_other
+}

@@ -1938,6 +1938,26 @@
   <string name="decision_model_cleanup_title">Clear cache and sticky state</string>
   <string name="decision_model_cleanup_summary">Clears decision cache, sticky groups and counters; settings are unchanged</string>
   <string name="decision_model_cleanup_done">Cleared</string>
+  <string name="decision_model_connectivity_title">Test connection</string>
+  <string name="decision_model_connectivity_summary">Sends one minimal decision request with the values above (not the saved ones).</string>
+  <string name="decision_model_connectivity_running">Sending…</string>
+  <string name="decision_model_connectivity_done">Tap to test again</string>
+  <string name="decision_model_connectivity_ok_title">Connection works</string>
+  <string name="decision_model_connectivity_fail_title">Connection failed</string>
+  <string name="decision_model_connectivity_ok_line">HTTP %1$d · %2$d ms · answers=%3$s</string>
+  <string name="decision_model_connectivity_fail_line">%1$s · %2$s</string>
+  <string name="decision_model_connectivity_request_line">URL: %1$s\nmodel: %2$s</string>
+  <string name="decision_model_connectivity_time_line">at %1$s</string>
+  <string name="decision_model_connectivity_reason_auth">Authentication failed (401)</string>
+  <string name="decision_model_connectivity_reason_forbidden">Model or endpoint not allowed (403)</string>
+  <string name="decision_model_connectivity_reason_not_found">Endpoint or model not found (404)</string>
+  <string name="decision_model_connectivity_reason_timeout">Timed out</string>
+  <string name="decision_model_connectivity_reason_network">Network error</string>
+  <string name="decision_model_connectivity_reason_protocol">Unexpected response (protocol mismatch)</string>
+  <string name="decision_model_connectivity_reason_parse">Response could not be parsed</string>
+  <string name="decision_model_connectivity_reason_config">Provider or model unavailable</string>
+  <string name="decision_model_connectivity_reason_http">HTTP error</string>
+  <string name="decision_model_connectivity_reason_other">Request failed</string>
   <string name="decision_model_mode_title">Mode</string>
   <string name="decision_model_mode_summary">Control narrows tool groups by the decision result; advise only records suggestions in the log.</string>
   <string name="decision_model_mode_control">Control</string>
