@@ -7,6 +7,8 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.config.InteractiveModePreference
 import io.github.mangi.eta.agent.delegation.*
+import io.github.mangi.eta.agent.decision.AgentDecisionMismatch
+import io.github.mangi.eta.agent.decision.AgentDecisionRouter
 import io.github.mangi.eta.agent.browser.ChildBrowserSession
 import io.github.mangi.eta.agent.model.AgentToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
@@ -152,6 +154,10 @@ internal class AgentRuntimeRunExecutor(
             guiRun = guiControl.openRun(request.runId, runController) { status ->
                 acceptEvent(session, AgentEvent.GuiControlChanged(status), archivedEvents, entrySurfaceGuard, checkpointRecorder)
             }
+            // 判断模型 overlay 在本轮 run 内只算一次；执行器通过 provider 读它，
+            // 用来把「被决策收窄」与「用户关闭」区分成不同错误来源。
+            val decisionPlanRef = java.util.concurrent.atomic.AtomicReference<
+                io.github.mangi.eta.agent.decision.AgentDecisionPlan?>(null)
             val executor = AgentLocalTools(
                 context = appContext, logger = AndroidAgentLogger, browserRunId = request.runId,
                 guiControl = guiRun,
@@ -159,6 +165,7 @@ internal class AgentRuntimeRunExecutor(
                     it.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE
                 }?.let { AgentUiHandoffPayload.from(it.payload).conversationId }.orEmpty(),
                 agentConversationId = request.effectiveModelSessionId,
+                decisionAllowedGroups = { decisionPlanRef.get()?.openableGroupLimit },
                 frozenSurface = runSurface,
                 chooseSurface = { toolName, toolsClosed ->
                     // 先写会话再等弹窗退场；返回值取自会话，工具侧与会话保持一致。
@@ -428,16 +435,46 @@ internal class AgentRuntimeRunExecutor(
             val promptWithChildHandoff = AgentChildTaskHandoff.appendToPrompt(
                 AgentChildWorkerAvailability.appendToPrompt(request.prompt, childDispatchPlan), childSessionId)
             runController.throwIfCancelled()
+            // M2 判断模型：在首个模型请求之前同步取一次结论，组装 run 级 overlay。
+            // 影子模式 / 总开关关闭时返回 null（前者只写日志），行为完全保持现状。
+            val effectiveConfig = request.config.copy(
+                screenTools = allowScreen && request.config.screenTools,
+                browserTools = allowBrowser && request.config.browserTools,
+                terminalTools = allowTerminal && request.config.terminalTools,
+                deviceTools = allowDevice && request.config.deviceTools,
+                personalTools = allowPersonal && request.config.personalTools,
+            )
+            val decisionPlan = AgentDecisionRouter.route(request, effectiveConfig, AndroidAgentLogger)
+            decisionPlanRef.set(decisionPlan)
+            // M4：只观测「决策没选、却实际执行」的延迟组；降级/续跑 overlay 内部会自动跳过。
+            val decisionMismatch = decisionPlan?.let { plan ->
+                AgentDecisionMismatch.Tracker(plan, request.effectiveModelSessionId, request.runId)
+            }
+            // 降级提示走独立事件：只影响对话展示，不改变本轮 overlay，也不进入归档/恢复轨迹。
+            decisionPlan?.failureReason?.let { reason ->
+                runCatching {
+                    acceptEvent(
+                        session,
+                        AgentEvent.DecisionFallback(
+                            policy = if (decisionPlan.openableGroupLimit?.isEmpty() == true) {
+                                "fail_closed"
+                            } else {
+                                "fail_open"
+                            },
+                            reason = reason,
+                        ),
+                        archivedEvents,
+                        entrySurfaceGuard,
+                        checkpointRecorder,
+                    )
+                }
+            }
             val completedResponse = AgentModelClient.complete(
                 // 助手级收窄必须同时作用于目录与执行：只收窄执行会让模型看到一批
                 // 调用后必然被拒的工具，白付 schema token 还误导规划。
-                config = request.config.copy(
-                    screenTools = allowScreen && request.config.screenTools,
-                    browserTools = allowBrowser && request.config.browserTools,
-                    terminalTools = allowTerminal && request.config.terminalTools,
-                    deviceTools = allowDevice && request.config.deviceTools,
-                    personalTools = allowPersonal && request.config.personalTools,
-                ),
+                config = effectiveConfig,
+                // 决策 overlay：收窄 allowed / 预开组 / 闲聊关段都在 complete 内部读取。
+                decision = decisionPlan,
                 sessionId = request.effectiveModelSessionId,
                 capabilitiesProvider = { AgentToolCapabilities.captureForRound(appContext).copy(virtualDisplay = runVirtualDisplay()) },
                 // 延迟工具域：tools_use_group 成功后由执行器累积，下一轮重建目录时生效。
@@ -480,6 +517,7 @@ internal class AgentRuntimeRunExecutor(
                 onEvent = { event ->
                     timing.accept(event)
                     foregroundReplay.accept(event)
+                    decisionMismatch?.accept(event)
                     acceptEvent(session, event, archivedEvents, entrySurfaceGuard, checkpointRecorder)
                 },
             )
@@ -590,7 +628,7 @@ internal class AgentRuntimeRunExecutor(
             }) return
         }
         // 操作权状态只做投送与检查点，不属于会话轨迹，不能进入归档。
-        if (event !is AgentEvent.GuiControlChanged) archivedEvents += event
+        if (event !is AgentEvent.GuiControlChanged && event !is AgentEvent.DecisionFallback) archivedEvents += event
         if (event is AgentEvent.ModelRetryScheduled) AndroidAgentLogger.warn("Agent runtime event: ${event.toLogLine()}")
         else if (event !is AgentEvent.AssistantBlockDelta) AndroidAgentLogger.debug { "Agent runtime event: ${event.toLogLine()}" }
         runCatching { onAcceptedEvent(event, entrySurfaceGuard) }.onFailure { throwable ->
