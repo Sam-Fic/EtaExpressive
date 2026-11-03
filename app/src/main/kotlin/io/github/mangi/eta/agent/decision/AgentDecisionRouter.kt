@@ -442,6 +442,11 @@ internal object AgentDecisionRouter {
             }
         }
 
+        // `modelId` 是 provider-model 记录 id（设置页存的就是它），只用于配置查找、
+        // 缓存签名与升级判重；真正发往 `/v1/systemone` 的 `model` 必须是 provider 行里的
+        // API 模型名（`ModelConfig.model`），否则网关会以 model_not_allowed 拒绝。
+        var requestModel = modelId
+
         fun degraded(reason: String, detail: String): AgentDecisionPlan {
             val closed = failurePolicy == Prefs.Keys.AGENT_DECISION_FAILURE_CLOSED
             val allowed: Set<String> = if (closed) emptySet() else gateIds
@@ -449,14 +454,16 @@ internal object AgentDecisionRouter {
             if (closed) {
                 logger.error(
                     "decision.route degraded_closed run_id=${request.runId} " +
-                        "conversation_id=$conversationId mode=$mode model=$modelId " +
+                        "conversation_id=$conversationId mode=$mode model=$requestModel " +
+                        "model_record=$modelId " +
                         "fallback_reason=$reason detail=${AgentDecisionEvaluator.sanitize(detail)} " +
                         "allowed=[] sticky=${stickyBefore.sorted()} opened_after=[]",
                 )
             } else {
                 logger.warn(
                     "decision.route degraded_open run_id=${request.runId} " +
-                        "conversation_id=$conversationId mode=$mode model=$modelId " +
+                        "conversation_id=$conversationId mode=$mode model=$requestModel " +
+                        "model_record=$modelId " +
                         "fallback_reason=$reason detail=${AgentDecisionEvaluator.sanitize(detail)} " +
                         "allowed=${allowed.sorted()} sticky=${stickyBefore.sorted()} " +
                         "opened_after=${opened.sorted()}",
@@ -507,6 +514,8 @@ internal object AgentDecisionRouter {
             "provider_unavailable",
             "provider=$providerId model=$modelId 没有可用凭证",
         )
+        // provider 行解析成功后，后续请求与日志都用 API 模型名。
+        requestModel = runtimeConfig.model
 
         // 升级模型默认复用判断模型 provider 的凭证；用户在设置页换了 provider 则用显式值。
         // 未配置或与主模型相同时不升级；配置缺失只 warn，不影响主流程。
@@ -525,6 +534,7 @@ internal object AgentDecisionRouter {
                     confidenceThresholdPct = confidencePct,
                     historySamples = history.samples,
                     historyMissRate = history.missRate,
+                    modelName = escalated.model,
                 )
             } ?: run {
                 logger.warn(
@@ -572,6 +582,7 @@ internal object AgentDecisionRouter {
             stickyGroups = stickyBefore,
             isContinuation = isContinuation,
             escalation = escalationConfig,
+            modelName = runtimeConfig.model,
         )
         if (!cacheHit && evaluation.succeeded) {
             AgentDecisionCache.store(
@@ -621,7 +632,7 @@ internal object AgentDecisionRouter {
 
         logger.info(
             "decision.route run_id=${request.runId} conversation_id=$conversationId " +
-                "mode=$mode shadow=false model=$modelId " +
+                "mode=$mode shadow=false model=$requestModel model_record=$modelId " +
                 "escalated=${evaluation.escalated} " +
                 "escalation_reason=${evaluation.escalationReason ?: "-"} " +
                 "escalation_model=${evaluation.escalationModelId ?: "-"} " +

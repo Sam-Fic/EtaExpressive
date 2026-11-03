@@ -22,6 +22,7 @@ internal object AgentDecisionEscalation {
 
     /** 升级模型的实际调用参数；[modelId] 与主模型相同则不升级。 */
     data class Config(
+        /** provider-model 记录 id，仅用于判重与日志。 */
         val modelId: String,
         val baseUrl: String,
         val apiKey: String,
@@ -31,6 +32,8 @@ internal object AgentDecisionEscalation {
         val historySamples: Int = 0,
         /** M4：历史漏判率（0..1，见 [AgentDecisionTelemetry.Snapshot.missRate]）。 */
         val historyMissRate: Double = 0.0,
+        /** 真正发往 `/v1/systemone` 的模型名；留空时退回 [modelId]。 */
+        val modelName: String = "",
     )
 
     /**

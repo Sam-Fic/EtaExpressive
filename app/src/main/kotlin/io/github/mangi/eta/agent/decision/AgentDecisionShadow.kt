@@ -115,6 +115,8 @@ internal object AgentDecisionShadow {
                 // 影子与接管共用判定；升级在影子阶段不触发（避免多打一次请求污染观测数据）。
                 isContinuation = AgentDecisionContinuation.detect(request.history, request.prompt),
                 escalation = null,
+                // modelId 是 provider 记录 id；请求里必须用 provider 行的 API 模型名。
+                modelName = runtimeConfig.model,
             )
 
             val endpoint = evaluation.endpoint ?: "invalid(${evaluation.endpointFailure ?: "unknown"})"
@@ -123,7 +125,8 @@ internal object AgentDecisionShadow {
                     logger.warn(
                         "decision.shadow skip=${evaluation.skipReason} " +
                             "run_id=${request.runId} conversation_id=$conversationId " +
-                            "mode=$mode shadow=true model=$modelId endpoint=$endpoint " +
+                            "mode=$mode shadow=true model=${runtimeConfig.model} " +
+                            "model_record=$modelId endpoint=$endpoint " +
                             "allowed=${gateIds.sorted()} sticky=${sticky.sorted()} " +
                             "failure_policy=$failurePolicy",
                     )
@@ -133,7 +136,8 @@ internal object AgentDecisionShadow {
             if (evaluation.failureReason != null) {
                 logger.warn(
                     "decision.shadow run_id=${request.runId} conversation_id=$conversationId " +
-                        "mode=$mode shadow=true model=$modelId escalated=false endpoint=$endpoint " +
+                        "mode=$mode shadow=true model=${runtimeConfig.model} " +
+                        "model_record=$modelId escalated=false endpoint=$endpoint " +
                         "state_chars=${evaluation.stateChars} history_turns=${evaluation.historyTurnCount} " +
                         "http_status=${evaluation.httpStatus ?: "-"} " +
                         "error_code=${evaluation.errorCode ?: "-"} " +
@@ -150,7 +154,8 @@ internal object AgentDecisionShadow {
             val wouldBe = selected + AgentToolGroups.BASIC_GROUP.id
             logger.info(
                 "decision.shadow run_id=${request.runId} conversation_id=$conversationId " +
-                    "mode=$mode shadow=true model=$modelId escalated=false endpoint=$endpoint " +
+                    "mode=$mode shadow=true model=${runtimeConfig.model} " +
+                    "model_record=$modelId escalated=false endpoint=$endpoint " +
                     "state_chars=${evaluation.stateChars} history_turns=${evaluation.historyTurnCount} " +
                     "http_status=${evaluation.httpStatus ?: "-"} error_code=${evaluation.errorCode ?: "-"} " +
                     "latency_ms=${evaluation.latencyMs} " +

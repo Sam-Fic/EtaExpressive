@@ -70,6 +70,7 @@ internal object AgentDecisionEvaluator {
      */
     fun evaluate(
         request: AgentRuntimeWire.RunRequest,
+        /** provider-model 数据库记录 id，仅用于诊断与升级判重，不发到服务端。 */
         modelId: String,
         providerBaseUrl: String,
         apiKey: String,
@@ -82,7 +83,10 @@ internal object AgentDecisionEvaluator {
         isContinuation: Boolean = false,
         /** 非 null 且主模型成功时才可能升级；升级失败会回退主模型结果。 */
         escalation: AgentDecisionEscalation.Config? = null,
+        /** 真正发往 `/v1/systemone` 的模型名（provider 记录里的 API 名）；留空时退回 [modelId]。 */
+        modelName: String = "",
     ): AgentDecisionEvaluation {
+        val requestModel = modelName.ifBlank { modelId }
         val resolution = AgentDecisionEndpoint.normalize(providerBaseUrl, endpointOverride)
         val endpoint = (resolution as? AgentDecisionEndpoint.Resolution.Success)?.url
         if (endpoint == null) {
@@ -147,7 +151,7 @@ internal object AgentDecisionEvaluator {
                 as? AgentDecisionEndpoint.Resolution.Success)?.url
         } ?: endpoint
 
-        var outcome: AgentDecisionOutcome = call(endpoint, apiKey, modelId, timeoutMs, state, questions)
+        var outcome: AgentDecisionOutcome = call(endpoint, apiKey, requestModel, timeoutMs, state, questions)
         var escalated = false
         var escalationReason: String? = null
         var escalationLatencyMs = 0L
@@ -188,7 +192,7 @@ internal object AgentDecisionEvaluator {
                     val escalatedOutcome = call(
                         escalationEndpoint,
                         escalation.apiKey,
-                        escalation.modelId,
+                        escalation.modelName.ifBlank { escalation.modelId },
                         timeoutMs,
                         state,
                         questions,
