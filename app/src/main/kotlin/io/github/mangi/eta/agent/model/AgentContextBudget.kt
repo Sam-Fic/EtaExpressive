@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.model
 
+import io.github.mangi.eta.agent.media.AGENT_MODEL_IMAGE_MAX_LONG_EDGE
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -11,7 +12,8 @@ internal object AgentContextBudget {
     private const val RESERVED_TOKENS = 8_000
     private const val TOKENS_PER_MESSAGE = 3
     private const val IMAGE_GRID = 32
-    private const val IMAGE_MAX_EDGE = 2048
+    // 图片 token 估算与送模型图片共用同一 1080p 长边上限，避免两套口径漂移。
+    private const val IMAGE_MAX_EDGE = AGENT_MODEL_IMAGE_MAX_LONG_EDGE
     private const val IMAGE_MIN_TOKENS = 85
     // 对齐 Operit：中文约 1.5 token/字，拉丁约 4 字符/token。
     // 原先统一 codepoint/3，中文会少算 4～6 倍，界面用量就会远低于接口账单。

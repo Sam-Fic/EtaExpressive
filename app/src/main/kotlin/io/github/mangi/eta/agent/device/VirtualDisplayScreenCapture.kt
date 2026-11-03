@@ -8,7 +8,7 @@ import io.github.mangi.eta.agent.model.AgentModelClient
 /**
  * 把副屏 snapshot 的原始 PNG 转成实际发给模型的截图，并据此发布坐标合约。
  *
- * 复用既有屏幕观察策略（[AgentImageCodec.fromScreenBytes] → 视觉预算内的 JPEG），因此
+ * 复用既有屏幕观察策略（[AgentImageCodec.fromScreenBytes] → 视觉预算内的无损 WebP，超限退 JPEG），因此
  * 发布出去的 screenshot 尺寸就是实际附件尺寸，而不是只把元数据改小。screen 尺寸取自
  * owner 报告的原始帧尺寸；两者不一致时，`scale_to_screen` 就是唯一的映射依据。
  */

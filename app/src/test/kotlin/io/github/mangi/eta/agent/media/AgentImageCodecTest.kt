@@ -32,25 +32,53 @@ import org.robolectric.shadows.ShadowContentResolver
 @Config(sdk = [36])
 class AgentImageCodecTest {
     @Test
-    fun screenCopyUsesBoundedJpegForModelRequests() {
+    fun screenCopyStaysWithinVisionBudgetAndNeverUpscales() {
         val bitmap = patternedBitmap(width = 1_440, height = 3_200)
         try {
             val image = AgentImageCodec.fromScreenBitmap(bitmap, source = "screen")
             val width = image.width ?: error("缺少图片宽度")
             val height = image.height ?: error("缺少图片高度")
 
-            assertEquals("image/jpeg", image.mimeType)
-            assertTrue(image.reference.startsWith("data:image/jpeg;base64,"))
-            assertTrue(maxOf(width, height) <= 1_600)
-            assertTrue(width.toLong() * height <= 1_500_000L)
-            assertTrue(image.bytes < 1_000_000)
+            // 截图优先无损 WebP；个别环境不支持 WebP 编码时退回同尺寸 JPEG。
+            assertTrue(image.mimeType == "image/webp" || image.mimeType == "image/jpeg")
+            assertTrue(image.reference.startsWith("data:${image.mimeType};base64,"))
+            assertTrue(maxOf(width, height) <= AGENT_MODEL_IMAGE_MAX_LONG_EDGE)
+            assertTrue(width.toLong() * height <= AGENT_MODEL_IMAGE_MAX_PIXELS)
+            // 只允许缩小，绝不允许“解码尺寸小于目标尺寸再放大”的上采样。
+            assertTrue(width <= bitmap.width)
+            assertTrue(height <= bitmap.height)
+            assertTrue(image.bytes in 1..MAX_AGENT_IMAGE_BYTES)
         } finally {
             bitmap.recycle()
         }
     }
 
     @Test
-    fun assistantScreenContextKeepsNativeResolution() {
+    fun screenToolNeverUpscalesForCommonSourceSizes() {
+        val sizes = listOf(
+            1_080 to 2_400,   // 常见竖屏
+            1_280 to 800,     // 横屏 / 桌面网页
+            2_000 to 2_000,   // 正方形，像素上限生效
+            3_200 to 2_400,   // 大图，inSampleSize 会先预采样
+        )
+        for ((width, height) in sizes) {
+            val bitmap = patternedBitmap(width = width, height = height)
+            try {
+                val image = AgentImageCodec.fromScreenBitmap(bitmap, source = "screen")
+                val outWidth = image.width ?: error("缺少图片宽度")
+                val outHeight = image.height ?: error("缺少图片高度")
+                assertTrue(outWidth <= width)
+                assertTrue(outHeight <= height)
+                assertTrue(maxOf(outWidth, outHeight) <= AGENT_MODEL_IMAGE_MAX_LONG_EDGE)
+                assertTrue(outWidth.toLong() * outHeight <= AGENT_MODEL_IMAGE_MAX_PIXELS)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    @Test
+    fun assistantScreenContextIsCappedTo1080p() {
         val bitmap = patternedBitmap(width = 1_440, height = 3_200)
         try {
             val image = AgentImageCodec.fromScreenContextBitmap(
@@ -60,9 +88,9 @@ class AgentImageCodecTest {
             val width = image.width ?: error("缺少图片宽度")
             val height = image.height ?: error("缺少图片高度")
 
-            // 模型拿到的是屏幕原图：不缩放。体积超预算时才转同尺寸高质量 JPEG。
-            assertEquals(1_440, width)
-            assertEquals(3_200, height)
+            // 语音入口的屏幕上下文也送模型，按统一 1080p 上限缩到 864×1920。
+            assertEquals(864, width)
+            assertEquals(1_920, height)
             assertTrue(image.mimeType == "image/webp" || image.mimeType == "image/jpeg")
             assertTrue(image.reference.startsWith("data:${image.mimeType};base64,"))
             assertTrue(image.bytes in 1..MAX_AGENT_IMAGE_BYTES)
@@ -82,10 +110,12 @@ class AgentImageCodecTest {
             val image = AgentImageCodec.fromScreenBytes(png, source = "screen")
             val width = image.width ?: error("缺少图片宽度")
             val height = image.height ?: error("缺少图片高度")
-            assertEquals("image/jpeg", image.mimeType)
-            assertTrue(maxOf(width, height) <= 1_600)
+            assertTrue(image.mimeType == "image/webp" || image.mimeType == "image/jpeg")
+            assertTrue(image.reference.startsWith("data:${image.mimeType};base64,"))
+            assertTrue(maxOf(width, height) <= AGENT_MODEL_IMAGE_MAX_LONG_EDGE)
+            assertTrue(width <= 1_440)
+            assertTrue(height <= 3_200)
             assertTrue(image.bytes < png.size)
-            assertTrue(image.bytes < 1_000_000)
         } finally {
             bitmap.recycle()
         }
@@ -153,8 +183,8 @@ class AgentImageCodecTest {
             val height = image.height ?: error("缺少图片高度")
 
             assertEquals("image/jpeg", image.mimeType)
-            assertTrue(maxOf(width, height) <= 1_600)
-            assertTrue(width * height <= 1_500_000)
+            assertTrue(maxOf(width, height) <= AGENT_MODEL_IMAGE_MAX_LONG_EDGE)
+            assertTrue(width * height <= AGENT_MODEL_IMAGE_MAX_PIXELS)
             assertTrue(image.bytes < sourceFile.length())
         } finally {
             sourceFile.delete()
@@ -181,8 +211,9 @@ class AgentImageCodecTest {
                 ?: error("无法生成测试预览")
 
             assertEquals(sourceFile.absolutePath, source.reference)
-            assertEquals("image/jpeg", preview.mimeType)
-            assertTrue(maxOf(preview.width!!, preview.height!!) <= 512)
+            // 预览改为 1024 长边有损 WebP；个别环境 WebP 编码不可用时退回 JPEG。
+            assertTrue(preview.mimeType == "image/webp" || preview.mimeType == "image/jpeg")
+            assertEquals(1_024, maxOf(preview.width!!, preview.height!!))
             assertEquals(originalSize, sourceFile.length())
         } finally {
             sourceFile.delete()
@@ -209,11 +240,11 @@ class AgentImageCodecTest {
             val listPreview = AgentImageCodec.previewFromReference(context, source)
                 ?: error("无法生成列表预览")
 
-            // 留档预览按视觉档尺寸，聊天里点开不再是一屏糊；列表缩略图仍保持小图。
+            // 留档预览按视觉档尺寸，聊天里点开不再是一屏糊；列表缩略图保持 1024 长边。
             assertEquals(1_600, maxOf(archive.width!!, archive.height!!))
             assertEquals("image/jpeg", archive.mimeType)
             assertTrue(archive.bytes in 1..MAX_AGENT_IMAGE_BYTES)
-            assertTrue(maxOf(listPreview.width!!, listPreview.height!!) <= 512)
+            assertTrue(maxOf(listPreview.width!!, listPreview.height!!) <= 1_024)
         } finally {
             sourceFile.delete()
         }
@@ -239,8 +270,8 @@ class AgentImageCodecTest {
         val preview = AgentImageCodec.previewFromReference(context, attachment)
             ?: error("无法从已读取的附件生成预览")
 
-        assertEquals("image/jpeg", preview.mimeType)
-        assertTrue(maxOf(preview.width!!, preview.height!!) <= 512)
+        assertTrue(preview.mimeType == "image/webp" || preview.mimeType == "image/jpeg")
+        assertTrue(maxOf(preview.width!!, preview.height!!) <= 1_024)
     }
 
     @Test
@@ -271,6 +302,54 @@ class AgentImageCodecTest {
             assertEquals("image/jpeg", image.mimeType)
             assertEquals(873, image.width)
             assertEquals(1_920, image.height)
+        } finally {
+            sourceFile.delete()
+        }
+    }
+
+    @Test
+    fun toolMediaPreviewsEnforcePerImageAndPerMessageCharBudgets() {
+        fun preview(chars: Int): String =
+            "data:image/webp;base64," + "A".repeat(chars - "data:image/webp;base64,".length)
+
+        // 单张超过 400k 字符的异常预览整张丢弃。
+        assertEquals(AgentToolMediaPreviews.EMPTY, AgentToolMediaPreviews.encodePreviews(listOf(preview(410_000))))
+
+        // 总量封顶 640k：三张 300k 只收下前两张，避免 Messenger 单次事务溢出。
+        val accepted = AgentToolMediaPreviews.decode(
+            AgentToolMediaPreviews.encodePreviews(listOf(preview(300_000), preview(300_000), preview(300_000))),
+        )
+        assertEquals(2, accepted.size)
+    }
+
+    @Test
+    fun attachmentModelReencodesFromOriginalAtVisionBudget() {
+        val context = RuntimeEnvironment.getApplication()
+        val sourceFile = File(context.cacheDir, "attachment-model-${System.nanoTime()}.png")
+        val bitmap = patternedBitmap(width = 1_440, height = 3_200)
+        FileOutputStream(sourceFile).use { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        }
+        bitmap.recycle()
+        try {
+            val original = AgentImageCodec.fromTransferReference(
+                context = context,
+                value = sourceFile.absolutePath,
+                source = "user_attach",
+            ) ?: error("无法读取测试图片")
+            val preview = AgentImageCodec.previewFromReference(context, original)
+                ?: error("缺少聊天预览")
+            val model = AgentImageCodec.attachmentModelFromReference(context, original.reference)
+                ?: error("缺少附件模型图")
+
+            // 气泡预览固定 1024 长边；送模型的附件从原图重编码，长边回到 1080p 上限
+            // （1920，极端体积下按阶梯降到 1536），反正不会等于聊天预览的 1024。
+            assertEquals(1_024, maxOf(preview.width!!, preview.height!!))
+            val longEdge = maxOf(model.width!!, model.height!!)
+            assertTrue(longEdge in 1_536..AGENT_MODEL_IMAGE_MAX_LONG_EDGE)
+            // 优先无损 WebP；个别环境 WebP 编码不可用时按阶梯退到 JPEG。
+            assertTrue(model.mimeType == "image/webp" || model.mimeType == "image/jpeg")
+            assertTrue(model.bytes in 1..ATTACHMENT_MODEL_TARGET_BYTES)
         } finally {
             sourceFile.delete()
         }

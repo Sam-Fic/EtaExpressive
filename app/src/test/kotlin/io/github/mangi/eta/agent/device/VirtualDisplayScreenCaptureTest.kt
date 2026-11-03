@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.util.Base64
+import io.github.mangi.eta.agent.media.AGENT_MODEL_IMAGE_MAX_LONG_EDGE
+import io.github.mangi.eta.agent.media.AGENT_MODEL_IMAGE_MAX_PIXELS
 import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -48,9 +50,9 @@ class VirtualDisplayScreenCaptureTest {
         // 图像确实被缩放（而不是只改元数据）。
         assertTrue(width < 1216)
         assertTrue(height < 2640)
-        assertTrue(maxOf(width, height) <= 1_600)
-        assertTrue(width.toLong() * height <= 1_500_000L)
-        assertEquals("image/jpeg", image.mimeType)
+        assertTrue(maxOf(width, height) <= AGENT_MODEL_IMAGE_MAX_LONG_EDGE)
+        assertTrue(width.toLong() * height <= AGENT_MODEL_IMAGE_MAX_PIXELS)
+        assertTrue(image.mimeType == "image/webp" || image.mimeType == "image/jpeg")
 
         val actual = Base64.decode(image.reference.substringAfter(","), Base64.DEFAULT)
         val decoded = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }

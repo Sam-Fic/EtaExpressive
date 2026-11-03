@@ -48,7 +48,7 @@ internal object AgentImageCodec {
         source: String,
         mimeHint: String = "image/png",
     ): AgentModelClient.ModelImage {
-        AgentModelImageEncoder.toolVision(bytes, source, mimeHint)?.let { return it }
+        AgentModelImageEncoder.screenTool(bytes, source, mimeHint)?.let { return it }
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             ?: error("无法解码屏幕截图")
         return try {
@@ -81,6 +81,16 @@ internal object AgentImageCodec {
         context: Context,
         image: AgentModelClient.ModelImage,
     ): AgentModelClient.ModelImage? = AgentModelImageEncoder.archivePreview(context, image)
+
+    /**
+     * 用户附件真正送进模型的副本：从原始引用（data URL/本地文件/content URI）重新编码，
+     * 不与聊天预览共用，避免把 1024 有损预览当成模型输入。失败时返回 null，调用方回退预览。
+     */
+    fun attachmentModelFromReference(
+        context: Context,
+        value: String,
+    ): AgentModelClient.ModelImage? =
+        AgentModelImageEncoder.attachmentModel(context, value, source = "user_attach")
 
     /** 文件工具图片会在发送模型前压缩，避免多张原图撑大 OpenAI 兼容请求体。 */
     fun fromToolFile(file: File, source: String): AgentModelClient.ModelImage? = runCatching {
