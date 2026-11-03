@@ -81,7 +81,8 @@ val LocalEtaSegmentedShapes = staticCompositionLocalOf<ListItemShapes?> { null }
  * 组首/末项外圆角 16dp、中间项内圆角 4dp，条目间距 2dp，
  * 显隐动画 spring(damping=0.9, stiffness=800)。
  */
-private val SegmentedOuterRadius = 16.dp
+internal val EtaSegmentedOuterCornerRadius = 16.dp
+private val SegmentedOuterRadius = EtaSegmentedOuterCornerRadius
 private val SegmentedInnerRadius = 4.dp
 private val SegmentedEntryGap = 2.dp
 private const val SegmentedSpringStiffness = 800f

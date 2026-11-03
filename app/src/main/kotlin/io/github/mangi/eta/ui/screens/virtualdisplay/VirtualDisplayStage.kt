@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ScreenshotMonitor
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -64,6 +65,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedOuterCornerRadius
 import io.github.mangi.eta.ui.adaptive.EtaStatusDot
 import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
@@ -117,7 +119,7 @@ internal fun VirtualDisplayLiveStage(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = RoundedCornerShape(EtaSegmentedOuterCornerRadius),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         BoxWithConstraints(
