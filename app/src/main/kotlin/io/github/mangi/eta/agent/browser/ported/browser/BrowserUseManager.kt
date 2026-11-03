@@ -76,8 +76,8 @@ class BrowserUseManager(
         private const val TAG = "BrowserUseManager"
         private const val NAVIGATION_TIMEOUT_MS = 30_000L
         private const val JS_EVALUATION_TIMEOUT_MS = 8_000L
-        private const val SCREENSHOT_QUALITY = 80        // Explicit screenshot action (iOS: 0.8)
-        private const val SNAPSHOT_QUALITY = 70          // Auto-snapshot after visual-change actions (iOS: 0.7)
+        private const val SCREENSHOT_QUALITY = 88        // Explicit screenshot action; 80 时网页小字边缘发糊
+        private const val SNAPSHOT_QUALITY = 80          // Auto-snapshot after visual-change actions; 70 对小字过损
         private const val DEFAULT_DOM_STABLE_TIMEOUT_MS = 5_000
 
         /**
