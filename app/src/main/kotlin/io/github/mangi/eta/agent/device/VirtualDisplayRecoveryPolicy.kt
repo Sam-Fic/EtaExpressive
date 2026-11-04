@@ -35,21 +35,25 @@ internal object VirtualDisplayRecoveryPolicy {
      * 或存在半完成的 handoff 时一律阻塞；不确定时永远拒绝。
      */
     fun forcedReleaseDecision(input: ForcedReleaseInput): ForcedReleaseDecision = when {
-        input.retainedTaskIds.isEmpty() -> Blocked("NOTHING_TO_RECLAIM")
-        input.keptTaskIds.isNotEmpty() -> Blocked("DELIVERY_PENDING")
-        input.forceReleaseAttempted -> Blocked("FORCE_RELEASE_ALREADY_ATTEMPTED")
-        input.flags.mutationUncertain -> Blocked("MUTATION_UNCERTAIN")
-        input.flags.releaseAttempted -> Blocked("RELEASE_ALREADY_ATTEMPTED")
-        input.flags.handoffComplete || input.flags.finishing -> Blocked("PARTIAL_HANDOFF")
+        input.retainedTaskIds.isEmpty() -> ForcedReleaseDecision.Blocked("NOTHING_TO_RECLAIM")
+        input.keptTaskIds.isNotEmpty() -> ForcedReleaseDecision.Blocked("DELIVERY_PENDING")
+        input.forceReleaseAttempted -> ForcedReleaseDecision.Blocked("FORCE_RELEASE_ALREADY_ATTEMPTED")
+        input.flags.mutationUncertain -> ForcedReleaseDecision.Blocked("MUTATION_UNCERTAIN")
+        input.flags.releaseAttempted -> ForcedReleaseDecision.Blocked("RELEASE_ALREADY_ATTEMPTED")
+        input.flags.handoffComplete || input.flags.finishing ->
+            ForcedReleaseDecision.Blocked("PARTIAL_HANDOFF")
         input.liveTaskIds == null || input.goneTaskIds == null || input.escapedTaskIds == null ->
-            Blocked("INVENTORY_UNKNOWN")
-        input.escapedMainTaskIds == null -> Blocked("ESCAPED_PLACEMENT_UNKNOWN")
-        input.escapedTaskIds != input.escapedMainTaskIds -> Blocked("ESCAPED_PLACEMENT_UNPROVEN")
-        !input.retainedTaskIds.containsAll(input.liveTaskIds) -> Blocked("INVENTORY_INCONSISTENT")
-        !input.retainedTaskIds.containsAll(input.goneTaskIds) -> Blocked("INVENTORY_INCONSISTENT")
+            ForcedReleaseDecision.Blocked("INVENTORY_UNKNOWN")
+        input.escapedMainTaskIds == null -> ForcedReleaseDecision.Blocked("ESCAPED_PLACEMENT_UNKNOWN")
+        input.escapedTaskIds != input.escapedMainTaskIds ->
+            ForcedReleaseDecision.Blocked("ESCAPED_PLACEMENT_UNPROVEN")
+        !input.retainedTaskIds.containsAll(input.liveTaskIds) ->
+            ForcedReleaseDecision.Blocked("INVENTORY_INCONSISTENT")
+        !input.retainedTaskIds.containsAll(input.goneTaskIds) ->
+            ForcedReleaseDecision.Blocked("INVENTORY_INCONSISTENT")
         (input.retainedTaskIds - input.liveTaskIds - input.goneTaskIds - input.escapedTaskIds).isNotEmpty() ->
-            Blocked("INVENTORY_INCONSISTENT")
-        else -> Allowed
+            ForcedReleaseDecision.Blocked("INVENTORY_INCONSISTENT")
+        else -> ForcedReleaseDecision.Allowed
     }
     /**
      * Recovery is cleanup-only; it never makes an interrupted run GUI-active again.

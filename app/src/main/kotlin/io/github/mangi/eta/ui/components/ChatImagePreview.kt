@@ -798,8 +798,8 @@ private fun ChatImagePreviewOverlay(
                 alpha = progress
                 if (hasAnchor) {
                     transformOrigin = TransformOrigin(
-                        pivotX = ((anchorInWindow.left - root.left) + anchorInWindow.width / 2f) / root.width,
-                        pivotY = ((anchorInWindow.top - root.top) + anchorInWindow.height / 2f) / root.height,
+                        ((anchorInWindow.left - root.left) + anchorInWindow.width / 2f) / root.width,
+                        ((anchorInWindow.top - root.top) + anchorInWindow.height / 2f) / root.height,
                     )
                 }
             },

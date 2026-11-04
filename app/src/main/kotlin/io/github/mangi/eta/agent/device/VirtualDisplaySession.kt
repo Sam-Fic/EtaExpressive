@@ -305,7 +305,7 @@ internal object VirtualDisplaySession {
                     observed.forceReleaseAttempted == true,
             ),
         )
-        if (decision !is VirtualDisplayRecoveryPolicy.ForcedReleaseDecision.Allowed) {
+        if (decision is VirtualDisplayRecoveryPolicy.ForcedReleaseDecision.Blocked) {
             AndroidAgentLogger.warn("Virtual display forced release blocked: ${decision.code} reason=$reason")
             return null
         }
