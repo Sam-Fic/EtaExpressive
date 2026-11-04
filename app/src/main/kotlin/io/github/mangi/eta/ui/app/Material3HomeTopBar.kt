@@ -1,8 +1,6 @@
 package io.github.mangi.eta.ui.app
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,11 +41,14 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 
+/** 顶栏左右槽位宽：S 号圆钮 40dp + 与中间组的 8dp 间距。 */
+private val TopBarSideSlotWidth = 48.dp
+
 /**
  * 首页顶栏（Material 3 Expressive）。
  *
- * 一行三件套：菜单色调图标按钮、会话名官方 SplitButton（左段点击重命名、右段箭头展开
- * 溢出菜单）、新建对话色调图标按钮（横向拉伸占满剩余宽度）。
+ * 一行三件套：菜单色调图标按钮（贴 Start）、会话名官方 SplitButton（严格相对中线居中，
+ * 左段点击重命名、右段箭头展开溢出菜单）、可选的「回到调度台」按钮（贴 End）。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -78,7 +79,9 @@ internal fun Material3HomeTopBar(
 ) {
     val view = LocalView.current
     // 不加 Surface 底板：顶栏直接透在页面背景上，与下方内容保持同一底色。
-    Row(
+    // 用 Box 覆盖整条顶栏：中间组按整宽中线居中，左右动作各自贴 Start / End，
+    // 中间组位置不再随「回到调度台」按钮的显示与否而偏移。
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .windowInsetsPadding(
@@ -88,28 +91,37 @@ internal fun Material3HomeTopBar(
             )
             .heightIn(min = 64.dp)
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // 左侧：会话侧栏入口，固定贴 Start（RTL 下自动翻转为右侧语义）。
         // 顶栏圆钮属「单个但重要的操作」：按官方 M3E 建议开启按压 morph（IconButtonDefaults.shapes()），
         // 并包官方 TooltipBox（长按出提示气泡，复用消息操作条的 FooterTooltipBox 同款封装）。
-        val historyDescription = stringResource(R.string.action_conversation_history)
-        FooterTooltipBox(text = historyDescription, enabled = true) {
-            EtaIconButton(
-                icon = Icons.Rounded.Menu,
-                contentDescription = historyDescription,
-                onClick = {
-                    TouchHaptics.click(view)
-                    onOpenConversationPane()
-                },
-                size = EtaIconSize.S,
-                // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
-                style = EtaButtonStyle.SurfaceHighest,
-                shapes = IconButtonDefaults.shapes(),
-            )
+        Box(modifier = Modifier.align(Alignment.CenterStart)) {
+            val historyDescription = stringResource(R.string.action_conversation_history)
+            FooterTooltipBox(text = historyDescription, enabled = true) {
+                EtaIconButton(
+                    icon = Icons.Rounded.Menu,
+                    contentDescription = historyDescription,
+                    onClick = {
+                        TouchHaptics.click(view)
+                        onOpenConversationPane()
+                    },
+                    size = EtaIconSize.S,
+                    // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+                    style = EtaButtonStyle.SurfaceHighest,
+                    shapes = IconButtonDefaults.shapes(),
+                )
+            }
         }
-        // 会话名按钮在两侧图标之间的剩余空间里居中（与官方 CenterAlignedTopAppBar 的标题布局一致）。
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+        // 中间组：左右各预留一个对称槽位，保证严格以屏幕（可用宽度）中线居中；
+        // 槽位宽度固定为圆钮 40dp + 8dp 间距，两种会话状态下几何完全一致。
+        // 超长标题时由 SplitButton 内部单行省略，中间组最大宽度不会侵入左右按钮。
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(horizontal = TopBarSideSlotWidth),
+            contentAlignment = Alignment.Center,
+        ) {
             // 官方 M3 Expressive 拆分按钮：左段主操作（重命名会话）+ 右段菜单箭头。
             // 形状 / 尺寸 / 内边距 / 图标尺寸全部取 SplitButtonDefaults 默认值：
             // 尾段在 checked（菜单展开）时按默认 checkedShape 形变为全圆角胶囊。
@@ -198,21 +210,24 @@ internal fun Material3HomeTopBar(
         }
         // 主页纯化为调度台：「新建对话」入口收进会话侧栏 FAB；这里只在打开其他会话时
         // 显示「回到调度台」——按钮写法沿用原新建按钮（TooltipBox + EtaIconButton + morph）。
+        // 固定贴 End；缺席时中间组仍按对称槽位居中，外观不受影响。
         if (showBackToConsole) {
-            val backToConsoleDescription = stringResource(R.string.action_back_to_dispatch_console)
-            FooterTooltipBox(text = backToConsoleDescription, enabled = true) {
-                EtaIconButton(
-                    icon = Icons.Rounded.Home,
-                    contentDescription = backToConsoleDescription,
-                    onClick = {
-                        TouchHaptics.click(view)
-                        onBackToConsole()
-                    },
-                    size = EtaIconSize.S,
-                    // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
-                    style = EtaButtonStyle.SurfaceHighest,
-                    shapes = IconButtonDefaults.shapes(),
-                )
+            Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                val backToConsoleDescription = stringResource(R.string.action_back_to_dispatch_console)
+                FooterTooltipBox(text = backToConsoleDescription, enabled = true) {
+                    EtaIconButton(
+                        icon = Icons.Rounded.Home,
+                        contentDescription = backToConsoleDescription,
+                        onClick = {
+                            TouchHaptics.click(view)
+                            onBackToConsole()
+                        },
+                        size = EtaIconSize.S,
+                        // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+                        style = EtaButtonStyle.SurfaceHighest,
+                        shapes = IconButtonDefaults.shapes(),
+                    )
+                }
             }
         }
     }
