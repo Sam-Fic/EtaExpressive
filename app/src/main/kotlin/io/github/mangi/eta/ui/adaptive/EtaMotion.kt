@@ -2,10 +2,6 @@ package io.github.mangi.eta.ui.adaptive
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.SpringSpec
-import kotlin.math.ln
-import kotlin.math.sqrt
 
 /**
  * 全局动效令牌：官方 `MotionScheme` 之外的「项目自有时间轴」单一出处。
@@ -21,13 +17,14 @@ object EtaMotion {
     // ------------------------------------------------------------------ 导航
 
     /**
-     * 导航转场的兜底采样窗口。
+     * 导航转场时长：300ms。
      *
-     * 实际转场动画已改为 `defaultSpatialSpec`（弹簧没有固定时长），所以这个值只在
-     * 规格无法解析为 `SpringSpec` 时使用（见 ChatNavigationActivity）。
-     * 300ms 是改造前定长 tween 的时长，作为兜底下限保留。
+     * 页面层级仍按原来的定长 tween 走（新页整屏推入、旧页 1/4 视差淡到 0.9）。
+     * 这个值是单一来源：导航转场的动画时长、导航活跃采样窗口
+     * （`NAVIGATION_TRANSITION_WINDOW_NS`）、以及 [drawerNavExitMillis] 的基数都从这里取。
+     * 同时它也是弹簧规格无法解析时的兜底采样时长。
      */
-    const val NavigationFallbackDurationMillis = 300
+    const val NavigationFallbackDurationMillis = 300L
 
     /**
      * 被覆盖页面的视差位移占整屏宽度的比例。
@@ -72,35 +69,14 @@ object EtaMotion {
     val DrawerEasing: Easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
 
     /**
-     * 导航离场时侧栏跟随退出的时长：与导航弹簧的收敛时间对齐后再留两帧余量。
+     * 导航离场时侧栏跟随退出的时长：导航转场时长 + 两帧余量（300 + 32 = 332ms）。
      *
      * 取「不短于页面推入」是关键约束——侧栏若比新页先收完，新旧之间会露出空档；
-     * 只要新页先盖住侧栏，侧栏收得再慢也不会被看见。因此这里直接用
-     * [springSettleMillis] 从同一个弹簧推出来，而不是另写一个魔数。
+     * 只要新页先盖住侧栏，侧栏收得再慢也不会被看见。基数直接复用
+     * [NavigationFallbackDurationMillis]，不另写魔数，导航改时长时侧栏自动跟上。
      */
-    fun drawerNavExitMillis(navigationSpec: FiniteAnimationSpec<*>): Long =
-        springSettleMillis(navigationSpec) + FrameMarginMillis
+    fun drawerNavExitMillis(): Long = NavigationFallbackDurationMillis + FrameMarginMillis
 
-    /** 弹簧收敛时间估算时的两帧余量，避免卡在最后一帧的尾迹。 */
+    /** 转场收尾的两帧余量：让跟随动作比主转场多撑两帧，避免卡在最后一帧的尾迹。 */
     const val FrameMarginMillis = 32L
-
-    /**
-     * 估算弹簧「收敛到 [tolerance] 误差」所需的时间（毫秒）。
-     *
-     * 弹簧没有 duration，转场采样窗口、侧栏跟随收起时长都必须按实际动力学推，
-     * 否则换 spec 后写死的时长会立刻失配（采样提前 → 页面被误判为静止）。
-     *
-     * 欠阻尼弹簧的包络按 `e^(-ζωt)` 衰减，ω = √stiffness，
-     * 因此 t = -ln(tolerance) / (ζω)。非弹簧规格回退到 [NavigationFallbackDurationMillis]。
-     */
-    fun springSettleMillis(
-        spec: FiniteAnimationSpec<*>,
-        tolerance: Double = 1e-3,
-    ): Long {
-        val spring = spec as? SpringSpec<*> ?: return NavigationFallbackDurationMillis
-        val omega = sqrt(spring.stiffness.toDouble())
-        val decay = spring.dampingRatio.toDouble() * omega
-        if (decay <= 0.0) return NavigationFallbackDurationMillis
-        return (-ln(tolerance) / decay * 1000.0).toLong()
-    }
 }
