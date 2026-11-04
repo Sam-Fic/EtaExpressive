@@ -16,6 +16,58 @@ import io.github.mangi.eta.ui.adaptive.etaTextStyle
 /** 正文与思考共用同一套渲染器，只在字号、颜色与留白上区分层级。 */
 internal enum class MarkdownTone { Answer, Thinking }
 
+/** 单级标题的排版规格：字号 / 行高 / 字重。 */
+internal data class MarkdownHeadingSpec(
+    val fontSize: TextUnit,
+    val lineHeight: TextUnit,
+    val weight: FontWeight,
+)
+
+/** 行级排版规格：字号 / 行高（代码块、表格，不涉字重）。 */
+internal data class MarkdownTextSpec(val fontSize: TextUnit, val lineHeight: TextUnit)
+
+/**
+ * 聊天 Markdown 的统一档位表：mikepenz 栈（ChatMessageItem.chatMarkdownTypography）与
+ * 本地栈（[rememberMarkdownStyle]）共用的唯一真相源；此前两处各抄一份、Thinking 的
+ * h1-h2 字重已经分叉。
+ *
+ * 层级规则：字重只看级别（h1-h2 Bold、h3 起 SemiBold），字号 / 行高只看语气；
+ * 标题只是段落强调，不是页面标题。
+ */
+internal object MarkdownTypeScale {
+    /** Answer 语气 h1..h6：20/28、18/26、17/25、16/26 ×3。 */
+    val answerHeadings = listOf(
+        MarkdownHeadingSpec(20.sp, 28.sp, FontWeight.Bold),
+        MarkdownHeadingSpec(18.sp, 26.sp, FontWeight.Bold),
+        MarkdownHeadingSpec(17.sp, 25.sp, FontWeight.SemiBold),
+        MarkdownHeadingSpec(16.sp, 26.sp, FontWeight.SemiBold),
+        MarkdownHeadingSpec(16.sp, 26.sp, FontWeight.SemiBold),
+        MarkdownHeadingSpec(16.sp, 26.sp, FontWeight.SemiBold),
+    )
+
+    /** Thinking 语气 h1..h6：全部 15/22，字重规则同 Answer。 */
+    val thinkingHeadings = listOf(
+        MarkdownHeadingSpec(15.sp, 22.sp, FontWeight.Bold),
+        MarkdownHeadingSpec(15.sp, 22.sp, FontWeight.Bold),
+        MarkdownHeadingSpec(15.sp, 22.sp, FontWeight.SemiBold),
+        MarkdownHeadingSpec(15.sp, 22.sp, FontWeight.SemiBold),
+        MarkdownHeadingSpec(15.sp, 22.sp, FontWeight.SemiBold),
+        MarkdownHeadingSpec(15.sp, 22.sp, FontWeight.SemiBold),
+    )
+
+    /** 按语气取标题档位表。 */
+    fun headings(answer: Boolean): List<MarkdownHeadingSpec> =
+        if (answer) answerHeadings else thinkingHeadings
+
+    /** 代码块字号/行高：Answer 13/20，Thinking 12/18。 */
+    fun code(answer: Boolean): MarkdownTextSpec =
+        if (answer) MarkdownTextSpec(13.sp, 20.sp) else MarkdownTextSpec(12.sp, 18.sp)
+
+    /** 表格字号/行高：Answer 14/21，Thinking 13/19。 */
+    fun table(answer: Boolean): MarkdownTextSpec =
+        if (answer) MarkdownTextSpec(14.sp, 21.sp) else MarkdownTextSpec(13.sp, 19.sp)
+}
+
 /**
  * 一次渲染所需的全部样式。按主题与语气整体记忆，块级组件只读取不再推导，
  * 避免每个段落各自拼一遍 TextStyle。
@@ -71,21 +123,17 @@ internal fun rememberMarkdownStyle(tone: MarkdownTone): MarkdownStyle {
     // 主题值在 remember 之外读取：主题切换时重组并重建样式。
     return remember(tone, onSurface, secondaryColor, primary, outline, surfaceContainer, body1, body2) {
         val answer = tone == MarkdownTone.Answer
+        val codeSpec = MarkdownTypeScale.code(answer)
+        val tableSpec = MarkdownTypeScale.table(answer)
         val textColor = if (answer) onSurface else secondaryColor
         val body = (if (answer) body1 else body2).copy(
             lineHeight = if (answer) ANSWER_LINE_HEIGHT_SP.sp else THINKING_LINE_HEIGHT_SP.sp,
             color = textColor,
         )
-        // 聊天里的标题只是段落强调，不是页面标题：字号克制，层级主要靠字重区分。
-        val headings = if (answer) {
-            listOf(
-                body.copy(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
-                body.copy(fontSize = 18.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold),
-                body.copy(fontSize = 17.sp, lineHeight = 25.sp, fontWeight = FontWeight.SemiBold),
-                body.copy(fontWeight = FontWeight.SemiBold),
-            )
-        } else {
-            listOf(body.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold))
+        // 聊天里的标题只是段落强调，不是页面标题：字重只看级别，字号/行高看语气；
+        // 档位表与 ChatMessageItem 的 mikepenz 栈同源（MarkdownTypeScale）。
+        val headings = MarkdownTypeScale.headings(answer).map {
+            body.copy(fontSize = it.fontSize, lineHeight = it.lineHeight, fontWeight = it.weight)
         }
         MarkdownStyle(
             tone = tone,
@@ -93,11 +141,11 @@ internal fun rememberMarkdownStyle(tone: MarkdownTone): MarkdownStyle {
             headings = headings,
             code = TextStyle(
                 fontFamily = FontFamily.Monospace,
-                fontSize = if (answer) 13.sp else 12.sp,
-                lineHeight = if (answer) 20.sp else 18.sp,
+                fontSize = codeSpec.fontSize,
+                lineHeight = codeSpec.lineHeight,
                 color = textColor,
             ),
-            table = body.copy(fontSize = if (answer) 14.sp else 13.sp, lineHeight = if (answer) 21.sp else 19.sp),
+            table = body.copy(fontSize = tableSpec.fontSize, lineHeight = tableSpec.lineHeight),
             textColor = textColor,
             secondaryColor = secondaryColor,
             markerColor = if (answer) onSurface.copy(alpha = 0.55f) else secondaryColor,

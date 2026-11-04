@@ -238,14 +238,19 @@ fun EtaTextButton(
     }
 }
 
-/** 状态圆点：8dp，[active] 为真取 primary，否则取弱化的描边色（未就绪/未授权）。 */
+/**
+ * 状态圆点：8dp，[active] 为真取 primary，否则取弱化的描边色（未就绪/未授权）。
+ *
+ * 直径与 [EtaDimens.StatusDotSize]（会话列表运行状态点，6dp）是两个语义：这里标注
+ * 分段区块的就绪态，那边标注会话的运行态，各自成立，不合并取值。
+ */
 @Composable
 fun EtaStatusDot(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-    Box(modifier = modifier.size(EtaStatusDotSize).background(color, CircleShape))
+    Box(modifier = modifier.size(EtaStatusDotDiameter).background(color, CircleShape))
 }
 
-private val EtaStatusDotSize = 8.dp
+private val EtaStatusDotDiameter = 8.dp

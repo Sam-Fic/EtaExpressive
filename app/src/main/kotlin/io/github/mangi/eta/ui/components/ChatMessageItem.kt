@@ -1,6 +1,9 @@
 package io.github.mangi.eta.ui.components
 
 import io.github.mangi.eta.ui.markdown.LocalPreparedMarkdownBlock
+import io.github.mangi.eta.ui.markdown.MarkdownHeadingSpec
+import io.github.mangi.eta.ui.markdown.MarkdownTone
+import io.github.mangi.eta.ui.markdown.MarkdownTypeScale
 import io.github.mangi.eta.ui.markdown.PreparedMarkdownBlock
 import io.github.mangi.eta.ui.markdown.PreparedMarkdownSpec
 import io.github.mangi.eta.ui.markdown.ChatSelectableText
@@ -1571,16 +1574,12 @@ private val LocalToggleProbe = staticCompositionLocalOf<ToggleProbeRef?> { null 
 @Composable
 private fun StableMarkdown(
     content: String, modifier: Modifier = Modifier,
-    tone: ChatMarkdownTone = ChatMarkdownTone.Answer,
+    tone: MarkdownTone = MarkdownTone.Answer,
     progressive: Boolean = false,
 ) {
     val bodyTraceMount = remember { nextChatBodyTraceMount() }
     SideEffect { traceChatBodyRun("md", bodyTraceMount) }
-    io.github.mangi.eta.ui.markdown.DocumentStaticMarkdown(
-        content, modifier,
-        if (tone == ChatMarkdownTone.Answer) io.github.mangi.eta.ui.markdown.MarkdownTone.Answer
-        else io.github.mangi.eta.ui.markdown.MarkdownTone.Thinking,
-    )
+    io.github.mangi.eta.ui.markdown.DocumentStaticMarkdown(content, modifier, tone)
 }
 
 @Composable
@@ -1588,14 +1587,13 @@ private fun StreamingMarkdown(
     state: StreamingMarkdownState, content: String, isStreaming: Boolean,
     animateInitialContent: Boolean = false, isPaused: Boolean = false,
     onRevealCompleteChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier, tone: ChatMarkdownTone = ChatMarkdownTone.Answer,
+    modifier: Modifier = Modifier, tone: MarkdownTone = MarkdownTone.Answer,
 ) {
     io.github.mangi.eta.ui.markdown.DocumentStreamingMarkdown(
         state = state.documentState, content = content, isStreaming = isStreaming,
         animateInitialContent = animateInitialContent, isPaused = isPaused,
         onRevealCompleteChange = onRevealCompleteChange, modifier = modifier,
-        tone = if (tone == ChatMarkdownTone.Answer) io.github.mangi.eta.ui.markdown.MarkdownTone.Answer
-            else io.github.mangi.eta.ui.markdown.MarkdownTone.Thinking,
+        tone = tone,
     )
 }
 
@@ -1605,7 +1603,7 @@ private fun StreamingMarkdown(
 private fun LegacyStableMarkdown(
     content: String,
     modifier: Modifier = Modifier,
-    tone: ChatMarkdownTone = ChatMarkdownTone.Answer,
+    tone: MarkdownTone = MarkdownTone.Answer,
     markdownState: MarkdownState = rememberCompletedMarkdownState(content),
     progressive: Boolean = false,
 ) {
@@ -1688,7 +1686,7 @@ private fun LegacyStreamingMarkdown(
     isPaused: Boolean = false,
     onRevealCompleteChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    tone: ChatMarkdownTone = ChatMarkdownTone.Answer,
+    tone: MarkdownTone = MarkdownTone.Answer,
 ) {
     val parserSession = state.parserSession
     val typography = chatMarkdownTypography(tone)
@@ -2324,79 +2322,63 @@ internal fun streamingMarkdownBatchEnd(
 
 // ── Markdown 样式：克制的聊天排版，标题只作强调不作页面标题 ─────────────
 
-private enum class ChatMarkdownTone {
-    Answer,
-    Thinking,
+@Composable
+private fun chatMarkdownTypography(tone: MarkdownTone) {
+    val answer = tone == MarkdownTone.Answer
+    val body = chatMarkdownBodyStyle(tone)
+    val codeSpec = MarkdownTypeScale.code(answer)
+    val tableSpec = MarkdownTypeScale.table(answer)
+    val headingSpecs = MarkdownTypeScale.headings(answer)
+    fun heading(spec: MarkdownHeadingSpec): TextStyle = body.copy(
+        fontSize = spec.fontSize,
+        lineHeight = spec.lineHeight,
+        fontWeight = spec.weight,
+    )
+    return markdownTypography(
+        // 标题档位与本地渲染栈同源（MarkdownTypeScale）：字重只看级别、字号/行高看语气。
+        h1 = heading(headingSpecs[0]),
+        h2 = heading(headingSpecs[1]),
+        h3 = heading(headingSpecs[2]),
+        h4 = heading(headingSpecs[3]),
+        h5 = heading(headingSpecs[4]),
+        h6 = heading(headingSpecs[5]),
+        text = body,
+        paragraph = body,
+        ordered = body,
+        bullet = body,
+        list = body,
+        quote = chatSecondaryStyle().copy(
+            fontSize = if (answer) 16.sp else 14.sp,
+            lineHeight = if (answer) 26.sp else 22.sp,
+            color = chatMarkdownTextColor(MarkdownTone.Thinking),
+        ),
+        code = TextStyle(
+            fontSize = codeSpec.fontSize,
+            lineHeight = codeSpec.lineHeight,
+            fontFamily = FontFamily.Monospace,
+            color = chatMarkdownTextColor(tone),
+        ),
+        inlineCode = body.copy(
+            fontSize = if (answer) 14.sp else 13.sp,
+            fontFamily = FontFamily.Monospace,
+        ),
+        table = chatSecondaryStyle().copy(
+            fontSize = tableSpec.fontSize,
+            lineHeight = tableSpec.lineHeight,
+            color = chatMarkdownTextColor(tone),
+        ),
+        textLink = TextLinkStyles(
+            style = SpanStyle(
+                color = etaPrimary(),
+                fontWeight = FontWeight.Medium,
+            ),
+        ),
+    )
 }
 
 @Composable
-private fun chatMarkdownTypography(tone: ChatMarkdownTone) = markdownTypography(
-    h1 = chatMarkdownBodyStyle(tone).copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 20.sp else 15.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 28.sp else 22.sp,
-        fontWeight = FontWeight.Bold,
-    ),
-    h2 = chatMarkdownBodyStyle(tone).copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 18.sp else 15.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 26.sp else 22.sp,
-        fontWeight = FontWeight.Bold,
-    ),
-    h3 = chatMarkdownBodyStyle(tone).copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 17.sp else 15.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 25.sp else 22.sp,
-        fontWeight = FontWeight.SemiBold,
-    ),
-    h4 = chatMarkdownBodyStyle(tone).copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 16.sp else 15.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 26.sp else 22.sp,
-        fontWeight = FontWeight.SemiBold,
-    ),
-    h5 = chatMarkdownBodyStyle(tone).copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 16.sp else 15.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 26.sp else 22.sp,
-        fontWeight = FontWeight.SemiBold,
-    ),
-    h6 = chatMarkdownBodyStyle(tone).copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 16.sp else 15.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 26.sp else 22.sp,
-        fontWeight = FontWeight.SemiBold,
-    ),
-    text = chatMarkdownBodyStyle(tone),
-    paragraph = chatMarkdownBodyStyle(tone),
-    ordered = chatMarkdownBodyStyle(tone),
-    bullet = chatMarkdownBodyStyle(tone),
-    list = chatMarkdownBodyStyle(tone),
-    quote = chatSecondaryStyle().copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 16.sp else 14.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 26.sp else 22.sp,
-        color = chatMarkdownTextColor(ChatMarkdownTone.Thinking),
-    ),
-    code = TextStyle(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 13.sp else 12.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 20.sp else 18.sp,
-        fontFamily = FontFamily.Monospace,
-        color = chatMarkdownTextColor(tone),
-    ),
-    inlineCode = chatMarkdownBodyStyle(tone).copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 14.sp else 13.sp,
-        fontFamily = FontFamily.Monospace,
-    ),
-    table = chatSecondaryStyle().copy(
-        fontSize = if (tone == ChatMarkdownTone.Answer) 14.sp else 13.sp,
-        lineHeight = if (tone == ChatMarkdownTone.Answer) 21.sp else 19.sp,
-        color = chatMarkdownTextColor(tone),
-    ),
-    textLink = TextLinkStyles(
-        style = SpanStyle(
-            color = etaPrimary(),
-            fontWeight = FontWeight.Medium,
-        ),
-    ),
-)
-
-@Composable
-private fun chatMarkdownBodyStyle(tone: ChatMarkdownTone) =
-    if (tone == ChatMarkdownTone.Answer) {
+private fun chatMarkdownBodyStyle(tone: MarkdownTone) =
+    if (tone == MarkdownTone.Answer) {
         chatBodyStyle().copy(
             fontSize = 16.sp,
             lineHeight = 26.sp,
@@ -2408,15 +2390,15 @@ private fun chatMarkdownBodyStyle(tone: ChatMarkdownTone) =
     }
 
 @Composable
-private fun chatMarkdownTextColor(tone: ChatMarkdownTone): Color =
-    if (tone == ChatMarkdownTone.Answer) {
+private fun chatMarkdownTextColor(tone: MarkdownTone): Color =
+    if (tone == MarkdownTone.Answer) {
         etaOnSurface()
     } else {
         etaOnSurfaceVariant()
     }
 
 @Composable
-private fun chatMarkdownColors(tone: ChatMarkdownTone) = markdownColor(
+private fun chatMarkdownColors(tone: MarkdownTone) = markdownColor(
     text = chatMarkdownTextColor(tone),
     // 代码块与表格的底色、描边由自定义组件绘制，这里只保留行内代码底色与分隔线。
     codeBackground = chatSurfaceColor(),
@@ -3340,14 +3322,14 @@ private fun ThinkingRow(
                             isStreaming = message.isStreaming,
                             isPaused = isPaused,
                             onRevealCompleteChange = {},
-                            tone = ChatMarkdownTone.Thinking,
+                            tone = MarkdownTone.Thinking,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
                         androidx.compose.runtime.CompositionLocalProvider(LocalToggleProbe provides toggleProbeRef) {
                             StableMarkdown(
                                 content = message.content,
-                                tone = ChatMarkdownTone.Thinking,
+                                tone = MarkdownTone.Thinking,
                                 modifier = Modifier.fillMaxWidth(),
                                 progressive = expandedByTap,
                             )
