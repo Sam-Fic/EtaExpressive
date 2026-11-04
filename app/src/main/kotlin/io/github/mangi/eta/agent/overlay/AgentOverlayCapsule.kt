@@ -721,6 +721,10 @@ private fun PhaseGlyph(phase: AgentOverlayPhase, accent: Color) {
     when (phase) {
         AgentOverlayPhase.RUNNING -> ContainedLoadingIndicator(
             modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+            // 胶囊外框本身就是 surfaceContainer，圆底若同样取 surfaceContainer 会与背景同色。
+            // 因此改用同属中性容器的 surfaceContainerHighest 承托阶段强调色，
+            // 避免把 primary/tertiary/error 画在默认 primaryContainer 上造成角色错配。
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             indicatorColor = accent,
         )
         AgentOverlayPhase.PAUSED -> Icon(

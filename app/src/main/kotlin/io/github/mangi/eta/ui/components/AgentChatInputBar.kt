@@ -55,6 +55,7 @@ import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -1208,7 +1209,7 @@ internal fun VoiceEntryButton(
         } else {
             null
         }
-        // 官方图标按钮没有 onClickLabel，内容是变形加载指示器也没有图标可播报，
+        // 官方图标按钮没有 onClickLabel，激活态内容是变形加载指示器也没有图标可播报，
         // 因此点击文案只能在 semantics 里显式给出（只描述，不消费）。
         // 长按语义由 ChatInputLongPressSlot 自己用 onLongClick key 声明（子节点，父为 null
         // 时合并进来）。不要再在按钮 modifier 上补一份：同 key 父非空会赢，会把共享助手的
@@ -1226,11 +1227,23 @@ internal fun VoiceEntryButton(
                     Modifier
                 }
             )
+        // 空闲态用普通麦克风图标，只有真正进行中才挂 40dp contained。
+        // 活动态外层是 FilledIconButton(primary)，因此圆底取 surfaceContainer、
+        // 图形取 primary，避免圆底与按钮容器同色而不可见。
         val indicatorSlot: @Composable () -> Unit = {
-            ContainedMorphLoadingIndicator(
-                indicatorSize = if (active) 40.dp else 24.dp,
-                animate = active,
-            )
+            if (active) {
+                ContainedMorphLoadingIndicator(
+                    indicatorSize = 40.dp,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    indicatorColor = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.Mic,
+                    contentDescription = null,
+                    modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                )
+            }
         }
         val content: @Composable () -> Unit = if (longPress != null) {
             {

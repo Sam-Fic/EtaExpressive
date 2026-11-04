@@ -132,7 +132,10 @@ private fun PreviewProgressIndicator(
     size: Dp,
     modifier: Modifier = Modifier,
 ) {
-    LoadingIndicator(modifier = modifier.size(size))
+    LoadingIndicator(
+        modifier = modifier.size(size),
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 private const val MIN_ZOOM = 1f
@@ -576,9 +579,12 @@ private fun ChatImagePreviewDialog(
                 )
             }
             // 保存中的形变指示器：搬到原下载钮的右上角，让位给底部工具栏。
+            // 图片背景不可控，因此用 surfaceContainer 圆底承托，保证浅色图片上也清晰。
             if (saving) {
-                PreviewProgressIndicator(
-                    size = 20.dp,
+                ContainedMorphLoadingIndicator(
+                    indicatorSize = 24.dp,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    indicatorColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()
@@ -929,8 +935,9 @@ private fun ChatImagePreviewPage(
                 )
             }
             else -> {
-                PreviewProgressIndicator(
-                    size = 28.dp,
+                // 块级=contained：全屏图片的等待态改用 contained 圆底，
+                // 不再把裸 primary 图形直接压在不可控的图片内容上。
+                ContainedMorphLoadingIndicator(
                     modifier = Modifier.align(Alignment.Center),
                 )
             }

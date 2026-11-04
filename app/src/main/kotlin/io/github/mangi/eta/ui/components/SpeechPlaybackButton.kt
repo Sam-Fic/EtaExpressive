@@ -22,7 +22,6 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.voice.ReplyReadAloudController
 import io.github.mangi.eta.agent.voice.tts.SpeechPlayback
 import io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction
-import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 /**
@@ -97,7 +96,7 @@ internal fun SpeechPlaybackButton(
         ) {
             if (active && state.preparing) {
                 LoadingIndicator(
-                    modifier = Modifier.size(EtaDimens.StatusIconSize),
+                    modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
                     color = MaterialTheme.colorScheme.primary,
                 )
             } else {

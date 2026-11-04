@@ -138,7 +138,10 @@ internal fun ContextCompressionSettingsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             // M3E LoadingIndicator（morph 变形）：行内 18dp 槽，按 loading 选型表统一。
-                            LoadingIndicator(modifier = Modifier.size(18.dp))
+                            LoadingIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
                             Text(
                                 text = stringResource(R.string.compress_conversation_in_progress),
                                 style = MaterialTheme.typography.bodyMedium,

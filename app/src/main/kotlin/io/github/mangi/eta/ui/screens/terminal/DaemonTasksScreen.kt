@@ -141,7 +141,7 @@ private fun DaemonLogsPanel(logsExpanded: Boolean, logs: String?) {
                 .padding(8.dp),
         ) {
             if (logs == null) {
-                TerminalBusyIndicator(size = 14.dp)
+                TerminalBusyIndicator(size = 16.dp)
             } else {
                 TerminalMonoText(text = AnnotatedString(logs))
             }

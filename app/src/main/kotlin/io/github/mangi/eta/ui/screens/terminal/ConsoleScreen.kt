@@ -139,7 +139,10 @@ internal fun TerminalMonoText(
 @OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun TerminalBusyIndicator(size: androidx.compose.ui.unit.Dp) {
-    androidx.compose.material3.LoadingIndicator(modifier = Modifier.size(size))
+    androidx.compose.material3.LoadingIndicator(
+        modifier = Modifier.size(size),
+        color = terminalForeground(),
+    )
 }
 
 /** 终端日志/正文视图：官方 Text + bodyLarge。 */

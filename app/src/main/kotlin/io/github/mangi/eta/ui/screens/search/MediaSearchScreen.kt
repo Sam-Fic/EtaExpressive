@@ -46,6 +46,7 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -167,6 +168,7 @@ private fun kindsForFilter(index: Int): Set<MediaKind> = when (index) {
  * 搜索记录与其它独立搜索页同源（[EtaSearchHistory]，分域键 `media`）：每次真正跑检索落一条，
  * 搜索框为空时先列记录（点一条直接检索），无记录才显示官方 Empty state。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun MediaSearchScreen(
     onNavigate: (AppRoute) -> Unit,
@@ -814,7 +816,11 @@ internal fun MediaSearchScreen(
                                     .padding(top = 4.dp, bottom = EtaSegmentedGroupSpacing),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                ContainedMorphLoadingIndicator(indicatorSize = 20.dp)
+                                // 流式尾部是行内语义：用无容器指示器，不再放 20dp contained。
+                                LoadingIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
                             }
                         }
                     }
