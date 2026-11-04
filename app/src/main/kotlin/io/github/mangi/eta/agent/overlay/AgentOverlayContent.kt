@@ -286,6 +286,20 @@ private fun AssistantOrb(
 }
 
 /**
+ * 补充模式外层圆角：内层 TextField 固定官方 `shapes.extraLarge`（28dp），卡片内边距 8dp，
+ * 故外层取 36dp = 28 + 8，四角同值，与胶囊展开体（AgentOverlayCapsule 36/28/8）同一同心规则。
+ * 不用 `MaterialTheme.shapes.extraLarge` 做 Dp 加法是因为 `CornerBasedShape` 只暴露 `CornerSize`，
+ * 无法与 Dp 相加；项目未覆写 Shapes，extraLarge 恒为官方 28dp，故直接取 36dp。
+ */
+private val BubbleSupplementOuterCorner = 36.dp
+
+/**
+ * 常态外层圆角：仅状态文本 + 操作钮，无内嵌圆角表面，不参与同心推演，保持原 16dp。
+ * （常态气泡高约 66dp，若也用 36dp 会被钳制成 33dp 胶囊，改变既有形态。）
+ */
+private val BubbleRestingCorner = 16.dp
+
+/**
  * 运行时小气泡窗口：WRAP_CONTENT，跟随光球，窗口外触摸穿透。
  * 一句话状态 + 动作按钮 + 可展开补充输入。结束时由 Service 撤掉、改显结果卡片。
  */
@@ -368,7 +382,10 @@ internal fun AgentOverlayBubble(
         Card(
             modifier = Modifier
                 .widthIn(max = 136.dp),
-            shape = RoundedCornerShape(16.dp),
+            // 补充模式外层 36dp 与内层 28dp 输入框 + 8dp 内边距同心；常态无内嵌输入框，保持 16dp。
+            shape = RoundedCornerShape(
+                if (supplementMode) BubbleSupplementOuterCorner else BubbleRestingCorner,
+            ),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ),
