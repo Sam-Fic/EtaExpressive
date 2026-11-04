@@ -175,6 +175,7 @@ import com.mikepenz.markdown.compose.elements.listDepth
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.MarkdownTypography
 import com.mikepenz.markdown.model.markdownAnnotator
 import com.mikepenz.markdown.model.MarkdownState
 import com.mikepenz.markdown.model.State
@@ -2319,7 +2320,7 @@ internal fun streamingMarkdownBatchEnd(
 // ── Markdown 样式：克制的聊天排版，标题只作强调不作页面标题 ─────────────
 
 @Composable
-private fun chatMarkdownTypography(tone: MarkdownTone) {
+private fun chatMarkdownTypography(tone: MarkdownTone): MarkdownTypography {
     val answer = tone == MarkdownTone.Answer
     val body = chatMarkdownBodyStyle(tone)
     val codeSpec = MarkdownTypeScale.code(answer)
