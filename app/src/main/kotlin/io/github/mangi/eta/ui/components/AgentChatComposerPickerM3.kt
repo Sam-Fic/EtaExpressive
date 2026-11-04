@@ -203,26 +203,30 @@ internal fun M3ComposerPickerSheet(
                     },
                     label = "composerPickerTab",
                 ) { tab ->
-                    if (tab == 0) {
-                        M3ModelPickerTab(
-                            state = modelPickerState,
-                            onModelSelected = onModelSelected,
-                        )
-                    } else if (remoteAgentName != null) {
-                        // 远程会话：助手只有服务器上那一个，本机没有可换的目标。
-                        RemoteAssistantTab(name = remoteAgentName)
-                    } else {
-                        M3AssistantPickerTab(
-                            assistantId = assistantId,
-                            onOpen = { id ->
-                                onDismiss()
-                                onAssistantSelected(id)
-                            },
-                            onEdit = { id ->
-                                onDismiss()
-                                onEditAssistant(id)
-                            },
-                        )
+                    // AnimatedContent 的内容 lambda 是 BoxScope：页签里的搜索框、列表等多个
+                    // 根级子项会全部叠在同一位置（搜索框被列表盖住）。包一层 Column 恢复纵向排布。
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        if (tab == 0) {
+                            M3ModelPickerTab(
+                                state = modelPickerState,
+                                onModelSelected = onModelSelected,
+                            )
+                        } else if (remoteAgentName != null) {
+                            // 远程会话：助手只有服务器上那一个，本机没有可换的目标。
+                            RemoteAssistantTab(name = remoteAgentName)
+                        } else {
+                            M3AssistantPickerTab(
+                                assistantId = assistantId,
+                                onOpen = { id ->
+                                    onDismiss()
+                                    onAssistantSelected(id)
+                                },
+                                onEdit = { id ->
+                                    onDismiss()
+                                    onEditAssistant(id)
+                                },
+                            )
+                        }
                     }
                 }
             }
