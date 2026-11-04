@@ -407,19 +407,23 @@
   <string name="drawer_uncategorized_chip">未分類</string>
   <string name="drawer_new_chat">新建</string>
   <string name="drawer_manage_chats">管理聊天</string>
-  <string name="drawer_manage_folders">管理資料夾</string>
-  <string name="drawer_folder_name">資料夾名稱</string>
-  <string name="drawer_create_folder_title">新建資料夾</string>
-  <string name="drawer_rename_folder_title">重新命名資料夾</string>
-  <string name="drawer_delete_folder_title">刪除資料夾？</string>
-  <string name="drawer_delete_folder_message">資料夾中的對話會移回「聊天」，資料夾將被刪除</string>
-  <string name="folders_page_title">管理資料夾</string>
-  <string name="folders_page_empty">還沒有資料夾，點右下角的新建按鈕建立一個</string>
-  <string name="folders_page_delete_message">「%1$s」中的對話會移回「聊天」，資料夾將被刪除</string>
+  <string name="drawer_manage_folders">管理分類</string>
+  <string name="drawer_folder_name">分類名稱</string>
+  <string name="drawer_create_folder_title">新建分類</string>
+  <string name="drawer_rename_folder_title">重新命名分類</string>
+  <string name="drawer_delete_folder_title">刪除分類？</string>
+  <string name="drawer_delete_folder_message">分類中的對話會移回「聊天」，分類將被刪除</string>
+  <string name="folders_page_title">管理分類</string>
+  <string name="folders_page_group_categories">分類 · %1$d</string>
+  <string name="folders_page_group_remote_devices">遠端裝置 · %1$d</string>
+  <string name="folders_page_remote_summary">已連線 %1$d / 共 %2$d</string>
+  <string name="folders_page_empty">還沒有分類，點右下角的按鈕建立一個分類</string>
+  <string name="folders_page_empty_open_remote_agents">管理遠端智慧體</string>
+  <string name="folders_page_delete_message">「%1$s」中的對話會移回「聊天」，分類將被刪除</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="other">%d 個對話</item>
   </plurals>
-  <string name="drawer_move_to_folder">移動到資料夾</string>
+  <string name="drawer_move_to_folder">移動到分類</string>
   <string name="drawer_trash_title">回收桶</string>
   <string name="drawer_trash_empty">回收桶是空的</string>
   <string name="drawer_trash_empty_action">清空回收桶</string>
@@ -1851,7 +1855,6 @@
   <string name="remote_agents_status_failed">連線失敗</string>
   <string name="remote_agents_status_disconnected">未連線</string>
   <string name="remote_agents_footer">遠端智慧體透過區域網路明文連線。存取權杖只能阻擋同一網路中的陌生連線，並不會加密流量。請只新增你信任的伺服器。</string>
-  <string name="drawer_remote_open_settings">管理遠端伺服器</string>
   <string name="remote_banner_reconnecting">正在重連 %1$s（第 %2$d 次）…</string>
   <string name="remote_banner_failed">無法連接到 %1$s</string>
   <string name="remote_banner_retry">重試</string>
@@ -3102,7 +3105,7 @@
   <string name="media_shared_source_label">共用資料夾：%1$s</string>
   <string name="ui_no_matching_options">沒有符合的選項</string>
   <string name="dv_search_project">搜尋專案</string>
-  <string name="drawer_search_folder">搜尋資料夾</string>
+  <string name="drawer_search_folder">搜尋分類</string>
   <!-- 端側裝置動作模型（FunctionGemma 270M Mobile Actions） -->
   <string name="mobile_actions_settings_title">端側動作模型</string>
   <string name="mobile_actions_intro">一次性下載後可完全離線執行，把自然語言指令轉成真實的裝置動作</string>

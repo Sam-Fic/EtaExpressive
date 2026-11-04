@@ -271,20 +271,24 @@
   <string name="drawer_uncategorized_chip">Uncategorized</string>
   <string name="drawer_new_chat">New</string>
   <string name="drawer_manage_chats">Manage chats</string>
-  <string name="drawer_manage_folders">Manage folders</string>
-  <string name="drawer_folder_name">Folder name</string>
-  <string name="drawer_create_folder_title">New folder</string>
-  <string name="drawer_rename_folder_title">Rename folder</string>
-  <string name="drawer_delete_folder_title">Delete folder?</string>
-  <string name="drawer_delete_folder_message">Conversations in this folder will be moved back to Chats. The folder will be deleted</string>
-  <string name="folders_page_title">Manage folders</string>
-  <string name="folders_page_empty">No folders yet. Use the create button at the bottom right</string>
-  <string name="folders_page_delete_message">Conversations in “%1$s” will be moved back to Chats. The folder will be deleted</string>
+  <string name="drawer_manage_folders">Manage categories</string>
+  <string name="drawer_folder_name">Category name</string>
+  <string name="drawer_create_folder_title">New category</string>
+  <string name="drawer_rename_folder_title">Rename category</string>
+  <string name="drawer_delete_folder_title">Delete category?</string>
+  <string name="drawer_delete_folder_message">Conversations in this category will be moved back to Chats. The category will be deleted</string>
+  <string name="folders_page_title">Manage categories</string>
+  <string name="folders_page_group_categories">Categories · %1$d</string>
+  <string name="folders_page_group_remote_devices">Remote devices · %1$d</string>
+  <string name="folders_page_remote_summary">Connected %1$d of %2$d</string>
+  <string name="folders_page_empty">No categories yet. Use the button at the bottom right to create one</string>
+  <string name="folders_page_empty_open_remote_agents">Manage remote agents</string>
+  <string name="folders_page_delete_message">Conversations in “%1$s” will be moved back to Chats. The category will be deleted</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="one">%d conversation</item>
     <item quantity="other">%d conversations</item>
   </plurals>
-  <string name="drawer_move_to_folder">Move to folder</string>
+  <string name="drawer_move_to_folder">Move to category</string>
   <string name="drawer_trash_title">Trash</string>
   <string name="drawer_trash_empty">The trash is empty</string>
   <string name="drawer_trash_empty_action">Empty trash</string>
@@ -1734,7 +1738,6 @@
   <string name="remote_agents_status_failed">Connection failed</string>
   <string name="remote_agents_status_disconnected">Disconnected</string>
   <string name="remote_agents_footer">Remote agents connect over your local network in plaintext. The access token only blocks strangers on the same network; it does not encrypt traffic. Only add servers you trust.</string>
-  <string name="drawer_remote_open_settings">Manage remote servers</string>
   <string name="remote_banner_reconnecting">Reconnecting to %1$s (attempt %2$d)…</string>
   <string name="remote_banner_failed">Can\'t reach %1$s</string>
   <string name="remote_banner_retry">Retry</string>
@@ -3136,7 +3139,7 @@
   <string name="media_shared_source_label">Shared folder: %1$s</string>
   <string name="ui_no_matching_options">No matching options</string>
   <string name="dv_search_project">Search project</string>
-  <string name="drawer_search_folder">Search folder</string>
+  <string name="drawer_search_folder">Search categories</string>
   <!-- 端侧设备动作模型（FunctionGemma 270M Mobile Actions） -->
   <string name="mobile_actions_settings_title">Device actions model</string>
   <string name="mobile_actions_intro">Runs fully offline after a one-time download and turns natural-language instructions into real device actions</string>

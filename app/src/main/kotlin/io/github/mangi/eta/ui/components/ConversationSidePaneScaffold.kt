@@ -848,7 +848,7 @@ private fun Material3ConversationPane(
         ) {
             Spacer(modifier = Modifier.height(DrawerMetrics.TopInset))
 
-            // 胶囊行：左侧可横向滚动的「本机 / [远程…] / 未分类 / [文件夹…]」，右侧固定「管理文件夹」。
+            // 胶囊行：左侧可横向滚动的「本机 / [远程…] / 未分类 / [分类…]」，右侧固定「管理分类」。
             // 行内混着两类高度：官方 ToggleButton 是纯 40dp 布局；走官方 Surface 的按钮
             // （FilledTonalButton、文件夹胶囊的 Surface）自带 48dp 最小触摸目标——布局被撑到
             // 48dp、40dp 可视区在内部居中，整行随之变 48dp，全部胶囊的可视中线整体下移 4dp，
@@ -1955,7 +1955,7 @@ private fun remoteSessionTitle(session: RemoteSessionInfo): String =
         ?: session.path.substringAfterLast('/').ifBlank { session.path }
 
 @Composable
-private fun RemoteStatusDot(status: RemoteConnectionStatus) {
+internal fun RemoteStatusDot(status: RemoteConnectionStatus) {
     val color = when (status) {
         // 已连接不用 primary：它与胶囊选中态（primaryContainer 一族）同源，pi 胶囊
         // 被选中时点会融进选中底色里。改用官方 vibrant FAB 容器色——即抽屉工具栏

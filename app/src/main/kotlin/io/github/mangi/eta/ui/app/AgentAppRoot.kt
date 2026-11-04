@@ -1259,10 +1259,12 @@ fun AgentAppRoot(
                 ManageFoldersScreen(
                     folders = agentState.conversationPaneState.folders,
                     conversations = agentState.conversationPaneState.historyConversations,
+                    remoteCoordinator = appViewModel.remoteCoordinator,
                     onBack = ::popRoute,
                     onCreateFolder = { name -> agentState.createFolder(name) },
                     onRenameFolder = { folderId, name -> agentState.renameFolder(folderId, name) },
                     onDeleteFolder = { folderId -> agentState.deleteFolder(folderId) },
+                    onOpenRemoteAgents = { pushRoute(AppRoute.RemoteAgents) },
                 )
             }
             composable<AppRoute.ConversationTrash> {

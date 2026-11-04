@@ -299,19 +299,23 @@
   <string name="drawer_uncategorized_chip">未分类</string>
   <string name="drawer_new_chat">新建</string>
   <string name="drawer_manage_chats">管理聊天</string>
-  <string name="drawer_manage_folders">管理文件夹</string>
-  <string name="drawer_folder_name">文件夹名称</string>
-  <string name="drawer_create_folder_title">新建文件夹</string>
-  <string name="drawer_rename_folder_title">重命名文件夹</string>
-  <string name="drawer_delete_folder_title">删除文件夹？</string>
-  <string name="drawer_delete_folder_message">文件夹中的对话会移回「聊天」，文件夹将被删除</string>
-  <string name="folders_page_title">管理文件夹</string>
-  <string name="folders_page_empty">还没有文件夹，点右下角的新建按钮创建一个</string>
-  <string name="folders_page_delete_message">「%1$s」中的对话会移回「聊天」，文件夹将被删除</string>
+  <string name="drawer_manage_folders">管理分类</string>
+  <string name="drawer_folder_name">分类名称</string>
+  <string name="drawer_create_folder_title">新建分类</string>
+  <string name="drawer_rename_folder_title">重命名分类</string>
+  <string name="drawer_delete_folder_title">删除分类？</string>
+  <string name="drawer_delete_folder_message">分类中的对话会移回「聊天」，分类将被删除</string>
+  <string name="folders_page_title">管理分类</string>
+  <string name="folders_page_group_categories">分类 · %1$d</string>
+  <string name="folders_page_group_remote_devices">远程设备 · %1$d</string>
+  <string name="folders_page_remote_summary">已连接 %1$d / 共 %2$d</string>
+  <string name="folders_page_empty">还没有分类，点右下角的按钮新建一个分类</string>
+  <string name="folders_page_empty_open_remote_agents">管理远程智能体</string>
+  <string name="folders_page_delete_message">「%1$s」中的对话会移回「聊天」，分类将被删除</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="other">%d 个对话</item>
   </plurals>
-  <string name="drawer_move_to_folder">移动到文件夹</string>
+  <string name="drawer_move_to_folder">移动到分类</string>
   <string name="drawer_trash_title">回收站</string>
   <string name="drawer_trash_empty">回收站是空的</string>
   <string name="drawer_trash_empty_action">清空回收站</string>
@@ -1742,7 +1746,6 @@
   <string name="remote_agents_status_failed">连接失败</string>
   <string name="remote_agents_status_disconnected">未连接</string>
   <string name="remote_agents_footer">远程智能体通过局域网明文连接。访问令牌只能拦截同一网络里的陌生连接，并不加密流量。请只添加你信任的服务器。</string>
-  <string name="drawer_remote_open_settings">管理远程服务器</string>
   <string name="remote_banner_reconnecting">正在重连 %1$s（第 %2$d 次）…</string>
   <string name="remote_banner_failed">无法连接到 %1$s</string>
   <string name="remote_banner_retry">重试</string>
@@ -3102,7 +3105,7 @@
   <string name="media_shared_source_label">共享文件夹：%1$s</string>
   <string name="ui_no_matching_options">没有匹配的选项</string>
   <string name="dv_search_project">搜索项目</string>
-  <string name="drawer_search_folder">搜索文件夹</string>
+  <string name="drawer_search_folder">搜索分类</string>
   <!-- 端侧设备动作模型（FunctionGemma 270M Mobile Actions） -->
   <string name="mobile_actions_settings_title">端侧动作模型</string>
   <string name="mobile_actions_intro">一次性下载后可完全离线运行，把自然语言指令转成真实的设备动作</string>
