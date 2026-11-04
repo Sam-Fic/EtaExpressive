@@ -473,6 +473,17 @@ fun AgentAppRoot(
         AppUpdateCoordinator.checkOnceOnStartup(context)
     }
 
+    // 「+」新建远程会话的落位：服务端建好并把新会话置为 current 后，这里把聊天视图
+    // 切到新会话（不收起侧栏，与本机新建同口径；不再发 switch_session——服务端已切好）。
+    // 必须收在 App 级作用域：miuix 只保证被 1 层盖住的条目仍在组合，栈深 ≥ 3 时
+    // 底部条目会被移出组合，若挂进 entry 的 RoutedShell，newSessionReady（无 replay 的
+    // SharedFlow）在那一刻发出的事件会永久丢失。根部单收集者天然只切一次。
+    LaunchedEffect(Unit) {
+        appViewModel.remoteCoordinator.newSessionReady.collect { target ->
+            agentState.selectRemoteTarget(target)
+        }
+    }
+
     LaunchedEffect(assistantConversationKey) {
         val conversationKey = assistantConversationKey ?: return@LaunchedEffect
         val opened = agentState.openAssistantConversation(conversationKey)
@@ -534,7 +545,7 @@ fun AgentAppRoot(
     LaunchedEffect(currentRoute) { exitGuard.reset() }
 
     fun popRoute() {
-        // 「还有没有上一级」与系统返回键用同一个依据（NavController 的返回栈），
+        // 「还有没有上一级」与系统返回键用同一个依据（miuix 返回栈 `SnapshotStateList<NavKey>`），
         // 只有确实在根页面时才进入双击退出逻辑。
         if (!navigator.canPop()) {
             // 刚出栈不到一个转场时长：此刻根页面还在入场、上一页还在退场，这次点击
@@ -620,17 +631,13 @@ fun AgentAppRoot(
                 navigationActive.value = false
             }
         }
-        // 「+」新建远程会话的落位：服务端建好并把新会话置为 current 后，这里把聊天视图
-        // 切到新会话（不收起侧栏，与本机新建同口径；不再发 switch_session——服务端已切好）。
-        LaunchedEffect(Unit) {
-            appViewModel.remoteCoordinator.newSessionReady.collect { target ->
-                agentState.selectRemoteTarget(target)
-            }
-        }
         CompositionLocalProvider(
-            // 半遮住时页面还在组合里。保持实时消息，让露出的字继续长；
-            // miuix 会保留被覆盖条目的组合（不像 NavHost 直接移出），完全盖住后的冻结
-            // 由 LocalChatRouteCovered + LocalChatTransitionActive 负责（消费点里已判断）。
+            // 被 1 层盖住时页面仍在组合里，保持实时消息，让露出的字继续长。
+            // 注意 miuix 的可见窗口是 -1 < d <= opaqueDepth（默认 opaqueDepth = 1）：
+            // 栈深 ≥ 3 时更底部的条目会被移出组合——rememberSaveable 由
+            // NavSaveableStateHolder 恢复、ViewModel 由 display 级注册表保留，
+            // 但 LaunchedEffect(Unit) 会在回到窗口内时重跑，所以一次性副作用不要挂进 entry。
+            // 完全盖住后的冻结由 LocalChatRouteCovered + LocalChatTransitionActive 负责。
             LocalChatUiActive provides true,
             LocalChatRouteCovered provides (currentRoute != route),
         ) {
