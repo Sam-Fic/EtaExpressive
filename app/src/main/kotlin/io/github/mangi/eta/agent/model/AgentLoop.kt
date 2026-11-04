@@ -53,6 +53,11 @@ internal class AgentLoop(
     ) -> List<AgentModelClient.ConversationMessage>)? = null,
     /** Explicit permission to send an unknown context; never a usage receipt or calibration. */
     allowUnmeasuredContextSend: Boolean = false,
+    /**
+     * 动态延迟组（MCP server）：压缩边界标记要按它们恢复「被压缩掉的 MCP 调用」，
+     * 与静态组同走 [AgentToolGroups.deferredGroupsOf]。
+     */
+    private val dynamicToolGroupsProvider: () -> List<AgentToolGroup> = { emptyList() },
 ) {
     data class CompactPolicy(
         val enabled: Boolean,
@@ -1247,7 +1252,17 @@ internal class AgentLoop(
                 "摘要及索引未减少上下文，已保留原文"
             }
             savedCheckpoint?.let { compactionArchive?.record(it, "ready") }
-            withPointers
+            // 压缩边界标记：被压缩前缀里出现过的延迟组写入一条 system 标记，随摘要进历史。
+            // 工具调用被压缩掉后，跨 run 恢复不能只靠历史工具名反推（AgentModelClient
+            // 的 initialOpenedGroups 会解析本标记）。放在 require 之后追加，
+            // 不参与「尾部逐字节不变」与「上下文确有减少」两条不变式的裁决。
+            val markerGroups = AgentToolGroups.deferredGroupsOf(
+                AgentToolGroups.toolNamesFromToolCallsJson(durablePrefix.map { it.toolCallsJson }),
+                dynamicToolGroupsProvider(),
+            )
+            AgentToolGroups.openedGroupsMarker(markerGroups)
+                ?.let { content -> withPointers + AgentModelClient.ConversationMessage(role = "system", content = content) }
+                ?: withPointers
         } catch (failure: Exception) {
             savedCheckpoint?.let { runCatching { compactionArchive?.record(it, "failed") } }
             if (runController.isCancelled || Thread.currentThread().isInterrupted || failure is InterruptedException ||

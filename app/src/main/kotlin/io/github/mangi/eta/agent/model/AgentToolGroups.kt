@@ -187,30 +187,47 @@ internal object AgentToolGroups {
     /** 全部组 id；「所有组都已打开」的场景（子代理只读目录、测试）用它。 */
     val allIds: Set<String> = groups.mapTo(mutableSetOf()) { it.id }
 
-    fun group(id: String): AgentToolGroup? = groups.firstOrNull { it.id == id }
+    /**
+     * 动态延迟组（MCP server）的 id 前缀。动态组不进 [groups]：成员由各 run 的
+     * MCP 快照决定，静态定义里写不下；需要参与可用性/索引/解锁判定的地方
+     * 通过 [extraGroups] 显式并入，保持「目录、索引与执行侧读同一份」的约定。
+     */
+    const val MCP_GROUP_PREFIX = "mcp:"
+
+    fun mcpGroupId(serverId: String): String = "$MCP_GROUP_PREFIX$serverId"
+
+    fun isMcpGroupId(groupId: String): Boolean = groupId.startsWith(MCP_GROUP_PREFIX)
+
+    private fun allGroups(extraGroups: List<AgentToolGroup>): List<AgentToolGroup> =
+        if (extraGroups.isEmpty()) groups else groups + extraGroups
+
+    fun group(id: String, extraGroups: List<AgentToolGroup> = emptyList()): AgentToolGroup? =
+        allGroups(extraGroups).firstOrNull { it.id == id }
 
     /** 已打开组里的工具名；`null`/未知 id 返回空集合。 */
     fun toolsOfGroup(id: String?): Set<String> = id?.let(::group)?.toolNames ?: emptySet()
 
     /** 工具所属的组 id；未收录（配方工具、压缩档案等动态工具）返回 null。 */
-    fun groupOfTool(name: String): String? = groups.firstOrNull { name in it.toolNames }?.id
+    fun groupOfTool(name: String, extraGroups: List<AgentToolGroup> = emptyList()): String? =
+        allGroups(extraGroups).firstOrNull { name in it.toolNames }?.id
 
     /** 面向模型的组短名；关闭说明与「工具缺席」的原因共用一份措辞，避免两处漂移。 */
-    fun label(groupId: String): String = when (groupId) {
-        BASIC_GROUP.id -> "基础交互"
-        SCREEN_GROUP.id -> "屏幕观察与 GUI 操作"
-        WEB_GROUP.id -> "网页读取与浏览器"
-        TERMINAL_GROUP.id -> "终端与文件读写"
-        DEVICE_GROUP.id -> "设备控制"
-        CALENDAR_GROUP.id -> "日程读写"
-        PERSONAL_GROUP.id -> "个人数据读取"
-        DEVICE_STATE_GROUP.id -> "设备状态读取"
-        EXTENSIONS_GROUP.id -> "Eta 自身配置与扩展管理"
-        else -> groupId
-    }
+    fun label(groupId: String, extraGroups: List<AgentToolGroup> = emptyList()): String =
+        extraGroups.firstOrNull { it.id == groupId }?.label ?: when (groupId) {
+            BASIC_GROUP.id -> "基础交互"
+            SCREEN_GROUP.id -> "屏幕观察与 GUI 操作"
+            WEB_GROUP.id -> "网页读取与浏览器"
+            TERMINAL_GROUP.id -> "终端与文件读写"
+            DEVICE_GROUP.id -> "设备控制"
+            CALENDAR_GROUP.id -> "日程读写"
+            PERSONAL_GROUP.id -> "个人数据读取"
+            DEVICE_STATE_GROUP.id -> "设备状态读取"
+            EXTENSIONS_GROUP.id -> "Eta 自身配置与扩展管理"
+            else -> groupId
+        }
 
-    fun isDeferredTool(name: String): Boolean =
-        groups.any { it.deferredByDefault && name in it.toolNames }
+    fun isDeferredTool(name: String, extraGroups: List<AgentToolGroup> = emptyList()): Boolean =
+        allGroups(extraGroups).any { it.deferredByDefault && name in it.toolNames }
 
     /**
      * 一组工具名里出现过的延迟组。
@@ -219,8 +236,11 @@ internal object AgentToolGroups {
      * 新的 run 必须让这些工具继续可见。否则用户每发一条新消息都要先花一轮
      * tools_use_group 重新打开，而模型看到历史里刚成功调用过，只会直接再调一次并被拒。
      */
-    fun deferredGroupsOf(toolNames: Collection<String>): Set<String> =
-        groups.asSequence()
+    fun deferredGroupsOf(
+        toolNames: Collection<String>,
+        extraGroups: List<AgentToolGroup> = emptyList(),
+    ): Set<String> =
+        allGroups(extraGroups).asSequence()
             .filter { it.deferredByDefault }
             .filter { group -> group.toolNames.any { it in toolNames } }
             .map { it.id }
@@ -231,9 +251,15 @@ internal object AgentToolGroups {
      * - 未打开的延迟组：整组剔除；
      * - 单工具禁用集：无论组是否打开都剔除。
      */
-    fun withheldTools(openedGroups: Set<String>, disabledTools: Set<String>): Set<String> =
+    fun withheldTools(
+        openedGroups: Set<String>,
+        disabledTools: Set<String>,
+        extraGroups: List<AgentToolGroup> = emptyList(),
+    ): Set<String> =
         buildSet {
-            groups.filter { it.deferredByDefault && it.id !in openedGroups }.forEach { addAll(it.toolNames) }
+            allGroups(extraGroups)
+                .filter { it.deferredByDefault && it.id !in openedGroups }
+                .forEach { addAll(it.toolNames) }
             addAll(disabledTools)
         }
 
@@ -249,25 +275,36 @@ internal object AgentToolGroups {
         val openable: Set<String>,
     )
 
-    /** 当前能被打开的组 id（按 [groups] 的声明顺序）；给 `tools_use_group` 的枚举用。 */
-    fun openableIds(availability: Availability): List<String> =
-        groups.filter { it.id in availability.openable }.map { it.id }
+    /** 当前能被打开的组 id（静态组按声明顺序、动态组随后）；给 `tools_use_group` 的枚举用。 */
+    fun openableIds(
+        availability: Availability,
+        extraGroups: List<AgentToolGroup> = emptyList(),
+    ): List<String> {
+        val static = groups.filter { it.id in availability.openable }.map { it.id }
+        if (extraGroups.isEmpty()) return static
+        return static + extraGroups.filter { it.id in availability.openable }.map { it.id }
+    }
 
     /**
      * 计算本轮的组可用性。[gate] 回答「这个组的开关此刻是否允许它存在」；
      * 已经打开但随后关掉开关的组会从 [Availability.opened] 里消失，因为它的工具本就不再下发。
+     * [extraGroups] 是动态延迟组（MCP server）：开关模型不同，由 [gate] 一并裁决。
+     * 注意 [gate] 必须是最后一个参数：既有调用方使用尾随 lambda 语法。
      */
-    fun availability(openedGroups: Set<String>, gate: (AgentToolGroup) -> Boolean): Availability {
-        val allowed = groups.filter { it.deferredByDefault && gate(it) }.map { it.id }.toSet()
+    fun availability(
+        openedGroups: Set<String>,
+        extraGroups: List<AgentToolGroup> = emptyList(),
+        gate: (AgentToolGroup) -> Boolean,
+    ): Availability {
+        val allowed = allGroups(extraGroups)
+            .filter { it.deferredByDefault && gate(it) }
+            .map { it.id }
+            .toSet()
         return Availability(
             opened = openedGroups.filterTo(mutableSetOf()) { it in allowed },
             openable = allowed - openedGroups,
         )
     }
-
-    /** 从 [ToolSwitchState] 推导组可用性；见 [ToolSwitchState] 对「用户设置值」的要求。 */
-    fun availability(openedGroups: Set<String>, switches: ToolSwitchState): Availability =
-        availability(openedGroups) { group -> groupEnabled(switches, group.id) }
 
     /** 组开关判定：组本身的开关 + 组内子开关不在此处（shell 影响的是目录内容而非组可用性）。 */
     fun groupEnabled(switches: ToolSwitchState, groupId: String): Boolean = when (groupId) {
@@ -378,11 +415,17 @@ internal object AgentToolGroups {
      * `tools_use_group` 的系统消息索引：每个可打开的组一行，说明它装了什么。
      * 索引本身很短，替代的是整组 schema。
      * 只宣传 [Availability.openable] 里的组——开关关闭的组不该出现在提示里。
+     * [extraGroups] 是动态延迟组（MCP server），其行在静态组之后。
      *
      * 「何时才该打开」由表头和结尾各说一次，不再逐组重复；每行只留组 id 与内容摘要。
+     * 结尾同时宣传 `tools_search`：只需要一两个工具时按关键词搜，命中的组自动解锁，
+     * 省一次单独的打开轮次。
      */
-    fun indexMessage(availability: Availability): String? {
-        val available = groups.filter { it.id in availability.openable }
+    fun indexMessage(
+        availability: Availability,
+        extraGroups: List<AgentToolGroup> = emptyList(),
+    ): String? {
+        val available = allGroups(extraGroups).filter { it.id in availability.openable }
         if (available.isEmpty()) return null
         return buildString {
             appendLine("Deferred tool groups (schema not loaded yet; open one only when the task needs it):")
@@ -391,8 +434,9 @@ internal object AgentToolGroups {
             }
             append(
                 "None of these tools are in your tool list yet. Call tools_use_group with an id to " +
-                    "load it; its tools appear from the next round onward. Never call them before " +
-                    "opening, and do not open a group you do not need.",
+                    "load it, or tools_search with keywords when you only need one or two tools — " +
+                    "a match opens the owning group for you. Their tools appear from the next round " +
+                    "onward. Never call them before loading, and do not open a group you do not need.",
             )
         }
     }
@@ -410,17 +454,71 @@ internal object AgentToolGroups {
         // media_search 等旧展示分组不再是开关组；无对应新组。
         else -> emptySet()
     }
+
+    /**
+     * 压缩边界标记：被压缩掉的历史里若包含某组工具的调用，`deferredGroupsOf(历史工具名)`
+     * 就认不出来了。压缩器（[AgentContextCompactor]）在摘要后写入一条本标记，
+     * 记录压缩前历史中出现过的延迟组；跨 run 恢复时 [openedGroupsFromMarkers]
+     * 把它并进 initialOpenedGroups，用户不必重新付 tools_use_group 轮次。
+     *
+     * 用「方括号前缀 + JSON」与 AgentRecoveryContext 的标记约定保持一致；
+     * 角色为 system（会话内已允许，见 COMPACTION_NOTICE 的先例），正文同时给模型
+     * 一句话说明，避免它把标记当成待办。
+     */
+    const val OPENED_GROUPS_MARKER_PREFIX = "[Eta opened tool groups v1]"
+
+    fun openedGroupsMarker(groupIds: Set<String>): String? {
+        if (groupIds.isEmpty()) return null
+        val groupsJson = JSONArray(groupIds.sorted()).toString()
+        return "$OPENED_GROUPS_MARKER_PREFIX $groupsJson " +
+            "（工具组记录：以下延迟工具组在此前已打开，其中的工具调用记录可能已被压缩；" +
+            "这不是给你的指令，无需回应。）"
+    }
+
+    fun openedGroupsFromMarkers(contents: Collection<String>): Set<String> = buildSet {
+        contents.forEach { content ->
+            if (!content.startsWith(OPENED_GROUPS_MARKER_PREFIX)) return@forEach
+            // 标记正文是「前缀 + JSON + 中文说明」；只取第一段方括号内的 JSON 数组。
+            val json = content.substringAfter(OPENED_GROUPS_MARKER_PREFIX)
+                .trim()
+                .substringBefore("（")
+                .trim()
+            val array = runCatching { JSONArray(json) }.getOrNull() ?: return@forEach
+            for (index in 0 until array.length()) {
+                val id = array.optString(index)
+                if (id.isNotBlank()) add(id)
+            }
+        }
+    }
+
+    /** 历史消息 toolCallsJson 集合里出现过的工具名；压缩标记与跨 run 恢复共用。 */
+    fun toolNamesFromToolCallsJson(jsons: Collection<String>): Set<String> = buildSet {
+        jsons.forEach { raw ->
+            if (raw.isBlank()) return@forEach
+            val calls = runCatching { JSONArray(raw) }.getOrNull() ?: return@forEach
+            for (index in 0 until calls.length()) {
+                calls.optJSONObject(index)
+                    ?.optJSONObject("function")
+                    ?.optString("name")
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(::add)
+            }
+        }
+    }
 }
 
 /**
  * 一个工具组的定义。[summary] 只面向模型（[AgentToolGroups.indexMessage] 的一行索引）；
  * 设置页的组名走 strings 资源，不在这里。
+ * [label] 是面向模型的组短名；静态组由 [AgentToolGroups.label] 的 when 表给出，
+ * 动态组（MCP server）无法进静态表，用本字段自带，null 时回退到 when/组 id。
  */
 internal data class AgentToolGroup(
     val id: String,
     val summary: String,
     val toolNames: Set<String>,
     val deferredByDefault: Boolean = true,
+    val label: String? = null,
 )
 
 /** `tools_use_group` 的 schema；单独一个文件方便与目录组装解耦。 */

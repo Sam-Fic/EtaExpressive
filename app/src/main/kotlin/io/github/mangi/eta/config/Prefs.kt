@@ -78,6 +78,50 @@ internal object Prefs {
         const val AGENT_DISABLED_TOOLS = "agent_disabled_tools"
 
         /**
+         * 渐进加载模式（对齐 ZCode「工具搜索」设置的三档语义）：
+         * - [TOOL_LOADING_MODE_SEARCH]：按工具渐进：延迟组 + tools_search 关键词搜索，
+         *   命中即解锁所属组（单工具粒度最省 token）；
+         * - [TOOL_LOADING_MODE_GROUP]：按组渐进（最初行为）：延迟组只能经
+         *   tools_use_group 整组打开，不下发 tools_search；
+         * - [TOOL_LOADING_MODE_OFF]：发送完整工具目录（所有延迟组视为已打开、MCP 全量）。
+         * 新建会话生效，当前会话保持原设置——见 [resolveToolLoadingMode] 的会话锁定。
+         */
+        const val AGENT_TOOL_LOADING_MODE = "agent_tool_loading_mode"
+        const val TOOL_LOADING_MODE_SEARCH = "search"
+        const val TOOL_LOADING_MODE_GROUP = "group"
+        const val TOOL_LOADING_MODE_OFF = "off"
+
+        /** 当前会话锁定的模式与会话 id；由 [toolLoadingFullCatalog] 在会话首个 run 写入。 */
+        const val TOOL_LOADING_MODE_ACTIVE = "agent_tool_loading_mode_active"
+        const val TOOL_LOADING_MODE_CONVERSATION = "agent_tool_loading_mode_conversation"
+
+        /**
+         * MCP 工具暴露方式：[MCP_EXPOSURE_DEFERRED] = 按 server 粒度渐进加载
+         * （每个 server 一个动态延迟组）；[MCP_EXPOSURE_ALWAYS] = 全量常驻（旧行为，
+         * 最多 64 个 schema 每轮请求重发）。
+         */
+        const val AGENT_MCP_EXPOSURE = "agent_mcp_exposure"
+        const val MCP_EXPOSURE_DEFERRED = "deferred"
+        const val MCP_EXPOSURE_ALWAYS = "always"
+
+        /**
+         * 工具调用审查模式（四档，对齐 ZCode 的权限模式光谱）：
+         * - [TOOL_REVIEW_MODE_READONLY]：只读——非低风险调用直接拒绝（对齐 plan）；
+         * - [TOOL_REVIEW_MODE_STRICT]：严格——中风险也逐次确认（不再享受会话内一次）；
+         * - [TOOL_REVIEW_MODE_STANDARD]：标准（默认，原「危险操作确认」开关开启的行为）；
+         * - [TOOL_REVIEW_MODE_AUTO]：自动——中风险免确认，高/致命仍确认（对齐开关关闭；
+         *   高/致命的确认是安全底线，任何档位都不豁免）。
+         *
+         * 每次调用实时读取，改设置立即生效（不同于渐进加载的新会话语义）：
+         * 审查是安全边界，用户收紧时应立即拦住下一次调用。
+         */
+        const val AGENT_TOOL_REVIEW_MODE = "agent_tool_review_mode"
+        const val TOOL_REVIEW_MODE_READONLY = "readonly"
+        const val TOOL_REVIEW_MODE_STRICT = "strict"
+        const val TOOL_REVIEW_MODE_STANDARD = "standard"
+        const val TOOL_REVIEW_MODE_AUTO = "auto"
+
+        /**
          * 屏幕观察与 GUI 操作总开关：observe_screen、点击/长按/滑动/滚动、文本输入、
          * wait 系列、press_key 与系统面板。关闭后这些工具既不声明也不执行，提示词同步移除
          * GUI 指引，避免为不存在的工具付固定 token。
@@ -485,6 +529,77 @@ internal object Prefs {
             if (disabled) add(name) else remove(name)
         }
         putString(Keys.AGENT_DISABLED_TOOLS, updated.sorted().joinToString(","))
+    }
+
+    /** 渐进加载模式的用户偏好值；见 [Keys.AGENT_TOOL_LOADING_MODE]。 */
+    fun toolLoadingMode(): String =
+        getString(Keys.AGENT_TOOL_LOADING_MODE, Keys.TOOL_LOADING_MODE_SEARCH)
+
+    fun setToolLoadingMode(mode: String) {
+        putString(Keys.AGENT_TOOL_LOADING_MODE, mode)
+    }
+
+    /**
+     * 本会话锁定的渐进加载模式（三档，见 [Keys.AGENT_TOOL_LOADING_MODE]）。
+     *
+     * ZCode 的语义是「新建会话或恢复会话时生效，当前会话保持原设置」：
+     * 首次在某个会话上 run 时把用户偏好锁定到该会话 id，之后同一会话一律用锁定值，
+     * 只有新会话才重新读偏好。锁定值持久化在本地 Agent 配置里，进程重启不丢。
+     */
+    fun resolveToolLoadingMode(conversationId: String): String {
+        if (getString(Keys.TOOL_LOADING_MODE_CONVERSATION) == conversationId) {
+            return getString(Keys.TOOL_LOADING_MODE_ACTIVE, Keys.TOOL_LOADING_MODE_SEARCH)
+        }
+        val mode = toolLoadingMode()
+        putString(Keys.TOOL_LOADING_MODE_ACTIVE, mode)
+        putString(Keys.TOOL_LOADING_MODE_CONVERSATION, conversationId)
+        return mode
+    }
+
+    /** 本会话是否发送完整工具目录（渐进加载 off）。 */
+    fun toolLoadingFullCatalog(conversationId: String): Boolean =
+        resolveToolLoadingMode(conversationId) == Keys.TOOL_LOADING_MODE_OFF
+
+    /** 本会话是否下发 tools_search（仅按工具档；按组档走 tools_use_group 整组打开）。 */
+    fun toolLoadingSearchEnabled(conversationId: String): Boolean =
+        resolveToolLoadingMode(conversationId) == Keys.TOOL_LOADING_MODE_SEARCH
+
+    /** MCP 工具是否按 server 粒度渐进加载；false = 全量常驻（旧行为）。 */
+    fun mcpToolExposureDeferred(): Boolean =
+        getString(Keys.AGENT_MCP_EXPOSURE, Keys.MCP_EXPOSURE_DEFERRED) == Keys.MCP_EXPOSURE_DEFERRED
+
+    fun setMcpToolExposureDeferred(deferred: Boolean) {
+        putString(
+            Keys.AGENT_MCP_EXPOSURE,
+            if (deferred) Keys.MCP_EXPOSURE_DEFERRED else Keys.MCP_EXPOSURE_ALWAYS,
+        )
+    }
+
+    /**
+     * 工具调用审查模式（见 [Keys.AGENT_TOOL_REVIEW_MODE]）。
+     *
+     * 旧「危险操作确认」布尔开关自动迁移：存过旧键且未存新键时，
+     * 开 = 标准、关 = 自动；两者都没存过则默认标准（旧行为的默认值就是开）。
+     * 审查决策只发生在 App 进程（localAgent 已初始化）；Hook 进程读到默认标准即可。
+     */
+    fun toolReviewMode(): String {
+        val prefs = localAgent ?: return Keys.TOOL_REVIEW_MODE_STANDARD
+        if (prefs.contains(Keys.AGENT_TOOL_REVIEW_MODE)) {
+            return prefs.getString(Keys.AGENT_TOOL_REVIEW_MODE, null)
+                ?: Keys.TOOL_REVIEW_MODE_STANDARD
+        }
+        if (prefs.contains(Keys.AGENT_CONFIRM_DANGEROUS_TOOLS)) {
+            return if (prefs.getBoolean(Keys.AGENT_CONFIRM_DANGEROUS_TOOLS, true)) {
+                Keys.TOOL_REVIEW_MODE_STANDARD
+            } else {
+                Keys.TOOL_REVIEW_MODE_AUTO
+            }
+        }
+        return Keys.TOOL_REVIEW_MODE_STANDARD
+    }
+
+    fun setToolReviewMode(mode: String) {
+        putString(Keys.AGENT_TOOL_REVIEW_MODE, mode)
     }
 
     /** 关闭时压缩用当前对话模型；已选过自定义模型的旧配置视为开启。 */

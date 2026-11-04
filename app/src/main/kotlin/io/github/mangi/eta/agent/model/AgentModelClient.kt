@@ -103,6 +103,29 @@ internal object AgentModelClient {
         capabilitiesProvider: () -> AgentToolCapabilities = { AgentToolCapabilities(rootAvailable = false) },
         /** 本次 run 已按需打开的工具域；由执行器在 tools_use_group 成功后累积。 */
         openedToolGroupsProvider: () -> Set<String> = { emptySet() },
+        /**
+         * MCP 渐进加载投影；null = always 暴露（[additionalTools] 已含全部 MCP schema）。
+         * 非 null 时 [additionalTools] 应不含 MCP 工具，schema 由每轮目录重建按
+         * 已打开 server 追加，动态延迟组同步进目录与组索引。
+         */
+        mcpProjection: McpToolProjection? = null,
+        /**
+         * tools_search 的评分语料出口；每轮目录重建时清空重填（ withheld 过滤前的
+         * 全量「开关允许」目录）。null = 调用方不需要工具级搜索。
+         */
+        searchIndex: MutableMap<String, String>? = null,
+        /**
+         * 渐进加载模式（对齐 ZCode「工具搜索」设置的 auto/off 两档）：
+         * true = 关闭渐进加载——所有延迟组视为已打开、MCP 全量，即发送完整工具目录。
+         * 由调用方在**会话首个 run** 决定并锁定（见 Prefs.toolLoadingFullCatalog），
+         * 当前会话保持原设置，新建会话才重读用户偏好。
+         */
+        toolLoadingFullCatalog: Boolean = false,
+        /**
+         * 是否下发 tools_search（渐进加载按工具档）。按组档为 false：模型只能经
+         * tools_use_group 整组打开；off 档下本参数无意义（目录已全量）。
+         */
+        toolLoadingSearchEnabled: Boolean = true,
         sessionId: String = java.util.UUID.randomUUID().toString(),
         onEvent: (AgentEvent) -> Unit = {},
         linuxEnvironmentLabelProvider: () -> String = { "Linux" },
@@ -167,10 +190,25 @@ internal object AgentModelClient {
         // 工具调用时，模型看得见它、也理应还能调用它。不把这一组并进来，用户每发一条新消息
         // 都要先白付一轮 tools_use_group（真实会话里反复发生），模型也会因为「刚调过却报未声明」
         // 而怀疑参数没有送达。
-        val initialOpenedGroups = openedToolGroupsProvider() +
-            AgentToolGroups.deferredGroupsOf(historyToolNames(outboundHistory)) +
-            // 决策预开：control 下 allowed 全集、advise 下只预开 selected∪sticky∪历史保护。
-            decision?.openedGroups.orEmpty()
+        // 动态延迟组（MCP server）：run 内冻结，目录、索引、解锁与恢复四处共用。
+        val mcpGroups = mcpProjection?.deferredGroups().orEmpty()
+        val initialOpenedGroups = run {
+            // 跨 run 恢复的三个来源：历史工具名反推（静态组 + MCP server 组）、
+            // 压缩边界标记（工具调用被压缩掉时的兜底）、决策模型预开。
+            val historyNames = historyToolNames(outboundHistory)
+            AgentToolGroups.deferredGroupsOf(historyNames, mcpGroups) +
+                mcpProjection?.openedGroupIdsFrom(historyNames).orEmpty() +
+                AgentToolGroups.openedGroupsFromMarkers(outboundHistory.map { it.content }) +
+                // 决策预开：control 下 allowed 全集、advise 下只预开 selected∪sticky∪历史保护。
+                decision?.openedGroups.orEmpty() +
+                // off 模式（发送完整工具目录）：所有延迟组视为已打开，决策枚举随之失效。
+                if (toolLoadingFullCatalog) {
+                    AgentToolGroups.deferredGroups.mapTo(mutableSetOf()) { it.id } +
+                        mcpGroups.mapTo(mutableSetOf()) { it.id }
+                } else {
+                    emptySet()
+                }
+        }
         // control 成功/fail-closed 时限制 tools_use_group 的枚举；null 表示不接管。
         val decisionOpenableLimit = decision?.openableGroupLimit
         // 闲聊态关段只在 control 成功时由 router 置位，prompt builder 直接据此裁剪。
@@ -181,6 +219,7 @@ internal object AgentModelClient {
             recipeTools: JSONArray = JSONArray(),
             openedToolGroups: Set<String> = initialOpenedGroups,
         ): JSONArray {
+            searchIndex?.clear()
             val tools = AgentToolCatalog.build(
                 basicTools = Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS),
                 terminalTools = config.terminalTools,
@@ -207,9 +246,18 @@ internal object AgentModelClient {
                     terminalTools = config.terminalTools,
                     shellTools = Prefs.isEnabled(Prefs.Keys.AGENT_SHELL_TOOLS),
                 ),
+                // 动态延迟组（MCP server）与搜索语料出口：见 AgentToolCatalog.build。
+                dynamicGroups = mcpProjection?.deferredGroups().orEmpty(),
+                searchIndex = searchIndex,
+                toolSearchEnabled = toolLoadingSearchEnabled,
             )
             for (index in 0 until additionalTools.length()) {
                 tools.put(additionalTools.opt(index))
+            }
+            // MCP 渐进加载：schema 按已打开 server 追加；off 模式下 openedToolGroups
+            // 已含全部 server 组，等价全量。always 暴露模式走上面的 additionalTools。
+            if (mcpProjection != null) {
+                mcpProjection.appendTools(tools, openedToolGroups)
             }
             // 自进化配方工具放在最后：模型读完内置工具后，额外看到自己写的工具。
             for (index in 0 until recipeTools.length()) {
@@ -239,6 +287,7 @@ internal object AgentModelClient {
             onSystemCount = { systemCount = it },
             trimChatSections = trimChatSections,
             openableGroupLimit = decisionOpenableLimit,
+            dynamicToolGroups = mcpGroups,
         )
         var transcriptStartIndex = messages.length()
         val traceFormatter = AgentTraceFormatter(
@@ -274,6 +323,8 @@ internal object AgentModelClient {
             calibratedInputTokens = calibratedInputTokens,
             allowUnmeasuredContextSend = allowUnmeasuredContextSend,
             onHistoryCompacted = { transcriptStartIndex = messages.length() },
+            // 压缩边界标记按动态组恢复被压缩掉的 MCP 调用。
+            dynamicToolGroupsProvider = { mcpGroups },
             onHistorySnapshot = onHistorySnapshot?.let { publish ->
                 snapshot@ { round, snapshot ->
                     val media = snapshotMedia ?: return@snapshot ""
@@ -343,6 +394,7 @@ internal object AgentModelClient {
                             // 决策 overlay 在本 run 内不变：每轮重建继续沿用同一裁剪与枚举上限。
                             trimChatSections = trimChatSections,
                             openableGroupLimit = decisionOpenableLimit,
+                            dynamicToolGroups = mcpGroups,
                         )
                         // 系统前缀的条数会随「本轮打开了哪些工具组」变化（指引块与组索引都是条件消息）。
                         // JSONArray.put(index, …) 是替换不是插入，按索引覆写会在前缀变长时盖掉历史与用户消息，
@@ -663,6 +715,25 @@ internal object AgentModelClient {
 
     fun interface ToolExecutor {
         fun execute(toolCall: ToolCall): ToolResult
+    }
+
+    /**
+     * MCP 工具的渐进加载投影。MCP 工具不在 [AgentToolCatalog] 的静态目录里，
+     * 延迟化由快照在目录重建的各环节外挂：
+     * - 目录/索引/枚举需要「每个 server 一个动态延迟组」（[deferredGroups]）；
+     * - 目录组装时只追加已打开 server 的 schema（[appendTools]）；
+     * - tools_search 的评分语料（[toolDescriptions]）与跨 run 恢复（[openedGroupIdsFrom]）。
+     * run 内冻结；always 暴露模式不用它（工具照旧全量追加）。
+     */
+    interface McpToolProjection {
+        fun deferredGroups(): List<AgentToolGroup>
+
+        /** [openedGroupIds] 为 null 表示全量（always 模式或「所有组已打开」）。 */
+        fun appendTools(destination: JSONArray, openedGroupIds: Set<String>?)
+
+        fun toolDescriptions(): Map<String, String>
+
+        fun openedGroupIdsFrom(toolNames: Collection<String>): Set<String>
     }
 
     data class ToolCall(

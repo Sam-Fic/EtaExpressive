@@ -44,11 +44,28 @@ internal object AgentToolCatalog {
          * 只对「决策接管且枚举为空」生效；用户把工具组全关时不恢复。
          */
         allowEmptyGroupTool: Boolean = false,
+        /**
+         * 动态延迟组（MCP server）：参与可用性与枚举，成员工具不在这里下发
+         * （MCP schema 由 AgentModelClient 按已打开 server 追加），这里只为它们
+         * 产出索引行、tools_use_group 枚举与 withheld 集合。
+         */
+        dynamicGroups: List<AgentToolGroup> = emptyList(),
+        /**
+         * 搜索索引出口：把「开关允许的所有工具」的名字→描述在 withheld 过滤前写进去，
+         * 供 `tools_search` 对未打开延迟组做关键词匹配（调用方在每轮重建时清空重填）。
+         * null 表示调用方不需要搜索。
+         */
+        searchIndex: MutableMap<String, String>? = null,
+        /**
+         * 是否下发 tools_search（渐进加载按工具档）。按组档为 false：延迟组只能整组打开，
+         * 不提供工具级搜索——目录其余部分与按工具档完全一致。
+         */
+        toolSearchEnabled: Boolean = true,
     ): JSONArray {
         // 组开关只决定「参与下发」；延迟折叠与单工具禁用统一在最后一次过滤完成，
         // 目录过滤、索引行与 tools_use_group 枚举共用同一份可用性判定，
         // 避免「开关关了但仍宣传该组」这类多处判断不一致的缺陷。
-        val groupAvailability = AgentToolGroups.availability(openedToolGroups) { group ->
+        val groupAvailability = AgentToolGroups.availability(openedToolGroups, dynamicGroups) { group ->
             when (group.id) {
                 AgentToolGroups.BASIC_GROUP.id -> basicTools
                 AgentToolGroups.SCREEN_GROUP.id -> screenTools
@@ -61,10 +78,12 @@ internal object AgentToolCatalog {
                 AgentToolGroups.PERSONAL_GROUP.id -> personalTools
                 AgentToolGroups.DEVICE_STATE_GROUP.id -> personalTools
                 AgentToolGroups.EXTENSIONS_GROUP.id -> extensionsTools
-                else -> false
+                // 动态组（MCP server）：存在即允许；决策收窄不排除它（决策模型只认识
+                // 静态组），否则原本常驻可用的 MCP 能力会被收窄整块锁死。
+                else -> AgentToolGroups.isMcpGroupId(group.id)
             }
         }
-        val withheld = AgentToolGroups.withheldTools(openedToolGroups, disabledTools)
+        val withheld = AgentToolGroups.withheldTools(openedToolGroups, disabledTools, dynamicGroups)
         val emitted = JSONArray()
         if (basicTools) AgentQuestionToolCatalog.appendTo(emitted)
         AgentContextAppToolCatalog.appendTo(emitted, screenTools = screenTools, basicTools = basicTools)
@@ -105,8 +124,12 @@ internal object AgentToolCatalog {
         // 枚举只列这些组：全部打开、或开关全关时都不该出现一个必然失败或有多个空选项的工具。
         // 决策收窄（control）时再按 openableGroupLimit 过滤：提示里不能点名一个 gate 允许、
         // 但被判断模型排除的组，否则模型会反复尝试一个必然被拒的组。
-        val openable = AgentToolGroups.openableIds(groupAvailability)
-            .filter { groupId -> openableGroupLimit == null || groupId in openableGroupLimit }
+        // 动态组（MCP）不受决策枚举约束：决策模型只认识静态组，见 availability 注释。
+        val openable = AgentToolGroups.openableIds(groupAvailability, dynamicGroups)
+            .filter { groupId ->
+                openableGroupLimit == null || groupId in openableGroupLimit ||
+                    AgentToolGroups.isMcpGroupId(groupId)
+            }
         AgentToolGroupCatalog.appendTo(
             emitted,
             openableIds = openable,
@@ -114,9 +137,22 @@ internal object AgentToolCatalog {
             // 看到「组已在设置中关闭」的解释性错误。
             allowEmpty = allowEmptyGroupTool && openableGroupLimit != null && openable.isEmpty(),
         )
+        // 工具级搜索与 tools_use_group 同一门面：有可打开的组才有可搜索的对象；
+        // 按组档不下发（模型仍可用 tools_use_group 整组打开）。
+        AgentToolSearchCatalog.appendTo(emitted, openable, toolSearchEnabled)
         if (AgentFileSystemTier.allowsFileTools(fileSystemTier)) {
             AgentFileVisionToolCatalog.appendTo(emitted)
             AgentTerminalToolCatalog.appendTo(emitted, fileSystemTier)
+        }
+        // 搜索索引在 withheld 过滤**之前**填：未打开延迟组的名字与描述正是搜索的对象。
+        // 组开关已经作用在 emitters 上，因此索引天然遵守「用户关掉的能力不可搜」。
+        if (searchIndex != null) {
+            for (index in 0 until emitted.length()) {
+                val function = emitted.optJSONObject(index)?.optJSONObject("function") ?: continue
+                val name = function.optString("name")
+                val description = function.optString("description")
+                if (name.isNotEmpty()) searchIndex[name] = description
+            }
         }
         return capabilities.project(filterWithheld(emitted, withheld))
     }

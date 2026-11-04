@@ -30,6 +30,8 @@ import io.github.mangi.eta.agent.model.AgentSelfSettingsToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.model.AgentToolGroup
 import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
+import io.github.mangi.eta.agent.model.AgentToolSearch
+import io.github.mangi.eta.agent.model.AgentToolSearchCatalog
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
 import io.github.mangi.eta.agent.overlay.AgentOverlayClearance
@@ -162,6 +164,21 @@ internal class AgentLocalTools(
     },
     /** 当前会话 id，用于把子代理组应用到本会话。 */
     private val agentConversationId: String = "",
+    /**
+     * 动态延迟组（MCP server）：tools_use_group / tools_search 与静态组同一套闸门。
+     * 成员由各 run 的 MCP 快照决定，run 内冻结。
+     */
+    private val dynamicToolGroups: () -> List<AgentToolGroup> = { emptyList() },
+    /**
+     * 工具名 → 描述（含 MCP 工具）；tools_search 的评分语料。
+     * 目录每轮重建时由 AgentModelClient 清空重填，MCP 描述在快照装配时并入。
+     */
+    private val toolSearchDescriptions: () -> Map<String, String> = { emptyMap() },
+    /**
+     * 渐进加载是否为「按工具」档（下发 tools_search）。按组档工具不在目录里，
+     * 正常不会被调用；这里兜底拒绝模型猜名重试，并指回 tools_use_group。
+     */
+    private val toolSearchEnabled: () -> Boolean = { true },
     /**
      * 判断模型收窄后的可打开组（M2，control 模式）；null = 未接管。
      *
@@ -342,19 +359,65 @@ internal class AgentLocalTools(
      * 打开组不放宽任何权限——这里只说「这个组此刻是否允许存在」，
      * 组内工具在下一轮仍要各自通过 Prefs 与 AgentToolCapabilities。
      */
-    private fun toolGroupGate(group: AgentToolGroup): Boolean = when (group.id) {
-        AgentToolGroups.BASIC_GROUP.id -> basicToolsEnabled()
-        AgentToolGroups.SCREEN_GROUP.id -> screenToolsEnabled()
-        AgentToolGroups.WEB_GROUP.id -> browserToolsEnabled()
-        AgentToolGroups.TERMINAL_GROUP.id -> terminalToolsEnabled()
-        AgentToolGroups.DEVICE_GROUP.id -> deviceToolsEnabled()
-        // 日程跟随「个人数据」开关，不再借用设备开关。
-        AgentToolGroups.CALENDAR_GROUP.id -> personalToolsEnabled()
-        AgentToolGroups.PERSONAL_GROUP.id -> personalToolsEnabled()
-        // 设备状态读取组同样没有独立开关：沿用「个人数据」总开关门禁。
-        AgentToolGroups.DEVICE_STATE_GROUP.id -> personalToolsEnabled()
-        AgentToolGroups.EXTENSIONS_GROUP.id -> extensionsToolsEnabled()
-        else -> false
+    private fun toolGroupGate(group: AgentToolGroup): Boolean = when {
+        // 动态组（MCP server）：存在即允许——快照里没有工具的 server 不会成组，
+        // 单工具启停在快照加载时已过滤；决策收窄也不挡它（同 AgentToolCatalog 的注释）。
+        AgentToolGroups.isMcpGroupId(group.id) -> true
+        else -> when (group.id) {
+            AgentToolGroups.BASIC_GROUP.id -> basicToolsEnabled()
+            AgentToolGroups.SCREEN_GROUP.id -> screenToolsEnabled()
+            AgentToolGroups.WEB_GROUP.id -> browserToolsEnabled()
+            AgentToolGroups.TERMINAL_GROUP.id -> terminalToolsEnabled()
+            AgentToolGroups.DEVICE_GROUP.id -> deviceToolsEnabled()
+            // 日程跟随「个人数据」开关，不再借用设备开关。
+            AgentToolGroups.CALENDAR_GROUP.id -> personalToolsEnabled()
+            AgentToolGroups.PERSONAL_GROUP.id -> personalToolsEnabled()
+            // 设备状态读取组同样没有独立开关：沿用「个人数据」总开关门禁。
+            AgentToolGroups.DEVICE_STATE_GROUP.id -> personalToolsEnabled()
+            AgentToolGroups.EXTENSIONS_GROUP.id -> extensionsToolsEnabled()
+            else -> false
+        }
+    }
+
+    private fun groupById(id: String): AgentToolGroup? =
+        AgentToolGroups.group(id, dynamicToolGroups())
+
+    /**
+     * 打开一个延迟组的公共闸门，tools_use_group 与 tools_search 的命中解锁共用。
+     * 返回 null 表示打开成功（组 id 已进入 [openedToolGroups]），否则是 (code, message)。
+     */
+    private fun unlockGroup(group: AgentToolGroup): Pair<String, String>? {
+        val availability = AgentToolGroups.availability(openedToolGroups, dynamicToolGroups(), ::toolGroupGate)
+        // 决策收窄：gate 允许、但判断模型本轮没有选中它。与「用户关闭」区分来源，
+        // 否则用户会以为是自己误关了开关，找不到恢复入口。
+        // MCP 组不受决策枚举约束：决策模型只认识静态组（同 AgentToolCatalog 的注释）。
+        val decisionLimit = decisionAllowedGroups()
+        if (decisionLimit != null && !AgentToolGroups.isMcpGroupId(group.id) &&
+            toolGroupGate(group) && group.id !in decisionLimit
+        ) {
+            // 空集 = fail-closed：判断模型不可用且用户选择了保守策略，此时「一键放行」
+            // 不是正确的补救方式，必须换一条文案，避免误导。
+            if (decisionLimit.isEmpty()) {
+                // 两种来源共用空集：判断模型判定本轮为闲聊（未选中任何组），或决策不可用
+                // 且用户选了 fail-closed。都不存在「打开某个组」的合法路径，只能引导用户
+                // 换模式；明确禁止重试，否则模型会把一条解释性错误当成参数问题反复调用。
+                return "TOOL_GROUP_DECISION_CLOSED" to
+                    ("当前没有可用的工具组：判断模型本轮未选中任何组（闲聊），" +
+                        "或判断模型不可用且已进入保守模式。请不要重试本工具或猜测其他组名；" +
+                        "如需使用工具，请让用户把模式改为「建议模式」，或等下一轮重新判断。")
+            }
+            return "TOOL_GROUP_NARROWED_BY_DECISION" to
+                ("本次运行未启用「${AgentToolGroups.label(group.id, dynamicToolGroups())}」：" +
+                    "判断模型按当前请求收窄了工具组。如需使用，请让用户到判断模型设置页" +
+                    "点「一键放行」（会关闭判断模型接管），或把模式改为「建议模式」后重试。")
+        }
+        // 开关关闭的组不允许打开：否则会成功返回 next_turn，而组内工具永远不会出现。
+        if (group.id !in availability.openable && group.id !in availability.opened) {
+            return "TOOL_GROUP_DISABLED" to
+                "该工具组已在设置中关闭，无法打开；请让用户先在设置里启用对应能力。"
+        }
+        openedToolGroups += group.id
+        return null
     }
 
     /**
@@ -363,45 +426,86 @@ internal class AgentLocalTools(
      */
     private fun useToolGroup(args: JSONObject): String {
         val requested = args.optString("group").trim()
-        val availability = AgentToolGroups.availability(openedToolGroups, ::toolGroupGate)
-        val known = AgentToolGroups.openableIds(availability)
-        val group = AgentToolGroups.group(requested)
+        val availability = AgentToolGroups.availability(openedToolGroups, dynamicToolGroups(), ::toolGroupGate)
+        val known = AgentToolGroups.openableIds(availability, dynamicToolGroups())
+        val group = groupById(requested)
         if (group == null || !group.deferredByDefault) {
             return AgentToolGroupCatalog.unknownGroup(requested, known)
         }
-        // 决策收窄：gate 允许、但判断模型本轮没有选中它。与「用户关闭」区分来源，
-        // 否则用户会以为是自己误关了开关，找不到恢复入口。
-        val decisionLimit = decisionAllowedGroups()
-        if (decisionLimit != null && toolGroupGate(group) && requested !in decisionLimit) {
-            // 空集 = fail-closed：判断模型不可用且用户选择了保守策略，此时「一键放行」
-            // 不是正确的补救方式，必须换一条文案，避免误导。
-            if (decisionLimit.isEmpty()) {
-                // 两种来源共用空集：判断模型判定本轮为闲聊（未选中任何组），或决策不可用
-                // 且用户选了 fail-closed。都不存在「打开某个组」的合法路径，只能引导用户
-                // 换模式；明确禁止重试，否则模型会把一条解释性错误当成参数问题反复调用。
-                return errorResult(
-                    "TOOL_GROUP_DECISION_CLOSED",
-                    "当前没有可用的工具组：判断模型本轮未选中任何组（闲聊），" +
-                        "或判断模型不可用且已进入保守模式。请不要重试本工具或猜测其他组名；" +
-                        "如需使用工具，请让用户把模式改为「建议模式」，或等下一轮重新判断。",
-                )
-            }
-            return errorResult(
-                "TOOL_GROUP_NARROWED_BY_DECISION",
-                "本次运行未启用「${AgentToolGroups.label(group.id)}」：判断模型按当前请求收窄了工具组。" +
-                    "如需使用，请让用户到判断模型设置页点「一键放行」（会关闭判断模型接管），" +
-                    "或把模式改为「建议模式」后重试。",
-            )
+        val failure = unlockGroup(group)
+        if (failure != null) {
+            return errorResult(code = failure.first, message = failure.second)
         }
-        // 开关关闭的组不允许打开：否则会成功返回 next_turn，而组内工具永远不会出现。
-        if (requested !in availability.openable && requested !in availability.opened) {
-            return errorResult(
-                "TOOL_GROUP_DISABLED",
-                "该工具组已在设置中关闭，无法打开；请让用户先在设置里启用对应能力。",
-            )
-        }
-        openedToolGroups += group.id
         return AgentToolGroupCatalog.result(group, usableToolsOf(group))
+    }
+
+    /**
+     * 工具级关键词搜索（tools_search）：在「开关允许、尚未打开」的延迟组里按
+     * 名字/描述评分（[AgentToolSearch]），命中工具的所属组走与 tools_use_group
+     * 完全相同的解锁闸门（[unlockGroup]）——搜索即解锁，省一次单独的打开轮次。
+     * 只返回名字并解锁组，不执行任何目标工具。
+     */
+    private fun searchTools(args: JSONObject): String {
+        val query = args.optString("query").trim()
+        if (query.isEmpty()) return AgentToolSearchCatalog.invalidQuery()
+        val maxResults = args.optInt("max_results", AgentToolSearch.DEFAULT_RESULTS)
+            .coerceIn(1, 20)
+        val dynamic = dynamicToolGroups()
+        val availability = AgentToolGroups.availability(openedToolGroups, dynamic, ::toolGroupGate)
+        val decisionLimit = decisionAllowedGroups()
+        // 候选范围 = gate 允许、尚未打开的组；决策收窄只挡静态组（与目录的枚举同一判定）。
+        val openable = AgentToolGroups.openableIds(availability, dynamic).filter { groupId ->
+            decisionLimit == null || groupId in decisionLimit || AgentToolGroups.isMcpGroupId(groupId)
+        }
+        // 候选工具再按「本设备此刻真能下发」预收窄（同 usableToolsOf 的判定）：
+        // 搜到一个永远无法交付的工具，解锁整组也只是白付一轮。
+        // MCP 工具不在注册表里，可交付性由快照决定，只应用单工具禁用集。
+        val capabilities = runCatching {
+            AgentToolCapabilities.capture(context).copy(
+                virtualDisplay = runSurface == io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.BACKGROUND,
+            )
+        }.getOrNull()
+        val disabled = runCatching { Prefs.disabledTools() }.getOrDefault(emptySet())
+        val descriptions = toolSearchDescriptions()
+        val candidates = openable.flatMap { groupId ->
+            val group = groupById(groupId) ?: return@flatMap emptyList()
+            val mcp = AgentToolGroups.isMcpGroupId(groupId)
+            group.toolNames
+                .filter { name ->
+                    name !in disabled && (mcp || capabilities?.canDeliver(name) ?: true)
+                }
+                .map { name ->
+                    AgentToolSearch.Candidate(
+                        name = name,
+                        description = descriptions[name],
+                        searchHint = null,
+                        mcp = mcp,
+                        groupId = groupId,
+                    )
+                }
+        }
+        val hits = AgentToolSearch.search(query, candidates, maxResults)
+        if (hits.isEmpty()) {
+            return AgentToolSearchCatalog.noMatches(
+                query,
+                AgentToolGroups.openableIds(availability, dynamic),
+            )
+        }
+        val unlocked = mutableSetOf<String>()
+        val unavailable = linkedMapOf<String, String>()
+        hits.map { it.groupId }.distinct().forEach { groupId ->
+            if (groupId in unlocked || groupId in unavailable) return@forEach
+            val group = groupById(groupId) ?: return@forEach
+            val failure = unlockGroup(group)
+            if (failure == null) {
+                unlocked += groupId
+            } else {
+                unavailable[groupId] = AgentToolGroups.label(groupId, dynamic)
+            }
+        }
+        val labels = hits.map { it.groupId }.distinct()
+            .associateWith { AgentToolGroups.label(it, dynamic) }
+        return AgentToolSearchCatalog.result(hits, labels, unlocked, unavailable)
     }
 
     /**
@@ -413,12 +517,17 @@ internal class AgentLocalTools(
      * 这里用同一套静态判定预先收窄，宁可少报也不多报。
      */
     private fun usableToolsOf(group: AgentToolGroup): List<String> {
+        val disabled = runCatching { Prefs.disabledTools() }.getOrDefault(emptySet())
+        // MCP 工具不在 AgentToolRequirements 注册表里（会判成 UNKNOWN_TOOL）：
+        // 可交付性由快照与单工具启停决定，这里只应用禁用集。
+        if (AgentToolGroups.isMcpGroupId(group.id)) {
+            return group.toolNames.filter { it !in disabled }.sorted()
+        }
         val capabilities = runCatching {
             AgentToolCapabilities.capture(context).copy(
                 virtualDisplay = runSurface == io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.BACKGROUND,
             )
         }.getOrNull() ?: return emptyList()
-        val disabled = runCatching { Prefs.disabledTools() }.getOrDefault(emptySet())
         return group.toolNames
             .filter { name -> name !in disabled && capabilities.canDeliver(name) }
             .sorted()
@@ -705,6 +814,17 @@ internal class AgentLocalTools(
                 "skills_install_from_github" -> textResult(skillsInstallFromGitHub(args))
                 "skills_install_local" -> textResult(skillsInstallLocal(args))
                 AgentToolGroupCatalog.USE_GROUP -> textResult(useToolGroup(args))
+                AgentToolSearchCatalog.SEARCH -> textResult(
+                    if (toolSearchEnabled()) {
+                        searchTools(args)
+                    } else {
+                        errorResult(
+                            code = "TOOL_SEARCH_DISABLED",
+                            message = "当前为按组渐进加载，tools_search 不可用；" +
+                                "请用 tools_use_group 打开所需工具组（见系统提示的组索引）。",
+                        )
+                    },
+                )
                 AgentSelfSettingsToolCatalog.GET_SETTINGS -> textResult(selfSettingsTool { selfSettingsTools.list() })
                 AgentSelfSettingsToolCatalog.SET_SETTINGS -> textResult(selfSettingsTool { selfSettingsTools.set(args) })
                 AgentSelfSettingsToolCatalog.MANAGE_MODELS -> textResult(selfSettingsTool { selfModelTools.execute(args) })

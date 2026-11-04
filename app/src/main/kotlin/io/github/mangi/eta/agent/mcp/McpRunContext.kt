@@ -2,6 +2,8 @@ package io.github.mangi.eta.agent.mcp
 
 import android.util.Base64
 import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.agent.model.AgentToolGroup
+import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.data.model.McpProtocolMode
 import io.github.mangi.eta.data.model.McpServerSetting
 import io.github.mangi.eta.data.model.McpToolDefinition
@@ -26,16 +28,48 @@ internal class McpRunTool(
     val bearerToken: String?,
 )
 
-/** 一次 run 使用冻结的 MCP 工具目录，设置变更从下一次 run 生效。 */
+/**
+ * 一次 run 使用冻结的 MCP 工具目录，设置变更从下一次 run 生效。
+ *
+ * 渐进加载（deferred 暴露模式）下它同时充当 [AgentModelClient.McpToolProjection]：
+ * 每个「有可用工具」的 server 折叠成一个动态延迟组（id = `mcp:<serverId>`），
+ * 未打开的 server 只在组索引里占一行，schema 按 server 粒度经 tools_use_group /
+ * tools_search 打开后下一轮才进目录——对齐内置工具组的 next_turn 语义。
+ */
 internal class McpRunSnapshot(
     val tools: List<McpRunTool>,
-) {
+) : AgentModelClient.McpToolProjection {
     private val byModelName = tools.associateBy(McpRunTool::modelName)
 
     fun resolve(modelName: String): McpRunTool? = byModelName[modelName]
 
-    fun appendModelTools(destination: JSONArray) {
-        tools.forEach { tool ->
+    private val toolsByServer: Map<String, List<McpRunTool>> = tools.groupBy { it.server.id }
+
+    override fun deferredGroups(): List<AgentToolGroup> =
+        toolsByServer.map { (serverId, serverTools) ->
+            val server = serverTools.first().server
+            AgentToolGroup(
+                id = AgentToolGroups.mcpGroupId(serverId),
+                summary = buildString {
+                    append("MCP 服务器「").append(server.name).append("」的 ")
+                        .append(serverTools.size).append(" 个工具：")
+                    append(serverTools.take(MCP_SUMMARY_TOOL_LIMIT).joinToString("、") { it.definition.name })
+                    if (serverTools.size > MCP_SUMMARY_TOOL_LIMIT) append(" 等")
+                },
+                toolNames = serverTools.map { it.modelName }.toSet(),
+                label = "MCP 服务器「${server.name}」",
+            )
+        }
+
+    override fun appendTools(destination: JSONArray, openedGroupIds: Set<String>?) {
+        val projected = if (openedGroupIds == null) {
+            tools
+        } else {
+            // 只追加「所属 server 组已打开」的工具；组 id 与 deferredGroups() 同一映射，
+            // 写错一侧会导致「打开成功但工具永远不出现」。
+            tools.filter { AgentToolGroups.mcpGroupId(it.server.id) in openedGroupIds }
+        }
+        projected.forEach { tool ->
             val description = buildString {
                 append("MCP 服务器「").append(tool.server.name).append("」提供的工具")
                 tool.definition.description.trim().takeIf { it.isNotBlank() }?.let {
@@ -56,7 +90,21 @@ internal class McpRunSnapshot(
         }
     }
 
+    override fun toolDescriptions(): Map<String, String> =
+        tools.associate { it.modelName to it.definition.description }
+
+    override fun openedGroupIdsFrom(toolNames: Collection<String>): Set<String> =
+        tools.filter { it.modelName in toolNames }
+            .mapTo(mutableSetOf()) { AgentToolGroups.mcpGroupId(it.server.id) }
+
+    fun appendModelTools(destination: JSONArray) {
+        appendTools(destination, openedGroupIds = null)
+    }
+
     companion object {
+        /** 组索引一行的工具名摘录上限：索引的价值在短，全量名字交给搜索。 */
+        private const val MCP_SUMMARY_TOOL_LIMIT = 6
+
         val EMPTY = McpRunSnapshot(emptyList())
         private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val refreshing: MutableSet<String> = ConcurrentHashMap.newKeySet()

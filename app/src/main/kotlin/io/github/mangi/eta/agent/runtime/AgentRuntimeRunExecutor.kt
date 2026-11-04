@@ -153,7 +153,26 @@ internal class AgentRuntimeRunExecutor(
             val runVirtualDisplay = {
                 session.taskSurfaceMode == io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.BACKGROUND
             }
-            val mcpTools = JSONArray().also(mcpSnapshot::appendModelTools)
+            // 渐进加载模式在会话首个 run 锁定（对齐 ZCode「新建会话生效，当前会话保持」）：
+            // search = 延迟组 + tools_search 命中解锁；group = 仅 tools_use_group 整组打开；
+            // off = 发送完整工具目录。
+            val toolLoadingMode = runCatching {
+                Prefs.resolveToolLoadingMode(request.effectiveModelSessionId)
+            }.getOrDefault(Prefs.Keys.TOOL_LOADING_MODE_SEARCH)
+            val toolLoadingFullCatalog = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_OFF
+            val toolLoadingSearchEnabled = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_SEARCH
+            val mcpDeferred = runCatching { Prefs.mcpToolExposureDeferred() }.getOrDefault(true)
+            val mcpProjection: AgentModelClient.McpToolProjection? =
+                if (mcpDeferred && !toolLoadingFullCatalog) mcpSnapshot else null
+            val mcpTools = if (mcpProjection == null) {
+                JSONArray().also(mcpSnapshot::appendModelTools)
+            } else {
+                // deferred 暴露：schema 由 AgentModelClient 每轮按已打开 server 追加。
+                JSONArray()
+            }
+            // tools_search 的评分语料：目录重建时填入内置工具描述，MCP 描述在快照就绪后并入。
+            val toolSearchIndex = java.util.concurrent.ConcurrentHashMap<String, String>()
+            if (mcpProjection != null) toolSearchIndex.putAll(mcpSnapshot.toolDescriptions())
             // 手机操作权按 run 登记：状态变化经 GuiControlChanged 投送给服务，run 结束即释放。
             guiRun = guiControl.openRun(request.runId, runController) { status ->
                 acceptEvent(session, AgentEvent.GuiControlChanged(status), archivedEvents, entrySurfaceGuard, checkpointRecorder)
@@ -224,6 +243,9 @@ internal class AgentRuntimeRunExecutor(
                 runAvailableSkillIds = skillContext.installedSkills.mapTo(mutableSetOf()) { it.id },
                 runSkillEntries = skillContext.installedSkills, memoryAssistantId = assistant.id,
                 runSkillsRoot = runSkillsRoot, pendingSkillConflict = pendingSkillConflict,
+                dynamicToolGroups = { if (mcpProjection != null) mcpSnapshot.deferredGroups() else emptyList() },
+                toolSearchDescriptions = { toolSearchIndex },
+                toolSearchEnabled = { toolLoadingSearchEnabled },
             )
             localTools = executor
             unownedSkillRoot = null
@@ -525,6 +547,12 @@ internal class AgentRuntimeRunExecutor(
                         .getOrElse { AgentMemoryContextBuilder.empty(request.config.contextWindow) }
                 },
                 additionalTools = mcpTools,
+                // MCP 渐进加载投影：非 null 时 schema 按已打开 server 逐轮追加；
+                // 搜索语料出口与「发送完整目录」模式随 progressive loading 一起生效。
+                mcpProjection = mcpProjection,
+                searchIndex = toolSearchIndex,
+                toolLoadingFullCatalog = toolLoadingFullCatalog,
+                toolLoadingSearchEnabled = toolLoadingSearchEnabled,
                 // 自进化配方：每轮重新读取，已启用的配方即时出现在模型工具列表里。
                 // 必须是 provider：模型可能在 run 中途新建配方，固定快照会让它本轮就缺席。
                 recipeToolsProvider = {

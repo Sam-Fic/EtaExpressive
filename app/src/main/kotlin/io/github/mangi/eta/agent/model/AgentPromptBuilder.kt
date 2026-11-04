@@ -48,6 +48,8 @@ internal object AgentPromptBuilder {
          * 已打开组的指引块仍按实际目录下发。
          */
         openableGroupLimit: Set<String>? = null,
+        /** 动态延迟组（MCP server）；见 [buildSystemMessages]。 */
+        dynamicToolGroups: List<AgentToolGroup> = emptyList(),
     ): JSONArray {
         val messages = buildSystemMessages(
             config, skillContext, memoryContext, rootAvailable, delegationAvailable, shellTools,
@@ -58,6 +60,7 @@ internal object AgentPromptBuilder {
             callableTools = callableTools,
             trimChatSections = trimChatSections,
             openableGroupLimit = openableGroupLimit,
+            dynamicToolGroups = dynamicToolGroups,
         )
         onSystemCount(messages.length())
         appendHistoryForModel(history, messages)
@@ -155,6 +158,12 @@ internal object AgentPromptBuilder {
         trimChatSections: Boolean = false,
         /** 决策收窄后的可打开组上限；null 不限制。 */
         openableGroupLimit: Set<String>? = null,
+        /**
+         * 动态延迟组（MCP server）：与静态组共用同一份可用性判定与索引，
+         * 成员由各 run 的 MCP 快照决定。索引列出未打开的 server，模型可
+         * tools_use_group 打开或 tools_search 命中后自动解锁。
+         */
+        dynamicToolGroups: List<AgentToolGroup> = emptyList(),
     ): JSONArray {
         val environmentRule = if (shellTools != null) {
             "environment 按下方本机命令检测选择"
@@ -165,7 +174,9 @@ internal object AgentPromptBuilder {
         // 打开后，它的工具与使用指引才同时出现。指引跟着组走，常驻提示只留通用策略，
         // 否则「除基础交互外全延迟」省下的 schema token 会被等量的指引文本吃回去。
         val gate: (AgentToolGroup) -> Boolean = { group ->
-            when (group.id) {
+            // 动态组（MCP server）：存在即允许——快照里没有工具的 server 不会成组，
+            // 单工具启停在快照加载时已过滤；决策收窄不挡 MCP（历史行为就是常驻）。
+            AgentToolGroups.isMcpGroupId(group.id) || when (group.id) {
                 AgentToolGroups.SCREEN_GROUP.id -> config.screenTools
                 AgentToolGroups.WEB_GROUP.id -> config.browserTools
                 AgentToolGroups.TERMINAL_GROUP.id -> config.terminalTools
@@ -178,12 +189,18 @@ internal object AgentPromptBuilder {
                 else -> Prefs.isEnabled(Prefs.Keys.AGENT_BASIC_TOOLS)
             }
         }
-        val availability = AgentToolGroups.availability(openedToolGroups, gate).let { full ->
+        val availability = AgentToolGroups.availability(openedToolGroups, dynamicToolGroups, gate).let { full ->
             if (openableGroupLimit == null) {
                 full
             } else {
                 // 决策收窄：索引不能宣传一个 gate 允许、但被判断模型排除的组。
-                full.copy(openable = full.openable.filterTo(mutableSetOf()) { it in openableGroupLimit })
+                // 动态组（MCP）不受决策枚举约束：决策模型只认识静态组，收窄到它
+                // 不认识的 server 会把原本常驻可用的 MCP 能力整块锁死。
+                full.copy(
+                    openable = full.openable.filterTo(mutableSetOf()) { groupId ->
+                        groupId in openableGroupLimit || AgentToolGroups.isMcpGroupId(groupId)
+                    },
+                )
             }
         }
         /** 该组的工具本轮是否真的在目录里：组开关允许，且延迟组已被打开。 */
@@ -521,7 +538,7 @@ internal object AgentPromptBuilder {
         // 索引宣传一个「能打开」的组，打开后下一轮却拿不到工具，是最糟的体验
         // （模型白花一轮且被反复误导）。入口收窄、子代理最小配置都走这条路径。
         if (!trimChatSections) {
-            AgentToolGroups.indexMessage(availability)?.let { index ->
+            AgentToolGroups.indexMessage(availability, dynamicToolGroups)?.let { index ->
                 messages.put(systemMessage(index))
             }
         }

@@ -3930,10 +3930,21 @@ internal class AgentAppState(
                         history, result, working.size - cut, config.progressBudget(),
                         countsOpaque = { config.replayedOpaqueItems(it) > 0 },
                     )) { "摘要及索引未缩小上下文" }
+                    // 压缩边界标记：被压缩前缀里出现过的延迟组写入一条 system 标记，
+                    // 跨 run 恢复不依赖被压缩掉的工具名。此处拿不到 MCP 快照，
+                    // 动态组由 AgentLoop 内压缩路径负责（两者共用同一标记格式）。
+                    val markerGroups = io.github.mangi.eta.agent.model.AgentToolGroups.deferredGroupsOf(
+                        io.github.mangi.eta.agent.model.AgentToolGroups
+                            .toolNamesFromToolCallsJson(prefix.map { it.toolCallsJson }),
+                    )
+                    val committed = io.github.mangi.eta.agent.model.AgentToolGroups
+                        .openedGroupsMarker(markerGroups)
+                        ?.let { content -> result + AgentModelClient.ConversationMessage(role = "system", content = content) }
+                        ?: result
                     boundArchive.record(id, "ready")
                     // attachReferences + compactionReduced + ready 全部成功之后才宣告摘要提交成功。
                     onSummaryCommitted?.invoke()
-                    result
+                    committed
                 } catch (failure: Exception) {
                     runCatching { boundArchive.record(id, "failed") }
                     // Never turn stop/coroutine cancellation into pruning-only success.

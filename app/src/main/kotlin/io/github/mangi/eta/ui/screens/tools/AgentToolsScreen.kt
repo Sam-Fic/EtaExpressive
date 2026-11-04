@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.screens.tools
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
+import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
@@ -95,6 +97,91 @@ fun AgentToolsScreen(
                     rootGranted = capabilities.root.isGranted,
                     capabilities = capabilities.tools,
                     onAction = onAction,
+                )
+            }
+        }
+        item(key = "tool-loading-settings") {
+            ToolLoadingSettings()
+        }
+    }
+}
+
+/**
+ * 渐进加载设置（对齐 ZCode「工具搜索」设置项，三档）：
+ * - 按工具：延迟组 + tools_search 命中即解锁所属组；
+ * - 按组：只能用 tools_use_group 整组打开（最初行为）；
+ * - 关闭：发送完整工具目录。
+ * 新建会话生效，当前会话保持原设置（Prefs.resolveToolLoadingMode 的会话锁定）。
+ * 另有 MCP 暴露开关：按 server 粒度延迟加载，或全量常驻（旧行为）。
+ *
+ * 直接读写 Prefs：与 DecisionModelSettingsScreen 的既有模式一致，
+ * 生效时机由 run 侧读取决定，这里只改偏好。
+ */
+@Composable
+private fun ToolLoadingSettings() {
+    val view = LocalView.current
+    var mode by rememberSaveable { mutableStateOf(Prefs.toolLoadingMode()) }
+    var mcpDeferred by rememberSaveable { mutableStateOf(Prefs.mcpToolExposureDeferred()) }
+    val modeOptions = listOf(
+        Prefs.Keys.TOOL_LOADING_MODE_SEARCH,
+        Prefs.Keys.TOOL_LOADING_MODE_GROUP,
+        Prefs.Keys.TOOL_LOADING_MODE_OFF,
+    )
+    EtaSegmentedColumn(
+        modifier = Modifier.padding(
+            start = EtaGroupHorizontalPadding,
+            end = EtaGroupHorizontalPadding,
+            bottom = EtaSegmentedGroupSpacing,
+        ),
+    ) {
+        item(key = "loading-mode") {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                ToolsSegmentTabs(
+                    tabs = listOf(
+                        stringResource(R.string.tools_loading_mode_search),
+                        stringResource(R.string.tools_loading_mode_group),
+                        stringResource(R.string.tools_loading_mode_off),
+                    ),
+                    selectedIndex = modeOptions.indexOf(mode).coerceAtLeast(0),
+                    onSelect = { index ->
+                        val next = modeOptions[index]
+                        if (next != mode) {
+                            TouchHaptics.toggle(view, next != Prefs.Keys.TOOL_LOADING_MODE_OFF)
+                            mode = next
+                            Prefs.setToolLoadingMode(next)
+                        }
+                    },
+                    modifier = Modifier.padding(16.dp),
+                )
+                M3Text(
+                    text = stringResource(R.string.tools_loading_mode_title),
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                M3Text(
+                    text = stringResource(R.string.tools_loading_mode_summary),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                )
+            }
+        }
+        item(key = "mcp-exposure") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    M3Text(text = stringResource(R.string.tools_mcp_deferred_title))
+                    M3Text(text = stringResource(R.string.tools_mcp_deferred_summary))
+                }
+                Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
+                EtaSwitch(
+                    checked = mcpDeferred,
+                    onCheckedChange = { enabled ->
+                        TouchHaptics.toggle(view, enabled)
+                        mcpDeferred = enabled
+                        Prefs.setMcpToolExposureDeferred(enabled)
+                    },
                 )
             }
         }

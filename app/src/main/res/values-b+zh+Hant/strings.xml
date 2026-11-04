@@ -825,6 +825,13 @@
   <string name="settings_personal_tools_summary">讀取你的個人內容（聯絡人、簡訊、通話、日曆、便條、帳單、行程、錄音、檔案）與裝置狀態（設定、鬧鐘、位置、應用使用）</string>
   <string name="settings_extensions_tools">Eta 設定與擴充</string>
   <string name="settings_extensions_tools_summary">允許模型管理 Eta 自身（模型、子代理、歷史、MCP、設定）、撰寫自己的配方工具、安裝 Skills 並寫入長期記憶</string>
+  <string name="tools_loading_mode_title">工具漸進載入</string>
+  <string name="tools_loading_mode_summary">按工具：延遲組加 tools_search 關鍵字搜尋單個工具，命中即解鎖所屬組；按組：只能用 tools_use_group 整組開啟；關閉：傳送完整工具目錄。新建會話後生效，目前會話保持原設定</string>
+  <string name="tools_loading_mode_search">按工具</string>
+  <string name="tools_loading_mode_group">按組</string>
+  <string name="tools_loading_mode_off">關閉</string>
+  <string name="tools_mcp_deferred_title">MCP 工具按需載入</string>
+  <string name="tools_mcp_deferred_summary">每個 MCP 伺服器作為一個延遲組按需載入；關閉後所有伺服器的工具 schema 全量常駐</string>
   <string name="tools_per_tool_switch_hint">單獨關掉某個工具後，即使所在分組已啟用也不會下發它</string>
   <string name="tool_ui_ask_user">向你提問</string>
   <string name="tool_ui_ask_user_summary">當某個決定會改變執行結果時，暫停並向你提一個帶選項的關鍵問題</string>
@@ -860,8 +867,12 @@
   <string name="settings_device_state_reads_summary">設定、系統狀態、鬧鐘、定位與應用使用情況。風險低於個人資料</string>
   <string name="aes_tool_groups_title">該助理的工具分組</string>
   <string name="aes_tool_group_globally_off">已被總開關關閉</string>
-  <string name="settings_confirm_dangerous_tools">執行破壞性操作前確認</string>
-  <string name="settings_confirm_dangerous_tools_summary">在執行重啟、解除安裝應用程式、清除資料或刪除使用者前先詢問。唯讀工具不會被打斷</string>
+  <string name="settings_tool_review_mode">工具呼叫審查</string>
+  <string name="settings_tool_review_mode_summary">唯讀：非唯讀呼叫直接拒絕。嚴格：中風險逐次確認。標準：中風險每個會話確認一次。自動：中風險不再詢問；高風險與致命操作在任何檔位都會先確認</string>
+  <string name="settings_tool_review_mode_readonly">唯讀</string>
+  <string name="settings_tool_review_mode_strict">嚴格</string>
+  <string name="settings_tool_review_mode_standard">標準</string>
+  <string name="settings_tool_review_mode_auto">自動</string>
   <string name="settings_subagent_tools">子代理委派</string>
   <string name="settings_subagent_tools_summary">允許模型將獨立任務交給已配置的處理程序。每次委派都在另一個模型上執行，並單獨計費</string>
   <string name="settings_screen_tools">螢幕觀察與 GUI 操作</string>
@@ -2968,6 +2979,7 @@
   <string name="media_selected_count">已選 %1$d 項</string>
   <string name="media_action_select_all">全選</string>
   <string name="media_action_deselect_all">取消全選</string>
+  <string name="media_action_add_to_chat">加入會話</string>
   <string name="media_action_remove_from_index">移出索引</string>
   <string name="media_action_delete_files">刪除檔案</string>
   <string name="media_delete_files_title">刪除所選 %1$d 個檔案？</string>

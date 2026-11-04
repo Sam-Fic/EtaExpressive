@@ -717,6 +717,13 @@
   <string name="settings_extensions_tools">Eta 配置与扩展</string>
   <string name="settings_extensions_tools_summary">允许模型管理 Eta 自身（模型、子代理、历史、MCP、设置）、编写自己的配方工具、安装 Skills 并写入长期记忆</string>
   <string name="tools_per_tool_switch_hint">单独关掉某个工具后，即使所在分组已启用也不会下发它</string>
+  <string name="tools_loading_mode_title">工具渐进加载</string>
+  <string name="tools_loading_mode_summary">按工具：延迟组加 tools_search 关键词搜索单个工具，命中即解锁所属组；按组：只能用 tools_use_group 整组打开；关闭：发送完整工具目录。新建会话后生效，当前会话保持原设置</string>
+  <string name="tools_loading_mode_search">按工具</string>
+  <string name="tools_loading_mode_group">按组</string>
+  <string name="tools_loading_mode_off">关闭</string>
+  <string name="tools_mcp_deferred_title">MCP 工具按需加载</string>
+  <string name="tools_mcp_deferred_summary">每个 MCP 服务器作为一个延迟组按需加载；关闭后所有服务器的工具 schema 全量常驻</string>
   <string name="tool_ui_ask_user">向你提问</string>
   <string name="tool_ui_ask_user_summary">当某个决定会改变执行结果时，暂停并向你提一个带选项的关键问题</string>
   <string name="tool_ui_skills_list">列出 Skills</string>
@@ -751,8 +758,12 @@
   <string name="settings_device_state_reads_summary">设置、系统状态、闹钟、定位与应用使用情况。风险低于个人信息</string>
   <string name="aes_tool_groups_title">该助手的工具分组</string>
   <string name="aes_tool_group_globally_off">已被总开关关闭</string>
-  <string name="settings_confirm_dangerous_tools">执行破坏性操作前确认</string>
-  <string name="settings_confirm_dangerous_tools_summary">在执行重启、卸载应用、清除数据或删除用户前先询问。只读工具不会被打断</string>
+  <string name="settings_tool_review_mode">工具调用审查</string>
+  <string name="settings_tool_review_mode_summary">只读：非只读调用直接拒绝。严格：中风险逐次确认。标准：中风险每个会话确认一次。自动：中风险不再询问；高风险与致命操作在任何档位都会先确认</string>
+  <string name="settings_tool_review_mode_readonly">只读</string>
+  <string name="settings_tool_review_mode_strict">严格</string>
+  <string name="settings_tool_review_mode_standard">标准</string>
+  <string name="settings_tool_review_mode_auto">自动</string>
   <string name="settings_subagent_tools">子代理委派</string>
   <string name="settings_subagent_tools_summary">允许模型将独立任务交给已配置的工作进程。每次委派运行在另一个模型上，并单独计费</string>
   <string name="settings_screen_tools">屏幕观察与 GUI 操作</string>
@@ -2968,6 +2979,7 @@
   <string name="media_selected_count">已选 %1$d 项</string>
   <string name="media_action_select_all">全选</string>
   <string name="media_action_deselect_all">取消全选</string>
+  <string name="media_action_add_to_chat">添加到会话</string>
   <string name="media_action_remove_from_index">移出索引</string>
   <string name="media_action_delete_files">删除文件</string>
   <string name="media_delete_files_title">删除所选 %1$d 个文件？</string>
