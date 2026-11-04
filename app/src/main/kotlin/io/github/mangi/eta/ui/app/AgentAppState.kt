@@ -627,7 +627,8 @@ internal class AgentAppState(
      *
      * 语义是归档而不是删除：
      * - 快照是独立 id 的普通会话行（软删除），回收站里与普通会话一致，可恢复、可永久删除；
-     * - 调度台本体只清消息与上下文，真实标题、置顶、updatedAt 都不动（侧栏仍固定显示「调度台」）；
+     * - 调度台本体只清消息与上下文，并把真实标题复位成新建时的初始值（顶栏随之复原）；
+     *   置顶与 updatedAt 不动，侧栏仍固定显示「调度台」；
      * - 快照消息 id 统一加 `archive-<seq>-` 前缀，多次清空的块据此排序，恢复时可精确去重。
      */
     fun clearDispatchConsoleContext() {
@@ -640,6 +641,9 @@ internal class AgentAppState(
         val now = System.currentTimeMillis()
         val seq = archiveSequence(now)
         val snapshotId = "$DISPATCH_CONSOLE_ARCHIVE_PREFIX$seq-${UUID.randomUUID().toString().take(8)}"
+        // 必须在下面「复位本体标题」之前读取：快照标题要用被清空那一刻的真实标题，
+        // 复位后的「调度台」不算旧标题。
+        val consoleTitleBeforeClear = conversationTitles[consoleId]
         val snapshotMessages = console.messages.map { message ->
             message.withMessageId("$ARCHIVE_MESSAGE_ID_PREFIX$seq-${message.id}")
         }
@@ -656,7 +660,7 @@ internal class AgentAppState(
             gptSpeedMode = console.gptSpeedMode,
         )
         conversationsById = conversationsById + (snapshotId to snapshot)
-        conversationTitles = conversationTitles + (snapshotId to archiveSnapshotTitle(now))
+        conversationTitles = conversationTitles + (snapshotId to archiveSnapshotTitle(now, consoleTitleBeforeClear))
         conversationCreatedAt = conversationCreatedAt + (snapshotId to now)
         conversationUpdatedAt = conversationUpdatedAt + (snapshotId to now)
         conversationDeletedAt = conversationDeletedAt + (snapshotId to now)
@@ -671,6 +675,11 @@ internal class AgentAppState(
         pendingConversationTitles.remove(consoleId)
         titleRequestSeq.remove(consoleId)
         manuallyRenamedDuringTitleRequest -= consoleId
+        // 真实标题复位成「新建调度台」时的初始值（顶栏读的就是这个字段，否则会停在
+        // 上一轮自动生成的标题里）；侧栏展示名由 displayTitle 固定为「调度台」，
+        // 不读这里。快照标题已在上面单独写入，不受影响。上一行已解除重命名守卫，
+        // 且 history 清空后下一轮会重新登记标题生成，复位不会阻塞后续自动标题。
+        conversationTitles = conversationTitles + (consoleId to dispatchConsoleTitle())
         val cleared = emptyChatState(console.thinkingEnabled).copy(
             providerId = console.providerId,
             modelId = console.modelId,
@@ -782,8 +791,21 @@ internal class AgentAppState(
     /** 归档序号：固定 16 位，便于按字符串比较，也便于从 id 反解。 */
     private fun archiveSequence(now: Long): String = now.toString().padStart(16, '0')
 
-    private fun archiveSnapshotTitle(now: Long): String =
-        "调度台归档 · " + DateFormat.format("yyyy-MM-dd HH:mm", now)
+    /**
+     * 归档快照标题：优先沿用被清空那一刻的真实标题，回收站里能认出是哪一段；
+     * 没有可用标题时回退到时间戳，保证快照标题始终可读、可用于检索。
+     *
+     * 保留「调度台归档 · 」前缀而不是直接用原标题：回收站里要能一眼区分归档快照与
+     * 普通会话，多段归档也不至于和原本地会话标题混淆。空白或仍是新建初值
+     * [dispatchConsoleTitle]（说明这一段还没生成过标题）都视为「没有可用标题」。
+     */
+    private fun archiveSnapshotTitle(now: Long, sourceTitle: String?): String {
+        val original = sourceTitle?.trim().orEmpty()
+        val suffix = original
+            .takeUnless { it.isEmpty() || it == dispatchConsoleTitle() }
+            ?: DateFormat.format("yyyy-MM-dd HH:mm", now)
+        return "调度台归档 · $suffix"
+    }
 
     private fun isDispatchConsoleArchiveSnapshot(conversationId: String): Boolean =
         conversationId.startsWith(DISPATCH_CONSOLE_ARCHIVE_PREFIX)

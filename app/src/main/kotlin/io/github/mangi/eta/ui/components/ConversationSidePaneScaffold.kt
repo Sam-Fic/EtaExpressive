@@ -100,7 +100,6 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -294,7 +293,7 @@ fun ConversationSidePaneScaffold(
         drawerState.applyEtaDrawerMotion(density)
     }
     val drawerScope = rememberCoroutineScope()
-    // 侧栏跟随页面退场时用的时长：导航转场时长（300ms）+ 两帧余量，见 EtaMotion.drawerNavExitMillis。
+    // 侧栏跟随页面退场时用的时长：导航转场时长（500ms）+ 两帧余量，见 EtaMotion.drawerNavExitMillis。
     // 只要不短于新页推入，新页就会先把侧栏盖住，侧栏收得再慢也不会露出空档。
     val drawerNavExitMotion: FiniteAnimationSpec<Float> = remember {
         tween(
@@ -381,12 +380,11 @@ fun ConversationSidePaneScaffold(
         drawerBlocksIme = visible
     }
 
-    // 侧栏宿主页（首页）被导航盖住、整页移出组合后，复位调用方持有的「展开」标记。
-    // 转场期间必须保持展开：此时侧栏是首页仅有的可见表面，若提前合上会露出聊天主页
-    // 造成闪动；等首页真正移出组合再复位，回首页时侧栏仍从收起态开始。
-    DisposableEffect(Unit) {
-        onDispose { currentOnDismiss() }
-    }
+    // 首页（侧栏宿主页）被导航盖住、整页移出组合时，刻意不复位调用方持有的「展开」标记。
+    // 侧栏展开是用户明确选择的界面状态：从侧栏进入设置 / 管理分类 / 管理会话等页面再退回来，
+    // 必须仍停在侧栏页，不能掉回聊天主页。离场时侧栏已随首页一起滑走，不会留下任何可见残留。
+    // 反过来，从顶栏 / 首页动作进入这些页面时侧栏本来就是收起的，标记天然是 false，
+    // 返回时也就不会凭空弹出侧栏——不需要额外的「哪一页是从侧栏打开的」追踪。
 
     LaunchedEffect(drawerState, visible, focusManager, keyboard, view) {
         snapshotFlow {
@@ -462,7 +460,12 @@ fun ConversationSidePaneScaffold(
                     state = state,
                     width = panelWidth,
                     drawerShape = shape,
-                    onNewConversation = onNewConversation,
+                    // 新建会话后必须落到对话页：窄屏侧栏是全屏覆盖，按「点选会话」同一条路径收起；
+                    // 宽屏是并排停靠，closePaneWithMotion 内部会直接跳过，侧栏留在原地。
+                    onNewConversation = {
+                        onNewConversation()
+                        closePaneWithMotion()
+                    },
                     onOpenSearchHistory = onOpenSearchHistory,
                     onConversationSelected = selectConversation,
                     onConversationRename = onConversationRename,

@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.app
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -7,10 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.ButtonDefaults
@@ -29,13 +32,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
-import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
@@ -173,12 +176,24 @@ internal fun Material3HomeTopBar(
                                     contentColor = MaterialTheme.colorScheme.onSurface,
                                 ),
                             ) {
-                                // 官方 SplitButton 尾段：尺寸取官方 18dp 图标槽，旋转走共享箭头。
-                                EtaExpandChevron(
-                                    expanded = menuExpanded,
+                                // 官方 SplitButton 尾段没有内建箭头/旋转 API（1.5.0-alpha29 只有
+                                // checked 状态与 18dp 图标槽），官方示例也是在内容槽里自己转：
+                                // 收起态朝下（0°），展开态朝上（180°）。这里刻意不套行尾箭头
+                                // 的 0°→90° 规则——SplitButton 是另一套语义。KeyboardArrowDown
+                                // 是竖向箭头，RTL 下无需镜像，两个方向都保持「下 → 上」。
+                                val chevronRotation by animateFloatAsState(
+                                    targetValue = if (menuExpanded) 180f else 0f,
+                                    animationSpec = MaterialTheme.motionScheme
+                                        .defaultSpatialSpec<Float>(),
+                                    label = "split-button-trailing-chevron",
+                                )
+                                Icon(
+                                    imageVector = Icons.Rounded.KeyboardArrowDown,
                                     contentDescription = stringResource(R.string.action_more),
+                                    modifier = Modifier
+                                        .size(SplitButtonDefaults.TrailingIconSize)
+                                        .rotate(chevronRotation),
                                     tint = LocalContentColor.current,
-                                    size = SplitButtonDefaults.TrailingIconSize,
                                 )
                             }
                         }

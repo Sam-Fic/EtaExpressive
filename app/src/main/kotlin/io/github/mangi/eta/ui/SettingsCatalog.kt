@@ -12,6 +12,7 @@ import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.DesktopWindows
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups
@@ -91,6 +92,8 @@ internal object SettingsKeys {
     const val AGENT_TASK_PREFERENCE = "agent_task_preference"
     const val TOOL_SHELL = "tool_shell"
     const val TOOL_CONFIRM_DANGEROUS = "tool_confirm_dangerous"
+    const val TOOL_LOADING_MODE = "tool_loading_mode"
+    const val MCP_TOOL_EXPOSURE = "mcp_tool_exposure"
     const val TOOL_SUBAGENT = "tool_subagent"
     const val MEDIA_INDEX = "media_index"
 
@@ -452,22 +455,44 @@ internal fun settingsCatalog(): List<SettingsEntry> {
         )
         add(
             SettingsEntry(
-                key = SettingsKeys.TOOL_SHELL,
-                title = stringResource(R.string.settings_shell_tools),
-                summary = stringResource(R.string.settings_shell_tools_summary),
-                keywords = "shell command 命令 执行 终端 run_command terminal 安全",
-                icon = Icons.Rounded.Code,
+                key = SettingsKeys.TOOL_CONFIRM_DANGEROUS,
+                title = stringResource(R.string.settings_tool_review_mode),
+                summary = stringResource(R.string.settings_tool_review_mode_summary),
+                keywords = "dangerous confirm 危险 高危 确认 审查 只读 严格 标准 自动 安全 拦截 review permission",
+                icon = Icons.Rounded.Warning,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Inline,
             ),
         )
         add(
             SettingsEntry(
-                key = SettingsKeys.TOOL_CONFIRM_DANGEROUS,
-                title = stringResource(R.string.settings_tool_review_mode),
-                summary = stringResource(R.string.settings_tool_review_mode_summary),
-                keywords = "dangerous confirm 危险 高危 确认 审查 只读 严格 标准 自动 安全 拦截 review permission",
-                icon = Icons.Rounded.Warning,
+                key = SettingsKeys.TOOL_LOADING_MODE,
+                title = stringResource(R.string.tools_loading_mode_title),
+                summary = stringResource(R.string.tools_loading_mode_summary),
+                keywords = "progressive 渐进 工具加载 tools_search tools_use_group 按工具 按组 关闭 延迟 搜索",
+                icon = Icons.Rounded.Layers,
+                group = groupToolCapabilities,
+                destination = SettingsDestination.Inline,
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.MCP_TOOL_EXPOSURE,
+                title = stringResource(R.string.tools_mcp_deferred_title),
+                summary = stringResource(R.string.tools_mcp_deferred_summary),
+                keywords = "mcp 按需 延迟 deferred 常驻 全量 schema 服务器 server",
+                icon = Icons.Rounded.Dns,
+                group = groupToolCapabilities,
+                destination = SettingsDestination.Inline,
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.TOOL_SHELL,
+                title = stringResource(R.string.settings_shell_tools),
+                summary = stringResource(R.string.settings_shell_tools_summary),
+                keywords = "shell command 命令 执行 终端 run_command terminal 安全",
+                icon = Icons.Rounded.Code,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Inline,
             ),

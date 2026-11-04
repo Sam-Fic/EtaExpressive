@@ -96,9 +96,14 @@ internal object Prefs {
         const val TOOL_LOADING_MODE_CONVERSATION = "agent_tool_loading_mode_conversation"
 
         /**
-         * MCP 工具暴露方式：[MCP_EXPOSURE_DEFERRED] = 按 server 粒度渐进加载
-         * （每个 server 一个动态延迟组）；[MCP_EXPOSURE_ALWAYS] = 全量常驻（旧行为，
-         * 最多 64 个 schema 每轮请求重发）。
+         * MCP 工具暴露方式（布尔）：true = 按 server 粒度渐进加载（每个 server 一个
+         * 动态延迟组），false = 全量常驻（旧行为，最多 64 个 schema 每轮请求重发）。
+         */
+        const val AGENT_MCP_EXPOSURE_DEFERRED = "agent_mcp_exposure_deferred"
+
+        /**
+         * 已退役的字符串键（deferred / always），只由
+         * [Prefs.mcpToolExposureDeferred] 的读时迁移读取一次；新写入一律不再碰它。
          */
         const val AGENT_MCP_EXPOSURE = "agent_mcp_exposure"
         const val MCP_EXPOSURE_DEFERRED = "deferred"
@@ -564,15 +569,38 @@ internal object Prefs {
     fun toolLoadingSearchEnabled(conversationId: String): Boolean =
         resolveToolLoadingMode(conversationId) == Keys.TOOL_LOADING_MODE_SEARCH
 
-    /** MCP 工具是否按 server 粒度渐进加载；false = 全量常驻（旧行为）。 */
-    fun mcpToolExposureDeferred(): Boolean =
-        getString(Keys.AGENT_MCP_EXPOSURE, Keys.MCP_EXPOSURE_DEFERRED) == Keys.MCP_EXPOSURE_DEFERRED
+    /**
+     * MCP 工具是否按 server 粒度渐进加载；false = 全量常驻（旧行为）。
+     *
+     * 布尔化后的读时迁移：新键优先；只有新键不存在时才读退役的字符串键，并把结果
+     * 写回新键（此后不再读旧键）。挪用的先例见 [toolReviewMode] 的旧布尔迁移。
+     * 本地没有旧值再查 remote（历史版本可能只落在这边），但 remote 不回写。
+     */
+    fun mcpToolExposureDeferred(): Boolean {
+        localAgent?.let { prefs ->
+            if (prefs.contains(Keys.AGENT_MCP_EXPOSURE_DEFERRED)) {
+                return prefs.getBoolean(Keys.AGENT_MCP_EXPOSURE_DEFERRED, true)
+            }
+            if (prefs.contains(Keys.AGENT_MCP_EXPOSURE)) {
+                val deferred = prefs.getString(Keys.AGENT_MCP_EXPOSURE, null) != Keys.MCP_EXPOSURE_ALWAYS
+                prefs.edit().putBoolean(Keys.AGENT_MCP_EXPOSURE_DEFERRED, deferred).apply()
+                return deferred
+            }
+        }
+        remote?.let { prefs ->
+            if (prefs.contains(Keys.AGENT_MCP_EXPOSURE_DEFERRED)) {
+                return prefs.getBoolean(Keys.AGENT_MCP_EXPOSURE_DEFERRED, true)
+            }
+            if (prefs.contains(Keys.AGENT_MCP_EXPOSURE)) {
+                return prefs.getString(Keys.AGENT_MCP_EXPOSURE, null) != Keys.MCP_EXPOSURE_ALWAYS
+            }
+        }
+        return true
+    }
 
+    /** 只写新布尔键；旧字符串键保留但不再读写（回滚兼容）。 */
     fun setMcpToolExposureDeferred(deferred: Boolean) {
-        putString(
-            Keys.AGENT_MCP_EXPOSURE,
-            if (deferred) Keys.MCP_EXPOSURE_DEFERRED else Keys.MCP_EXPOSURE_ALWAYS,
-        )
+        localAgent?.edit()?.putBoolean(Keys.AGENT_MCP_EXPOSURE_DEFERRED, deferred)?.apply()
     }
 
     /**

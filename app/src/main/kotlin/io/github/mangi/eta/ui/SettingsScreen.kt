@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GppMaybe
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Compress
@@ -556,6 +558,39 @@ internal fun SettingsScreen(
                 // 下面几项不是能力分组，而是执行行为：关掉不会让某一组工具消失，
                 // 只改变「怎么执行 / 允许执行到什么程度」。因此留在设置页，
                 // 与工具页的卡片开关互不重复；被它们挡住的工具行会在工具页置灰并指到这里。
+                row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
+                    ToolReviewModeRow(
+                        title = stringResource(R.string.settings_tool_review_mode),
+                        summary = stringResource(R.string.settings_tool_review_mode_summary),
+                    )
+                }
+
+                // 渐进加载与 MCP 暴露原本在工具页底部；它们同样是「怎么执行」的执行策略，
+                // 与审查档位紧邻，放在主页这一组里才不用为了改一个开关再进子页。
+                row(key = SettingsKeys.TOOL_LOADING_MODE) {
+                    ToolLoadingModeRow(
+                        title = stringResource(R.string.tools_loading_mode_title),
+                        summary = stringResource(R.string.tools_loading_mode_summary),
+                    )
+                }
+
+                row(key = SettingsKeys.MCP_TOOL_EXPOSURE) {
+                    // 老版本存的是字符串键（deferred / always）。这里先走一次读时迁移，
+                    // 让下面 SwitchPref 首次读布尔新键时拿到的就是迁移后的真实值，
+                    // 而不是「新键缺失 → 默认 true」。apply() 会同步更新内存副本。
+                    remember { Prefs.mcpToolExposureDeferred() }
+                    SwitchPref(
+                        context = context,
+                        prefs = agentPrefs,
+                        title = stringResource(R.string.tools_mcp_deferred_title),
+                        summary = stringResource(R.string.tools_mcp_deferred_summary),
+                        key = Prefs.Keys.AGENT_MCP_EXPOSURE_DEFERRED,
+                        icon = Icons.Rounded.Dns,
+                    )
+                }
+
+                // Shell 与审查/加载策略同属「怎么执行」，但排在这两项之后：
+                // 先定工具目录与暴露方式，再决定命令执行能力。
                 row(key = SettingsKeys.TOOL_SHELL) {
                     SwitchPref(
                         context = context,
@@ -564,13 +599,6 @@ internal fun SettingsScreen(
                         summary = stringResource(R.string.settings_shell_tools_summary),
                         key = Prefs.Keys.AGENT_SHELL_TOOLS,
                         icon = Icons.Rounded.Code,
-                    )
-                }
-
-                row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
-                    ToolReviewModeRow(
-                        title = stringResource(R.string.settings_tool_review_mode),
-                        summary = stringResource(R.string.settings_tool_review_mode_summary),
                     )
                 }
 
@@ -1097,6 +1125,47 @@ private fun ToolReviewModeRow(title: String, summary: String) {
                 if (mode != value) {
                     mode = value
                     Prefs.setToolReviewMode(value)
+                }
+            }
+        },
+        summary = summary,
+    )
+}
+
+/**
+ * 工具渐进加载（三档）：与 [ToolReviewModeRow] 同族的下拉行。
+ *
+ * 档位语义与工具页一致：按工具 = tools_search 命中解锁所属组；按组 = 仅
+ * tools_use_group 整组打开；关闭 = 下发完整工具目录。写入 [Prefs.setToolLoadingMode]，
+ * 新建会话生效（当前会话由 run 侧的会话锁保持原设置）。
+ */
+@Composable
+private fun ToolLoadingModeRow(
+    title: String,
+    summary: String? = null,
+) {
+    var mode by remember { mutableStateOf(Prefs.toolLoadingMode()) }
+    val options = listOf(
+        Prefs.Keys.TOOL_LOADING_MODE_SEARCH,
+        Prefs.Keys.TOOL_LOADING_MODE_GROUP,
+        Prefs.Keys.TOOL_LOADING_MODE_OFF,
+    )
+    val labels = listOf(
+        stringResource(R.string.tools_loading_mode_search),
+        stringResource(R.string.tools_loading_mode_group),
+        stringResource(R.string.tools_loading_mode_off),
+    )
+    EtaSegmentedDropdownRow(
+        title = title,
+        // 渐进加载是「工具目录怎么下发」：与同组其余行共用行首图标槽。
+        icon = Icons.Rounded.Layers,
+        items = labels,
+        selectedIndex = options.indexOf(mode).coerceAtLeast(0),
+        onItemSelected = { index ->
+            options.getOrNull(index)?.let { value ->
+                if (mode != value) {
+                    mode = value
+                    Prefs.setToolLoadingMode(value)
                 }
             }
         },
