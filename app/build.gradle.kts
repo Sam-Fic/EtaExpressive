@@ -185,6 +185,8 @@ dependencies {
     // 官方类型安全导航（NavHost / NavController）
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.navigationevent)
+    // miuix 导航容器（NavDisplay / NavBackStack）：阶段 0 只接入依赖，尚未接线。
+    implementation(libs.miuix.nav)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.activity.compose)

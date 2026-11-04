@@ -1,20 +1,19 @@
 package io.github.mangi.eta.ui.navigation
 
-import android.annotation.SuppressLint
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavController
-import androidx.navigation.toRoute
+import androidx.compose.runtime.snapshots.Snapshot
+import io.github.mangi.eta.core.AndroidAgentLogger
 import kotlin.reflect.KClass
+import top.yukonga.miuix.kmp.nav.core.NavBackStack
+import top.yukonga.miuix.kmp.nav.core.NavKey
 
 /**
- * AppRoute 的具体类型集合。NavHost 是按具体类型（而不是 sealed 基类）注册目标的，
- * 所以把返回栈条目还原成路由时必须用具体类型的序列化器。
+ * AppRoute 的具体类型集合。miuix 的 NavDisplay 按具体类型（而不是 sealed 基类）登记目标
+ * （`entry<T>` 只精确匹配 T::class），所以返回栈里的每个条目都必须在容器里显式登记。
  *
- * 这里**不能**用 `AppRoute::class.java.permittedSubclasses` 或
- * [androidx.navigation.NavDestination.hasRoute] 这类运行时反射/序列化器哈希：
- * R8 混淆下二者会静默失效（映射结果为空），应用内返回按钮因此把任何页面
- * 误判成根页面。改为编译期显式登记 + destination.route 字符串匹配，
- * 新增路由时需同步维护本表（有单元测试对照 permittedSubclasses 防漏登）。
+ * 这里**不能**用 `AppRoute::class.java.permittedSubclasses` 这类运行时反射做登记：
+ * R8 混淆下会静默失效。改为编译期显式登记，新增路由时需同步维护本表
+ * （有单元测试对照 permittedSubclasses 防漏登）；容器兜底也用它判断
+ * 「这个 key 有没有可渲染的 entry」。
  */
 private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.Home::class,
@@ -85,8 +84,8 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.RemoteAgentEditor::class,
 )
 
-/** 模式串（destination.route）→ 路由类型；导航目标是复用的，所以只需解析一次。 */
-private val routeTypesByPattern = mutableMapOf<String, KClass<out AppRoute>?>()
+/** 显式登记表的类型集合（容器兜底用；O(1) 判重，避免每次重组线性扫描 66 项）。 */
+private val appRouteTypeSet: Set<KClass<out AppRoute>> = appRouteTypes.toSet()
 
 /** 按模式串匹配 [AppRoute] 具体类型：全等（无参路由）或 `序列名/` 前缀（带参路由）。 */
 private fun matchRouteType(routePattern: String): KClass<out AppRoute>? =
@@ -103,61 +102,69 @@ internal fun routePatternOf(route: AppRoute, pattern: () -> String): KClass<out 
     matchRouteType(pattern())
 
 /**
- * 把返回栈条目的 destination.route 模式串匹配到 [AppRoute] 具体类型。
+ * 容器兜底：该返回栈条目是否有可渲染的 entry。
  *
- * 模式串是 `序列名`（无参路由）或 `序列名/{参数}`（带参路由）；类名受 proguard
- * keep 规则保护，所以拿 [KClass.qualifiedName] 做前缀匹配即可，
- * 不依赖 hasRoute 的序列化器哈希契约。不是 App 路由（例如导航图本身）时返回 null。
+ * miuix 0.9.4 的 `NavEntryBuilder.build()` 对未登记的类型直接 `error(...)`（且 `entryProvider`
+ * 是 internal，无法自己拼一个 fallback provider），所以宿主在渲染前先用它筛一遍，
+ * 把不可渲染的条目挡在 NavDisplay 之外，交给最小错误页。
  */
-internal fun NavBackStackEntry.toAppRoute(): AppRoute? {
-    val routePattern = destination.route.orEmpty()
-    if (routePattern.isEmpty()) return null
-    val type = routeTypesByPattern.getOrPut(routePattern) { matchRouteType(routePattern) }
-        ?: return null
-    return toRoute(type)
-}
+internal fun isKnownAppRoute(key: NavKey): Boolean =
+    key is AppRoute && key::class in appRouteTypeSet
 
 /**
- * 用 androidx [NavController] 实现的路由栈，公开接口与旧实现保持一致。
+ * 用 miuix [NavBackStack]（`SnapshotStateList<NavKey>`）实现的路由栈，公开接口与旧实现保持一致。
  */
 class AgentNavigator(
-    private val navController: NavController,
+    private val backStack: NavBackStack,
 ) {
     fun push(route: AppRoute) {
-        if (routes().none { it == route }) {
-            navController.navigate(route)
+        if (backStack.none { it == route }) {
+            backStack.add(route)
         }
     }
 
-    // NavController.currentBackStack 是 RestrictedApi：导航库没有公开「观察完整返回栈」的
-    // Flow 替代，这里只读取快照做路由定位，抑制并记录理由。
-    @SuppressLint("RestrictedApi")
+    /**
+     * 换掉栈顶 / 跳到已有的那一层。
+     *
+     * 目标已在栈里：截断到它成为栈顶（一次快照内完成，只播一段退场）。
+     * 否则整栈清空再入栈：不能只替换栈顶——从设置 / 管理页打开助手会话时，否则会留下
+     * Home → Chat 两层对话界面，返回时先弹掉 Chat 落回 Home，而不是直接走退出判定。
+     */
     fun replace(route: AppRoute) {
-        val entries = navController.currentBackStack.value
-        val existing = entries.indexOfFirst { it.toAppRoute() == route }
+        val existing = backStack.indexOfFirst { it == route }
         if (existing >= 0) {
-            while (entries.size > existing + 1) {
-                if (!navController.popBackStack()) break
+            Snapshot.withMutableSnapshot {
+                while (backStack.size > existing + 1) {
+                    backStack.removeLastOrNull()
+                }
             }
             return
         }
 
-        val topEntry = entries.lastOrNull { it.toAppRoute() != null }
-        if (topEntry == null) {
-            navController.navigate(route)
+        if (backStack.isEmpty()) {
+            backStack.add(route)
             return
         }
-        // 换掉栈顶：一次导航里弹出旧页再入栈，避免出现中间态。
-        navController.navigate(route) {
-            popUpTo(topEntry.destination.id) { inclusive = true }
+        // 一次快照内「清空 + 入栈」，避免组合期读到一帧空栈（NavDisplay 要求栈非空）。
+        Snapshot.withMutableSnapshot {
+            backStack.clear()
+            backStack.add(route)
         }
     }
 
+    /** 返回栈里是否还有上一级。 */
+    fun canPop(): Boolean = backStack.size > 1
+
     fun pop(): Boolean {
+        // 「有没有上一级」与「这次有没有弹成」分开判断，调用方据此决定是否走退出分支。
+        if (!canPop()) {
+            AndroidAgentLogger.info("nav.pop -> popped=false (at root)")
+            return false
+        }
         val stack = routes()
-        val popped = stack.size > 1 && navController.popBackStack()
+        val popped = backStack.removeLastOrNull() != null
         // 导航层级诊断：记录返回栈映射结果与出栈结果，用于排查应用内返回按钮的层级误判。
-        io.github.mangi.eta.core.AndroidAgentLogger.info(
+        AndroidAgentLogger.info(
             "nav.pop size=${stack.size}" +
                 " [${stack.joinToString(separator = ",") { it::class.simpleName.orEmpty() }}]" +
                 " -> popped=$popped",
@@ -166,15 +173,18 @@ class AgentNavigator(
     }
 
     fun popToHome() {
-        if (routes().firstOrNull() !is AppRoute.Home) {
+        if (backStack.firstOrNull() !is AppRoute.Home) {
             // 返回栈根不是 Home（历史栈或异常恢复）：整体重置为只有 Home。
-            navController.navigate(AppRoute.Home) {
-                popUpTo(navController.graph.id) { inclusive = true }
+            Snapshot.withMutableSnapshot {
+                backStack.clear()
+                backStack.add(AppRoute.Home)
             }
             return
         }
-        while (routes().size > 1) {
-            if (!navController.popBackStack()) break
+        Snapshot.withMutableSnapshot {
+            while (backStack.size > 1) {
+                backStack.removeLastOrNull()
+            }
         }
     }
 
@@ -183,31 +193,32 @@ class AgentNavigator(
      *
      * 搜索命中要「点开就落在对话里」：从管理聊天页跳进来的栈是
      * `Home → ManageChats → MessageSearch`，逐级 pop 会停在管理聊天页，
-     * 所以这里一次性弹回承载对话的那一层（栈里有 Home 和 Chat 时取更靠上的那个）。
+     * 所以这里一次性截断到承载对话的那一层（栈里有 Home 和 Chat 时取更靠上的那个）。
+     * 一次快照内截断，只播一段转场，不会出现逐级退场的多段动画。
      * 栈里没有承载对话的页面（异常栈）时退到首页。
      */
-    @SuppressLint("RestrictedApi")
     fun popToConversationHost(): Boolean {
-        val entries = navController.currentBackStack.value
-        val target = entries.indexOfLast { entry ->
-            val route = entry.toAppRoute()
-            route is AppRoute.Home || route is AppRoute.Chat
-        }
+        val target = backStack.indexOfLast { it is AppRoute.Home || it is AppRoute.Chat }
         if (target < 0) {
             popToHome()
             return false
         }
-        // 一次 popBackStack 弹到目标 destination：只播一次转场，不会出现逐级退场的多段动画。
-        val popped = navController.popBackStack(entries[target].destination.id, inclusive = false)
-        io.github.mangi.eta.core.AndroidAgentLogger.info(
-            "nav.popToConversationHost -> popped=$popped",
-        )
-        return popped
+        // 目标已经在栈顶：与 popBackStack(id, inclusive = false) 一样视为「没有弹出」。
+        if (target == backStack.lastIndex) {
+            AndroidAgentLogger.info("nav.popToConversationHost -> popped=false")
+            return false
+        }
+        Snapshot.withMutableSnapshot {
+            while (backStack.size > target + 1) {
+                backStack.removeLastOrNull()
+            }
+        }
+        AndroidAgentLogger.info("nav.popToConversationHost -> popped=true")
+        return true
     }
 
     fun current(): AppRoute? = routes().lastOrNull()
 
-    /** 返回栈里的路由（不含导航图条目）。 */
-    @SuppressLint("RestrictedApi")
-    private fun routes(): List<AppRoute> = navController.currentBackStack.value.mapNotNull { it.toAppRoute() }
+    /** 返回栈里的路由（不含任何非 App 路由条目）。 */
+    private fun routes(): List<AppRoute> = backStack.filterIsInstance<AppRoute>()
 }

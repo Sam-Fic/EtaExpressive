@@ -17,29 +17,13 @@ object EtaMotion {
     // ------------------------------------------------------------------ 导航
 
     /**
-     * 导航转场时长：300ms。
+     * 导航转场时长：500ms（miuix `NavTransitions.MiuixDefault` 的程序化转场时长）。
      *
-     * 页面层级仍按原来的定长 tween 走（新页整屏推入、旧页 1/4 视差淡到 0.9）。
-     * 这个值是单一来源：导航转场的动画时长、导航活跃采样窗口
-     * （`NAVIGATION_TRANSITION_WINDOW_NS`）、以及 [drawerNavExitMillis] 的基数都从这里取。
-     * 同时它也是弹簧规格无法解析时的兜底采样时长。
+     * 页面转场改由 miuix NavDisplay 驱动：整屏滑入 + 系统圆角裁切 + 轻微压暗，
+     * 程序化转场是定长 `tween(500, NavProgrammaticEasing)`，收尾曲线为 `NavSettleEasing`。
+     * 这个值是单一来源：导航活跃信号的兜底窗口、以及 [drawerNavExitMillis] 的基数都从这里取。
      */
-    const val NavigationFallbackDurationMillis = 300L
-
-    /**
-     * 被覆盖页面的视差位移占整屏宽度的比例。
-     *
-     * 用 1/4 而不是整屏：新页推入时旧页只轻轻跟随，既表达「新页盖在上面」，
-     * 又不会让整屏内容大幅横移（大幅横移会在大字号/长文本页面上产生明显重排观感）。
-     */
-    const val NavigationParallaxFraction = 0.25f
-
-    /**
-     * 被覆盖页面淡出的目标透明度：保留 10%。
-     *
-     * 不完全淡出——完全淡出会让旧页在过渡中变成一块空白，丢失「它还在下面」的层级关系。
-     */
-    const val NavigationExitTargetAlpha = 0.9f
+    const val NavigationFallbackDurationMillis = 500L
 
     // ------------------------------------------------------------------ 侧栏
 
@@ -69,7 +53,7 @@ object EtaMotion {
     val DrawerEasing: Easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
 
     /**
-     * 导航离场时侧栏跟随退出的时长：导航转场时长 + 两帧余量（300 + 32 = 332ms）。
+     * 导航离场时侧栏跟随退出的时长：导航转场时长 + 两帧余量（500 + 32 = 532ms）。
      *
      * 取「不短于页面推入」是关键约束——侧栏若比新页先收完，新旧之间会露出空档；
      * 只要新页先盖住侧栏，侧栏收得再慢也不会被看见。基数直接复用
@@ -79,4 +63,20 @@ object EtaMotion {
 
     /** 转场收尾的两帧余量：让跟随动作比主转场多撑两帧，避免卡在最后一帧的尾迹。 */
     const val FrameMarginMillis = 32L
+
+    // ------------------------------------------------------------ 浮层胶囊
+
+    /**
+     * 虚拟屏胶囊展开 / 收起的统一时长：320ms。
+     *
+     * 胶囊展开由「宽度、圆角、展开进度、正文高度」四层同时驱动。改造时曾把每一层
+     * 都换成官方 Expressive spatial 弹簧（0.8 / 380），结果四层各自带可感知的过冲与
+     * 长尾、还要叠在窗口逐帧 resize 上，合起来像慢动作；而改造前这几层是 NoBouncy /
+     * MediumLow（约 350–400ms 收尾）或定长 tween，观感明显更利落。
+     *
+     * 所以这里保留定长 tween（配 FastOutSlowIn，与侧栏整块平移同族曲线：起步快、收尾缓、
+     * 无过冲），四层共用一个值，保证「宽度胀开」与「正文浮出」在同一条时间轴上收尾。
+     * 上限 350ms 是有意约束：再长就会重新出现「先胀开、内容随后慢慢浮出来」的串联感。
+     */
+    const val CapsuleExpandDurationMillis = 320
 }

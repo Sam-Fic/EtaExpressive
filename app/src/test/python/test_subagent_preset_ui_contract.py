@@ -151,12 +151,11 @@ class SubAgentPresetUiContractTest(unittest.TestCase):
         route = self.source('ui/navigation/AppRoute.kt')
         table = self.source('ui/navigation/AgentNavigator.kt')
         root = self.source('ui/app/AgentAppRoot.kt')
-        # 详情页是独立导航目标，才能复用 NavHost 的 300ms 滑动淡入淡出与预测性返回。
+        # 详情页是独立导航目标，才能复用导航容器的滑动转场与预测性返回。
         self.assertIn('data class SubAgentPresetDetail(val presetId: String) : AppRoute', route)
         self.assertIn('AppRoute.SubAgentPresetDetail::class', table)
         for needle in ('onOpenPreset = { presetId -> pushRoute(AppRoute.SubAgentPresetDetail(presetId)) }',
-                       'composable<AppRoute.SubAgentPresetDetail> { entry ->',
-                       'val route = entry.toRoute<AppRoute.SubAgentPresetDetail>()',
+                       'entry<AppRoute.SubAgentPresetDetail> { route ->',
                        'SubAgentPresetDetailScreen(',
                        'isCurrentRoute = currentRoute == route'):
             self.assertIn(needle, root)

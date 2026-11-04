@@ -86,27 +86,21 @@ class SettingsJankHotPathContract(unittest.TestCase):
         self.assertIn('enabled = !isPaused && !routeCovered', host)
         self.assertNotIn('visibleReveal = followLiveTranscript', host)
 
-    def test_navigation_does_not_write_root_state_from_a_graphics_layer(self):
+    def test_navigation_activity_comes_from_the_miuix_transition_scope(self):
         root = (ROOT / 'app/AgentAppRoot.kt').read_text()
         helper = (ROOT / 'components/ChatUiActive.kt').read_text()
-        activity = (ROOT / 'app/ChatNavigationActivity.kt').read_text()
         self.assertNotIn('navigationAwareMiuixTransition', root)
         self.assertNotIn('LocalChatNavigationInProgress', helper)
         self.assertFalse((ROOT / 'app/ChatNavigationTransition.kt').exists())
+        # 旧的 NavHost 转场 lambda 与自写帧采样器已删除：转场交给 miuix NavDisplay。
+        self.assertFalse((ROOT / 'app/ChatNavigationActivity.kt').exists())
+        self.assertNotIn('chatNavigationActivityTransition', root)
+        self.assertNotIn('sampleWhileAnimating', root)
         self.assertIn('LocalChatTransitionActive provides navigationActive.value', root)
-        self.assertIn('chatNavigationActivityTransition(publishNavigationActivity)', root)
-        self.assertIn('enterTransition = navigationTransition.enterTransition', root)
-        # 活跃状态只在帧回调里由原子量收敛成布尔；帧回调区域既不读 graphicsLayer 的 .value，
-        # 也不直接写宿主状态（只经 onChanged 发布），转场期间逐帧 observeFrame(true)。
-        draw = activity.split('val callback: Choreographer.FrameCallback = Choreographer.FrameCallback {', 1)[1].split('fun observeFrame(active: Boolean) {', 1)[0]
-        self.assertIn('onChanged(active)', draw)
-        self.assertNotIn('.value', draw)
-        self.assertNotIn('onActivityChanged', draw)
-        self.assertIn('tracker.observeFrame(true)', activity)
-        self.assertIn('postFrameCallback', activity)
-        self.assertIn('navigationActivityIsCurrent', activity)
-        self.assertIn('targetAlpha = 0.9f', activity)
-        self.assertIn('fullWidth / 4', activity)
+        # 活跃信号由 entry 内容里的 LocalNavTransitionScope.isRunning 驱动（属性，不是方法），
+        # 且转场结束后多等一帧才置 false，避免最后一帧抖动。
+        self.assertIn('LocalNavTransitionScope.current.isRunning', root)
+        self.assertIn('withFrameNanos { }', root)
 
     def test_covered_route_does_not_disable_reveal_during_swipe(self):
         item = (ROOT / 'components/ChatMessageItem.kt').read_text()

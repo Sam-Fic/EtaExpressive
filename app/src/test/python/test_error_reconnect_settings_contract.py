@@ -18,7 +18,7 @@ class ErrorReconnectSettingsContractTest(unittest.TestCase):
         self.assertIn("R.string.error_reconnect_title", between)
         self.assertNotIn("summary =", between)
         root = (UI / "app/AgentAppRoot.kt").read_text()
-        reconnect = root.split("composable<AppRoute.ErrorReconnectSettings>", 1)[1].split("\n            composable<", 1)[0]
+        reconnect = root.split("entry<AppRoute.ErrorReconnectSettings>", 1)[1].split("\n            entry<", 1)[0]
         self.assertIn("ErrorReconnectSettingsScreen(onBack = ::popRoute)", reconnect)
         self.assertNotIn("ModelFeatureSettingsScreen", reconnect)
 

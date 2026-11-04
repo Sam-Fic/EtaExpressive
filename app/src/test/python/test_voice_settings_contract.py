@@ -20,18 +20,18 @@ class VoiceSettingsContractTest(unittest.TestCase):
             self.assertNotIn(f'onNavigate(AppRoute.{old})', settings)
             self.assertIn(f'data object {old} : AppRoute', read('ui/navigation/AppRoute.kt'))
         root = read('ui/app/AgentAppRoot.kt')
-        block = root[root.index('composable<AppRoute.VoiceSettings>'):root.index('composable<AppRoute.AppearanceSettings>')]
+        block = root[root.index('entry<AppRoute.VoiceSettings>'):root.index('entry<AppRoute.AppearanceSettings>')]
         self.assertEqual(4, block.count('VoiceSettingsScreen('))
         self.assertNotIn('pushRoute(', block)
         self.assertIn('is AppRoute.VoiceSettings ->', read('ui/app/AgentAppShell.kt'))
 
     def test_personal_voice_subpages_are_real_routes(self):
-        # 「我的声音」二级页走 NavHost 路由，才能获得与兄弟页面一致的入栈/出栈转场。
+        # 「我的声音」二级页走真实路由，才能获得与兄弟页面一致的入栈/出栈转场。
         root = read('ui/app/AgentAppRoot.kt')
         routes = read('ui/navigation/AppRoute.kt')
         for route in ('DoubaoVoices', 'MimoVoices'):
             self.assertIn(f'data object {route} : AppRoute', routes)
-            self.assertIn(f'composable<AppRoute.{route}>', root)
+            self.assertIn(f'entry<AppRoute.{route}>', root)
         self.assertIn('onOpenVoiceSubPage = ::openVoiceSubPage', root)
         screen = read('ui/VoiceSettingsScreen.kt')
         self.assertNotIn('var subPage', screen)

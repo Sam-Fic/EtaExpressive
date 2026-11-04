@@ -73,7 +73,7 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         self.assertNotIn('optBoolean("present")', preview_button)
         self.assertNotIn('optBoolean("recoverable")', preview_button)
         root = (UI / "app/AgentAppRoot.kt").read_text()
-        self.assertIn("composable<AppRoute.VirtualDisplayRecovery>", root)
+        self.assertIn("entry<AppRoute.VirtualDisplayRecovery>", root)
         self.assertNotIn("VirtualDisplayRecoveryScreen(onBack = ::popRoute)", root)
         self.assertNotIn("taskRecoveryWorking", root)
         self.assertIn("onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) }", root)
@@ -81,12 +81,12 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
     def test_task_preference_routes_are_plain_composables_without_swipe_parameter(self):
         root = (UI / "app/AgentAppRoot.kt").read_text()
         # M3 壳层不再给二级页挂手势返回参数：swipeDismiss / NavSwipeDirection 这套
-        # miuix 时代的秒级返回开关已整体删除，路由都是普通 composable。
+        # 早期返回开关已整体删除，路由都是普通 entry。
         for gone in ("NavSwipeDirection", "taskPreferenceSwipeDismiss", "swipeDismiss"):
             self.assertNotIn(gone, root)
-        self.assertIn("composable<AppRoute.AgentTaskPreference> {", root)
-        self.assertIn("composable<AppRoute.VirtualDisplayRecovery> {", root)
-        self.assertIn("composable<AppRoute.VirtualDisplay> {", root)
+        self.assertIn("entry<AppRoute.AgentTaskPreference> {", root)
+        self.assertIn("entry<AppRoute.VirtualDisplayRecovery> {", root)
+        self.assertIn("entry<AppRoute.VirtualDisplay> {", root)
         self.assertIn("VirtualDisplayScreen(onBack = ::popRoute)", root)
 
     def test_installation_is_rechecked_on_resume_not_live_backend_status(self):

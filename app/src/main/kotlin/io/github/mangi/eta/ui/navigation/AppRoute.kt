@@ -1,9 +1,10 @@
 package io.github.mangi.eta.ui.navigation
 
 import kotlinx.serialization.Serializable
+import top.yukonga.miuix.kmp.nav.core.NavKey
 
 @Serializable
-sealed interface AppRoute {
+sealed interface AppRoute : NavKey {
     @Serializable
     data object Home : AppRoute
 

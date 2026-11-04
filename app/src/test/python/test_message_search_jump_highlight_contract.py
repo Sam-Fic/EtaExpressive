@@ -9,8 +9,8 @@ SRC = APP / "src/main/kotlin/io/github/mangi/eta"
 class MessageSearchJumpHighlightContractTest(unittest.TestCase):
     def test_hit_click_pops_back_to_the_conversation_host(self):
         root = (SRC / "ui/app/AgentAppRoot.kt").read_text(encoding="utf-8")
-        block = root[root.index("composable<AppRoute.MessageSearch>"):
-                    root.index("composable<AppRoute.ConversationTokenUsage>")]
+        block = root[root.index("entry<AppRoute.MessageSearch>"):
+                    root.index("entry<AppRoute.ConversationTokenUsage>")]
         hit = block[block.index("onOpenHit = { hit ->"):block.index("onBack = ::popRoute")]
         # 命中点开后要回到对话本体，而不是只退一层停在管理聊天页。
         self.assertIn("popToConversation()", hit)
@@ -26,7 +26,8 @@ class MessageSearchJumpHighlightContractTest(unittest.TestCase):
         self.assertIn("fun popToConversationHost()", navigator)
         block = navigator[navigator.index("fun popToConversationHost()"):]
         self.assertIn("route is AppRoute.Home || route is AppRoute.Chat", block)
-        self.assertIn("popBackStack(", block)
+        # miuix 版本按 index 一次截断（一次快照内 removeLastOrNull），只播一段转场。
+        self.assertIn("backStack.size > target + 1", block)
 
     def test_both_chat_hosts_receive_the_scroll_target(self):
         root = (SRC / "ui/app/AgentAppRoot.kt").read_text(encoding="utf-8")

@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.app
 
-import android.annotation.SuppressLint
 import androidx.compose.runtime.CompositionLocalProvider
 import io.github.mangi.eta.ui.components.StreamingMarkdownCache
 import io.github.mangi.eta.ui.components.LocalStreamingMarkdownStates
@@ -12,6 +11,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,6 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -56,11 +58,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavBackStackEntry
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -80,6 +77,7 @@ import io.github.mangi.eta.ui.AgentTaskSurfacePrompt
 import io.github.mangi.eta.ui.AppearanceSettingsScreen
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.components.LocalShellTopBarInset
@@ -103,7 +101,7 @@ import io.github.mangi.eta.ui.model.ConversationSummaryUi
 import io.github.mangi.eta.ui.model.PermissionHealthAction
 import io.github.mangi.eta.ui.navigation.AgentNavigator
 import io.github.mangi.eta.ui.navigation.AppRoute
-import io.github.mangi.eta.ui.navigation.toAppRoute
+import io.github.mangi.eta.ui.navigation.isKnownAppRoute
 import io.github.mangi.eta.ui.pages.providers.ModelProviderDetailScreen
 import io.github.mangi.eta.ui.pages.providers.ProviderAuthMethodScreen
 import io.github.mangi.eta.ui.pages.providers.ModelProviderListScreen
@@ -149,12 +147,16 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
+import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
+import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 
 /**
  * Agent App 根组件：持有本地导航栈，并把 Screen actions 交给 [AgentAppState]。
  */
 @Composable
-@SuppressLint("RestrictedApi") // navController.currentBackStack：无公开的完整返回栈 Flow 替代，仅 collectAsState 观察
 fun AgentAppRoot(
     assistantConversationKey: String? = null,
     inboundShareUris: List<String> = emptyList(),
@@ -163,12 +165,26 @@ fun AgentAppRoot(
 ) {
     val context = LocalContext.current
     val uiScope = rememberCoroutineScope()
-    val navController = rememberNavController()
-    val navigator = remember(navController) { AgentNavigator(navController) }
-    // 当前返回栈（含导航图条目）：收集后才能在组合期读当前路由，而不是直接读 StateFlow 的值。
-    val navEntries by navController.currentBackStack.collectAsState()
-    val navRoutes = remember(navEntries) { navEntries.mapNotNull { it.toAppRoute() } }
-    val currentRoute = navRoutes.lastOrNull()
+    // miuix 返回栈：SnapshotStateList<NavKey>，由 rememberSaveable 做多态序列化持久化。
+    // 起点固定 Home；所有入栈操作只接受 AppRoute（见 AgentNavigator）。
+    val backStack = rememberNavBackStack<AppRoute>(AppRoute.Home)
+    val navigator = remember(backStack) { AgentNavigator(backStack) }
+    // 组合期直接读 SnapshotStateList 的可观察快照，用它派生当前路由与「是否还有上一级」。
+    val currentRoute by remember { derivedStateOf { backStack.lastOrNull() as? AppRoute } }
+    val canPopRoute by remember { derivedStateOf { backStack.size > 1 } }
+    // 容器兜底：miuix 0.9.4 没有 entryProvider fallback（未登记类型会在 build() 直接抛异常），
+    // 所以渲染前先找出不可渲染的条目，命中时改渲染最小错误页（见下方 NavDisplay 处）。
+    val unrenderableRoute by remember {
+        derivedStateOf { backStack.firstOrNull { !isKnownAppRoute(it) } }
+    }
+    // 转场活跃信号（LocalChatTransitionActive 的唯一来源）。写入点在 RoutedShell 里，
+    // 由 miuix 的 LocalNavTransitionScope.isRunning 驱动；这里先声明，供其捕获。
+    val navigationActive = remember { mutableStateOf(false) }
+    // miuix 默认转场效果：只把圆角裁切半径跟随系统屏幕圆角，时长/曲线用 NavTransitions.MiuixDefault。
+    val navSystemCornerRadius = rememberNavSystemCornerRadius()
+    val navEffects = remember(navSystemCornerRadius) {
+        NavDisplayEffects(cornerClipRadius = navSystemCornerRadius)
+    }
     val appViewModel = viewModel<AgentAppViewModel>()
     val agentState = appViewModel.state
     // 常亮只在「对话页可见 + 正在流式回复 + Runtime 还有活着的 run」三者同时成立时挂上；
@@ -482,7 +498,7 @@ fun AgentAppRoot(
         navigator.push(route)
     }
 
-    /** 「我的声音」子页统一入口：走真实路由，复用 NavHost 的入栈/出栈转场。 */
+    /** 「我的声音」子页统一入口：走真实路由，复用导航容器的入栈/出栈转场。 */
     fun openVoiceSubPage(page: io.github.mangi.eta.ui.VoiceSubPage) {
         pushRoute(
             when (page) {
@@ -507,21 +523,44 @@ fun AgentAppRoot(
     var settingsFocusKey by rememberSaveable { mutableStateOf<String?>(null) }
 
     val exitGuard = remember { DoublePressExitGuard() }
+    // 上一次从应用内出栈的时刻。新页推入 / 旧页退场的那段时间里，上一页顶栏仍然可点：
+    // 紧随其后的那一下不能被当成「已经停在根页面按了返回」，否则会冒出退出提示。
+    // 窗口取导航转场时长本身（EtaMotion 单一来源），不另立魔数。
+    var lastPopAtMs by remember { mutableStateOf(0L) }
+
+    // 进入任何新页面 / 新层级时清掉「等待第二次返回」的残留计时。
+    // 否则在主页按过一次返回（只弹了提示）后 2 秒内进入子页，那次按键的记忆会被带上去：
+    // 一旦子页里再次走到退出分支，第一次点击就直接结束 Activity，而不是再提示一次。
+    LaunchedEffect(currentRoute) { exitGuard.reset() }
 
     fun popRoute() {
+        // 「还有没有上一级」与系统返回键用同一个依据（NavController 的返回栈），
+        // 只有确实在根页面时才进入双击退出逻辑。
+        if (!navigator.canPop()) {
+            // 刚出栈不到一个转场时长：此刻根页面还在入场、上一页还在退场，这次点击
+            // 属于同一个「返回手势」的余波，不计入双击退出。
+            if (SystemClock.uptimeMillis() - lastPopAtMs <
+                EtaMotion.NavigationFallbackDurationMillis
+            ) {
+                return
+            }
+            if (exitGuard.consume()) {
+                (context as? Activity)?.finish()
+                return
+            }
+            Toast.makeText(
+                context.applicationContext,
+                context.getString(R.string.app_press_back_again_to_exit),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        // 有上一级：这次点击只负责出栈。直接读返回栈，转场未停稳也不会把这次点击
+        // 误当成「已经在根」去提示退出——宁可这次没弹成，也不能误退出应用。
         if (navigator.pop()) {
             exitGuard.reset()
-            return
+            lastPopAtMs = SystemClock.uptimeMillis()
         }
-        if (exitGuard.consume()) {
-            (context as? Activity)?.finish()
-            return
-        }
-        Toast.makeText(
-            context.applicationContext,
-            context.getString(R.string.app_press_back_again_to_exit),
-            Toast.LENGTH_SHORT,
-        ).show()
     }
 
     /**
@@ -533,10 +572,14 @@ fun AgentAppRoot(
     fun popToConversation() {
         navigator.popToConversationHost()
         exitGuard.reset()
+        // 与 popRoute 同口径：被弹走的那几页还在退场，它们的顶栏仍可点，
+        // 紧随其后的一下不该被当成「停在根页面按了返回」。
+        lastPopAtMs = SystemClock.uptimeMillis()
     }
 
-    // NavHost 只在还能出栈时消费返回；根页面必须自己接住，否则系统会直接 finish Activity。
-    val interceptExitBack = navRoutes.size <= 1 && !conversationPaneOpen
+    // 导航容器只在还能出栈时消费返回；根页面必须自己接住，否则系统会直接 finish Activity。
+    // 这里的「在根」与返回按钮共用 canPopRoute，不再用按路由表映射出来的条数判断。
+    val interceptExitBack = !canPopRoute && !conversationPaneOpen
     val exitBackState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
         state = exitBackState,
@@ -563,6 +606,20 @@ fun AgentAppRoot(
         underlapTopBar: Boolean = false,
         content: @Composable () -> Unit,
     ) {
+        // 转场活跃信号：miuix 在 entry 内容内部提供 LocalNavTransitionScope，isRunning 在
+        // 手势拖动、settle 与程序化动画期间都为 true（退出隐藏页也仍被组合，所以底部路由
+        // 的探针能覆盖整条返回栈上的每一次转场）。
+        // 结束时再多等一帧才置 false：否则流式内容会在转场最后一帧抖一下
+        // （与 KernelSU rememberContentReady 同一做法）。
+        val navTransitionRunning = LocalNavTransitionScope.current.isRunning
+        LaunchedEffect(navTransitionRunning) {
+            if (navTransitionRunning) {
+                navigationActive.value = true
+            } else {
+                withFrameNanos { }
+                navigationActive.value = false
+            }
+        }
         // 「+」新建远程会话的落位：服务端建好并把新会话置为 current 后，这里把聊天视图
         // 切到新会话（不收起侧栏，与本机新建同口径；不再发 switch_session——服务端已切好）。
         LaunchedEffect(Unit) {
@@ -572,7 +629,8 @@ fun AgentAppRoot(
         }
         CompositionLocalProvider(
             // 半遮住时页面还在组合里。保持实时消息，让露出的字继续长；
-            // 完全盖住后导航会把这一页移出组合，不再绘制。
+            // miuix 会保留被覆盖条目的组合（不像 NavHost 直接移出），完全盖住后的冻结
+            // 由 LocalChatRouteCovered + LocalChatTransitionActive 负责（消费点里已判断）。
             LocalChatUiActive provides true,
             LocalChatRouteCovered provides (currentRoute != route),
         ) {
@@ -745,37 +803,31 @@ fun AgentAppRoot(
         }
     }
 
-    // 转场期间只写 draw-phase 原子量；布尔值在之后的帧发布，且只在变化时发布，
-    // 这样滑动不会让图形层逐帧写 snapshot state。
-    val navigationActive = remember { mutableStateOf(false) }
-    val publishNavigationActivity: (Boolean) -> Unit = remember {
-        { active -> if (navigationActive.value != active) navigationActive.value = active }
-    }
-    val navigationTransition = chatNavigationActivityTransition(publishNavigationActivity)
-    DisposableEffect(navigationTransition) {
-        onDispose { navigationTransition.cancel() }
-    }
-    // 每次导航（含同层替换）都按转场时长采样活跃帧，结束后交给采样器的过期看门狗收敛。
-    LaunchedEffect(navigationTransition, currentRoute) {
-        navigationTransition.sampleWhileAnimating()
-    }
     CompositionLocalProvider(
         io.github.mangi.eta.ui.components.LocalConversationSubAgentEditor provides subAgentEditor,
         LocalChatTransitionActive provides navigationActive.value,
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
-    NavHost(
-        navController = navController,
-        startDestination = AppRoute.Home,
-        modifier = Modifier.fillMaxSize(),
-        enterTransition = navigationTransition.enterTransition,
-        exitTransition = navigationTransition.exitTransition,
-        popEnterTransition = navigationTransition.popEnterTransition,
-        popExitTransition = navigationTransition.popExitTransition,
-        predictivePopEnterTransition = navigationTransition.predictivePopEnterTransition,
-        predictivePopExitTransition = navigationTransition.predictivePopExitTransition,
-    ) {
-            composable<AppRoute.Home> {
+    // 兜底：miuix 0.9.4 的 NavEntryBuilder 没有 catch-all，未登记的 route 会在 build() 直接
+    // 抛异常（entryProvider / 低层 NavDisplay 重载均为 internal，无法自建 fallback）。
+    // 因此渲染前先挡掉不可渲染的条目：改渲染最小错误页，返回一次即可剔除并恢复返回栈。
+    if (unrenderableRoute != null) {
+        UnknownRoutePage(
+            onRecover = {
+                Snapshot.withMutableSnapshot {
+                    backStack.removeAll { !isKnownAppRoute(it) }
+                    if (backStack.isEmpty()) backStack.add(AppRoute.Home)
+                }
+            },
+        )
+    } else {
+        NavDisplay(
+            backStack = backStack,
+            modifier = Modifier.fillMaxSize(),
+            onBack = { popRoute() },
+            effects = navEffects,
+        ) {
+            entry<AppRoute.Home> {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 // 主页纯化为调度台：每次回到主页都落到调度台会话（远程目标除外）。
@@ -888,7 +940,7 @@ fun AgentAppRoot(
                     }
                     }
                 }
-            composable<AppRoute.Chat> {
+            entry<AppRoute.Chat> {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 RoutedShell(route = AppRoute.Chat, underlapTopBar = true) {
@@ -991,13 +1043,13 @@ fun AgentAppRoot(
                     }
                     }
                 }
-            composable<AppRoute.Browser> {
+            entry<AppRoute.Browser> {
                 AgentBrowserScreen(
                     onBack = ::popRoute,
                     conversationId = agentState.conversationPaneState.selectedConversationId,
                 )
             }
-            composable<AppRoute.Terminal> {
+            entry<AppRoute.Terminal> {
                 LaunchedEffect(Unit) { requestExecutionNotifications() }
                 RoutedShell(route = AppRoute.Terminal) {
                     TerminalEntryScreen(
@@ -1008,7 +1060,7 @@ fun AgentAppRoot(
                     )
                 }
             }
-            composable<AppRoute.TerminalDaemonTasks> {
+            entry<AppRoute.TerminalDaemonTasks> {
                 val terminalStore = appViewModel.terminalStore
                 val terminalState by terminalStore.uiState.collectAsState()
                 // 终端会话常驻运行：进页面先刷新一次，之后随终端状态继续更新。
@@ -1020,26 +1072,26 @@ fun AgentAppRoot(
                     onLoadLogs = terminalStore::daemonLogs,
                 )
             }
-            composable<AppRoute.Haptics> {
+            entry<AppRoute.Haptics> {
                 HapticsSettingsScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.AgentTaskPreference> {
+            entry<AppRoute.AgentTaskPreference> {
                 AgentTaskPreferenceScreen(
                     onBack = ::popRoute,
                     onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) },
                 )
             }
             // Compatibility alias for a restored old back stack; there is no separate recovery page.
-            composable<AppRoute.VirtualDisplayRecovery> {
+            entry<AppRoute.VirtualDisplayRecovery> {
                 AgentTaskPreferenceScreen(
                     onBack = ::popRoute,
                     onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) },
                 )
             }
-            composable<AppRoute.VirtualDisplay> {
+            entry<AppRoute.VirtualDisplay> {
                 VirtualDisplayScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.Tools> {
+            entry<AppRoute.Tools> {
                 // 工具页状态是快照：进页必须重读一次，否则从设置页改完开关再进来，
                 // 看到的是上次构建时的旧快照（这就是「两处开关不同步」的来源）。
                 LaunchedEffect(Unit) { agentState.refreshToolsState() }
@@ -1067,7 +1119,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.Skills> {
+            entry<AppRoute.Skills> {
                 LaunchedEffect(Unit) {
                     agentState.refreshSkills()
                 }
@@ -1087,7 +1139,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.Permissions> {
+            entry<AppRoute.Permissions> {
                 LaunchedEffect(Unit) {
                     agentState.refreshPermissionHealth()
                 }
@@ -1220,7 +1272,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.SystemEnhance> {
+            entry<AppRoute.SystemEnhance> {
                 SystemEnhanceScreen(
                     onAction = { action ->
                         when (action) {
@@ -1231,13 +1283,13 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.Workspace> {
+            entry<AppRoute.Workspace> {
                 WorkspaceScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.UsageStats> {
+            entry<AppRoute.UsageStats> {
                 UsageStatsScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.ManageChats> {
+            entry<AppRoute.ManageChats> {
                 ManageChatsScreen(
                     conversations = agentState.conversationPaneState.historyConversations,
                     onBack = ::popRoute,
@@ -1255,7 +1307,7 @@ fun AgentAppRoot(
                     onOpenSearchHistory = { pushRoute(AppRoute.MessageSearch()) },
                 )
             }
-            composable<AppRoute.ManageFolders> {
+            entry<AppRoute.ManageFolders> {
                 ManageFoldersScreen(
                     folders = agentState.conversationPaneState.folders,
                     conversations = agentState.conversationPaneState.historyConversations,
@@ -1267,7 +1319,7 @@ fun AgentAppRoot(
                     onOpenRemoteAgents = { pushRoute(AppRoute.RemoteAgents) },
                 )
             }
-            composable<AppRoute.ConversationTrash> {
+            entry<AppRoute.ConversationTrash> {
                 TrashScreen(
                     trash = agentState.conversationPaneState.trashConversations,
                     onBack = ::popRoute,
@@ -1282,7 +1334,7 @@ fun AgentAppRoot(
                     onOpenSearch = { pushRoute(AppRoute.ConversationTrashSearch) },
                 )
             }
-            composable<AppRoute.ConversationTrashSearch> {
+            entry<AppRoute.ConversationTrashSearch> {
                 TrashSearchScreen(
                     onSearch = { query ->
                         agentState.conversationPaneState.trashConversations.filter {
@@ -1298,8 +1350,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.MessageSearch> { entry ->
-                val route = entry.toRoute<AppRoute.MessageSearch>()
+            entry<AppRoute.MessageSearch> { route ->
                 MessageSearchScreen(
                     onSearch = { query ->
                         agentState.searchHistory(
@@ -1318,21 +1369,21 @@ fun AgentAppRoot(
                     showConversationTitle = !route.conversationScoped,
                 )
             }
-            composable<AppRoute.ConversationTokenUsage> {
+            entry<AppRoute.ConversationTokenUsage> {
                 // 与旧弹窗同源：用量取当前会话的实时投影，页面留在栈上也会随对话继续变化。
                 ConversationTokenUsageScreen(
                     usage = cumulativeUsage,
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.SubAgentStatus> {
+            entry<AppRoute.SubAgentStatus> {
                 // 与旧弹窗同源：取当前会话的实时子助手名册。
                 SubAgentStatusScreen(
                     agents = shellHomeState.childStatusRoster,
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.Settings> {
+            entry<AppRoute.Settings> {
                 SettingsScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
@@ -1343,7 +1394,7 @@ fun AgentAppRoot(
                     onFocusConsumed = { settingsFocusKey = null },
                 )
             }
-            composable<AppRoute.MediaSearch> {
+            entry<AppRoute.MediaSearch> {
                 io.github.mangi.eta.ui.screens.search.MediaSearchScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
@@ -1355,25 +1406,25 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.MediaIndexSettings> {
+            entry<AppRoute.MediaIndexSettings> {
                 io.github.mangi.eta.ui.screens.settings.MediaIndexSettingsScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.MobileActionsSettings> {
+            entry<AppRoute.MobileActionsSettings> {
                 MobileActionsSettingsScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.MobileActions> {
+            entry<AppRoute.MobileActions> {
                 MobileActionsScreen(
                     onOpenSettings = { pushRoute(AppRoute.MobileActionsSettings) },
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.SettingsSearch> {
+            entry<AppRoute.SettingsSearch> {
                 io.github.mangi.eta.ui.SettingsSearchScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
@@ -1386,83 +1437,82 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.SystemTakeover> {
+            entry<AppRoute.SystemTakeover> {
                 io.github.mangi.eta.ui.SystemTakeoverSettingsScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.About> {
+            entry<AppRoute.About> {
                 io.github.mangi.eta.ui.AboutScreen(
                     onBack = ::popRoute,
                     onOpenCredits = { pushRoute(AppRoute.AboutCredits) },
                 )
             }
-            composable<AppRoute.AboutCredits> {
+            entry<AppRoute.AboutCredits> {
                 io.github.mangi.eta.ui.AboutCreditsScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.AuxiliaryVision> {
+            entry<AppRoute.AuxiliaryVision> {
                 io.github.mangi.eta.ui.ModelFeatureSettingsScreen(
                     feature = io.github.mangi.eta.agent.model.ModelFeature.VISION, onBack = ::popRoute)
             }
-            composable<AppRoute.SubAgents> {
+            entry<AppRoute.SubAgents> {
                 io.github.mangi.eta.ui.SubAgentSettingsScreen(
                     onBack = ::popRoute,
                     onOpenPreset = { presetId -> pushRoute(AppRoute.SubAgentPresetDetail(presetId)) },
                 )
             }
-            composable<AppRoute.SubAgentPresetDetail> { entry ->
-                val route = entry.toRoute<AppRoute.SubAgentPresetDetail>()
+            entry<AppRoute.SubAgentPresetDetail> { route ->
                 io.github.mangi.eta.ui.SubAgentPresetDetailScreen(
                     presetId = route.presetId,
                     onBack = ::popRoute,
                     isCurrentRoute = currentRoute == route,
                 )
             }
-            composable<AppRoute.TitleModel> {
+            entry<AppRoute.TitleModel> {
                 io.github.mangi.eta.ui.ModelFeatureSettingsScreen(
                     feature = io.github.mangi.eta.agent.model.ModelFeature.TITLE, onBack = ::popRoute)
             }
-            composable<AppRoute.ErrorReconnectSettings> {
+            entry<AppRoute.ErrorReconnectSettings> {
                 ErrorReconnectSettingsScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.WebToolsSettings> {
+            entry<AppRoute.WebToolsSettings> {
                 WebToolsSettingsScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.VoiceSettings> {
+            entry<AppRoute.VoiceSettings> {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(
                     onBack = ::popRoute,
                     onOpenVoiceSubPage = ::openVoiceSubPage,
                 )
             }
             // Retain serialized legacy routes, but show the same unified voice surface.
-            composable<AppRoute.TtsSettings> {
+            entry<AppRoute.TtsSettings> {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(onBack = ::popRoute,
                     initialSection = io.github.mangi.eta.ui.VoiceSettingsSection.READ_ALOUD,
                     onOpenVoiceSubPage = ::openVoiceSubPage)
             }
-            composable<AppRoute.SpeechSettings> {
+            entry<AppRoute.SpeechSettings> {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(
                     onBack = ::popRoute,
                     onOpenVoiceSubPage = ::openVoiceSubPage,
                 )
             }
-            composable<AppRoute.VoiceModeSettings> {
+            entry<AppRoute.VoiceModeSettings> {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(onBack = ::popRoute,
                     initialSection = io.github.mangi.eta.ui.VoiceSettingsSection.CONVERSATION,
                     onOpenVoiceSubPage = ::openVoiceSubPage)
             }
-            composable<AppRoute.DoubaoVoices> {
+            entry<AppRoute.DoubaoVoices> {
                 io.github.mangi.eta.ui.DoubaoVoiceSettings(onBack = ::popRoute)
             }
-            composable<AppRoute.MimoVoices> {
+            entry<AppRoute.MimoVoices> {
                 io.github.mangi.eta.ui.MimoVoicesScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.AppearanceSettings> {
+            entry<AppRoute.AppearanceSettings> {
                 AppearanceSettingsScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.DataBackup> {
+            entry<AppRoute.DataBackup> {
                 DataBackupScreen(
                     context = context,
                     onBack = ::popRoute,
@@ -1476,7 +1526,7 @@ fun AgentAppRoot(
                     onImportAnalysis = agentState::importConversationAnalysis,
                 )
             }
-            composable<AppRoute.Memory> {
+            entry<AppRoute.Memory> {
                 AgentMemoryOverviewScreen(
                     onBack = ::popRoute,
                     onOpenAssistant = { assistantId ->
@@ -1484,8 +1534,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.AssistantMemory> { entry ->
-                val route = entry.toRoute<AppRoute.AssistantMemory>()
+            entry<AppRoute.AssistantMemory> { route ->
                 LaunchedEffect(route.assistantId) {
                     agentState.refreshMemory(route.assistantId)
                 }
@@ -1503,83 +1552,79 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.LinuxEnvironment> {
+            entry<AppRoute.LinuxEnvironment> {
                 LinuxEnvironmentScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.SharedFolders> {
+            entry<AppRoute.SharedFolders> {
                 SharedFoldersScreen(
                     context = context,
                     onBack = ::popRoute,
                     onOpenPicker = { pushRoute(AppRoute.SharedFolderPicker) },
                 )
             }
-            composable<AppRoute.SharedFolderPicker> {
+            entry<AppRoute.SharedFolderPicker> {
                 SharedFolderPickerScreen(
                     context = context,
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.LinuxFiles> { entry ->
-                val route = entry.toRoute<AppRoute.LinuxFiles>()
+            entry<AppRoute.LinuxFiles> { route ->
                 LinuxFilesScreen(
                     context = context,
                     distribution = route.distribution,
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.ModelProviders> {
+            entry<AppRoute.ModelProviders> {
                 ModelProviderListScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                     currentProviderId = shellHomeState.providerId,
                 )
             }
-            composable<AppRoute.ModelProviderSearch> {
+            entry<AppRoute.ModelProviderSearch> {
                 ModelProviderSearchScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                     currentProviderId = shellHomeState.providerId,
                 )
             }
-            composable<AppRoute.McpServers> {
+            entry<AppRoute.McpServers> {
                 McpServersScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.McpServerDetail> { entry ->
-                val route = entry.toRoute<AppRoute.McpServerDetail>()
+            entry<AppRoute.McpServerDetail> { route ->
                 McpServerDetailScreen(
                     serverId = route.serverId,
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.ToolRecipes> {
+            entry<AppRoute.ToolRecipes> {
                 ToolRecipesScreen(
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.RemoteAgents> {
+            entry<AppRoute.RemoteAgents> {
                 io.github.mangi.eta.ui.screens.settings.RemoteAgentsScreen(
                     onBack = ::popRoute,
                     coordinator = appViewModel.remoteCoordinator,
                     onOpenEditor = { serverId -> pushRoute(AppRoute.RemoteAgentEditor(serverId)) },
                 )
             }
-            composable<AppRoute.RemoteAgentEditor> { entry ->
-                val route = entry.toRoute<AppRoute.RemoteAgentEditor>()
+            entry<AppRoute.RemoteAgentEditor> { route ->
                 io.github.mangi.eta.ui.screens.settings.RemoteAgentEditorScreen(
                     serverId = route.serverId,
                     onBack = ::popRoute,
                     coordinator = appViewModel.remoteCoordinator,
                 )
             }
-            composable<AppRoute.ModelProviderDetail> { entry ->
-                val route = entry.toRoute<AppRoute.ModelProviderDetail>()
+            entry<AppRoute.ModelProviderDetail> { route ->
                 ModelProviderDetailScreen(
                     providerId = route.providerId,
                     onBack = ::popRoute,
@@ -1589,7 +1634,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.ContextCompression> {
+            entry<AppRoute.ContextCompression> {
                 ContextCompressionSettingsScreen(
                     isCompressing = if (shellHomeState.selectedContextTaskId == null)
                         shellHomeState.isCompressingContext || shellHomeState.isWaitingForCompression
@@ -1602,11 +1647,10 @@ fun AgentAppRoot(
                     },
                 )
             }
-            composable<AppRoute.DecisionModel> {
+            entry<AppRoute.DecisionModel> {
                 DecisionModelSettingsScreen(onBack = ::popRoute)
             }
-            composable<AppRoute.Assistants> { entry ->
-                val route = entry.toRoute<AppRoute.Assistants>()
+            entry<AppRoute.Assistants> { route ->
                 AssistantsScreen(
                     picker = route.picker,
                     onNavigate = { destination -> pushRoute(destination) },
@@ -1615,8 +1659,7 @@ fun AgentAppRoot(
                     onSelectAssistant = agentState::selectAssistant,
                 )
             }
-            composable<AppRoute.AssistantSearch> { entry ->
-                val route = entry.toRoute<AppRoute.AssistantSearch>()
+            entry<AppRoute.AssistantSearch> { route ->
                 AssistantSearchScreen(
                     picker = route.picker,
                     onNavigate = { destination -> pushRoute(destination) },
@@ -1625,29 +1668,27 @@ fun AgentAppRoot(
                     onSelectAssistant = agentState::selectAssistant,
                 )
             }
-            composable<AppRoute.AssistantEdit> { entry ->
-                val route = entry.toRoute<AppRoute.AssistantEdit>()
+            entry<AppRoute.AssistantEdit> { route ->
                 AssistantEditScreen(
                     assistantId = route.assistantId,
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.ModelProviderAuthMethod> { entry ->
-                val route = entry.toRoute<AppRoute.ModelProviderAuthMethod>()
+            entry<AppRoute.ModelProviderAuthMethod> { route ->
                 ProviderAuthMethodScreen(
                     providerType = route.providerType,
                     onNavigate = { destination -> pushRoute(destination) },
                     onBack = ::popRoute,
                 )
             }
-            composable<AppRoute.ModelProviderNew> { entry ->
-                val route = entry.toRoute<AppRoute.ModelProviderNew>()
+            entry<AppRoute.ModelProviderNew> { route ->
                 ModelProviderDetailScreen(
                     newType = route.providerType,
                     authMode = route.authMode,
                     onBack = ::popRoute
                 )
             }
+        }
     }
 
     AgentPendingChildStopDialog(agentState.conversationPaneState.selectedConversationId)
@@ -1911,6 +1952,29 @@ private data class MessageMutationTarget(
     val messageId: String,
     val laterTurnCount: Int,
 )
+
+/**
+ * 未登记 route 的最小兜底页。
+ *
+ * miuix 0.9.4 的 `NavEntryBuilder` 没有 fallback / catch-all（`entry<T>` 只精确匹配 T::class，
+ * 未登记的类型在 `build()` 直接 `error(...)`），所以无法在 `NavDisplay` 内部兜底；
+ * 宿主在渲染前发现不可渲染条目时改渲染本页。返回一次即把不可渲染的条目从返回栈剔除。
+ */
+@Composable
+private fun UnknownRoutePage(onRecover: () -> Unit) {
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = backState,
+        isBackEnabled = true,
+        onBackCompleted = onRecover,
+    )
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("Unknown page")
+    }
+}
 
 /**
  * 当前远程会话对应的智能体名字；本机会话返回 `null`。

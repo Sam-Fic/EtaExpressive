@@ -1,7 +1,7 @@
 [versions]
 ndk = "29.0.14206865"
 agp = "9.4.0"
-kotlin = "2.4.10"
+kotlin = "2.4.20"
 ksp = "2.3.9"
 libxposedApi = "102.0.0"
 libxposedService = "102.0.0"
@@ -17,6 +17,7 @@ nimbusJoseJwt = "10.10"
 kotlinx-serialization = "1.11.0"
 kotlinx-coroutines = "1.11.0"
 material3 = "1.5.0-alpha29"
+miuix = "0.9.4"
 material-color-utilities = "5.0.0"
 hiddenApiBypass = "6.1"
 room = "2.8.4"
@@ -40,6 +41,7 @@ libxposed-service = { group = "io.github.libxposed", name = "service", version.r
 material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIcons" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "androidx-navigation" }
 androidx-navigationevent = { group = "androidx.navigationevent", name = "navigationevent-compose", version.ref = "androidx-navigationevent" }
+miuix-nav = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android", version.ref = "miuix" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
