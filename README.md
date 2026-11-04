@@ -34,9 +34,9 @@ EtaExpressive 不只是聊天框。把你自己的模型接到手机上：它可
 | :-----------------------------------------: | :------------------------------------------------------------: | :-------------------------------------------------------: |
 | <img src="docs/Screenshots/chat_home.jpg" width="320" alt="聊天首页"> | <img src="docs/Screenshots/call_subagents.jpg" width="320" alt=" 调用子代理"> | <img src="docs/Screenshots/chat_device_direct.jpg" width="320" alt="系统 API 调用"> |
 
-|                  设置                  |                自建工具能力                |                 Skills                 |
+|                  使用 decision 模型                  |                自建工具能力                |                 Skills                 |
 | :------------------------------------: | :-------------------------------------: | :------------------------------------: |
-| <img src="docs/Screenshots/settings.jpg" width="320" alt="设置"> | <img src="docs/Screenshots/tools.jpg" width="320" alt="工具能力"> | <img src="docs/Screenshots/skills.jpg" width="320" alt="Skills"> |
+| <img src="docs/Screenshots/decision_model.jpg" width="320" alt="设置"> | <img src="docs/Screenshots/tools.jpg" width="320" alt="工具能力"> | <img src="docs/Screenshots/skills.jpg" width="320" alt="Skills"> |
 
 
 ## 核心能力
