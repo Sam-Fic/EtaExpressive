@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.AgentTaskSurface
+import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.device.VirtualDisplayPreviewLifecycle
 import io.github.mangi.eta.agent.device.VirtualDisplaySession
 import io.github.mangi.eta.agent.device.VirtualDisplayWebPreview
@@ -61,6 +63,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.rememberTaskBackendInstalled
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -244,9 +247,13 @@ internal fun VirtualDisplayRecoverySection(
     context: Context = LocalContext.current,
     readStatus: (Context) -> JSONObject = VirtualDisplaySession::recoveryStatus,
     recover: (Context) -> JSONObject = VirtualDisplaySession::recoverAndFinishManually,
+    reset: (Context) -> JSONObject = VirtualDisplaySession::forceReset,
     onWorkingChanged: (Boolean) -> Unit = {},
 ) {
     val installed = rememberTaskBackendInstalled()
+    val root by RootAccess.state.collectAsState()
+    // 免模块形态下 owner 由 root 拉起；归档的模块式形态仍走 installed。任一成立即可管理恢复。
+    val backendReady = installed == true || root.isGranted
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val view = LocalView.current
@@ -254,6 +261,7 @@ internal fun VirtualDisplayRecoverySection(
     var state by remember { mutableStateOf<JSONObject?>(null) }
     var result by remember { mutableStateOf<JSONObject?>(null) }
     var webPaired by remember { mutableStateOf(false) }
+    var resetArmed by remember { mutableStateOf(false) }
 
     fun setWorking(value: Boolean) {
         working = value
@@ -270,6 +278,14 @@ internal fun VirtualDisplayRecoverySection(
             } catch (_: Exception) {
                 result = JSONObject().put("ok", false).put("error", "WEB_PREVIEW_REVOKE_FAILED")
             }
+        }
+    }
+
+    // 两段确认的武装态超时自动解除，避免「点过就算数」的误触残留。
+    LaunchedEffect(resetArmed, working) {
+        if (resetArmed && !working) {
+            delay(FORCE_RESET_ARM_TIMEOUT_MS)
+            resetArmed = false
         }
     }
 
@@ -511,12 +527,28 @@ internal fun VirtualDisplayRecoverySection(
                                 }
                             }
                             result?.let { receipt ->
-                                if (receipt.optBoolean("ok") && receipt.optBoolean("released")) {
+                                val forceResetDone = receipt.optBoolean("ok") && receipt.optBoolean("forcedReset")
+                                if (receipt.optBoolean("ok") && (receipt.optBoolean("released") || forceResetDone)) {
                                     Text(
-                                        text = stringResource(R.string.vd_recovery_success),
+                                        text = stringResource(
+                                            if (forceResetDone) {
+                                                R.string.vd_recovery_force_reset_done
+                                            } else {
+                                                R.string.vd_recovery_success
+                                            },
+                                        ),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
+                                    // 强制重置的分级结果与滞留说明照实展示。
+                                    val note = receipt.optString("message")
+                                    if (forceResetDone && note.isNotBlank()) {
+                                        Text(
+                                            text = note,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 } else {
                                     Text(
                                         text = stringResource(
@@ -542,7 +574,7 @@ internal fun VirtualDisplayRecoverySection(
                                 verticalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm),
                             ) {
                                 TextButton(
-                                    enabled = installed == true && !working,
+                                    enabled = backendReady && !working,
                                     onClick = {
                                         TouchHaptics.click(view)
                                         refresh()
@@ -561,7 +593,7 @@ internal fun VirtualDisplayRecoverySection(
                                     )
                                 }
                                 Button(
-                                    enabled = installed == true && !working && snapshot != null &&
+                                    enabled = backendReady && !working && snapshot != null &&
                                         snapshot.optBoolean("ok") && snapshot.optBoolean("present") &&
                                         snapshot.optBoolean("recoverable"),
                                     onClick = {
@@ -569,6 +601,7 @@ internal fun VirtualDisplayRecoverySection(
                                             TouchHaptics.click(view)
                                             setWorking(true)
                                             result = null
+                                            resetArmed = false
                                             scope.launch {
                                                 try {
                                                     val receipt = withContext(Dispatchers.IO) {
@@ -602,6 +635,55 @@ internal fun VirtualDisplayRecoverySection(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
+                                Button(
+                                    enabled = backendReady && !working && readable && present,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                    ),
+                                    onClick = {
+                                        TouchHaptics.click(view)
+                                        // 两段确认：第一次只武装，超时自动解除；第二次才真正执行。
+                                        if (!resetArmed) {
+                                            resetArmed = true
+                                            return@Button
+                                        }
+                                        resetArmed = false
+                                        if (!working) {
+                                            setWorking(true)
+                                            result = null
+                                            scope.launch {
+                                                try {
+                                                    result = withContext(Dispatchers.IO) {
+                                                        reset(context.applicationContext)
+                                                    }
+                                                    state = withContext(Dispatchers.IO) {
+                                                        readStatus(context.applicationContext)
+                                                    }
+                                                } catch (ex: CancellationException) {
+                                                    throw ex
+                                                } catch (_: Exception) {
+                                                    result = JSONObject().put("ok", false)
+                                                        .put("error", "RECOVERY_OPERATION_FAILED")
+                                                } finally {
+                                                    setWorking(false)
+                                                }
+                                            }
+                                        }
+                                    },
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            if (resetArmed) {
+                                                R.string.vd_recovery_force_reset_armed
+                                            } else {
+                                                R.string.vd_recovery_force_reset
+                                            },
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
                     }
@@ -612,6 +694,9 @@ internal fun VirtualDisplayRecoverySection(
 }
 
 private const val RECOVERY_PHASE_PENDING = "recovery_pending"
+
+/** 强制重置两段确认的武装态保持时长；超时自动解除，回到普通按钮。 */
+private const val FORCE_RESET_ARM_TIMEOUT_MS = 5_000L
 
 /** 只有「等待恢复」是已确认可读的状态码；其余码显示为状态未知，原始码留在次级文字里。 */
 private fun recoveryStatusRes(readable: Boolean, busy: Boolean, present: Boolean, phase: String): Int = when {

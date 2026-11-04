@@ -2083,6 +2083,9 @@
   <string name="vd_recovery_failed">恢复未完成：%1$s</string>
   <string name="vd_recovery_refresh">刷新状态</string>
   <string name="vd_recovery_explanation">将本会话任务交付到主屏后台，确认副屏为空后关闭。身份或状态无法验证时，保留副屏并显示错误，不会强杀应用</string>
+  <string name="vd_recovery_force_reset">强制重置</string>
+  <string name="vd_recovery_force_reset_armed">再点一次确认强制重置</string>
+  <string name="vd_recovery_force_reset_done">已强制重置副屏会话，可直接重新发起</string>
   <string name="vd_preview_open">网页实时预览</string>
   <string name="vd_preview_revoke">撤销网页授权</string>
   <string name="vd_preview_stop">停止网页预览授权</string>

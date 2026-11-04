@@ -815,6 +815,168 @@ internal object VirtualDisplaySession {
         }
     }
 
+    /**
+     * 设置页「强制重置」：用户显式点按后的最后出口，逐级降级并照实上报。
+     * 一级：向仍在线且已认证的 owner 发 force release，任务账目核验由 owner 侧强制执行，
+     * 已证明滞留主屏的逃逸任务被明确容忍；二级：owner 拒绝或失联时以 root 终结其进程，
+     * 副屏随进程被框架回收——与 owner 自行崩溃走同一条 stale 自愈路径。全程不移动任何
+     * 任务，拆屏后任务的去向与重启一次完全等价。只有 owner 确认死亡才作废记录与内存
+     * 会话（凭证不存在，旧会话无重放路径）；未完成时原样保留，按 FORCE_RESET_INCOMPLETE
+     * 报失败，既有恢复路径继续可用。
+     */
+    @Synchronized fun forceReset(context: Context): JSONObject {
+        recoveryContext = context.applicationContext
+        val ctx = recoveryContext ?: return reply(false, "RECOVERY_STATE_UNWRITABLE")
+        val saved = try { recoveryPrefs(ctx).all } catch (_: Exception) { emptyMap<String, Any?>() }
+        val pending = sessions.values.filter { it.phase != "finished" }
+        if (saved.isEmpty() && pending.isEmpty()) return reply(false, "NO_VIRTUAL_SESSION")
+        // 连接元数据优先取落盘记录，缺字段时回退内存 client 的已知值。
+        fun fromClient(value: (VirtualDisplayOwnerClient) -> String): String? =
+            pending.firstNotNullOfOrNull { s -> s.client?.let(value) }?.takeIf { it.isNotBlank() }
+        val socketName = (saved["socket"] as? String).takeUnless { it.isNullOrBlank() }
+            ?: fromClient { it.socketName }.orEmpty()
+        val pid = (saved["pid"] as? Long) ?: pending.firstNotNullOfOrNull { it.client?.ownerPid } ?: 0L
+        val displayId = (saved["display"] as? Int) ?: pending.firstNotNullOfOrNull { it.client?.displayId } ?: -1
+        val uniqueId = (saved["unique"] as? String).takeUnless { it.isNullOrBlank() }
+            ?: fromClient { it.uniqueId }.orEmpty()
+        val token = (saved["token"] as? String).takeUnless { it.isNullOrBlank() }
+            ?: fromClient { it.recoveryToken }.orEmpty()
+        val recordRun = (saved["run"] as? String).orEmpty()
+        AndroidAgentLogger.warn(
+            "Virtual display force reset: conversation=- run=${recordRun.ifBlank { "-" }} dispatch=- " +
+                "stage=begin display=$displayId pid=$pid",
+        )
+        val client = pending.firstNotNullOfOrNull { s -> s.client?.takeIf { it.isAlive } }
+            ?: reconnectForReset(socketName, pid, displayId, uniqueId, token, recordRun)
+        // 只读证据：owner 视角的任务账目，尽力而为，拿不到也不阻断重置。
+        val state = client?.let { c -> runCatching { c.status() }.getOrNull() }
+        val evidence = JSONObject()
+        for (name in listOf("retainedTaskIds", "liveTaskIds", "goneTaskIds", "escapedTaskIds")) {
+            state?.json?.optJSONArray(name)?.let { evidence.put(name, it) }
+        }
+        // 一级：认证 force release；未确认就记录失败码，便于现场诊断后降级到 root 档。
+        var releasedOk = false
+        var releaseError = ""
+        var remainingOnMain: JSONArray? = null
+        if (client != null) {
+            val released = runCatching { client.release(force = true) }.getOrNull()
+            if (released == null) {
+                releaseError = "RELEASE_NO_RESPONSE"
+            } else {
+                val confirmed = VirtualDisplayHandoffEvidence.released(
+                    identity = VirtualDisplayHandoffRetry.OwnerIdentity(
+                        client.socketName, client.ownerPid, client.displayId, client.uniqueId,
+                    ),
+                    authenticatedConnection = true,
+                    responseOk = released.ok && released.op == VirtualDisplayOwnerProtocol.OP_RELEASE,
+                    field = { released.json?.opt(it) },
+                )
+                if (confirmed) {
+                    releasedOk = true
+                    remainingOnMain = released.json?.optJSONArray("remainingOnMainTaskIds")
+                } else {
+                    releaseError = released.errorCode.takeIf { it.isNotBlank() } ?: "RELEASE_UNCONFIRMED"
+                }
+            }
+        }
+        // 二级：root 终结 owner。ESRCH 才算死；su 失败或权限被撤时按未终结照实上报。
+        var killedOwner = false
+        if (!releasedOk && pid > 0 && !ownerProcessGone(pid)) {
+            runCatching { RootSu.process("kill $pid").start().waitFor() }
+            killedOwner = awaitProcessGone(pid)
+        }
+        val processGone = releasedOk || killedOwner || pid <= 0 || ownerProcessGone(pid)
+        val displayGone = if (displayId > 0) awaitDisplayGone(ctx, displayId) else false
+        // 收尾只在 owner 确认死亡（或已优雅释放）时进行：绝不能清掉记录却留下一个无人
+        // 管理的活 owner。未完成时完整保留记录与内存会话，既有恢复路径继续可用。
+        var recordCleared = false
+        if (processGone) {
+            sessions.values.filter { it.phase != "finished" }.forEach { s ->
+                s.phase = "finished"
+                clearPresence(s)
+                runCatching { s.client?.close() }
+            }
+            sessions.clear()
+            recordCleared = runCatching { recoveryPrefs(ctx).edit().clear().commit() }.getOrDefault(false)
+        }
+        val tier = when {
+            releasedOk -> "graceful_release"
+            killedOwner -> "owner_terminated"
+            processGone -> "owner_gone"
+            else -> "incomplete"
+        }
+        val remainingText = when {
+            !releasedOk -> ""
+            remainingOnMain == null || remainingOnMain.length() == 0 -> "没有已证明滞留主屏的任务"
+            else -> "任务已按原位留在主屏"
+        }
+        val note = buildString {
+            append(
+                when {
+                    releasedOk -> "副屏已强制释放（未执行归位）"
+                    killedOwner -> "owner 进程已终结，副屏由框架回收"
+                    processGone -> "owner 已不在线，副屏记录已清除"
+                    else -> "强制重置未完全确认，请重试或重启设备后重新发起"
+                },
+            )
+            if (remainingText.isNotBlank()) append("：").append(remainingText)
+            if (!processGone && releaseError.isNotBlank()) append("（release：$releaseError）")
+            append("；需要新副屏可直接重新调用 start_virtual_session")
+            if (!displayGone && displayId > 0) append("；注意：副屏消失未确认（display $displayId）")
+        }
+        if (releaseError.isNotBlank()) AndroidAgentLogger.warn(
+            "Virtual display force reset: conversation=- run=${recordRun.ifBlank { "-" }} dispatch=- " +
+                "stage=graceful_release code=$releaseError",
+        )
+        AndroidAgentLogger.warn(
+            "Virtual display force reset: conversation=- run=${recordRun.ifBlank { "-" }} dispatch=- " +
+                "stage=done tier=$tier killedOwner=$killedOwner displayGone=$displayGone " +
+                "recordCleared=$recordCleared",
+        )
+        val receipt = if (processGone) reply(true) else reply(false, "FORCE_RESET_INCOMPLETE")
+        return receipt.put("forcedReset", true).put("released", releasedOk)
+            .put("tier", tier).put("killedOwner", killedOwner).put("displayGone", displayGone)
+            .put("recordCleared", recordCleared).put("evidence", evidence).put("message", note)
+            .also { r ->
+                if (releaseError.isNotBlank()) r.put("releaseError", releaseError)
+                remainingOnMain?.let { r.put("remainingOnMainTaskIds", it) }
+            }
+    }
+
+    /** 强制重置专用的有界重连；失败只降级到 root 档，不抛恢复异常。 */
+    private fun reconnectForReset(
+        socketName: String, pid: Long, displayId: Int, uniqueId: String, token: String, runId: String,
+    ): VirtualDisplayOwnerClient? {
+        if (socketName.isBlank() || token.isBlank()) return null
+        return VirtualDisplayOwnerClient.reconnect(
+            AndroidAgentLogger, socketName, pid, displayId, uniqueId, token,
+            runId.ifBlank { "manual-vd-force-reset" },
+        )
+    }
+
+    /** 有界轮询等待 root kill 生效；线程被中断时按未终结处理。 */
+    private fun awaitProcessGone(pid: Long, timeoutMs: Long = 2_000L): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (!ownerProcessGone(pid)) {
+            if (System.currentTimeMillis() >= deadline) return false
+            try { Thread.sleep(150) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt(); return false
+            }
+        }
+        return true
+    }
+
+    private fun awaitDisplayGone(context: Context, displayId: Int, timeoutMs: Long = 4_000L): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (!ownerDisplayGone(context, displayId)) {
+            if (System.currentTimeMillis() >= deadline) return false
+            try { Thread.sleep(150) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt(); return false
+            }
+        }
+        return true
+    }
+
     @Synchronized fun keep(runId: String, args: JSONObject): JSONObject {
         val s = sessions[runId] ?: return reply(false, "NO_VIRTUAL_SESSION")
         if (s.abortCleanupAttempted) return reply(false, "SESSION_NOT_ACTIVE")
