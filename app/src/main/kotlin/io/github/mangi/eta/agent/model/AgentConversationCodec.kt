@@ -169,6 +169,13 @@ internal object AgentConversationCodec {
         val path: String,
         val mimeType: String,
         val displayName: String,
+        /**
+         * 原图像素宽高（仅图片附件有）。写入 `image_file` 部件后，
+         * 后续轮的上下文预算可按统一的 1920/2.07MP 公式估算，而不是按文件字节兜底。
+         * 老数据缺这两项时按字节数下限估算（偏低），不影响反序列化。
+         */
+        val width: Int? = null,
+        val height: Int? = null,
     )
 
     fun userPersistedImageMessage(
@@ -192,7 +199,18 @@ internal object AgentConversationCodec {
                     .put("type", type)
                     .put("path", image.path)
                     .put("mime", image.mimeType)
-                    .put("name", image.displayName),
+                    .put("name", image.displayName)
+                    .apply {
+                        // 仅持久化层使用；送模型前会被 hydration 换成 image_url，不会外发额外字段。
+                        if (type == IMAGE_FILE_TYPE) {
+                            val w = image.width
+                            val h = image.height
+                            if (w != null && h != null && w > 0 && h > 0) {
+                                put("width", w)
+                                put("height", h)
+                            }
+                        }
+                    },
             )
         }
         return JSONObject()
@@ -555,13 +573,20 @@ internal object AgentConversationCodec {
                     val path = item.optString("path")
                     val type = item.optString("type")
                     if (path.startsWith("/") && path.length <= 1_024) {
-                        target.put(
-                            JSONObject()
-                                .put("type", type)
-                                .put("path", path)
-                                .put("mime", item.optString("mime").take(128))
-                                .put("name", item.optString("name").take(80)),
-                        )
+                        val entry = JSONObject()
+                            .put("type", type)
+                            .put("path", path)
+                            .put("mime", item.optString("mime").take(128))
+                            .put("name", item.optString("name").take(80))
+                        // 原图宽高只用于预算估算；旧数据没有这两项时保持缺省。
+                        if (type == IMAGE_FILE_TYPE) {
+                            val width = item.optInt("width").takeIf { it > 0 }
+                            val height = item.optInt("height").takeIf { it > 0 }
+                            if (width != null && height != null) {
+                                entry.put("width", width).put("height", height)
+                            }
+                        }
+                        target.put(entry)
                     }
                 }
                 item.optString("type") == "image_url" ||

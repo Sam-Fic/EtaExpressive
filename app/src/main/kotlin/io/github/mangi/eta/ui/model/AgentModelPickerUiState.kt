@@ -364,6 +364,8 @@ internal fun PendingImageUi.toLiveModelImage(): AgentModelClient.ModelImage =
             reference = uri,
             mimeType = mimeType,
             bytes = byteSize,
+            width = widthPx,
+            height = heightPx,
             source = uri,
         )
     } else {
@@ -371,12 +373,18 @@ internal fun PendingImageUi.toLiveModelImage(): AgentModelClient.ModelImage =
             reference = dataUrl,
             mimeType = mimeType,
             bytes = dataUrl.length,
+            // 预览 dataUrl 只有 1024 档；估算必须用 Attach 时的原图宽高，
+            // 由 AgentContextBudget 统一按 1920/2.07MP 夹取后才等于送模型的视觉 token。
+            width = widthPx,
+            height = heightPx,
             source = uri,
         )
     }
 
 internal fun PendingImageUi.toOutboundModelImage(supportsVideo: Boolean): AgentModelClient.ModelImage =
     if (isVideo && !supportsVideo) {
+        // 视频按预览帧发给图片模型：这里的尺寸是视频分辨率而非预览帧尺寸，
+        // 不能拿来算视觉 token，保持按字节兜底。
         AgentModelClient.ModelImage(
             reference = dataUrl,
             mimeType = "image/jpeg",

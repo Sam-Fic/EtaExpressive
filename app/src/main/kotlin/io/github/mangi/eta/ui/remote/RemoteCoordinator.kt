@@ -399,6 +399,13 @@ internal class RemoteCoordinator(
             }
             val name = "image-${System.currentTimeMillis()}.${extensionFor(image.mimeType)}"
             val id = runCatching { connection.session.uploadAttachment(name, image.mimeType, bytes) }.getOrNull()
+            val srcWidth = image.width
+            val srcHeight = image.height
+            val bounds = if (srcWidth != null && srcHeight != null && srcWidth > 0 && srcHeight > 0) {
+                srcWidth to srcHeight
+            } else {
+                io.github.mangi.eta.agent.media.AgentImageCodec.boundsOfReference(appContext, image.reference)
+            }
             withContext(Dispatchers.Main.immediate) {
                 if (id == null) {
                     connection.holder.notice(appContext.getString(R.string.remote_attach_failed), isError = true)
@@ -410,6 +417,8 @@ internal class RemoteCoordinator(
                             dataUrl = image.reference,
                             mimeType = image.mimeType,
                             byteSize = image.bytes,
+                            widthPx = bounds?.first,
+                            heightPx = bounds?.second,
                         ),
                     )
                 }

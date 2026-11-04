@@ -1,6 +1,8 @@
 package io.github.mangi.eta.agent.model
 
 import io.github.mangi.eta.agent.media.AGENT_MODEL_IMAGE_MAX_LONG_EDGE
+import io.github.mangi.eta.agent.media.AGENT_MODEL_IMAGE_MAX_PIXELS
+import io.github.mangi.eta.agent.media.modelImageTargetSize
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -12,9 +14,14 @@ internal object AgentContextBudget {
     private const val RESERVED_TOKENS = 8_000
     private const val TOKENS_PER_MESSAGE = 3
     private const val IMAGE_GRID = 32
-    // 图片 token 估算与送模型图片共用同一 1080p 长边上限，避免两套口径漂移。
+    // 图片 token 估算与送模型图片共用同一套上限（长边 1920 + 像素 2.07MP），避免两套口径漂移。
     private const val IMAGE_MAX_EDGE = AGENT_MODEL_IMAGE_MAX_LONG_EDGE
+    private const val IMAGE_MAX_PIXELS = AGENT_MODEL_IMAGE_MAX_PIXELS
     private const val IMAGE_MIN_TOKENS = 85
+    // 只有字节数、没有宽高时的兜底换算（与历史 image_url / 持久化文件共用）。
+    private const val IMAGE_BYTES_PER_TOKEN = 4_096L
+    private const val VIDEO_MIN_TOKENS = 1_200
+    private const val VIDEO_BYTES_PER_TOKEN = 1_024L
     // 对齐 Operit：中文约 1.5 token/字，拉丁约 4 字符/token。
     // 原先统一 codepoint/3，中文会少算 4～6 倍，界面用量就会远低于接口账单。
     private const val CJK_TOKENS_PER_CHAR = 1.5
@@ -54,27 +61,42 @@ internal object AgentContextBudget {
 
     fun countStoredImages(count: Int): Int = count.coerceAtLeast(0) * IMAGE_MIN_TOKENS
 
+    /** 只有字节量、没有宽高时的图片兜底（保守下限：实际视觉 token 通常高于该值）。 */
+    fun countImageBytesTokens(bytes: Long): Int =
+        max(IMAGE_MIN_TOKENS.toLong(), bytes / IMAGE_BYTES_PER_TOKEN).toInt()
+
+    /** 只有字节量、没有宽高时的视频兜底。 */
+    fun countVideoBytesTokens(bytes: Long): Int =
+        max(VIDEO_MIN_TOKENS.toLong(), bytes / VIDEO_BYTES_PER_TOKEN).toInt()
+
     fun countImageTokens(image: AgentModelClient.ModelImage): Int {
         if (image.mimeType.startsWith("video/", ignoreCase = true) ||
             image.reference.startsWith("data:video/", ignoreCase = true)
         ) {
-            return max(1_200, image.bytes / 1_024)
+            return countVideoBytesTokens(image.bytes.toLong())
         }
         val w = image.width
         val h = image.height
         return if (w != null && h != null && w > 0 && h > 0) {
             countImageTokens(w, h)
         } else {
-            max(IMAGE_MIN_TOKENS, image.bytes / 4_096)
+            countImageBytesTokens(image.bytes.toLong())
         }
     }
 
+    /**
+     * 图片 token 的唯一公式：先把原图尺寸夹到送模型档位（[modelImageTargetSize]，
+     * 与编码器共用同一处实现），再按 32px 网格折算 `ceil(w/32) * ceil(h/32)`。
+     *
+     * 传入的宽高应当是**原图**尺寸而非聊天预览尺寸，否则会低估 1920 档的视觉 token。
+     */
     fun countImageTokens(width: Int, height: Int): Int {
-        val longEdge = max(width, height)
-        val scale = if (longEdge > IMAGE_MAX_EDGE) IMAGE_MAX_EDGE.toFloat() / longEdge else 1f
-        val scaledW = width * scale
-        val scaledH = height * scale
-        val tokens = (ceil(scaledW / IMAGE_GRID) * ceil(scaledH / IMAGE_GRID)).toInt()
+        if (width <= 0 || height <= 0) return IMAGE_MIN_TOKENS
+        val (targetW, targetH) =
+            modelImageTargetSize(width, height, IMAGE_MAX_EDGE, IMAGE_MAX_PIXELS)
+        val tokens = (
+            ceil(targetW.toDouble() / IMAGE_GRID) * ceil(targetH.toDouble() / IMAGE_GRID)
+            ).toInt()
         return max(IMAGE_MIN_TOKENS, tokens)
     }
 
@@ -158,10 +180,10 @@ internal object AgentContextBudget {
             if (index >= 0) {
                 val encoded = url.substring(index + marker.length).filterNot { it.isWhitespace() }
                 val bytes = (encoded.length * 3) / 4
-                return max(1_200, bytes / 1_024)
+                return countVideoBytesTokens(bytes.toLong())
             }
         }
-        return 1_200
+        return VIDEO_MIN_TOKENS
     }
 
     private fun countContentImage(part: JSONObject): Int {
@@ -176,18 +198,7 @@ internal object AgentContextBudget {
             return countImageTokens(width, height)
         }
         val bytes = dataUrlDecodedBytes(url)
-        return if (bytes != null) {
-            countImageTokens(
-                AgentModelClient.ModelImage(
-                    reference = url,
-                    mimeType = "image/*",
-                    bytes = bytes,
-                    source = "content_image",
-                ),
-            )
-        } else {
-            IMAGE_MIN_TOKENS
-        }
+        return if (bytes != null) countImageBytesTokens(bytes.toLong()) else IMAGE_MIN_TOKENS
     }
 
     private fun dataUrlDecodedBytes(url: String): Int? {

@@ -267,12 +267,22 @@ internal class EtaAssistantComposerState(
                     return@launch
                 }
                 val preview = AgentImageCodec.previewFromReference(appContext, image) ?: image
+                // 预算估算用原图尺寸（不是 1024 预览）；缺失时只读解码边界。
+                val srcWidth = image.width
+                val srcHeight = image.height
+                val bounds = if (srcWidth != null && srcHeight != null && srcWidth > 0 && srcHeight > 0) {
+                    srcWidth to srcHeight
+                } else {
+                    AgentImageCodec.boundsOfReference(appContext, image.reference)
+                }
                 val pending = PendingImageUi(
                     id = "img-${UUID.randomUUID()}",
                     // 发送使用首次读取后的稳定引用，不再依赖 ROM Photo Picker URI 的授权生命周期。
                     uri = image.reference,
                     dataUrl = preview.reference,
                     mimeType = image.mimeType,
+                    widthPx = bounds?.first,
+                    heightPx = bounds?.second,
                 )
                 withContext(Dispatchers.Main) { pendingImages = pendingImages + pending }
             } finally {
@@ -298,6 +308,8 @@ internal class EtaAssistantComposerState(
                     isVideo = true,
                     durationMs = attachment.durationMs.takeIf { it > 0L },
                     byteSize = attachment.bytes,
+                    widthPx = attachment.width?.takeIf { it > 0 },
+                    heightPx = attachment.height?.takeIf { it > 0 },
                 )
                 withContext(Dispatchers.Main) { pendingImages = pendingImages + pending }
             } finally {

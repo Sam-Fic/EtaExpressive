@@ -187,9 +187,9 @@ internal object AgentWireRequestEstimate {
             val width = part.optInt("width", part.optJSONObject(key)?.optInt("width") ?: 0)
             val height = part.optInt("height", part.optJSONObject(key)?.optInt("height") ?: 0)
             media.tokens += when {
-                video -> maxOf(1_200L, chars * 3 / 4 / 1024)
+                video -> AgentContextBudget.countVideoBytesTokens(chars * 3 / 4).toLong()
                 width > 0 && height > 0 -> AgentContextBudget.countImageTokens(width, height).toLong()
-                else -> maxOf(85L, chars * 3 / 4 / 4096)
+                else -> AgentContextBudget.countImageBytesTokens(chars * 3 / 4).toLong()
             }
         }
 

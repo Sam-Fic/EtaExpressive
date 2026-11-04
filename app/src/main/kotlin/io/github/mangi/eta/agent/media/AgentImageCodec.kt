@@ -35,6 +35,61 @@ internal object AgentImageCodec {
         )
     }
 
+    /**
+     * 只读解码边界（`inJustDecodeBounds`），不把整图读进内存。用于上下文预算估算：
+     * 附件 token 必须按**原图**尺寸折算，不能用聊天预览的 1024 尺寸。
+     *
+     * 支持 data URL、content URI、file URI 与本地绝对路径；http(s) 等远端引用返回 null
+     * （不做网络探测），调用方回退到按字节数下限估算。**必须在 IO 线程调用。**
+     */
+    fun boundsOfReference(context: Context?, value: String): Pair<Int, Int>? {
+        val trimmed = value.trim()
+        if (trimmed.isBlank()) return null
+        if (trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true)
+        ) return null
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        val decoded = runCatching {
+            when {
+                trimmed.startsWith("data:image/", ignoreCase = true) -> {
+                    val marker = trimmed.indexOf("base64,", ignoreCase = true)
+                    if (marker < 0) return@runCatching false
+                    val encoded = trimmed.substring(marker + "base64,".length)
+                    if (encoded.isBlank() || encoded.length > MAX_AGENT_IMAGE_BYTES * 2) {
+                        return@runCatching false
+                    }
+                    val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                    if (bytes.isEmpty() || bytes.size > MAX_AGENT_IMAGE_BYTES) {
+                        return@runCatching false
+                    }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                    options.outWidth > 0 && options.outHeight > 0
+                }
+                trimmed.startsWith("content://", ignoreCase = true) && context != null ->
+                    context.contentResolver.openInputStream(Uri.parse(trimmed))?.use {
+                        BitmapFactory.decodeStream(it, null, options)
+                        options.outWidth > 0 && options.outHeight > 0
+                    } ?: false
+                else -> {
+                    val file = when {
+                        trimmed.startsWith("file://", ignoreCase = true) ->
+                            Uri.parse(trimmed).path?.let(::File)
+                        else -> File(trimmed)
+                    }
+                    if (file == null || !file.isFile) {
+                        false
+                    } else {
+                        runCatching {
+                            BitmapFactory.decodeFile(file.absolutePath, options)
+                            options.outWidth > 0 && options.outHeight > 0
+                        }.getOrDefault(false)
+                    }
+                }
+            }
+        }.getOrDefault(false)
+        return if (decoded) options.outWidth to options.outHeight else null
+    }
+
     /** 用户附件始终保持原始字节、编码和像素尺寸。 */
     fun fromAttachmentBytes(
         bytes: ByteArray,

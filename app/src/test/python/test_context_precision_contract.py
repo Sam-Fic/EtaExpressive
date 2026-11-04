@@ -49,7 +49,9 @@ class ContextPrecisionContractTest(unittest.TestCase):
             self.assertNotIn(forbidden, code)
         self.assertIn('size in 1..MAX_AGENT_IMAGE_BYTES.toLong()', code)
         self.assertIn('video && size in 1..MAX_AGENT_VIDEO_BYTES.toLong()', code)
-        self.assertIn('maxOf(85, (size / 4096).toInt())', code)
+        # 图片 token 只保留一套尺寸公式；无宽高时统一走 AgentContextBudget 的字节兜底。
+        self.assertIn('AgentContextBudget.countImageBytesTokens(size)', code)
+        self.assertNotIn('size / 4096', code)
 
     def test_ui_preserves_raw_calibration_and_separate_capability_preview(self):
         bar = self.read('ui/components/AgentChatInputBar.kt')

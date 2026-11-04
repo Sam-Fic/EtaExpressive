@@ -31,6 +31,33 @@ internal const val AGENT_MODEL_IMAGE_MAX_LONG_EDGE = 1_920
 internal const val AGENT_MODEL_IMAGE_MAX_PIXELS = 1_920L * 1_080L
 
 /**
+ * 送模型图片的目标像素尺寸：先按长边上限缩，再按像素上限缩。
+ *
+ * 编码器（见 [AgentModelImageEncoder] 的 `targetSize`）与上下文预算
+ * （[io.github.mangi.eta.agent.model.AgentContextBudget.countImageTokens]）共用这一处实现，
+ * 保证「实际编码尺寸」与「token 估算尺寸」不会出现第二份公式。
+ */
+internal fun modelImageTargetSize(
+    width: Int,
+    height: Int,
+    maxLongEdge: Int?,
+    maxPixels: Long?,
+): Pair<Int, Int> {
+    if (width <= 0 || height <= 0) return width to height
+    var scale = maxLongEdge
+        ?.let { limit -> min(1.0, limit.toDouble() / maxOf(width, height)) }
+        ?: 1.0
+    val scaledPixels = width.toDouble() * height * scale * scale
+    maxPixels?.let { limit ->
+        if (scaledPixels > limit) {
+            scale *= sqrt(limit / scaledPixels)
+        }
+    }
+    return (width * scale).toInt().coerceIn(1, width) to
+        (height * scale).toInt().coerceIn(1, height)
+}
+
+/**
  * 用户附件送模型时的单张字节目标（约 1.43 MiB）。
  *
  * 无损 WebP 对照片常到 1~3 MB，base64 后单张会变成 2~4 MB 字符串；取 1.5 MB
@@ -571,20 +598,9 @@ internal object AgentModelImageEncoder {
         height: Int,
         profile: EncodingProfile,
     ): TargetSize {
-        if (width <= 0 || height <= 0) return TargetSize(width, height)
-        var scale = profile.maxLongEdge
-            ?.let { limit -> min(1.0, limit.toDouble() / maxOf(width, height)) }
-            ?: 1.0
-        val scaledPixels = width.toDouble() * height * scale * scale
-        profile.maxPixels?.let { limit ->
-            if (scaledPixels > limit) {
-                scale *= sqrt(limit / scaledPixels)
-            }
-        }
-        return TargetSize(
-            width = (width * scale).toInt().coerceIn(1, width),
-            height = (height * scale).toInt().coerceIn(1, height),
-        )
+        val (scaledWidth, scaledHeight) =
+            modelImageTargetSize(width, height, profile.maxLongEdge, profile.maxPixels)
+        return TargetSize(scaledWidth, scaledHeight)
     }
 
     private fun sampleSize(

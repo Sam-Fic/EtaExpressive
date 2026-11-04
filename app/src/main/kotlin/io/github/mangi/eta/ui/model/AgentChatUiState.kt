@@ -456,6 +456,16 @@ data class PendingImageUi(
     val isVideo: Boolean = false,
     val durationMs: Long? = null,
     val byteSize: Int = 0,
+    /**
+     * 附件**原图**的像素宽高（不是 [dataUrl] 的 1024 预览尺寸）。
+     * Attach 时只读解码边界获得，供上下文预算按送模型时的 1920/2.07MP 档位折算视觉 token。
+     *
+     * 仅内存态，不参与序列化/持久化；旧草稿或旧路径（编辑/重生成回填的图片）可能为 null，
+     * 估算会回退到按字节数下限（[io.github.mangi.eta.agent.model.AgentContextBudget.countImageBytesTokens]），
+     * 属于保守下限而非高估。
+     */
+    val widthPx: Int? = null,
+    val heightPx: Int? = null,
 )
 
 @Immutable

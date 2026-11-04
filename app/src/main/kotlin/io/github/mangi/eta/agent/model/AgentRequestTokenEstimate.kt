@@ -115,8 +115,15 @@ internal object AgentRequestTokenEstimate {
                     if (vision) {
                         val size = fileLength(path)
                         if (size in 1..MAX_AGENT_IMAGE_BYTES.toLong()) {
-                            // Hydration retains original bytes, but does not send dimensions.
-                            tokens += maxOf(85, (size / 4096).toInt())
+                            // 新持久化的附件带有原图宽高，按统一视觉公式计；
+                            // 旧数据没有宽高时只能按字节兜底（保守下限，仍会偏低）。
+                            val width = p.optInt("width").takeIf { it > 0 }
+                            val height = p.optInt("height").takeIf { it > 0 }
+                            tokens += if (width != null && height != null) {
+                                AgentContextBudget.countImageTokens(width, height)
+                            } else {
+                                AgentContextBudget.countImageBytesTokens(size)
+                            }
                             hasKeptPart = true
                         }
                     }
@@ -126,11 +133,11 @@ internal object AgentRequestTokenEstimate {
                     if (!video) listings += "[用户视频] $path"
                     val size = fileLength(path)
                     if (video && size in 1..MAX_AGENT_VIDEO_BYTES.toLong()) {
-                        tokens += maxOf(1_200, (size / 1024).toInt())
+                        tokens += AgentContextBudget.countVideoBytesTokens(size)
                         hasKeptPart = true
                     } else if (!video && vision && size > 0) {
                         // Preview extraction and duration are deliberately not decoded for budgeting.
-                        tokens += 85
+                        tokens += AgentContextBudget.countStoredImages(1)
                         hasKeptPart = true
                     }
                 }
@@ -169,12 +176,16 @@ internal object AgentRequestTokenEstimate {
             val height = p.optInt("height").takeIf { it > 0 }
                 ?: p.optJSONObject("image_url")?.optInt("height")?.takeIf { it > 0 }
             if (width != null && height != null) AgentContextBudget.countImageTokens(width, height)
-            else maxOf(85, encodedBytes(p.optJSONObject("image_url")?.optString("url").orEmpty()
-                .ifBlank { p.optString("url") }) / 4096)
+            else AgentContextBudget.countImageBytesTokens(
+                encodedBytes(p.optJSONObject("image_url")?.optString("url").orEmpty()
+                    .ifBlank { p.optString("url") }).toLong()
+            )
         }
         "video_url", "video", "input_video", "video_file" ->
-            maxOf(1_200, encodedBytes(p.optJSONObject("video_url")?.optString("url").orEmpty()
-                .ifBlank { p.optString("url") }) / 1024)
+            AgentContextBudget.countVideoBytesTokens(
+                encodedBytes(p.optJSONObject("video_url")?.optString("url").orEmpty()
+                    .ifBlank { p.optString("url") }).toLong()
+            )
         else -> AgentContextBudget.countTokens(p.optString("text"))
     }
 
