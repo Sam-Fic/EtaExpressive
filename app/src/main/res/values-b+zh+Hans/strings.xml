@@ -304,7 +304,7 @@
   <string name="drawer_delete_folder_title">删除文件夹？</string>
   <string name="drawer_delete_folder_message">文件夹中的对话会移回「聊天」，文件夹将被删除</string>
   <string name="folders_page_title">管理文件夹</string>
-  <string name="folders_page_empty">还没有文件夹，点右上角新建一个</string>
+  <string name="folders_page_empty">还没有文件夹，点右下角的新建按钮创建一个</string>
   <string name="folders_page_delete_message">「%1$s」中的对话会移回「聊天」，文件夹将被删除</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="other">%d 个对话</item>

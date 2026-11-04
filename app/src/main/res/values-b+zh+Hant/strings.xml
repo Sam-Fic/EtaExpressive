@@ -412,7 +412,7 @@
   <string name="drawer_delete_folder_title">刪除資料夾？</string>
   <string name="drawer_delete_folder_message">資料夾中的對話會移回「聊天」，資料夾將被刪除</string>
   <string name="folders_page_title">管理資料夾</string>
-  <string name="folders_page_empty">還沒有資料夾，點右上角新建一個</string>
+  <string name="folders_page_empty">還沒有資料夾，點右下角的新建按鈕建立一個</string>
   <string name="folders_page_delete_message">「%1$s」中的對話會移回「聊天」，資料夾將被刪除</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="other">%d 個對話</item>

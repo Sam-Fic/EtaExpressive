@@ -278,7 +278,7 @@
   <string name="drawer_delete_folder_title">Delete folder?</string>
   <string name="drawer_delete_folder_message">Conversations in this folder will be moved back to Chats. The folder will be deleted</string>
   <string name="folders_page_title">Manage folders</string>
-  <string name="folders_page_empty">No folders yet. Create one from the top right</string>
+  <string name="folders_page_empty">No folders yet. Use the create button at the bottom right</string>
   <string name="folders_page_delete_message">Conversations in “%1$s” will be moved back to Chats. The folder will be deleted</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="one">%d conversation</item>
