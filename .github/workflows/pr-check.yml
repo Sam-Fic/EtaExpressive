@@ -35,6 +35,18 @@ jobs:
           ./gradlew --no-daemon --no-configuration-cache --continue
           :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
 
+      - name: 校验 Room schema 导出已提交
+        # app/schemas 由 KSP 生成但必须提交：实体改了而没把重新导出的 JSON 交上来，
+        # 就等于把「同版本号不同结构」这类漂移重新放回暗处（v39 那次闪退就是这么来的）。
+        # 只看 git diff 会漏掉升版本新增的未跟踪文件，两种形态一起查。
+        run: |-
+          untracked=$(git ls-files --others --exclude-standard app/schemas)
+          if [ -n "$untracked" ] || ! git diff --quiet --exit-code app/schemas; then
+            echo "::error::app/schemas 与实体定义不一致：KSP 重新导出了 schema，但改动没随提交带上。请 git add app/schemas 后重新提交。"
+            git status --short app/schemas
+            exit 1
+          fi
+
       - name: 上传检查报告
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

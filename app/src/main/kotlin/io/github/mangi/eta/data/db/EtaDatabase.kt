@@ -8,6 +8,9 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/** schema 版本唯一声明处：@Database 与迁移测试断言都引用它，升版本只改这一行。 */
+internal const val ETA_SCHEMA_VERSION = 40
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -28,8 +31,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MediaSourceEntity::class,
         DispatchClaimEntity::class,
     ],
-    version = 39,
-    exportSchema = false,
+    version = ETA_SCHEMA_VERSION,
+    exportSchema = true,
 )
 internal abstract class EtaDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDao
@@ -51,42 +54,14 @@ internal abstract class EtaDatabase : RoomDatabase() {
                     EtaDatabase::class.java,
                     "eta.db",
                 )
-                    .addMigrations(
-                        MIGRATION_6_7,
-                        MIGRATION_7_8,
-                        MIGRATION_8_9,
-                        MIGRATION_9_10,
-                        MIGRATION_10_11,
-                        MIGRATION_11_12,
-                        MIGRATION_12_13,
-                        MIGRATION_13_14,
-                        MIGRATION_14_15,
-                        MIGRATION_15_16,
-                        MIGRATION_16_17,
-                        MIGRATION_17_18,
-                        MIGRATION_18_19,
-                        MIGRATION_19_20,
-                        MIGRATION_20_21,
-                        MIGRATION_21_22,
-                        MIGRATION_22_23,
-                        MIGRATION_23_24,
-                        MIGRATION_24_25,
-                        MIGRATION_25_26,
-                        MIGRATION_26_27,
-                        MIGRATION_27_28,
-                        MIGRATION_28_29,
-                        MIGRATION_29_30,
-                        MIGRATION_30_31,
-                        MIGRATION_31_32,
-                        MIGRATION_32_33,
-                        MIGRATION_33_34,
-                        MIGRATION_34_35,
-                        MIGRATION_35_36,
-                        MIGRATION_36_37,
-                        MIGRATION_37_38,
-                        MIGRATION_38_39,
-                    )
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .addMigrations(*ALL_MIGRATIONS)
+                    // 不再无条件清库。原先的 fallbackToDestructiveMigration 会对**任何**缺失的迁移
+                    // 路径静默重建全部表：漏写一个迁移的用户不会看到报错，只会发现历史会话凭空蒸发。
+                    // 现在 6→40 区间缺迁移就抛异常，开发期当场暴露（本次 v39 漂移就是被它掩盖后
+                    // 一路带到真机才炸的）。唯一保留的例外是 1–5：迁移链从 6 起，那几个版本从未写过
+                    // 升级路径，上古库只能重建。参数依次为 dropAllTables 与允许的起始版本；
+                    // 这些版本不得与上面 addMigrations 的任何端点重叠（6 已在链中，故不能带上）。
+                    .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4, 5)
                     .build()
                     .also { instance = it }
             }
@@ -310,9 +285,44 @@ internal abstract class EtaDatabase : RoomDatabase() {
         }
 
         // 调度台所建的工作会话标记：dispatch_parent_id 非空表示由该调度台会话派生。
+        // 两条 ALTER 带存在判断，理由与 MIGRATION_39_40 同型：开发期拿脏工作树装过包的设备，
+        // 可能已经把列落在了 user_version 还是 38 的库里（本机正是在 39 上先踩过一次）。
+        // 注意这里防的不是「迁移中途失败后重跑」——SQLiteOpenHelper 把 onUpgrade 整个包在事务里，
+        // 实测失败后回滚干净（列不残留、行数不变、版本仍是 38），根本不会出现半个 schema。
         internal val MIGRATION_38_39 = Migration(38, 39) { database ->
-            database.execSQL("ALTER TABLE conversations ADD COLUMN dispatch_parent_id TEXT")
-            database.execSQL("ALTER TABLE conversations ADD COLUMN dispatch_managed_at INTEGER")
+            if (!tableHasColumn(database, "conversations", "dispatch_parent_id")) {
+                database.execSQL("ALTER TABLE conversations ADD COLUMN dispatch_parent_id TEXT")
+            }
+            if (!tableHasColumn(database, "conversations", "dispatch_managed_at")) {
+                database.execSQL("ALTER TABLE conversations ADD COLUMN dispatch_managed_at INTEGER")
+            }
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS dispatch_claims (" +
+                    "dispatch_id TEXT NOT NULL, " +
+                    "conversation_id TEXT NOT NULL, " +
+                    "brief TEXT NOT NULL, " +
+                    "origin_text TEXT NOT NULL, " +
+                    "run_id TEXT, " +
+                    "state TEXT NOT NULL, " +
+                    "created_at INTEGER NOT NULL, " +
+                    "PRIMARY KEY(dispatch_id))"
+            )
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_dispatch_claims_conversation_id " +
+                    "ON dispatch_claims(conversation_id)"
+            )
+        }
+
+        // 补丁：v39 曾被一个「调度半成品」构建落过库——那版 conversations 只有 dispatch_parent_id、
+        // dispatch_claims 还没建，Room 就把那个残缺结构写成了 v39 的 identity hash。最终版补齐了列
+        // 与表却没推版本号，同版本号 hash 不符时 Room 既不迁移也不清库，冷启动直接抛
+        // "Room cannot verify the data integrity"，进程在 EtaApp 创建阶段就死掉（点开即闪退）。
+        // 差额以 39→40 补齐；已装完整 v39 的设备与从 38 升上来的设备都走空操作。
+        // 只补不重建，会话/消息/API 配置全程原样保留。
+        internal val MIGRATION_39_40 = Migration(39, 40) { database ->
+            if (!tableHasColumn(database, "conversations", "dispatch_managed_at")) {
+                database.execSQL("ALTER TABLE conversations ADD COLUMN dispatch_managed_at INTEGER")
+            }
             database.execSQL(
                 "CREATE TABLE IF NOT EXISTS dispatch_claims (" +
                     "dispatch_id TEXT NOT NULL, " +
@@ -558,5 +568,47 @@ internal abstract class EtaDatabase : RoomDatabase() {
                     "ON runtime_inflight_events(run_id, sort_index)"
             )
         }
+        /**
+         * 迁移链的单一事实源：生产 builder 与迁移测试共用这一份，升版本时不会再出现
+         * 「@Database 已经推到 40、测试清单还数到 38」的漂移——本次闪退排查中就发现
+         * EtaDatabaseMigrationTest 的三个用例因这种漂移早已变红。
+         * 必须声明在所有 MIGRATION_* 之后：companion 的属性按声明顺序初始化。
+         */
+        internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9,
+            MIGRATION_9_10,
+            MIGRATION_10_11,
+            MIGRATION_11_12,
+            MIGRATION_12_13,
+            MIGRATION_13_14,
+            MIGRATION_14_15,
+            MIGRATION_15_16,
+            MIGRATION_16_17,
+            MIGRATION_17_18,
+            MIGRATION_18_19,
+            MIGRATION_19_20,
+            MIGRATION_20_21,
+            MIGRATION_21_22,
+            MIGRATION_22_23,
+            MIGRATION_23_24,
+            MIGRATION_24_25,
+            MIGRATION_25_26,
+            MIGRATION_26_27,
+            MIGRATION_27_28,
+            MIGRATION_28_29,
+            MIGRATION_29_30,
+            MIGRATION_30_31,
+            MIGRATION_31_32,
+            MIGRATION_32_33,
+            MIGRATION_33_34,
+            MIGRATION_34_35,
+            MIGRATION_35_36,
+            MIGRATION_36_37,
+            MIGRATION_37_38,
+            MIGRATION_38_39,
+            MIGRATION_39_40,
+        )
     }
 }

@@ -141,6 +141,15 @@ android {
     }
 }
 
+// Room 把每个 schema 版本的期望 DDL 导出到这里（app/schemas/<库名>/<version>.json）。
+// 这次 v39 结构漂移排查全靠手工导出 DDL 再与真机逐表比对——有了这份产物，同一件事就是
+// 一次 `git diff`：实体改了而 @Database 版本没推，JSON 会跟着动而版本号不动，评审当场能看见。
+// 顺带解锁 AutoMigration 的生成能力（它需要相邻两个版本的 JSON 才能推导升级语句）。
+// 这份目录要提交，别当构建产物忽略掉。
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // 单测 worker 的堆上限：Robolectric 用例在 SDK 36 下会加载完整 Android 框架，
 // 与真实进程类用例（PTY 终端）共用同一个 worker。Gradle 默认 512MB 在两类
 // 用例连续执行时不足，内存受限会让进程类用例无限期停滞，直到整个 job 超时。

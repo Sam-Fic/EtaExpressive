@@ -45,38 +45,10 @@ class EtaDatabaseMigrationTest {
             .allowMainThreadQueries()
             .openHelperFactory(FrameworkSQLiteOpenHelperFactory())
             .addMigrations(
-                EtaDatabase.MIGRATION_6_7,
-                EtaDatabase.MIGRATION_7_8,
-                EtaDatabase.MIGRATION_8_9,
-                EtaDatabase.MIGRATION_9_10,
-                EtaDatabase.MIGRATION_10_11,
-                EtaDatabase.MIGRATION_11_12,
-                EtaDatabase.MIGRATION_12_13,
-                EtaDatabase.MIGRATION_13_14,
-                EtaDatabase.MIGRATION_14_15,
-                EtaDatabase.MIGRATION_15_16,
-                migration16To17WithMcpData,
-                EtaDatabase.MIGRATION_17_18,
-                EtaDatabase.MIGRATION_18_19,
-                EtaDatabase.MIGRATION_19_20,
-                EtaDatabase.MIGRATION_20_21,
-                EtaDatabase.MIGRATION_21_22,
-                EtaDatabase.MIGRATION_22_23,
-                EtaDatabase.MIGRATION_23_24,
-                EtaDatabase.MIGRATION_24_25,
-                EtaDatabase.MIGRATION_25_26,
-                EtaDatabase.MIGRATION_26_27,
-                EtaDatabase.MIGRATION_27_28,
-                EtaDatabase.MIGRATION_28_29,
-                EtaDatabase.MIGRATION_29_30,
-                EtaDatabase.MIGRATION_30_31,
-                EtaDatabase.MIGRATION_31_32,
-                EtaDatabase.MIGRATION_32_33,
-                EtaDatabase.MIGRATION_33_34,
-                EtaDatabase.MIGRATION_34_35,
-                EtaDatabase.MIGRATION_35_36,
-                EtaDatabase.MIGRATION_36_37,
-                EtaDatabase.MIGRATION_37_38,
+                // 单一事实源；16→17 换成带 MCP 数据注入的包装，验证配置能活着走完链路。
+                *EtaDatabase.ALL_MIGRATIONS.map { chain ->
+                    if (chain.startVersion == 16) migration16To17WithMcpData else chain
+                }.toTypedArray(),
             )
             .build()
         } catch (error: Throwable) {
@@ -104,7 +76,7 @@ class EtaDatabaseMigrationTest {
                 database.conversationDao().contextCheckpoint("conv-1")
             }
             assertEquals("", retainedCheckpoint?.cloudUsageJson)
-            assertEquals(38, database.openHelper.readableDatabase.version)
+            assertEquals(ETA_SCHEMA_VERSION, database.openHelper.readableDatabase.version)
             assertTrue(conversations.none { it.hasCompletionMarker })
             val oversizedCheckpoint = runBlocking(Dispatchers.IO) {
                 database.conversationDao().contextCheckpoint("conv-oversized")
@@ -521,14 +493,10 @@ class EtaDatabaseMigrationTest {
             val database = Room.databaseBuilder(context, EtaDatabase::class.java, name)
                 .allowMainThreadQueries()
                 .openHelperFactory(FrameworkSQLiteOpenHelperFactory())
-                .addMigrations(EtaDatabase.MIGRATION_28_29, EtaDatabase.MIGRATION_29_30,
-                    EtaDatabase.MIGRATION_30_31, EtaDatabase.MIGRATION_31_32,
-                    EtaDatabase.MIGRATION_32_33, EtaDatabase.MIGRATION_33_34,
-                    EtaDatabase.MIGRATION_34_35, EtaDatabase.MIGRATION_35_36,
-                    EtaDatabase.MIGRATION_36_37, EtaDatabase.MIGRATION_37_38)
+                .addMigrations(*EtaDatabase.ALL_MIGRATIONS)
                 .build()
             try {
-                assertEquals(38, database.openHelper.writableDatabase.version)
+                assertEquals(ETA_SCHEMA_VERSION, database.openHelper.writableDatabase.version)
                 runBlocking(Dispatchers.IO) {
                     val result = database.runtimeRunDao().runtimeResults().single()
                     val archive = database.runtimeRunDao().archivedRunHeaders().single()
