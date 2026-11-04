@@ -175,6 +175,9 @@ internal class AgentRunMessageProjector(
             elapsedMs = maxOf(target?.elapsedMs ?: 0L, event.elapsedMs.coerceAtLeast(0L)),
             reasonCode = event.reasonCode.ifBlank { target?.reasonCode.orEmpty() },
             reasonDetail = event.reasonDetail.ifBlank { target?.reasonDetail.orEmpty() },
+            // 只有「先观察到 running/stopped、再转 failed」才算重连失败；
+            // 首次到达就是 failed 的（run 在首次请求前就死去、或永久错误不重试）走普通运行失败文案。
+            isReconnect = target?.isReconnect ?: (status != ErrorReconnectStatus.Failed),
         )
         if (marker.status != ErrorReconnectStatus.Running && marker.status != ErrorReconnectStatus.Stopped) {
             claimedReconnectIds.remove(runId)
