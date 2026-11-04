@@ -367,8 +367,8 @@ fun etaConnectedGroupColors() = ToggleButtonDefaults.colors(
     checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
     checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     // 禁用态显式配色，避免落到默认的深灰。
-    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.38f),
-    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = EtaAlphas.DisabledContent),
+    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = EtaAlphas.DisabledContent),
 )
 
 /**

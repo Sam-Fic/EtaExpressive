@@ -34,6 +34,7 @@ import io.github.mangi.eta.data.repository.EtaBackupRepository
 import io.github.mangi.eta.data.repository.EtaBackupSummary
 import io.github.mangi.eta.data.repository.EtaModelBackupSummary
 import io.github.mangi.eta.agent.tool.ToolRecipePaths
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
@@ -571,7 +572,7 @@ private fun BackupActionRow(
                     tint = if (enabled) {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = EtaAlphas.DisabledContent)
                     },
                 )
             }

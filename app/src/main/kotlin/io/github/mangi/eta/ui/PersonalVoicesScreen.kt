@@ -22,6 +22,7 @@ import io.github.mangi.eta.agent.voice.tts.SpeechPlayback
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.data.model.SpeechSynthesisModels
 import io.github.mangi.eta.data.repository.ProviderRepository
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -226,7 +227,7 @@ internal fun MimoVoicesScreen(onBack: () -> Unit) {
                                         colors = ButtonDefaults.textButtonColors(
                                             contentColor = MaterialTheme.colorScheme.error,
                                             disabledContentColor =
-                                                MaterialTheme.colorScheme.error.copy(alpha = 0.38f),
+                                                MaterialTheme.colorScheme.error.copy(alpha = EtaAlphas.DisabledContent),
                                         ),
                                         onClick = { TouchHaptics.click(view); deleting = voice },
                                     ) { Text(stringResource(R.string.action_delete)) }

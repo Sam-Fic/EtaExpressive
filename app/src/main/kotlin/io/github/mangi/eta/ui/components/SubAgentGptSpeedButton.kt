@@ -34,8 +34,8 @@ import io.github.mangi.eta.agent.runtime.localizedText
 import io.github.mangi.eta.data.model.GptSpeedMode
 import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.data.model.supportsGptSpeedBinding
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.etaGptSpeedColor
-import io.github.mangi.eta.ui.adaptive.etaOnSurface
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -93,7 +93,7 @@ private fun BoundSubAgentGptSpeedButton(
     val context = LocalContext.current
     val view = LocalView.current
 
-    val normalColor = etaOnSurface()
+    val normalColor = MaterialTheme.colorScheme.onSurface
     // 颜色由 owner 传入的 mode 决定，非 GPT 不会走到这里；颜色插值属 Effects，走官方
     // motionScheme 的 effects 档（临界阻尼、无过冲）。
     val contentColor by animateColorAsState(
@@ -101,7 +101,7 @@ private fun BoundSubAgentGptSpeedButton(
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Color>(),
         label = "sub_agent_gpt_speed_color",
     )
-    val displayedColor = if (usable) contentColor else contentColor.copy(alpha = 0.38f)
+    val displayedColor = if (usable) contentColor else contentColor.copy(alpha = EtaAlphas.DisabledContent)
     val semanticsModifier = modifier.semantics(mergeDescendants = true) {
         contentDescription = subAgentGptSpeedDescription(profile.name, mode)
     }

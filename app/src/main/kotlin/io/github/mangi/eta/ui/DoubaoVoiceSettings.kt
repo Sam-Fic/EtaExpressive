@@ -50,6 +50,7 @@ import io.github.mangi.eta.agent.voice.doubao.PersonalVoices
 import io.github.mangi.eta.agent.voice.doubao.VoiceCatalogPreferences
 import io.github.mangi.eta.agent.voice.doubao.VoiceCatalogSecretStore
 import io.github.mangi.eta.agent.voice.doubao.VoiceProjectCatalog
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
@@ -61,7 +62,6 @@ import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
-import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.EtaMenuEntry
 import io.github.mangi.eta.ui.adaptive.EtaTextMenu
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
@@ -258,7 +258,7 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                                                 EtaText(
                                                     text = "${current.step + 1} / 3 · " + listOf(stringResource(R.string.dv_step_slot), stringResource(R.string.dv_step_recording), stringResource(R.string.dv_step_confirm))[current.step],
-                                                    color = etaPrimary(),
+                                                    color = MaterialTheme.colorScheme.primary,
                                                 )
                                                 LinearProgressIndicator(progress = { (current.step + 1) / 3f }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                                             }
@@ -755,7 +755,7 @@ private fun VoiceSlotSync(apiKey: String, onBusy: (Boolean) -> Unit, onResult: (
                         }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = project == item.name, enabled = item.allowed && !working, onClick = null)
                         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                            EtaText(item.displayName, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (item.allowed) 1f else 0.38f))
+                            EtaText(item.displayName, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (item.allowed) 1f else EtaAlphas.DisabledContent))
                             if (item.displayName != item.name) EtaText(item.name, style = EtaTextStyle.Footnote)
                             if (!item.allowed) EtaText(stringResource(R.string.dv_no_project_access), style = EtaTextStyle.Footnote, secondary = true)
                         }

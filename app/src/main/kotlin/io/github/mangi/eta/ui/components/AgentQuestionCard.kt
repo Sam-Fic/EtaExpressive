@@ -42,8 +42,6 @@ import io.github.mangi.eta.agent.question.AgentQuestionCodec
 import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaType
-import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
-import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.app.AgentQuestionProjection
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
@@ -164,7 +162,7 @@ private fun AgentQuestionCardContent(
             Icon(
                 imageVector = Icons.Rounded.ChatBubbleOutline,
                 contentDescription = null,
-                tint = if (waiting) etaPrimary() else etaOnSurfaceVariant(),
+                tint = if (waiting) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         title = "${questionStatusText(message.status)} · ${request.title}",
@@ -292,7 +290,7 @@ private fun QuestionReadOnlyDetails(message: AgentQuestionMessageUi) {
     // 小标签 chatQuaternaryStyle（labelSmall）+ onSurfaceVariant——不另设字号与颜色。
     val bodyStyle = chatExpandedBodyStyle()
     val labelStyle = chatQuaternaryStyle()
-    val labelColor = etaOnSurfaceVariant()
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         questionSummary(message)?.let { summary ->
             // This is the only summary. Custom answers remain complete, even when very long.

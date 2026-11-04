@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.components
 
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -30,7 +31,7 @@ internal fun PreferenceIcon(
         contentDescription = null,
         modifier = modifier,
         tint = when {
-            !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = EtaAlphas.DisabledContent)
             destructive -> MaterialTheme.colorScheme.error
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         },

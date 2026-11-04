@@ -95,4 +95,16 @@ object EtaDimens {
 
     /** 虚拟屏舞台在窄屏下的最大高度：再高就会把状态/控制分组挤出首屏。 */
     val VirtualDisplayStageMaxHeight = 480.dp
+
+    // ── 圆角 ──
+    //
+    // 同心圆角规则：外层容器圆角 = 内层圆角 + 两层之间的间距（外圆 = 内圆 + 间距），
+    // 嵌套时据此递推，避免内层「穿墙」或缝隙不均。
+    //
+    // 圆角 token 沿用 KernelSU 的就近归属惯例，不集中搬进本文件：
+    // - 分段列表：EtaSegmentedOuterCornerRadius 16 / 内角 4 / 组内间距 2（EtaSegmentedList.kt）
+    // - 连接式按钮组：EtaConnectedInnerCornerRadius 8 / 按压态 4（EtaExpressiveKit.kt）
+    // - 聊天域：用户气泡 24（ChatMessageItem）、输入条组合 36（AgentChatComposerM3）、
+    //   文件 chip 12/接缝 4（AgentChatFileAttachments）等，各自在文件顶部命名私藏
+    // 新圆角先对照上面找同语义值；确实全新才就近命名，不新增一次性字面量。
 }

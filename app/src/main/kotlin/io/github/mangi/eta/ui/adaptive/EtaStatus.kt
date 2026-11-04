@@ -44,6 +44,6 @@ fun EtaStatus.foregroundColor(): Color = when (this) {
     EtaStatus.Running -> MaterialTheme.colorScheme.primary
     EtaStatus.Success -> etaConnectedColor()
     EtaStatus.Failed -> MaterialTheme.colorScheme.error
-    EtaStatus.Unknown -> etaOnSurfaceVariant()
+    EtaStatus.Unknown -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 

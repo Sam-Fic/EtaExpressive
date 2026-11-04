@@ -106,10 +106,10 @@ private fun etaExpressiveSwitchColors(): SwitchColors {
     return SwitchDefaults.colors(
         checkedIconColor = scheme.primary,
         uncheckedIconColor = scheme.surfaceContainerHighest,
-        disabledCheckedThumbColor = scheme.surface.copy(alpha = 0.38f),
+        disabledCheckedThumbColor = scheme.surface.copy(alpha = EtaAlphas.DisabledContent),
         disabledCheckedTrackColor = scheme.onSurface.copy(alpha = 0.12f),
         disabledCheckedIconColor = scheme.onSurface.copy(alpha = 0.12f),
-        disabledUncheckedThumbColor = scheme.outline.copy(alpha = 0.38f),
+        disabledUncheckedThumbColor = scheme.outline.copy(alpha = EtaAlphas.DisabledContent),
         disabledUncheckedTrackColor = scheme.surfaceContainerHighest.copy(alpha = 0.12f),
         disabledUncheckedBorderColor = scheme.onSurface.copy(alpha = 0.12f),
         disabledUncheckedIconColor = scheme.surfaceContainerHighest,

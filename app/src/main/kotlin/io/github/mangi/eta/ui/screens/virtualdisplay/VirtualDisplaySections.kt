@@ -49,6 +49,7 @@ import io.github.mangi.eta.agent.device.VirtualDisplayPreviewLifecycle
 import io.github.mangi.eta.agent.device.VirtualDisplaySession
 import io.github.mangi.eta.agent.device.VirtualDisplayWebPreview
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -211,7 +212,7 @@ internal fun VirtualDisplayControlSection(
             val closeEnabled = enabled && status.active
             // error 是显式覆盖色，不吃 EtaSegmentedRow 的禁用处理；禁用时压到 38%，
             // 与可点击态区分（同 PreferenceIcon / PersonalVoicesScreen 的禁用约定）。
-            val closeColor = MaterialTheme.colorScheme.error.copy(alpha = if (closeEnabled) 1f else 0.38f)
+            val closeColor = MaterialTheme.colorScheme.error.copy(alpha = if (closeEnabled) 1f else EtaAlphas.DisabledContent)
             EtaSegmentedRow(
                 enabled = closeEnabled,
                 onClick = onClose,

@@ -35,6 +35,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.AssistantProfile
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
@@ -237,7 +238,7 @@ internal fun AssistantDeleteConfirmPanel(
                     color = if (canDelete) {
                         MaterialTheme.colorScheme.error
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = EtaAlphas.DisabledContent)
                     },
                 )
             }

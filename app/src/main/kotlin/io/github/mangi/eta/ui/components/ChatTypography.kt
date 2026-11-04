@@ -1,11 +1,11 @@
 package io.github.mangi.eta.ui.components
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.ui.adaptive.EtaType
-import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 
 /**
@@ -40,7 +40,8 @@ internal fun chatQuaternaryStyle(): TextStyle = etaTextStyle(EtaType.Micro)
 @Composable
 internal fun chatExpandedBodyStyle(monospace: Boolean = false): TextStyle =
     chatSecondaryStyle().copy(
-        fontSize = 14.sp,
+        // 字号沿用 bodyMedium 的 14sp（此前凭空重写，token 变更会静默失联）；只抬
+        // 行高到 22（官方默认 20），与思考/详情内容的行距约定一致。
         lineHeight = 22.sp,
-        color = etaOnSurfaceVariant(),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     ).let { if (monospace) it.copy(fontFamily = FontFamily.Monospace) else it }

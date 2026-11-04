@@ -95,7 +95,14 @@ fun EtaCard(
     }
 }
 
-/** 文本层级。 */
+/**
+ * 文本层级（EtaText 专用，设置/终端等「表单型」界面的四档）。
+ *
+ * 与 [EtaType]（主页/侧栏的六档语义字阶）的关系：Body/Secondary/Footnote 在
+ * EtaText 内部委托到 [etaTextStyle] 对应档实现；仅 [EtaTextStyle.Title] 有意取
+ * 更小的 titleMedium——EtaType.Title 指弹窗/抽屉大标题（titleLarge）。新代码
+ * 优先直接用 [etaTextStyle]。
+ */
 enum class EtaTextStyle { Title, Body, Secondary, Footnote }
 
 /** 自适应文本。 */
@@ -109,11 +116,13 @@ fun EtaText(
     textAlign: TextAlign? = null,
 ) {
     val effective = if (secondary) EtaTextStyle.Secondary else style
+    // Body/Secondary/Footnote 与 etaTextStyle(EtaType) 对应档取值完全一致，委托单源；
+    // Title 是文档化的有意分档（titleMedium），不走 EtaType.Title（titleLarge）。
     val textStyle = when (effective) {
         EtaTextStyle.Title -> MaterialTheme.typography.titleMedium
-        EtaTextStyle.Body -> MaterialTheme.typography.bodyLarge
-        EtaTextStyle.Secondary -> MaterialTheme.typography.bodyMedium
-        EtaTextStyle.Footnote -> MaterialTheme.typography.bodySmall
+        EtaTextStyle.Body -> etaTextStyle(EtaType.Body)
+        EtaTextStyle.Secondary -> etaTextStyle(EtaType.Secondary)
+        EtaTextStyle.Footnote -> etaTextStyle(EtaType.Caption)
     }
     val defaultColor = when (effective) {
         EtaTextStyle.Title, EtaTextStyle.Body -> MaterialTheme.colorScheme.onSurface

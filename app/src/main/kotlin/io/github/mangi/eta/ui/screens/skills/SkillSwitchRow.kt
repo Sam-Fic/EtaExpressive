@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.mangi.eta.R
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
@@ -63,7 +64,7 @@ internal fun SkillSwitchRow(
                     // 行首类别图标统一 onSurfaceVariant（与设置页 PreferenceIcon 同一档）。
                     MaterialTheme.colorScheme.onSurfaceVariant
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = EtaAlphas.DisabledContent)
                 },
             )
         },
@@ -74,7 +75,7 @@ internal fun SkillSwitchRow(
                 color = if (enabled) {
                     MaterialTheme.colorScheme.onSurface
                 } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = EtaAlphas.DisabledContent)
                 },
             )
         },
@@ -85,7 +86,7 @@ internal fun SkillSwitchRow(
                 color = if (enabled) {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = EtaAlphas.DisabledContent)
                 },
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

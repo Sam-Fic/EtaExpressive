@@ -77,6 +77,7 @@ import io.github.mangi.eta.ui.model.ConversationMention
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import androidx.compose.ui.semantics.contentDescription
@@ -157,18 +158,12 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaType
-import io.github.mangi.eta.ui.adaptive.etaOnTertiaryContainer
-import io.github.mangi.eta.ui.adaptive.etaOnSurface
-import io.github.mangi.eta.ui.adaptive.etaPrimary
-import io.github.mangi.eta.ui.adaptive.etaTertiaryContainer
-import io.github.mangi.eta.ui.adaptive.etaSurfaceContainer
-import io.github.mangi.eta.ui.adaptive.etaSurfaceContainerHigh
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 /** 图标按钮的图标弱化透明度（与官方 StandardIconButtonTokens.DisabledOpacity 同值）。 */
-private const val DisabledIconAlpha = 0.38f
+private const val DisabledIconAlpha = EtaAlphas.DisabledContent
 
 /**
  * Agent 输入器始终保持同一空间结构，聚焦、输入和执行过程只改变状态，不搬动操作入口。
@@ -564,7 +559,7 @@ internal fun ThinkingEffortChip(
     }
 
     val normalColor = if (active) {
-        etaPrimary()
+        MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -923,7 +918,7 @@ internal fun PendingImageStrip(
                     // 同心：图框圆角半径 = 「×」圆钮半径（18/2 = 9dp）+ 端距（4dp）= 13dp，
                     // 圆角弧心与圆钮圆心重合（与输入胶囊端盖同一套“半径差 = 间距”的同心规则）。
                     .clip(RoundedCornerShape(13.dp))
-                    .background(etaSurfaceContainer()),
+                    .background(MaterialTheme.colorScheme.surfaceContainer),
             ) {
                 rememberDataUrlBitmap(image.dataUrl, fallback = image.uri)?.let { bitmap ->
                     ChatClickableImage(
@@ -969,7 +964,7 @@ internal fun PendingImageStrip(
                         .size(18.dp)
                         .clip(CircleShape)
                         // 第三容器色（用户指定）：与前景 onTertiaryContainer 配对，保证「×」可读。
-                        .background(etaTertiaryContainer())
+                        .background(MaterialTheme.colorScheme.tertiaryContainer)
                         .clickable { onRemoveImage(image.id) },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -977,7 +972,7 @@ internal fun PendingImageStrip(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.ui_remove_image_089db3),
                         modifier = Modifier.size(EtaDimens.MicroIconSize),
-                        tint = etaOnTertiaryContainer(),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
                 }
             }
@@ -1351,7 +1346,7 @@ internal fun VoiceModeStatusPanel(
                 },
                 contentDescription = null,
                 modifier = Modifier.size(EtaDimens.DenseIconSize),
-                tint = if (state.error == null) etaPrimary() else StatusError,
+                tint = if (state.error == null) MaterialTheme.colorScheme.primary else StatusError,
             )
             M3Text(
                 text = phase,

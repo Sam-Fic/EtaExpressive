@@ -25,8 +25,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaType
-import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
-import io.github.mangi.eta.ui.adaptive.etaPrimary
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.model.ActiveRunSummaryUi
 import io.github.mangi.eta.ui.model.RunStatusUi
@@ -100,7 +98,7 @@ private fun StatusIndicator(status: RunStatusUi) {
     // 同一套 loading 语言），其余状态用官方 Icon；尺寸取官方小号图标按钮的图标令牌，
     // 颜色只用官方 primary 角色。
     val indicatorSize = IconButtonDefaults.extraSmallIconSize
-    val indicatorTint = etaPrimary()
+    val indicatorTint = MaterialTheme.colorScheme.primary
     // 进度指示 ⇄ 结果图标的切换走同一套 Expressive 淡入 + 轻微放大，不再硬换。
     val motionScheme = MaterialTheme.motionScheme
     AnimatedContent(
@@ -133,7 +131,7 @@ private fun StatusIndicator(status: RunStatusUi) {
             imageVector = Icons.Rounded.MoreHoriz,
             contentDescription = null,
             modifier = Modifier.size(indicatorSize),
-            tint = etaOnSurfaceVariant(),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
     }

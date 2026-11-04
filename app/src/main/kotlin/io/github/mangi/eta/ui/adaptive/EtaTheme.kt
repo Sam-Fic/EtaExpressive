@@ -5,37 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import io.github.mangi.eta.data.model.GptSpeedMode
 
-/** 次要前景色（摘要文本、尾部图标着色）。 */
-@Composable
-internal fun etaOnSurfaceVariant(): Color = MaterialTheme.colorScheme.onSurfaceVariant
-
-/** 主要前景色（正文文本）。 */
-@Composable
-internal fun etaOnSurface(): Color = MaterialTheme.colorScheme.onSurface
-
-/** 强调色。 */
-@Composable
-internal fun etaPrimary(): Color = MaterialTheme.colorScheme.primary
-
-/** 高层级表面色（用于嵌套容器背景）。 */
-@Composable
-internal fun etaSurfaceContainerHigh(): Color = MaterialTheme.colorScheme.surfaceContainerHigh
-
-/** 次要容器色（进度环 track、普通标签底色）。 */
-@Composable
-internal fun etaSecondaryContainer(): Color = MaterialTheme.colorScheme.secondaryContainer
-
-/** 第三容器色（强调标签、待发送缩略图「×」圆钮底色）。 */
-@Composable
-internal fun etaTertiaryContainer(): Color = MaterialTheme.colorScheme.tertiaryContainer
-
-/** 第三容器色上的前景。 */
-@Composable
-internal fun etaOnTertiaryContainer(): Color = MaterialTheme.colorScheme.onTertiaryContainer
-
-/** 中层表面色（缩略图、嵌套卡片底）。 */
-@Composable
-internal fun etaSurfaceContainer(): Color = MaterialTheme.colorScheme.surfaceContainer
+// 颜色一律直用 MaterialTheme.colorScheme（对标官方路径，不再设 etaXxx 转发别名）；
+// 本文件只保留带语义判断的颜色访问器。
 
 /**
  * GPT 速度档位的前景色（Material 3）。

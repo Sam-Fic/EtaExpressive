@@ -52,8 +52,6 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaType
-import io.github.mangi.eta.ui.adaptive.etaPrimary
-import io.github.mangi.eta.ui.adaptive.etaSurfaceContainerHigh
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import androidx.compose.ui.draw.clip
@@ -349,8 +347,8 @@ internal fun PendingFileReferenceStrip(
                 modifier = Modifier
                     .height(42.dp)
                     .widthIn(max = 250.dp)
-                    .background(etaSurfaceContainerHigh(), RoundedCornerShape(12.dp))
-                    .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(SentFileChipCornerRadius))
+                    .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(SentFileChipCornerRadius))
                     .padding(start = 12.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -363,7 +361,7 @@ internal fun PendingFileReferenceStrip(
                     },
                     contentDescription = null,
                     modifier = Modifier.size(ButtonDefaults.IconSize),
-                    tint = etaPrimary(),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
                 M3Text(
                     text = reference.displayName +
@@ -465,7 +463,7 @@ internal fun SentFileReferenceFlow(
                     },
                     contentDescription = null,
                     modifier = Modifier.size(EtaDimens.StatusIconSize),
-                    tint = etaPrimary(),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
                 M3Text(
                     text = reference.displayName +

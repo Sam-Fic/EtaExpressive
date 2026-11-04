@@ -188,10 +188,6 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
-import io.github.mangi.eta.ui.adaptive.etaOnSurface
-import io.github.mangi.eta.ui.adaptive.etaOnSurfaceVariant
-import io.github.mangi.eta.ui.adaptive.etaPrimary
-import io.github.mangi.eta.ui.adaptive.etaSurfaceContainerHigh
 import io.github.mangi.eta.ui.adaptive.foregroundColor
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
@@ -971,7 +967,7 @@ private fun UserMessageBubble(
     var actionsRevealed by rememberSaveable(message.id) { mutableStateOf(false) }
     // 长正文的展开态：每条消息各自记住用户的选择，滚动回收/旋屏后仍是同一档。
     var userTextExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
-    val bubbleBg = etaPrimary().copy(alpha = 0.18f)
+    val bubbleBg = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val hasBubbleBody = visiblePrompt.request.isNotBlank() ||
         visiblePrompt.conversations.isNotEmpty() ||
         message.isEdited
@@ -1263,7 +1259,7 @@ private fun UserMessageBubble(
                         Text(
                             text = "@${mention.title}" + if (mention.transcript.contains("[已截取：")) stringResource(R.string.cmi_transcript_truncated) else stringResource(R.string.cmi_transcript_full),
                             style = chatSecondaryStyle(),
-                            color = etaPrimary(),
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
                     }
@@ -1300,7 +1296,7 @@ private fun UserMessageBubble(
                                 Text(
                                     text = stringResource(R.string.ui_edited_c36776),
                                     style = chatTertiaryStyle(),
-                                    color = etaOnSurfaceVariant(),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             if (bodyFoldable) {
@@ -1536,7 +1532,7 @@ private fun AgentMessageBlock(
                         Text(
                             text = message.content,
                             style = chatBodyStyle(),
-                            color = etaOnSurface(),
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = completedContentDrawLayer(Modifier, true),
                         )
                     }
@@ -1691,7 +1687,7 @@ private fun LegacyStreamingMarkdown(
     val parserSession = state.parserSession
     val typography = chatMarkdownTypography(tone)
     val inlineCode = typography.inlineCode.copy(
-        background = etaSurfaceContainerHigh().copy(alpha = 0.6f),
+        background = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
     ).toSpanStyle()
     val uriHandler = LocalUriHandler.current
     val preparedListener = remember(uriHandler) {
@@ -2369,7 +2365,7 @@ private fun chatMarkdownTypography(tone: MarkdownTone) {
         ),
         textLink = TextLinkStyles(
             style = SpanStyle(
-                color = etaPrimary(),
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium,
             ),
         ),
@@ -2392,9 +2388,9 @@ private fun chatMarkdownBodyStyle(tone: MarkdownTone) =
 @Composable
 private fun chatMarkdownTextColor(tone: MarkdownTone): Color =
     if (tone == MarkdownTone.Answer) {
-        etaOnSurface()
+        MaterialTheme.colorScheme.onSurface
     } else {
-        etaOnSurfaceVariant()
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
 
 @Composable
@@ -2402,7 +2398,7 @@ private fun chatMarkdownColors(tone: MarkdownTone) = markdownColor(
     text = chatMarkdownTextColor(tone),
     // 代码块与表格的底色、描边由自定义组件绘制，这里只保留行内代码底色与分隔线。
     codeBackground = chatSurfaceColor(),
-    inlineCodeBackground = etaSurfaceContainerHigh().copy(alpha = 0.6f),
+    inlineCodeBackground = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f),
     dividerColor = chatDividerColor(0.5f),
     tableBackground = Color.Transparent,
 )
@@ -2639,7 +2635,7 @@ private fun ChatMarkdownList(
                             Text(
                                 text = "${initialListNumber + index}.",
                                 style = model.typography.ordered.copy(
-                                    color = etaPrimary(),
+                                    color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.SemiBold,
                                 ),
                             )
@@ -2656,9 +2652,9 @@ private fun ChatMarkdownList(
                                 },
                                 style = model.typography.bullet.copy(
                                     color = if (bulletDepth == 2) {
-                                        etaOnSurfaceVariant()
+                                        MaterialTheme.colorScheme.onSurfaceVariant
                                     } else {
-                                        etaPrimary()
+                                        MaterialTheme.colorScheme.primary
                                     },
                                 ),
                             )
@@ -2886,7 +2882,7 @@ private fun ChatCodeBlock(
             } else {
                 style
             },
-            color = etaOnSurface(),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = codeModifier,
             onTextLayout = revealState?.let { state ->
                 { layoutResult -> state.onTextLayout(code, layoutResult) }
@@ -2904,7 +2900,7 @@ private fun ChatCodeBlock(
                 Text(
                     text = language?.takeIf { it.isNotBlank() } ?: "code",
                     style = chatTertiaryStyle(),
-                    color = etaOnSurfaceVariant(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
                 EtaTooltip(text = stringResource(R.string.copy_code)) {
@@ -2925,9 +2921,9 @@ private fun ChatCodeBlock(
                             ),
                             modifier = Modifier.size(EtaDimens.MicroIconSize),
                             tint = if (copied) {
-                                etaPrimary()
+                                MaterialTheme.colorScheme.primary
                             } else {
-                                etaOnSurfaceVariant().copy(alpha = 0.8f)
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                             },
                         )
                     }
@@ -3004,7 +3000,7 @@ private fun ChatMarkdownTable(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(etaSurfaceContainerHigh().copy(alpha = 0.45f))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f))
                     .height(IntrinsicSize.Max),
             ) {
                 headerCells.forEach { cell ->
@@ -3095,7 +3091,7 @@ private fun ChatMarkdownTableCell(
     Text(
         text = text,
         style = style.copy(textMotion = TextMotion.Animated),
-        color = etaOnSurface(),
+        color = MaterialTheme.colorScheme.onSurface,
         maxLines = maxLines,
         overflow = overflow,
         modifier = Modifier.smoothTextReveal(revealState),
@@ -3116,7 +3112,7 @@ private fun ChatBlockQuote(model: MarkdownComponentModel) {
     val padding = LocalMarkdownPadding.current
     val dimens = LocalMarkdownDimens.current
     val a11yLabels = LocalMarkdownA11yLabels.current
-    val barColor = etaPrimary().copy(alpha = 0.4f)
+    val barColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
     val emptyLineHeight = with(LocalDensity.current) {
         model.typography.quote.lineHeight.takeOrElse { 22.sp }.toDp()
     }
@@ -3346,12 +3342,12 @@ private fun ThinkingRow(
             Icon(
                 imageVector = Icons.Rounded.AutoAwesome,
                 contentDescription = null,
-                tint = if (message.isStreaming && !isPaused) etaPrimary() else etaOnSurfaceVariant(),
+                tint = if (message.isStreaming && !isPaused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.graphicsLayer { alpha = if (message.isStreaming && !isPaused) pulseAlpha() else 1f },
             )
         },
         title = thinkingTitle,
-        titleColor = if (message.isStreaming && !isPaused) etaPrimary() else null,
+        titleColor = if (message.isStreaming && !isPaused) MaterialTheme.colorScheme.primary else null,
         modifier = modifier,
         expanded = expanded,
         onToggle = toggle,
@@ -3447,14 +3443,14 @@ internal fun AgentWorkProcessSummary(
                 },
                 contentDescription = null,
                 tint = when {
-                    running && !isPaused -> etaPrimary()
+                    running && !isPaused -> MaterialTheme.colorScheme.primary
                     expanded -> MaterialTheme.colorScheme.onTertiaryContainer
-                    else -> etaOnSurfaceVariant()
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
         },
         title = headerLabel,
-        titleColor = if (running && !isPaused) etaPrimary() else null,
+        titleColor = if (running && !isPaused) MaterialTheme.colorScheme.primary else null,
         // 展开态用 tertiaryContainer 标出「这一组正被展开」，与其后的步骤行区分。
         containerColor = if (expanded) MaterialTheme.colorScheme.tertiaryContainer else null,
         supporting = stepToolsLabel,
@@ -3648,7 +3644,7 @@ private fun DispatchReceiptCard(
                     io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME,
                 ),
                 contentDescription = null,
-                tint = if (failed) MaterialTheme.colorScheme.error else etaOnSurfaceVariant(),
+                tint = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         title = "派发回报",
@@ -3676,7 +3672,7 @@ private fun DispatchReceiptCard(
                     Text(
                         text = "汇报正文",
                         style = chatQuaternaryStyle(),
-                        color = etaOnSurfaceVariant(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     val scrollState = rememberScrollState()
                     HapticSelectionContainer {
@@ -3852,7 +3848,7 @@ private fun ToolActivityInline(
                                 Text(
                                     text = stringResource(R.string.ui_result_0a2c91),
                                     style = chatQuaternaryStyle(),
-                                    color = etaOnSurfaceVariant(),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 // 摘要是一行结论，完整返回内容在下面：模型当时读到的就是那份文本。
                                 // 有完整内容时摘要只留首行，避免终端输出的预览行重复一遍。
@@ -3885,7 +3881,7 @@ private fun ToolActivityInline(
                                     Text(
                                         text = imageCountLabel,
                                         style = chatQuaternaryStyle(),
-                                        color = etaOnSurfaceVariant(),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
@@ -3923,15 +3919,15 @@ private fun ToolActivityInline(
                 imageVector = ToolPresentation.icon(message.toolName),
                 contentDescription = null,
                 tint = when (message.status) {
-                    ToolActivityStatusUi.Success -> etaOnSurfaceVariant()
-                    ToolActivityStatusUi.Running -> etaPrimary()
+                    ToolActivityStatusUi.Success -> MaterialTheme.colorScheme.onSurfaceVariant
+                    ToolActivityStatusUi.Running -> MaterialTheme.colorScheme.primary
                     ToolActivityStatusUi.Failed -> MaterialTheme.colorScheme.error
-                    ToolActivityStatusUi.Unknown -> etaOnSurfaceVariant()
+                    ToolActivityStatusUi.Unknown -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
         },
         title = title,
-        titleColor = if (message.status == ToolActivityStatusUi.Running) etaPrimary() else null,
+        titleColor = if (message.status == ToolActivityStatusUi.Running) MaterialTheme.colorScheme.primary else null,
         // 折叠态标题只占一行：语义核心（动作名）在最前，长参数由 formatter 截断，
         // 行尾状态与展开箭头固定不被挤掉。
         titleMaxLines = 1,
@@ -4001,7 +3997,7 @@ private fun BrowserPagePreview(
             Text(
                 text = snapshot.host.ifBlank { snapshot.displayUrl },
                 style = chatTertiaryStyle(),
-                color = etaOnSurfaceVariant(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -4042,7 +4038,7 @@ private fun BrowserPagePreview(
                 Text(
                     text = snapshot.displayUrl,
                     style = chatTertiaryStyle(),
-                    color = etaOnSurfaceVariant().copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -4085,7 +4081,7 @@ private fun ToolCommandBlock(
             Text(
                 text = context.ifBlank { stringResource(R.string.shell_command) },
                 style = chatTertiaryStyle(),
-                color = etaOnSurfaceVariant(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -4108,9 +4104,9 @@ private fun ToolCommandBlock(
                         ),
                         modifier = Modifier.size(EtaDimens.StatusIconSize),
                         tint = if (copied) {
-                            etaPrimary()
+                            MaterialTheme.colorScheme.primary
                         } else {
-                            etaOnSurfaceVariant().copy(alpha = 0.8f)
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         },
                     )
                 }
@@ -4174,7 +4170,7 @@ private fun ToolDetailBlock(
                 Text(
                     text = label,
                     style = chatTertiaryStyle(),
-                    color = etaOnSurfaceVariant(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
@@ -4195,7 +4191,7 @@ private fun ToolDetailBlock(
                         imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
                         contentDescription = if (copied) stringResource(R.string.copy_copied) else copyLabel,
                         modifier = Modifier.size(EtaDimens.StatusIconSize),
-                        tint = if (copied) etaPrimary() else etaOnSurfaceVariant().copy(alpha = 0.8f),
+                        tint = if (copied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                     )
                 }
             }
@@ -4246,7 +4242,7 @@ private fun ToolMediaStrip(
         Text(
             text = stringResource(R.string.tool_detail_images),
             style = chatQuaternaryStyle(),
-            color = etaOnSurfaceVariant(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         val mediaStripScrollState = rememberScrollState()
         Row(
@@ -4295,7 +4291,7 @@ private fun ToolMediaThumbnail(
         } else {
             LoadingIndicator(
                 modifier = Modifier.size(16.dp),
-                color = etaOnSurfaceVariant(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -4314,13 +4310,13 @@ private fun RunTraceRow(
             imageVector = Icons.Rounded.Check,
             contentDescription = null,
             modifier = Modifier.size(EtaDimens.StatusIconSize),
-            tint = etaPrimary(),
+            tint = MaterialTheme.colorScheme.primary,
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = stringResource(R.string.ui_available_capacity_743337),
             style = chatSecondaryStyle(),
-            color = etaOnSurface(),
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
         // 对话流里的紧凑入口行：沿用 16dp 状态图标槽与 0.7 alpha 的弱化着色，
@@ -4331,7 +4327,7 @@ private fun RunTraceRow(
         // 这两组常量各自独立，任一侧调整都会让本行与工具行错位；要改就两边一起按同一常量推导。
         EtaTrailingChevron(
             size = EtaDimens.StatusIconSize,
-            tint = etaOnSurfaceVariant().copy(alpha = 0.7f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
         )
     }
     // 官方 Surface(onClick) 承担可点区域、官方形状（shapes.medium）、
@@ -4381,13 +4377,13 @@ private fun ToolSummaryInline(
                     contentDescription = null,
                     // 与卡片内其他前导图标统一为 20dp。
                     modifier = Modifier.size(EtaDimens.DenseIconSize),
-                    tint = etaPrimary()
+                    tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(5.dp))
                 Text(
                     text = toolDisplayName(tool),
                     style = chatTertiaryStyle(),
-                    color = etaOnSurfaceVariant()
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             // 官方 Surface 承担只读标签容器（官方形状、官方 colorScheme 角色与描边）。
@@ -4418,7 +4414,7 @@ private fun ContextCompactedDivider(
     if (message.compactedCount <= 0) return
     val view = LocalView.current
     var showSummary by remember { mutableStateOf(false) }
-    val labelColor = etaOnSurfaceVariant()
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val summaryAction = stringResource(R.string.context_compacted_summary_action)
     val countLabel = pluralStringResource(
         R.plurals.context_compacted_messages,
