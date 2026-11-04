@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.tool
 
+import io.github.mangi.eta.agent.model.AgentDispatchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
@@ -99,7 +100,7 @@ class AgentToolRequirementsTest {
         openedGroups: Set<String> = AgentToolGroups.allIds,
     ) = AgentToolCatalog.build(
         terminalTools = true, browserTools = true,
-        deviceTools = true, personalTools = true,
+        deviceTools = true, personalTools = true, dispatchTools = true,
         skillGitHubDiscovery = true, skillGitHubInstall = true, memoryTools = true,
         capabilities = AgentToolCapabilities(rootAvailable = root, virtualDisplay = virtualDisplay),
         openedToolGroups = openedGroups,

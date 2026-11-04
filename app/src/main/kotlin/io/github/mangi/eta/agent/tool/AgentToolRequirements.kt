@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.tool
 
+import io.github.mangi.eta.agent.model.AgentDispatchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolSearchCatalog
 
 import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
@@ -53,6 +54,9 @@ internal object AgentToolRequirements {
             "eta_author_tool", "eta_list_recipes",
             "semantic_search_media",
         )
+        // 调度台专用工具：只做会话查询与任务派发，不触达设备。名字与目录保持单一出处，
+        // 漏登记会在目录投影时抛 IllegalArgumentException，导致调度台 run 在首次请求前就失败。
+        register(RootRequirement.NONE, *AgentDispatchToolCatalog.TOOL_NAMES.toTypedArray())
         register(
             RootRequirement.PARTIAL,
             "press_key", "network_info", "get_setting", "recent_notifications",
