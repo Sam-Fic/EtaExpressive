@@ -33,6 +33,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,8 +57,10 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroup
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -111,9 +114,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
 import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
-import io.github.mangi.eta.ui.adaptive.EtaConnectedPosition
 import io.github.mangi.eta.ui.adaptive.EtaDimens
-import io.github.mangi.eta.ui.adaptive.etaConnectedButtonShapes
 import io.github.mangi.eta.ui.adaptive.etaConnectedGroupColors
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
 import kotlin.math.hypot
@@ -223,10 +224,12 @@ internal fun AgentOverlayCapsule(
         },
     )
 
+    // 微缩镜只在收起 + 副屏在场时出现；尾部内缩让它中心落在右上圆角弧心上（与左上指示器对称）。
+    val lensVisible = virtualDisplay.active && !expanded && !minimized
     val targetCapsuleWidth by animateDpAsState(
         targetValue = when {
             minimized -> CapsuleBallDiameter
-            virtualDisplay.active && expanded -> CapsuleStageWidth
+            expanded -> CapsuleExpandedWidth
             virtualDisplay.active -> CapsuleMicroLensWidth
             else -> CapsuleDefaultWidth
         },
@@ -270,8 +273,6 @@ internal fun AgentOverlayCapsule(
         virtualDisplay.active -> CapsuleBody.Stage
         else -> CapsuleBody.Controls
     }
-    // 微缩镜只在收起 + 副屏在场时出现；尾部内缩让它中心落在右上圆角弧心上（与左上指示器对称）。
-    val lensVisible = virtualDisplay.active && !expanded && !minimized
     val bodySpatial = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     val bodyFastSpatial = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
     val bodySizeSpatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
@@ -539,10 +540,14 @@ internal fun AgentOverlayCapsule(
 private enum class CapsuleBody { Stage, Controls, Supplement }
 
 /**
- * 补充 / 暂停恢复 / 停止：官方 M3 connected button group —— [EtaConnectedGroupRow] 给官方
- * 2dp 连体间距（`ButtonGroupDefaults.ConnectedSpaceBetween`），[etaConnectedButtonShapes]
- * 给官方连体形状（外侧 CornerFull、内侧 8dp，按压时内角 morph 到 4dp）。
- * 常规动作取官方 tertiaryContainer / onTertiaryContainer 档，停止单独取 error 档。
+ * 补充 / 暂停恢复 / 停止：官方 M3 button group **标准档** `ButtonGroup`——「图标+文字」
+ * Small 按钮按官方 `clickableItem` 模板排布，间距取官方 12dp
+ * （`ButtonGroupDefaults.HorizontalArrangement.spacing`）。按压原生动效：按钮变宽、
+ * 邻居等量压缩（`Modifier.animateWidth`，官方默认 `ExpandedRatio` 0.15）。
+ * 三个按钮排得下（展开体 360dp），`overflowIndicator` 不会被测量与放置；真折行时
+ * 溢出菜单才接管（菜单项照官方 `ClickableButtonGroupItem.MenuContent`：先回调再
+ * `dismiss()`）。常规动作取官方 tertiaryContainer / onTertiaryContainer 档，
+ * 停止单独取 error 档。
  */
 @Composable
 private fun CapsuleActions(
@@ -552,56 +557,115 @@ private fun CapsuleActions(
     onResume: () -> Unit,
     onStop: () -> Unit,
 ) {
-    Box(
+    val scheme = MaterialTheme.colorScheme
+    // 共享的 interaction source 同时喂给 animateWidth 与按钮本身：按压时
+    // 按钮组测量逻辑据此把本钮加宽、邻居等量压缩。
+    val supplementSource = remember { MutableInteractionSource() }
+    val phaseSource = remember { MutableInteractionSource() }
+    val stopSource = remember { MutableInteractionSource() }
+    ButtonGroup(
+        overflowIndicator = { menuState ->
+            ButtonGroupDefaults.OverflowIndicator(menuState = menuState)
+        },
         modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center,
+        horizontalArrangement = Arrangement.spacedBy(
+            ButtonGroupDefaults.HorizontalArrangement.spacing,
+            Alignment.CenterHorizontally,
+        ),
     ) {
-        EtaConnectedGroupRow {
-            val scheme = MaterialTheme.colorScheme
-            CapsuleAction(
-                position = EtaConnectedPosition.Leading,
-                icon = Icons.Rounded.Edit,
-                label = stringResource(R.string.overlay_supplement),
-                containerColor = scheme.tertiaryContainer,
-                contentColor = scheme.onTertiaryContainer,
-                onClick = onSupplement,
-            )
-            AnimatedContent(
-                targetState = phase,
-                transitionSpec = {
-                    (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
-                },
-                label = "capsule_phase_action",
-            ) { current ->
-                when (current) {
-                    AgentOverlayPhase.RUNNING -> CapsuleAction(
-                        position = EtaConnectedPosition.Middle,
-                        icon = Icons.Rounded.Pause,
-                        label = stringResource(R.string.overlay_pause),
-                        containerColor = scheme.tertiaryContainer,
-                        contentColor = scheme.onTertiaryContainer,
-                        onClick = onPause,
-                    )
-                    AgentOverlayPhase.PAUSED -> CapsuleAction(
-                        position = EtaConnectedPosition.Middle,
-                        icon = Icons.Rounded.PlayArrow,
-                        label = stringResource(R.string.overlay_resume),
-                        containerColor = scheme.tertiaryContainer,
-                        contentColor = scheme.onTertiaryContainer,
-                        onClick = onResume,
-                    )
-                    else -> Spacer(Modifier.size(0.dp))
+        customItem(
+            buttonGroupContent = {
+                CapsuleAction(
+                    icon = Icons.Rounded.Edit,
+                    label = stringResource(R.string.overlay_supplement),
+                    containerColor = scheme.tertiaryContainer,
+                    contentColor = scheme.onTertiaryContainer,
+                    interactionSource = supplementSource,
+                    modifier = Modifier.animateWidth(supplementSource),
+                    onClick = onSupplement,
+                )
+            },
+            menuContent = { menuState ->
+                DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                    text = { Text(stringResource(R.string.overlay_supplement)) },
+                    onClick = {
+                        onSupplement()
+                        menuState.dismiss()
+                    },
+                )
+            },
+        )
+        customItem(
+            buttonGroupContent = {
+                AnimatedContent(
+                    targetState = phase,
+                    transitionSpec = {
+                        (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
+                    },
+                    modifier = Modifier.animateWidth(phaseSource),
+                    label = "capsule_phase_action",
+                ) { current ->
+                    when (current) {
+                        AgentOverlayPhase.RUNNING -> CapsuleAction(
+                            icon = Icons.Rounded.Pause,
+                            label = stringResource(R.string.overlay_pause),
+                            containerColor = scheme.tertiaryContainer,
+                            contentColor = scheme.onTertiaryContainer,
+                            interactionSource = phaseSource,
+                            onClick = onPause,
+                        )
+                        AgentOverlayPhase.PAUSED -> CapsuleAction(
+                            icon = Icons.Rounded.PlayArrow,
+                            label = stringResource(R.string.overlay_resume),
+                            containerColor = scheme.tertiaryContainer,
+                            contentColor = scheme.onTertiaryContainer,
+                            interactionSource = phaseSource,
+                            onClick = onResume,
+                        )
+                        else -> Spacer(Modifier.size(0.dp))
+                    }
                 }
-            }
-            CapsuleAction(
-                position = EtaConnectedPosition.Trailing,
-                icon = Icons.Rounded.Stop,
-                label = stringResource(R.string.action_stop),
-                containerColor = scheme.errorContainer,
-                contentColor = scheme.onErrorContainer,
-                onClick = onStop,
-            )
-        }
+            },
+            menuContent = { menuState ->
+                val paused = phase == AgentOverlayPhase.PAUSED
+                DropdownMenuItem(
+                    leadingIcon = {
+                        Icon(if (paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, null)
+                    },
+                    text = {
+                        Text(stringResource(if (paused) R.string.overlay_resume else R.string.overlay_pause))
+                    },
+                    onClick = {
+                        if (paused) onResume() else onPause()
+                        menuState.dismiss()
+                    },
+                )
+            },
+        )
+        customItem(
+            buttonGroupContent = {
+                CapsuleAction(
+                    icon = Icons.Rounded.Stop,
+                    label = stringResource(R.string.action_stop),
+                    containerColor = scheme.errorContainer,
+                    contentColor = scheme.onErrorContainer,
+                    interactionSource = stopSource,
+                    modifier = Modifier.animateWidth(stopSource),
+                    onClick = onStop,
+                )
+            },
+            menuContent = { menuState ->
+                DropdownMenuItem(
+                    leadingIcon = { Icon(Icons.Rounded.Stop, null) },
+                    text = { Text(stringResource(R.string.action_stop)) },
+                    onClick = {
+                        onStop()
+                        menuState.dismiss()
+                    },
+                )
+            },
+        )
     }
 }
 
@@ -688,35 +752,42 @@ private fun DetailLine(detail: String) {
 }
 
 /**
- * 相连按钮组里的单个动作：官方 [FilledTonalButton]（M3E `shapes` 档，按压时形状 morph），
- * 连体形状取官方 [etaConnectedButtonShapes]（不带选中态形状——这排都是瞬时动作）。
- * 尺寸取官方 Small 档（`ButtonDefaults.MinHeight` 40dp 方容器），图标取官方
- * `iconSizeFor(MinHeight)` 档；`contentPadding` 置零让纯图标居中，同
- * [EtaConnectedIconAction] 的官方纯图标做法。容器色由调用方按动作角色给。
+ * 按钮组里的单个动作：官方 [FilledTonalButton] Small 档（默认形状即官方全圆角胶囊）。
+ * icon+text 排布照官方 `clickableItem` 内部模板：`ButtonWithIconContentPadding` +
+ * `iconSizeFor(MinHeight)` 图标槽 + `IconSpacing` + 单行 `Text` 且 `overflow=Visible`
+ * ——这正是按压挤压邻居时文字「可见地」被压缩的原因。容器色由调用方按动作角色给。
  */
 @Composable
 private fun CapsuleAction(
-    position: EtaConnectedPosition,
     icon: ImageVector,
     label: String,
     containerColor: Color,
     contentColor: Color,
+    interactionSource: MutableInteractionSource,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     FilledTonalButton(
         onClick = onClick,
-        shapes = etaConnectedButtonShapes(position),
-        modifier = Modifier.size(ButtonDefaults.MinHeight),
+        modifier = modifier,
+        interactionSource = interactionSource,
         colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = containerColor,
             contentColor = contentColor,
         ),
-        contentPadding = PaddingValues(0.dp),
+        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = label,
+            contentDescription = null,
             modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight)),
+        )
+        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+        Text(
+            text = label,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
         )
     }
 }
@@ -1096,7 +1167,16 @@ private val StageCanvasHeight = 328.dp
 
 private val CapsuleDefaultWidth = 248.dp
 private val CapsuleMicroLensWidth = 264.dp
-private val CapsuleStageWidth = 296.dp
+
+/**
+ * 展开体统一宽度（舞台 / 控制 / 补充三态）。依据：按钮组行需要三个官方
+ * 「图标+文字」Small 按钮自然宽（约 97dp/个 + 官方 12dp 间距 ≈ 315dp），
+ * 加外衬 2×12dp + 展开体内衬 2×[EtaDimens.SpaceSm] → 360dp 恰好放下（留 ~5dp
+ * 文字测量容差），标准档 button group 永不触发溢出
+ * （`overflowIndicator` 不会被测量、放置）。
+ * 舞台画布高锁定比例、独立于体宽，加宽只多出两侧留白。
+ */
+private val CapsuleExpandedWidth = 360.dp
 
 /**
  * 缩球直径：56dp 正圆（角半径 28dp 恰与内圈官方令牌同值），内容只剩阶段指示器。
