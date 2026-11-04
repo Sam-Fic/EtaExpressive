@@ -294,12 +294,11 @@ fun ConversationSidePaneScaffold(
         drawerState.applyEtaDrawerMotion(density)
     }
     val drawerScope = rememberCoroutineScope()
-    // 侧栏跟随页面退场时用的时长：直接按导航弹簧的收敛时间推导（+两帧余量）。
+    // 侧栏跟随页面退场时用的时长：导航转场时长（300ms）+ 两帧余量，见 EtaMotion.drawerNavExitMillis。
     // 只要不短于新页推入，新页就会先把侧栏盖住，侧栏收得再慢也不会露出空档。
-    val navigationSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.defaultSpatialSpec()
-    val drawerNavExitMotion: FiniteAnimationSpec<Float> = remember(navigationSpec) {
+    val drawerNavExitMotion: FiniteAnimationSpec<Float> = remember {
         tween(
-            durationMillis = EtaMotion.drawerNavExitMillis(navigationSpec).toInt(),
+            durationMillis = EtaMotion.drawerNavExitMillis().toInt(),
             easing = EtaMotion.DrawerEasing,
         )
     }
@@ -1434,7 +1433,7 @@ private fun Material3ConversationRow(
                                 imageVector = Icons.Rounded.Hub,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(EtaDimens.DenseIconSize),
+                                modifier = Modifier.size(20.dp),
                             )
                         })
                     } else if (conversation.isDispatchManaged) ({
@@ -1443,13 +1442,9 @@ private fun Material3ConversationRow(
                             imageVector = Icons.Rounded.AccountTree,
                             contentDescription = stringResource(R.string.conversation_dispatch_managed),
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(EtaDimens.DenseIconSize),
+                            modifier = Modifier.size(20.dp),
                         )
-                    }) else ({
-                        // 普通会话没有类别图标：保留与系统条目同宽的空槽（同一尺寸令牌），
-                        // 保证同一分组内所有会话的文字起点一致（不靠「有没有图标」参差）。
-                        Spacer(modifier = Modifier.size(EtaDimens.DenseIconSize))
-                    }),
+                    }) else null,
                     trailingContent = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
