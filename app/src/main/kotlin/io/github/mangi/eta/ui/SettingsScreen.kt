@@ -64,7 +64,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -77,7 +76,6 @@ import io.github.mangi.eta.agent.accessibility.AccessibilityProtectionClient
 import io.github.mangi.eta.agent.device.AgentTaskSurface
 import io.github.mangi.eta.config.PowerAssistantTarget
 import io.github.mangi.eta.config.Prefs
-import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.ToolCapabilities
 import io.github.mangi.eta.core.AppFileLogger
 import io.github.mangi.eta.data.datastore.SettingsDataStore
@@ -110,10 +108,8 @@ import io.github.mangi.eta.ui.components.LanguagePreference
 import io.github.mangi.eta.ui.components.TrashRetentionPreference
 import io.github.mangi.eta.ui.components.SwitchPreference
 import androidx.compose.material3.Text as M3Text
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
@@ -1067,13 +1063,16 @@ private fun buildToolsCapabilitySummary(context: Context, prefs: SharedPreferenc
 /**
  * 审查模式选择行：只读 / 严格 / 标准 / 自动。
  *
+ * 与同页「语言」一致，走标准 [EtaSegmentedDropdownRow]：点击行从按下位置弹出锚定
+ * 下拉气泡菜单；选中项与尾标样式全部取组件默认值。
  * 每次调用实时读取（见 AgentDangerousOperationPolicy），因此这里改完立即生效，
  * 不像渐进加载那样等新会话。直接读写 Prefs（与 DecisionModelSettingsScreen 同模式）；
  * 四个档位的语义见 [AgentToolReviewMode]。
+ *
+ * 轻触反馈由组件自己触发，不要在 [EtaSegmentedDropdownRow.onItemSelected] 里再写。
  */
 @Composable
 private fun ToolReviewModeRow(title: String, summary: String) {
-    val view = LocalView.current
     var mode by remember { mutableStateOf(Prefs.toolReviewMode()) }
     val options = listOf(
         Prefs.Keys.TOOL_REVIEW_MODE_READONLY,
@@ -1087,35 +1086,20 @@ private fun ToolReviewModeRow(title: String, summary: String) {
         stringResource(R.string.settings_tool_review_mode_standard),
         stringResource(R.string.settings_tool_review_mode_auto),
     )
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-        M3Text(text = title)
-        SingleChoiceSegmentedButtonRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp),
-        ) {
-            options.forEachIndexed { index, value ->
-                SegmentedButton(
-                    selected = mode == value,
-                    onClick = {
-                        if (mode != value) {
-                            TouchHaptics.toggle(view, value != Prefs.Keys.TOOL_REVIEW_MODE_READONLY)
-                            mode = value
-                            Prefs.setToolReviewMode(value)
-                        }
-                    },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                ) {
-                    M3Text(text = labels[index])
+    EtaSegmentedDropdownRow(
+        title = title,
+        items = labels,
+        selectedIndex = options.indexOf(mode).coerceAtLeast(0),
+        onItemSelected = { index ->
+            options.getOrNull(index)?.let { value ->
+                if (mode != value) {
+                    mode = value
+                    Prefs.setToolReviewMode(value)
                 }
             }
-        }
-        M3Text(
-            text = summary,
-            style = M3MaterialTheme.typography.bodySmall,
-            color = M3MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+        },
+        summary = summary,
+    )
 }
 
 // ── 带图标的布尔开关 ─────────────────────────────────────────────────────────
