@@ -17,8 +17,6 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonShapes
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -54,9 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -572,47 +568,6 @@ private fun etaConnectedPolygon(
         centerX = 0f,
         centerY = 0f,
     )
-}
-
-// ---------------------------------------------------------------------------
-// 圆形进度
-// ---------------------------------------------------------------------------
-
-/**
- * 圆形进度环：`wavy = true` 时使用 M3 Expressive 的波浪样式。
- *
- * @param stroke 轨道粗细；未指定默认 4dp。
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun EtaCircularProgress(
-    progress: Float,
-    modifier: Modifier = Modifier,
-    size: Dp = 28.dp,
-    stroke: Dp = 4.dp,
-    wavy: Boolean = false,
-) {
-    val clamped = progress.coerceIn(0f, 1f)
-    val strokePx = with(LocalDensity.current) { stroke.toPx() }
-    if (wavy) {
-        CircularWavyProgressIndicator(
-            progress = { clamped },
-            modifier = modifier.size(size),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.secondaryContainer,
-            stroke = Stroke(width = strokePx),
-            trackStroke = Stroke(width = strokePx),
-        )
-    } else {
-        CircularProgressIndicator(
-            progress = { clamped },
-            modifier = modifier.size(size),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.secondaryContainer,
-            strokeWidth = stroke,
-            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-        )
-    }
 }
 
 // ---------------------------------------------------------------------------

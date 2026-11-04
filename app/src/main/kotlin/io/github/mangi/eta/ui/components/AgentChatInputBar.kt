@@ -150,7 +150,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.mangi.eta.data.repository.ComposerQueueStore
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
-import io.github.mangi.eta.ui.adaptive.EtaCircularProgress
 import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.etaGptSpeedColor
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
