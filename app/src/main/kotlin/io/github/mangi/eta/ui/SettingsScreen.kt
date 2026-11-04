@@ -712,12 +712,13 @@ internal fun SettingsScreen(
                         title = stringResource(R.string.settings_clear_logs),
                         enabled = !exportingLogs && !clearingLogs,
                         leading = {
-                            PreferenceIcon(icon = Icons.Rounded.DeleteSweep)
+                            PreferenceIcon(icon = Icons.Rounded.DeleteSweep, destructive = true)
                         },
                         onClick = {
                             if (exportingLogs || clearingLogs) return@EtaClickableRow
                             showClearLogsDialog = true
                         },
+                        destructive = true,
                     )
                 }
             }

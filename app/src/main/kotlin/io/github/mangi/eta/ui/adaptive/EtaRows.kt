@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
@@ -112,6 +113,8 @@ fun EtaSwitchRow(
  * @param contentPadding 覆盖默认内边距（如展开项内部的紧凑行）。
  * @param highlight 命中词（如搜索关键词）；标题与摘要里的命中片段会被标色加粗，
  *        没有命中时按原文渲染。
+ * @param destructive 破坏性动作（清理、清除、删除、移除、重置等）：标题取官方
+ *        `error` 角色色强调，行首图标请同时传 `PreferenceIcon(destructive = true)`。
  *
  * 轻触反馈由本行自己触发，调用方**不要**在 `onClick` 里再写
  * `TouchHaptics.click`，否则会叠成两次。`endActions` / `bottomAction`
@@ -131,12 +134,15 @@ fun EtaClickableRow(
     leading: (@Composable () -> Unit)? = null,
     contentPadding: PaddingValues? = null,
     highlight: String? = null,
+    destructive: Boolean = false,
 ) {
     val view = LocalView.current
     // 显式类型：let 返回嵌套 lambda 时推断器会落到 Nothing?。
     val hapticClick: (() -> Unit)? = onClick?.let { click -> { TouchHaptics.click(view); click() } }
     val titleText = highlightedText(title, highlight)
     val summaryText = summary?.let { highlightedText(it, highlight) }
+    // 破坏性行的标题取官方 error 角色色；普通行交给官方 ListItem 的 contentColor。
+    val titleColor = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified
     val trailingContent: (@Composable () -> Unit)? = if (endActions != null || showChevron) {
         {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -164,7 +170,7 @@ fun EtaClickableRow(
                 colors = etaSegmentedRowColors(),
                 leadingContent = leading,
                 // 同 EtaSwitchRow：标题/摘要交给官方 ListItem 令牌，不再显式覆盖。
-                content = { Text(text = titleText) },
+                content = { Text(text = titleText, color = titleColor) },
                 supportingContent = summaryText?.let { { Text(text = it) } },
                 trailingContent = trailingContent,
                 contentPadding = contentPadding ?: ListItemDefaults.ContentPadding,
@@ -177,7 +183,7 @@ fun EtaClickableRow(
                 colors = etaSegmentedRowColors(),
                 leadingContent = leading,
                 // 同 EtaSwitchRow：标题/摘要交给官方 ListItem 令牌，不再显式覆盖。
-                content = { Text(text = titleText) },
+                content = { Text(text = titleText, color = titleColor) },
                 supportingContent = summaryText?.let { { Text(text = it) } },
                 trailingContent = trailingContent,
                 contentPadding = contentPadding ?: ListItemDefaults.ContentPadding,

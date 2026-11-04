@@ -718,6 +718,7 @@ internal fun MediaIndexSettingsScreen(
                         onClick = { showClearDialog = true },
                         showChevron = false,
                         enabled = !progress.running && indexedCount > 0,
+                        destructive = true,
                     )
                 }
             }

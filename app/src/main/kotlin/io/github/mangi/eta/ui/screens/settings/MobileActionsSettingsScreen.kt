@@ -145,6 +145,7 @@ internal fun MobileActionsSettingsScreen(
                         ),
                         onClick = { deleteDialog = true },
                         showChevron = false,
+                        destructive = true,
                     )
                 }
             }
