@@ -20,11 +20,22 @@ final class OwnedTaskStates {
     final Set<Integer> live;
     final Set<Integer> gone;
     final Set<Integer> escaped;
+    /**
+     * Ids that left the source display but are provably the same task, as a root on display 0.
+     * Bare {@link #escaped} never proves where a task went; a forced release needs this subset.
+     */
+    final Set<Integer> escapedOnMain;
 
     private OwnedTaskStates(Set<Integer> live, Set<Integer> gone, Set<Integer> escaped) {
+        this(live, gone, escaped, Collections.<Integer>emptySet());
+    }
+
+    private OwnedTaskStates(Set<Integer> live, Set<Integer> gone, Set<Integer> escaped,
+            Set<Integer> escapedOnMain) {
         this.live = Collections.unmodifiableSet(live);
         this.gone = Collections.unmodifiableSet(gone);
         this.escaped = Collections.unmodifiableSet(escaped);
+        this.escapedOnMain = Collections.unmodifiableSet(escapedOnMain);
     }
 
     /**
@@ -84,5 +95,28 @@ final class OwnedTaskStates {
             }
         }
         return classify(owned.keySet(), present, verified, childrenComplete);
+    }
+
+    /**
+     * Same classification, plus the subset of escaped roots whose placement is proven: still the
+     * same root identity, now on display 0. Used only to justify a forced release of an otherwise
+     * un-cleanable session; unproven residues keep the session blocked.
+     */
+    static OwnedTaskStates readWithEscapedMain(int source, Map<Integer, Object> roots,
+            Map<Integer, OwnerHandoff.Task> owned) throws Exception {
+        OwnedTaskStates base = read(source, roots, owned);
+        Set<Integer> onMain = new LinkedHashSet<Integer>();
+        for (Integer id : base.escaped) {
+            Object task = roots.get(id);
+            if (task == null) continue;
+            try {
+                if (OwnerHandoff.number(task, "displayId") != MainDisplayFocus.MAIN_DISPLAY) continue;
+                owned.get(id).checkMoved(task, source);
+                onMain.add(id);
+            } catch (Exception ignored) {
+                // Unproven placement: stays escaped and keeps the session fail-closed.
+            }
+        }
+        return new OwnedTaskStates(base.live, base.gone, base.escaped, onMain);
     }
 }

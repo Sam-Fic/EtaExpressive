@@ -21,6 +21,23 @@ final class OwnerHandoff {
      * automatically: the owner records the uncertainty and refuses a second attempt.
      */
     static final String HANDOFF_UNCERTAIN = "HANDOFF_UNCERTAIN";
+    /**
+     * The Android user this owner launches and moves tasks for. It is the owner's own task-user
+     * boundary, not the expected foreground user of the main display: focus may legitimately
+     * belong to a work profile or a cloned-app user. A task outside this user is never movable.
+     */
+    static final int OWNER_USER = 0;
+
+    /** Fixed-code refusal for a new, independent preflight judgment. Never carries task content. */
+    static final class Rejection extends IllegalStateException {
+        final String code;
+        Rejection(String code) { super(code); this.code = code; }
+    }
+
+    private static void requireOwnerUser(Object task) throws Exception {
+        if (number(task, "userId") != OWNER_USER) throw new Rejection("ForeignUser");
+    }
+
 
     static Object field(Object object, String name) throws Exception {
         if (object == null) throw new IllegalStateException("null field " + name);
@@ -501,7 +518,8 @@ final class OwnerHandoff {
         Task(Object t)throws Exception { id=number(t,"taskId");binder=binder(t);base=base(t);data=((Intent)field(t,"baseIntent")).getDataString(); }
         void check(Object t,int display)throws Exception {
             if(t==null||!Objects.equals(data,((Intent)field(t,"baseIntent")).getDataString())||number(t,"taskId")!=id||number(t,"displayId")!=display||!binder.equals(binder(t))||!base.equals(base(t))) throw new IllegalStateException("task identity changed");
-            if(number(t,"userId")!=0||number(t,"parentTaskId")!=-1) throw new IllegalStateException("unsupported task shape");
+            requireOwnerUser(t);
+            if(number(t,"parentTaskId")!=-1) throw new IllegalStateException("unsupported task shape");
             int[] kids=(int[])field(t,"childTaskIds");
             if(!validRootChildMarkers(id,kids)) throw new IllegalStateException("child task ids unknown");
         }
@@ -511,7 +529,8 @@ final class OwnerHandoff {
          */
         void checkMoved(Object t,int source)throws Exception {
             if(t==null||!Objects.equals(data,((Intent)field(t,"baseIntent")).getDataString())||number(t,"taskId")!=id||number(t,"displayId")==source||!binder.equals(binder(t))||!base.equals(base(t))) throw new IllegalStateException("task identity changed");
-            if(number(t,"userId")!=0||number(t,"parentTaskId")!=-1) throw new IllegalStateException("unsupported task shape");
+            requireOwnerUser(t);
+            if(number(t,"parentTaskId")!=-1) throw new IllegalStateException("unsupported task shape");
             int[] kids=(int[])field(t,"childTaskIds");
             if(!validRootChildMarkers(id,kids)) throw new IllegalStateException("child task ids unknown");
         }
@@ -592,6 +611,7 @@ final class OwnerHandoff {
         StringBuilder sb=new StringBuilder(sanitizePhase(phase));
         sb.append(':').append(cause instanceof FocusWitness.Rejected
                 ? ((FocusWitness.Rejected) cause).diagnosticCode()
+                : cause instanceof Rejection ? ((Rejection) cause).code
                 : cause==null ? "none" : cause.getClass().getSimpleName());
         if(summary!=null&&!summary.isEmpty()) sb.append(';').append(summary);
         return sb.toString();
@@ -615,6 +635,8 @@ final class OwnerHandoff {
     }
     /** Re-asserts the main-display focus against a read-only witness. Never mutates. */
     static void focus(FocusWitness main)throws Exception {
+        // An empty-selection cleanup has no focus witness by design: it never addresses display 0.
+        if(main==null) return;
         main.checkWitness(MainDisplayFocus.capture(roots()));
     }
     static JSONObject move(int source,String unique,Map<Integer,Task> owned,JSONArray keep)throws OwnerException {
@@ -642,7 +664,7 @@ final class OwnerHandoff {
                             return MainDisplayFocus.capture(inventory);
                         }
                         public long nanoTime() { return System.nanoTime(); }
-                    },source,owned,selected);
+                    },source,owned,selected,!selected.isEmpty());
             focusSamples=preflight.observations;
             Map<Integer,Object> current=preflight.inventory;
             FocusWitness witness=preflight.witness;
@@ -652,6 +674,9 @@ final class OwnerHandoff {
             OwnedTaskStates states=OwnedTaskStates.read(source,current,owned);
             if(!states.escaped.isEmpty()) throw new IllegalStateException("owned task escaped");
             if(!states.live.containsAll(selected)) throw new IllegalStateException("selected task not live");
+            // Independent of the user-focus policy: the current foreground task is never moved, even
+            // when it belongs to the owner's own user and the display-0 focus check accepted it.
+            if(witness!=null) witness.refuseMovingFocused(selected);
             phase="preflight:capability";
             SafeBackgroundHandoff background=new SafeBackgroundHandoff(
                     new AndroidBackgroundHandoff(source,unique,owned,selected,witness),progress);

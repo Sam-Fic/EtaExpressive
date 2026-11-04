@@ -71,6 +71,23 @@ final class OwnerReclaim {
             }
         }
         if (targets.isEmpty()) return result(new JSONArray());
+        // A move back onto the virtual display removes the task from display 0. If the foreground
+        // identity cannot be read we cannot prove the target is not what the user is looking at,
+        // so reclaim refuses instead of guessing. This is deliberately independent of owner user.
+        FocusWitness focus;
+        try {
+            focus = MainDisplayFocus.capture(roots);
+        } catch (Exception ex) {
+            String code = ex instanceof FocusWitness.Rejected
+                    ? ((FocusWitness.Rejected) ex).diagnosticCode()
+                    : ex.getClass().getSimpleName();
+            throw new OwnerException(FAILED, "focus " + code);
+        }
+        try {
+            focus.refuseMovingFocused(targets);
+        } catch (OwnerHandoff.Rejection ex) {
+            throw new OwnerException(FAILED, "focused " + ex.code);
+        }
         // Moving one target while another is unproven would leave a mixed session behind.
         for (Integer id : targets) {
             try {

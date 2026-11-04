@@ -199,9 +199,28 @@ internal class AgentLocalTools(
     private val virtualLifecycle = setOf("start_virtual_session", "keep_virtual_result", "finish_virtual_session")
     private val selfSurface = AgentSelfAppSurface(context.packageName)
     private val surfaceRouteLock = java.util.concurrent.locks.ReentrantLock()
-    private fun virtualRouted(name: String, route: AgentSelfAppSurface.Route) = backgroundSurface &&
-        (name in virtualLifecycle || (route == AgentSelfAppSurface.Route.BASE &&
-            io.github.mangi.eta.agent.device.AgentTaskSurface.isTraditionalScreenGuiTool(name)))
+    /**
+     * 后台模式默认把普通 GUI 工具路由到副屏；但 launch_app / press_key 可以用 `display=main`
+     * 显式请求主屏，此时绝不走副屏路由，而是交回 executeOnSurface 的主屏门禁（同日多会话互斥、
+     * 冲突立即拒绝、不排队不抢占）。判定只认显式 `main`，其余取值保持原有副屏语义。
+     */
+    private fun virtualRouted(name: String, route: AgentSelfAppSurface.Route, args: JSONObject) =
+        backgroundSurface && !explicitMainDisplay(name, args) &&
+            (name in virtualLifecycle || (route == AgentSelfAppSurface.Route.BASE &&
+                io.github.mangi.eta.agent.device.AgentTaskSurface.isTraditionalScreenGuiTool(name)))
+
+    private fun explicitMainDisplay(name: String, args: JSONObject): Boolean =
+        name in EXPLICIT_MAIN_TOOLS && runCatching {
+            CanvasRoutingPolicy.RequestedDisplay.parse(args.optString("display", "auto")) ==
+                CanvasRoutingPolicy.RequestedDisplay.MAIN
+        }.getOrDefault(false)
+
+    /**
+     * 后台模式显式请求主屏后，本 run 在物理主屏启动（或台前呈现）的应用。press_key(display=main)
+     * 只允许打向它：主屏前台已被用户切走时拒绝，而不是把按键打进用户当前应用。
+     */
+    @Volatile
+    private var mainOwnedPackage: String? = null
     private val closed = AtomicBoolean(false)
 
     /**
@@ -662,7 +681,9 @@ internal class AgentLocalTools(
         if (handoffBlocksGui) {
             return textResult(errorResult(io.github.mangi.eta.agent.device.VirtualDisplaySession.NOT_READY, "副屏交接未就绪，本次未执行；请在设置改为前台"))
         }
-        if (virtualRouted(toolCall.name, route) || !ForegroundExclusiveGate.shouldSerialize(toolCall.name)) {
+        val routedArgs = runCatching { JSONObject(toolCall.argumentsJson.ifBlank { "{}" }) }
+            .getOrDefault(JSONObject())
+        if (virtualRouted(toolCall.name, route, routedArgs) || !ForegroundExclusiveGate.shouldSerialize(toolCall.name)) {
             return executeInternal(toolCall, route, prepared)
         }
         foregroundAdmissionError(ForegroundExclusiveGate.acquire(browserRunId) { closed.get() })
@@ -707,7 +728,7 @@ internal class AgentLocalTools(
             ) {
                 return@runCatching textResult(errorResult("ROOT_REQUIRED", "此操作需要 Root 授权，本次未执行"))
             }
-            if (virtualRouted(toolCall.name, route)) {
+            if (virtualRouted(toolCall.name, route, args)) {
                 if (!rootAvailable()) return@runCatching textResult(errorResult("ROOT_REQUIRED", "后台副屏需要 Root"))
                 return@runCatching when(toolCall.name) {
                     "start_virtual_session" -> textResult(io.github.mangi.eta.agent.device.VirtualDisplaySession.start(context,browserRunId).toString())
@@ -784,7 +805,7 @@ internal class AgentLocalTools(
                 "set_clipboard" -> textResult(setClipboard(args))
                 "get_clipboard" -> textResult(getClipboard())
                 "paste_text" -> afterAction(pasteText(args))
-                "press_key" -> afterAction(deviceController.pressKey(args.optString("button"), currentActiveDisplayId()))
+                "press_key" -> afterAction(pressKey(args))
                 "wait" -> textResult(deviceController.waitMs(args.optInt("duration_ms", 1_000)))
                 "wait_for_text" -> textResult(waitForText(args))
                 "wait_for_package" -> textResult(waitForPackage(args))
@@ -1188,6 +1209,38 @@ internal class AgentLocalTools(
             activeDisplayId = Display.DEFAULT_DISPLAY
             Display.DEFAULT_DISPLAY
         }
+    }
+
+    /**
+     * 后台模式的 press_key(display=main)：只有本 run 在主屏启动（或台前呈现）的应用仍占据
+     * 主屏前台时才真正发送按键。主屏独占已由 executeOnSurface 的 ForegroundExclusiveGate
+     * 裁决（冲突立即拒绝、不排队）；这里补的是“绝不把按键打进用户当前应用”，
+     * 判定不可读或前台已切走时 fail-closed 拒绝。
+     */
+    private fun pressKey(args: JSONObject): String {
+        if (!backgroundSurface || !explicitMainDisplay("press_key", args)) {
+            return deviceController.pressKey(args.optString("button"), currentActiveDisplayId())
+        }
+        val owned = mainOwnedPackage
+        val foreground = runCatching {
+            AgentAccessibilityService.current()?.currentMainDisplayPackageName()
+        }.getOrNull()
+        if (owned.isNullOrBlank() || foreground.isNullOrBlank() || foreground != owned) {
+            logger.info(
+                "Agent local tool action=press_key outcome=refused canvas=main reason=main_focus_not_owned " +
+                    "owned=${owned ?: "none"} foreground=${foreground ?: "unknown"}",
+            )
+            return errorResult(
+                "MAIN_FOCUS_NOT_OWNED",
+                "后台模式下无法确认主屏前台仍是本会话启动的应用" +
+                    "（已启动：${owned ?: "无"}，当前前台：${foreground ?: "未知"}）；" +
+                    "为避免按键打进你正在使用的应用，本次未执行。" +
+                    "下一步：先 launch_app(display=main) 把目标应用带回前台后再按，" +
+                    "或退出后台虚拟屏模式后重试",
+            )
+        }
+        logger.info("Agent local tool action=press_key outcome=started canvas=main display=0 owned=$owned")
+        return deviceController.pressKey(args.optString("button"), Display.DEFAULT_DISPLAY)
     }
 
     /** 主屏手势可能落到顶部胶囊上；副屏手势与胶囊窗口不在同一显示域，无需避让。 */
@@ -1625,6 +1678,7 @@ internal class AgentLocalTools(
             activeDisplayId = Display.DEFAULT_DISPLAY
             val options = ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY)
             context.startActivity(launchIntent, options.toBundle())
+            mainOwnedPackage = app.packageName
             logger.info("Agent local tool action=launch_app outcome=started canvas=main self_launch=true")
             return JSONObject()
                 .put("ok", true)
@@ -1664,6 +1718,7 @@ internal class AgentLocalTools(
         } else {
             activeDisplayId = Display.DEFAULT_DISPLAY
             context.startActivity(launchIntent)
+            mainOwnedPackage = app.packageName
             Display.DEFAULT_DISPLAY
         }
         val finalCanvas = if (CanvasRoutingPolicy.isVirtualDisplay(finalDisplayId)) {
@@ -1695,6 +1750,7 @@ internal class AgentLocalTools(
             true
         }
         activeDisplayId = Display.DEFAULT_DISPLAY
+        if (presented && vdSnapshot.packageName.isNotBlank()) mainOwnedPackage = vdSnapshot.packageName
         return JSONObject()
             .put("ok", true)
             .put("tool", "present_to_user")
@@ -2679,6 +2735,8 @@ internal class AgentLocalTools(
                         io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog.SEARCH_MEDIA
                     )
         val MEMORY_TOOL_NAMES = setOf("memory_get", "memory_write")
+        /** 允许 `display=main` 显式请求主屏的工具；其余 GUI 工具在后台模式一律副屏。 */
+        val EXPLICIT_MAIN_TOOLS = setOf("launch_app", "press_key")
     }
 }
 

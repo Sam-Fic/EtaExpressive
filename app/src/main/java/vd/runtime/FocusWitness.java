@@ -74,6 +74,22 @@ final class FocusWitness {
     }
 
     /**
+     * Captures the real main-display foreground without assuming which Android user owns it.
+     *
+     * <p>The expected user is read from the focused leaf itself and the inventory root must still
+     * agree with it, so a leaf/root split still fails closed. This deliberately does not pin the
+     * primary user: a work-profile or cloned app can legitimately hold display 0 focus. Whether the
+     * owner may <em>move</em> a task is decided separately by user and by focused-task exclusion.
+     */
+    static FocusWitness captureFocusedTask(Object focused, Object root, int expectedDisplay)
+            throws Exception {
+        if (focused == null) throw new Rejected(Reason.FOCUS_MISSING);
+        int observedUser = OwnerHandoff.number(focused, "userId");
+        if (observedUser < 0) throw new Rejected(Reason.INVALID_TASK_ID);
+        return captureFocusedTask(focused, root, expectedDisplay, observedUser);
+    }
+
+    /**
      * Joins explicit display-local focused-leaf evidence to its uniquely identified inventory root.
      * getTasks returns leaves, whereas RootTaskInfo.childTaskIds names leaves below a container.
      * TaskInfo.parentTaskId can be -1 for a non-organized parent; exact inventory membership is
@@ -185,6 +201,31 @@ final class FocusWitness {
     boolean matches(FocusWitness other) {
         try { checkWitness(other); return true; }
         catch (Rejected ex) { return false; }
+    }
+
+    /** The user that actually owns display 0 focus; may differ from the owner's launch user. */
+    int userId() { return userId; }
+
+    int taskId() { return taskId; }
+
+    /** Root, focused leaf and named children: nothing in here may be moved while it is foreground. */
+    Set<Integer> focusedTaskIds() {
+        Set<Integer> ids = new HashSet<Integer>();
+        ids.add(taskId);
+        if (leaf != null) ids.add(leaf.id);
+        if (children != null) for (int id : children) if (id > 0) ids.add(id);
+        return ids;
+    }
+
+    /**
+     * Independent, user-agnostic guard: a foreground task may never be part of a move, even when
+     * the caller's focus policy would otherwise accept the current user.
+     */
+    void refuseMovingFocused(Set<Integer> moving) {
+        if (moving == null || moving.isEmpty()) return;
+        for (Integer id : focusedTaskIds()) {
+            if (moving.contains(id)) throw new OwnerHandoff.Rejection("FocusedTask");
+        }
     }
 
     /** Immutable leaf identity: token wrappers may differ, their underlying Binder must not. */

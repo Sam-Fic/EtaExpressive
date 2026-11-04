@@ -151,8 +151,13 @@ internal object VirtualDisplayHandoffDiagnostics {
     fun preservedFields(): Map<String, Any> = mapOf(
         "receipt_provenance" to "preserved_receipt",
         "fresh_attempt" to false,
+        // 重入时只回放旧回执：没有发起新尝试，且预算已耗尽/被封锁，模型不应误以为可以重试。
+        "new_attempt" to false,
+        "budget_exhausted" to true,
         "location_evidence_fresh" to false,
-        "receipt_note" to "Preserved failure receipt, not a new handoff/release attempt. Historical evidence may be stale.",
+        "receipt_note" to "本次未发起新的 handoff/release 尝试：重试预算已耗尽或被封锁（不会自动重试），上一次失败回执原样保留",
+        "next_step" to "若主屏焦点已回到可操作状态，可再次调用 finish_virtual_session；" +
+            "否则请到「设置 - 虚拟屏」手动恢复/关闭，或退出后台虚拟屏模式",
     )
 
     const val RETAINED_MESSAGE =

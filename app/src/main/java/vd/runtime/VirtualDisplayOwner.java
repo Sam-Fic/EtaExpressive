@@ -1,6 +1,7 @@
 package vd.runtime;
 
 import java.util.List;
+import java.util.Map;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -53,6 +54,7 @@ public final class VirtualDisplayOwner {
     private boolean mutationUncertain;
     /** Set with handoffComplete: true when the completed handoff delivered nothing (cleanup only). */
     private boolean handoffCleanupOnly;
+    private boolean forceReleaseAttempted;
     private final java.util.Map<Integer,OwnerHandoff.Task> owned = new java.util.LinkedHashMap<Integer,OwnerHandoff.Task>();
 
     private VirtualDisplayOwner(VirtualDisplayFactory.Created created, OwnerFrameStore frames,
@@ -129,9 +131,11 @@ public final class VirtualDisplayOwner {
                 out.put("sourceError", source.errorCode);
             }
             JSONArray packages=new JSONArray();
+            Map<Integer,Object> roots=null;
             try {
+                roots=OwnerHandoff.roots();
                 java.util.Set<String> visiblePackages=new java.util.LinkedHashSet<String>();
-                for(Object task:OwnerHandoff.roots().values())if(OwnerHandoff.number(task,"displayId")==created.displayId) {
+                for(Object task:roots.values())if(OwnerHandoff.number(task,"displayId")==created.displayId) {
                     android.content.Intent bi=(android.content.Intent)OwnerHandoff.field(task,"baseIntent");
                     if(bi!=null && bi.getComponent()!=null)visiblePackages.add(bi.getComponent().getPackageName());
                     Object top=OwnerHandoff.field(task,"topActivity");
@@ -142,14 +146,44 @@ public final class VirtualDisplayOwner {
             }catch(Exception e){out.put("sourcePackagesKnown",false);}
             out.put("retainedTaskIds",new JSONArray(owned.keySet()));
             // Read-only: owned is never pruned here. Absent fields mean "unknown" to the client.
+            if (roots != null) {
+                try {
+                    OwnedTaskStates states=OwnedTaskStates.readWithEscapedMain(created.displayId,roots,owned);
+                    out.put("liveTaskIds",new JSONArray(states.live));
+                    out.put("goneTaskIds",new JSONArray(states.gone));
+                    // A vendor policy may recycle an owned task to another display; the caller uses
+                    // this read-only report to decide whether a reclaim is worth attempting.
+                    out.put("escapedTaskIds",new JSONArray(states.escaped));
+                    // Proven subset that is the same root on display 0: the only basis on which a
+                    // forced cleanup release may abandon delivery.
+                    out.put("escapedMainTaskIds",new JSONArray(states.escapedOnMain));
+                    JSONArray escapedPackages=new JSONArray();
+                    java.util.Set<String> seen=new java.util.LinkedHashSet<String>();
+                    for(Integer id:states.escapedOnMain){
+                        Object task=roots.get(id);
+                        if(task==null)continue;
+                        try{
+                            Object top=OwnerHandoff.field(task,"topActivity");
+                            if(top instanceof android.content.ComponentName){
+                                String pkg=((android.content.ComponentName)top).getPackageName();
+                                if(seen.add(pkg))escapedPackages.put(pkg);
+                            }
+                        }catch(Exception ignored){ }
+                    }
+                    out.put("escapedMainPackages",escapedPackages);
+                } catch(Exception ignored) { }
+            }
+            // Best-effort, read-only focus evidence. Absent fields mean "unknown" and never widen
+            // any safety judgment; they only let diagnostics and one budget reset see a real change.
             try {
-                OwnedTaskStates states=OwnedTaskStates.read(created.displayId,OwnerHandoff.roots(),owned);
-                out.put("liveTaskIds",new JSONArray(states.live));
-                out.put("goneTaskIds",new JSONArray(states.gone));
-                // A vendor policy may recycle an owned task to another display; the caller uses
-                // this read-only report to decide whether a reclaim is worth attempting.
-                out.put("escapedTaskIds",new JSONArray(states.escaped));
-            } catch(Exception ignored) { }
+                FocusWitness focusEvidence=MainDisplayFocus.capture(roots==null?OwnerHandoff.roots():roots);
+                out.put("focusReadable",true);
+                out.put("focusUserId",focusEvidence.userId());
+                out.put("focusTaskId",focusEvidence.taskId());
+            } catch(Exception ignored) {
+                out.put("focusReadable",false);
+            }
+            out.put("forceReleaseAttempted",forceReleaseAttempted);
             out.put("finishing",finishing);
             out.put("handoffComplete",handoffComplete);
             // Lets a later release-only finish report handedOff=false after a cleanup-only handoff.
@@ -479,8 +513,17 @@ public final class VirtualDisplayOwner {
     }
 
     public JSONObject release(JSONObject request) throws OwnerException {
-        requireLive(); optionalDisplay(wrap(request));
+        requireLive();
+        OwnerProtocol.Request parsed = wrap(request);
+        optionalDisplay(parsed);
+        boolean force = false;
+        try {
+            force = parsed.optionalBoolean("force", false);
+        } catch (OwnerProtocolException ex) {
+            throw new OwnerException(ex.code, ex.getMessage());
+        }
         if(releaseAttempted)throw new OwnerException("RELEASE_ALREADY_ATTEMPTED");
+        if (force && !owned.isEmpty()) return releaseForcedCleanup();
         if(!owned.isEmpty()&&!handoffComplete)throw new OwnerException("HANDOFF_REQUIRED");
         SourceProbe source = probeSource();
         if (!source.known()) {
@@ -490,6 +533,80 @@ public final class VirtualDisplayOwner {
             throw new OwnerException(OwnerProtocol.ERROR_SOURCE_NOT_EMPTY,
                     "tasks on source=" + source.taskCount);
         }
+        return releaseNow(null, null);
+    }
+
+    /**
+     * Last-resort exit for a cleanup-only session that can never complete a handoff (e.g. the main
+     * display foreground belongs to a work profile and is refused read-only). It moves nothing on
+     * display 0 and never delivers a task: the display is released and any resident owned roots are
+     * relocated by the platform. Every retained root must still be proven live, gone, or the same
+     * root on display 0; an unproven placement keeps the session blocked.
+     */
+    private JSONObject releaseForcedCleanup() throws OwnerException {
+        if (forceReleaseAttempted) throw new OwnerException("FORCE_RELEASE_ALREADY_ATTEMPTED");
+        if (handoffComplete || finishing || mutationUncertain) {
+            throw new OwnerException("HANDOFF_REQUIRED", "partial handoff");
+        }
+        Map<Integer, Object> roots;
+        try {
+            roots = OwnerHandoff.roots();
+        } catch (Exception ex) {
+            throw new OwnerException("FORCED_RELEASE_UNPROVEN", "inventory");
+        }
+        OwnedTaskStates states;
+        try {
+            states = OwnedTaskStates.readWithEscapedMain(created.displayId, roots, owned);
+        } catch (Exception ex) {
+            throw new OwnerException("FORCED_RELEASE_UNPROVEN", "inventory");
+        }
+        java.util.Set<Integer> accounted = new java.util.LinkedHashSet<Integer>();
+        accounted.addAll(states.live);
+        accounted.addAll(states.gone);
+        accounted.addAll(states.escapedOnMain);
+        if (!accounted.containsAll(owned.keySet())) {
+            throw new OwnerException("FORCED_RELEASE_UNPROVEN", "unproven task placement");
+        }
+        // Releasing a display must not disturb content this owner did not create.
+        for (Map.Entry<Integer, Object> entry : roots.entrySet()) {
+            try {
+                if (OwnerHandoff.number(entry.getValue(), "displayId") == created.displayId
+                        && !owned.containsKey(entry.getKey())) {
+                    throw new OwnerException("FORCED_RELEASE_FOREIGN_SOURCE", "foreign task");
+                }
+            } catch (OwnerException ex) {
+                throw ex;
+            } catch (Exception ignored) {
+                throw new OwnerException("FORCED_RELEASE_UNPROVEN", "inventory");
+            }
+        }
+        forceReleaseAttempted = true;
+        JSONObject out = releaseNow(states, roots);
+        try {
+            out.put("forceRelease", true);
+            out.put("remainingOnMainTaskIds", new JSONArray(states.escapedOnMain));
+            JSONArray remainingPackages = new JSONArray();
+            java.util.Set<String> seenRemaining = new java.util.LinkedHashSet<String>();
+            for (Integer id : states.escapedOnMain) {
+                Object task = roots.get(id);
+                if (task == null) continue;
+                try {
+                    Object top = OwnerHandoff.field(task, "topActivity");
+                    if (top instanceof android.content.ComponentName) {
+                        String pkg = ((android.content.ComponentName) top).getPackageName();
+                        if (seenRemaining.add(pkg)) remainingPackages.put(pkg);
+                    }
+                } catch (Exception ignored) { }
+            }
+            out.put("remainingOnMainPackages", remainingPackages);
+        } catch (JSONException ex) {
+            throw new OwnerException(OwnerProtocol.ERROR_INTERNAL, "release");
+        }
+        return out;
+    }
+
+    private JSONObject releaseNow(OwnedTaskStates states, Map<Integer, Object> roots)
+            throws OwnerException {
         releaseAttempted=true;
         try {
             created.display.getClass().getMethod("release").invoke(created.display);
@@ -514,6 +631,27 @@ public final class VirtualDisplayOwner {
             out.put("released", true);
             out.put("displayId", created.displayId);
             out.put("uniqueId", created.uniqueId);
+            if (states != null) {
+                // Roots still on the source display when it is released: the platform relocates
+                // them, we do not verify or promise their destination.
+                out.put("releasedSourceTaskIds", new JSONArray(states.live));
+                JSONArray packages = new JSONArray();
+                if (roots != null) {
+                    java.util.Set<String> seen = new java.util.LinkedHashSet<String>();
+                    for (Integer id : states.live) {
+                        Object task = roots.get(id);
+                        if (task == null) continue;
+                        try {
+                            Object top = OwnerHandoff.field(task, "topActivity");
+                            if (top instanceof android.content.ComponentName) {
+                                String pkg = ((android.content.ComponentName) top).getPackageName();
+                                if (seen.add(pkg)) packages.put(pkg);
+                            }
+                        } catch (Exception ignored) { }
+                    }
+                }
+                out.put("releasedSourcePackages", packages);
+            }
         } catch (JSONException ex) {
             throw new OwnerException(OwnerProtocol.ERROR_INTERNAL, "release");
         }

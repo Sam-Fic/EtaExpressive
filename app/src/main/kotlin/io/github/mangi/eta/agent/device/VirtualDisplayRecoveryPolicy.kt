@@ -11,6 +11,46 @@ internal object VirtualDisplayRecoveryPolicy {
         f.handoffComplete || f.finishing -> Action.REFUSE
         else -> Action.HANDOFF
     }
+
+    /** 兜底释放的只读输入。任何未知或不一致都视为阻塞，不做猜测。 */
+    data class ForcedReleaseInput(
+        val keptTaskIds: Set<Int>,
+        val retainedTaskIds: Set<Int>,
+        val liveTaskIds: Set<Int>?,
+        val goneTaskIds: Set<Int>?,
+        val escapedTaskIds: Set<Int>?,
+        val escapedMainTaskIds: Set<Int>?,
+        val flags: Flags,
+        val forceReleaseAttempted: Boolean,
+    )
+
+    sealed interface ForcedReleaseDecision {
+        object Allowed : ForcedReleaseDecision
+        data class Blocked(val code: String) : ForcedReleaseDecision
+    }
+
+    /**
+     * P0 兜底：放弃归位的“只释放”仅在空选择清理、且每个保留 root 都能被证明
+     * （live / gone / 同一 root 位于 display 0）时成立。逃逸位置未经证明、已有交付承诺、
+     * 或存在半完成的 handoff 时一律阻塞；不确定时永远拒绝。
+     */
+    fun forcedReleaseDecision(input: ForcedReleaseInput): ForcedReleaseDecision = when {
+        input.retainedTaskIds.isEmpty() -> Blocked("NOTHING_TO_RECLAIM")
+        input.keptTaskIds.isNotEmpty() -> Blocked("DELIVERY_PENDING")
+        input.forceReleaseAttempted -> Blocked("FORCE_RELEASE_ALREADY_ATTEMPTED")
+        input.flags.mutationUncertain -> Blocked("MUTATION_UNCERTAIN")
+        input.flags.releaseAttempted -> Blocked("RELEASE_ALREADY_ATTEMPTED")
+        input.flags.handoffComplete || input.flags.finishing -> Blocked("PARTIAL_HANDOFF")
+        input.liveTaskIds == null || input.goneTaskIds == null || input.escapedTaskIds == null ->
+            Blocked("INVENTORY_UNKNOWN")
+        input.escapedMainTaskIds == null -> Blocked("ESCAPED_PLACEMENT_UNKNOWN")
+        input.escapedTaskIds != input.escapedMainTaskIds -> Blocked("ESCAPED_PLACEMENT_UNPROVEN")
+        !input.retainedTaskIds.containsAll(input.liveTaskIds) -> Blocked("INVENTORY_INCONSISTENT")
+        !input.retainedTaskIds.containsAll(input.goneTaskIds) -> Blocked("INVENTORY_INCONSISTENT")
+        (input.retainedTaskIds - input.liveTaskIds - input.goneTaskIds - input.escapedTaskIds).isNotEmpty() ->
+            Blocked("INVENTORY_INCONSISTENT")
+        else -> Allowed
+    }
     /**
      * Recovery is cleanup-only; it never makes an interrupted run GUI-active again.
      * Eligibility does not authorize handoff/release: finish must revalidate fresh owner evidence

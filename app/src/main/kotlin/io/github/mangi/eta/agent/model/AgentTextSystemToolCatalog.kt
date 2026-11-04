@@ -209,6 +209,19 @@ internal object AgentTextSystemToolCatalog {
                                                 .put("QUICK_SETTINGS")
                                         )
                                 )
+                                .put(
+                                    "display",
+                                    JSONObject()
+                                        .put("type", "string")
+                                        .put("enum", JSONArray().put("auto").put("virtual").put("main"))
+                                        .put("default", "auto")
+                                        .put(
+                                            "description",
+                                            "按键作用画布：auto（默认；后台副屏模式下打向副屏）、virtual（仅副屏，只支持 BACK/ENTER/PASTE）、" +
+                                                "main（显式请求物理主屏；仅当本会话刚在主屏启动（或台前呈现）的应用仍在前台时才执行，" +
+                                                "否则拒绝且不影响用户当前应用）"
+                                        )
+                                )
                         )
                         .put("required", JSONArray().put("button"))
                 )

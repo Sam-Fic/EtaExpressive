@@ -197,17 +197,17 @@ internal class VirtualDisplayOwnerClient private constructor(
 
     /** `release`：请求 owner 释放资源。失败不会杀死 owner。 */
     fun release(
+        force: Boolean = false,
         runId: String = this.runId,
         timeoutMillis: Long = DEFAULT_REQUEST_TIMEOUT_MS,
     ): OwnerResponse {
         val run = runId.ifBlank {
             return errorResponse(VirtualDisplayOwnerProtocol.OP_RELEASE, VirtualDisplayOwnerError.REQUEST_INVALID)
         }
-        return request(
-            VirtualDisplayOwnerProtocol.OP_RELEASE,
-            linkedMapOf(VirtualDisplayOwnerProtocol.FIELD_RUN_ID to run),
-            timeoutMillis,
-        )
+        val payload = linkedMapOf<String, Any?>(VirtualDisplayOwnerProtocol.FIELD_RUN_ID to run)
+        // 只有显式兜底才带 force；普通释放的载荷与旧版完全一致。
+        if (force) payload[VirtualDisplayOwnerProtocol.FIELD_FORCE] = true
+        return request(VirtualDisplayOwnerProtocol.OP_RELEASE, payload, timeoutMillis)
     }
 
     /**
@@ -524,6 +524,8 @@ internal object VirtualDisplayOwnerProtocol {
     const val FIELD_TOKEN = "token"
     const val FIELD_COMPONENT = "component"
     const val FIELD_RUN_ID = "runId"
+    /** 仅 release 使用：放弃归位的兜底释放，owner 侧有独立的一次性校验。 */
+    const val FIELD_FORCE = "force"
 
     /** payload 不允许覆盖的协议字段。 */
     val RESERVED_REQUEST_FIELDS = setOf(FIELD_VERSION, FIELD_OP, FIELD_TOKEN)

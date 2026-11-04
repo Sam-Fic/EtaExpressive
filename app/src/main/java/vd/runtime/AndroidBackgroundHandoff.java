@@ -88,7 +88,12 @@ final class AndroidBackgroundHandoff implements SafeBackgroundHandoff.Backend {
     @Override public void checkDestination(int id) throws Exception {
         owned.get(id).check(OwnerHandoff.roots().get(id), 0);
     }
-    @Override public void checkFocus() throws Exception { OwnerHandoff.focus(witness); }
+    @Override public void checkFocus() throws Exception {
+        // Cleanup carries no focus witness: it only removes source-display roots and never moves a
+        // task to display 0, so there is nothing on the main display to protect or re-focus.
+        if (witness == null) return;
+        OwnerHandoff.focus(witness);
+    }
     @Override public void hide(int id) throws Exception {
         api.hide(OwnerHandoff.field(sourceTask(id), "token"));
     }

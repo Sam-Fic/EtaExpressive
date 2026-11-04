@@ -86,8 +86,28 @@ internal object VirtualDisplayHandoffEvidence {
         if (gone != null && !retainedTaskIds.containsAll(gone)) return null
         if (live != null && gone != null && live.intersect(gone).isNotEmpty()) return null
         if (live != null && count < live.size) return null
+        // 逃逸且已证明仍在主屏的 root 只能是保留集合的子集，且不能同时是 live/gone。
+        val escapedMain = when (val read = readIds(field("escapedMainTaskIds"))) {
+            IdRead.Missing -> null
+            IdRead.Illegal -> return null
+            is IdRead.Present -> read.ids
+        }
+        if (escapedMain != null) {
+            if (!retainedTaskIds.containsAll(escapedMain)) return null
+            if (live != null && live.intersect(escapedMain).isNotEmpty()) return null
+            if (gone != null && gone.intersect(escapedMain).isNotEmpty()) return null
+        }
+        // 焦点证据是只读诊断：不可读只能是 null，绝不会被当成某个 user。
+        val focusReadable = field("focusReadable") == true
+        val focusUserId = (field("focusUserId") as? Int)?.takeIf { focusReadable && it >= 0 }
+        val focusTaskId = (field("focusTaskId") as? Int)?.takeIf { focusReadable && it > 0 }
+        val forcedRelease = field("forceReleaseAttempted") as? Boolean
         return VirtualDisplayHandoffRetry.OwnerState(
             identity, true, flags, retainedTaskIds.toSet(), count, live, gone,
+            escapedMainTaskIds = escapedMain,
+            focusUserId = focusUserId,
+            focusTaskId = focusTaskId,
+            forceReleaseAttempted = forcedRelease,
         )
     }
 

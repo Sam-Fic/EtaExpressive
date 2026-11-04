@@ -18,7 +18,7 @@ import java.util.Set;
  */
 final class MainDisplayFocus {
     static final int MAIN_DISPLAY = 0;
-    static final int PRIMARY_USER = 0;
+    /** Focus is captured for whatever user actually owns it; mutability is decided elsewhere. */
     static final int TASK_LIMIT = 256;
 
     interface Atm {
@@ -106,6 +106,6 @@ final class MainDisplayFocus {
             root = candidate;
         }
         if (root == null) throw new FocusWitness.Rejected(FocusWitness.Reason.INVENTORY_MISSING);
-        return FocusWitness.captureFocusedTask(focused, root, MAIN_DISPLAY, PRIMARY_USER);
+        return FocusWitness.captureFocusedTask(focused, root, MAIN_DISPLAY);
     }
 }

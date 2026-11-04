@@ -26,7 +26,22 @@ internal object VirtualDisplayHandoffRetry {
         val liveTaskIds: Set<Int>? = null,
         /** Null when status omitted goneTaskIds. Never treat omission as an empty inventory. */
         val goneTaskIds: Set<Int>? = null,
-    )
+        /** 逃逸且已证明仍在主屏（display 0）的 root。仅兜底释放使用，不参与重试判定。 */
+        val escapedMainTaskIds: Set<Int>? = null,
+        /** 只读焦点证据，仅用于诊断与一次预算重置；不参与重试的相等性判定。 */
+        val focusUserId: Int? = null,
+        val focusTaskId: Int? = null,
+        /** owner 侧兜底释放是否已经尝试过；null 表示状态未报告。 */
+        val forceReleaseAttempted: Boolean? = null,
+    ) {
+        /** 诊断字段不参与“同一 owner 且状态未变”的判定。 */
+        fun comparable(): OwnerState = copy(
+            escapedMainTaskIds = null,
+            focusUserId = null,
+            focusTaskId = null,
+            forceReleaseAttempted = null,
+        )
+    }
 
     sealed interface Attempt {
         object Completed : Attempt
@@ -40,7 +55,15 @@ internal object VirtualDisplayHandoffRetry {
         object HandedOff : Outcome
 
         /** Clean means a matching fresh owner status was read AFTER the final rejection too. */
-        data class Stopped(val failure: Failure?, val cleanPreflight: Boolean = false) : Outcome {
+        data class Stopped(
+            val failure: Failure?,
+            val cleanPreflight: Boolean = false,
+            /**
+             * 本轮被 focus 前置条件连续拒绝的次数。仅当 preflight 干净且选择为空时，
+             * 用于决定是否进入独立的“放弃归位”兜底；不改变既有重试语义。
+             */
+            val focusRejections: Int = 0,
+        ) : Outcome {
             val phase: String get() = if (cleanPreflight) "handoff_pending" else "uncertain"
         }
     }
@@ -55,6 +78,22 @@ internal object VirtualDisplayHandoffRetry {
         fun hasRemaining(): Boolean = remaining > 0
         fun consume() { if (hasRemaining()) used++ }
         fun reset() { if (!blocked) used = 0 }
+
+        private var cleanFocusStop = false
+
+        /** 记录“仅因 focus 被干净拒绝而耗尽”，区别于可能已产生变更的 stop()。 */
+        fun markCleanFocusStop() { if (!blocked) cleanFocusStop = true }
+
+        /**
+         * 主屏焦点实际变化后允许重置一次。blocked（变更可能已发生）永不重置，
+         * 且只认 cleanFocusStop，避免把不确定变更当成可重放。
+         */
+        fun resetAfterFocusChange(): Boolean {
+            if (blocked || !cleanFocusStop) return false
+            used = 0
+            cleanFocusStop = false
+            return true
+        }
 
         // A clean non-focus refusal stops this round too, without claiming mutation uncertainty.
         fun exhaust() { used = limit }
@@ -135,7 +174,9 @@ internal object VirtualDisplayHandoffRetry {
     private fun sameAuthenticatedOwner(before: OwnerState?, after: OwnerState?): Boolean {
         if (before == null || after == null || !before.authenticated || !after.authenticated) return false
         if (!before.identity.isValid()) return false
-        return before == after
+        // Focus and proven-escape evidence are read-only diagnostics; they must not make an
+        // otherwise unchanged owner look like a different one.
+        return before.comparable() == after.comparable()
     }
 
     /** live/gone known, disjoint retained subsets, nothing escaped, and the count covers every live root. */
@@ -168,6 +209,7 @@ internal object VirtualDisplayHandoffRetry {
     ): Outcome {
         var first: Failure? = null
         var retryIndex = 0
+        var focusRejections = 0
         while (true) {
             if (Thread.currentThread().isInterrupted) { budget.stop(); return Outcome.Stopped(first) }
             if (!budget.hasRemaining()) return Outcome.Stopped(first)
@@ -197,6 +239,7 @@ internal object VirtualDisplayHandoffRetry {
                         return Outcome.Stopped(Failure(attempt.code, attempt.detail))
                     }
                     val retryable = isRetryable(attempt.code, attempt.detail)
+                    if (retryable) focusRejections++
                     if (retryable && budget.hasRemaining() && !sleep(delay, delayForRetry(retryIndex))) {
                         budget.stop(); return Outcome.Stopped(first)
                     }
@@ -205,9 +248,14 @@ internal object VirtualDisplayHandoffRetry {
                     if (Thread.currentThread().isInterrupted) { budget.stop(); return Outcome.Stopped(first) }
                     if (!retryable) {
                         budget.exhaust() // Prevent finish/onRunClosed from replaying this round.
-                        return Outcome.Stopped(Failure(attempt.code, attempt.detail), cleanPreflight = true)
+                        return Outcome.Stopped(
+                            Failure(attempt.code, attempt.detail),
+                            cleanPreflight = true,
+                        )
                     }
-                    if (!budget.hasRemaining()) return Outcome.Stopped(first, cleanPreflight = true)
+                    if (!budget.hasRemaining()) {
+                        return Outcome.Stopped(first, cleanPreflight = true, focusRejections = focusRejections)
+                    }
                     retryIndex++
                 }
             }

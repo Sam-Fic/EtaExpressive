@@ -36,7 +36,18 @@ internal object VirtualDisplaySession {
     private const val ADOPTED_CLEANUP_ONLY =
         "已恢复上一轮中断的副屏会话，当前只能清理；请先 finish_virtual_session，再 start_virtual_session 开始新的会话"
     private const val CLEANUP_REQUIRED_MESSAGE =
-        "副屏会话当前不可操作：请先 tools_use_group(group=screen)，再 finish_virtual_session，然后 start_virtual_session，之后重试本次操作"
+        "副屏会话当前不可操作：它恢复自上一轮中断的会话，只能执行清理。请先调用 finish_virtual_session；" +
+            "若持续失败，请到「设置 - 虚拟屏」点击恢复/关闭，或退出后台虚拟屏模式后重试本操作"
+    private const val UNSUPPORTED_GUI_MESSAGE =
+        "该操作在后台副屏模式下不可用：后台模式不会触碰主屏。" +
+            "请改用副屏支持的工具（observe_screen / tap / swipe / press_key(BACK|ENTER|PASTE)）；" +
+            "launch_app / press_key 可显式传 display=main（仅在本会话刚在主屏启动的应用仍占前台时生效）；" +
+            "或退出后台虚拟屏模式后重试"
+    private const val UNSUPPORTED_KEY_MESSAGE =
+        "副屏只接受 BACK / ENTER / PASTE 三个按键，HOME 等系统键不可用，且不会作用于主屏。" +
+            "若需要回到主屏或修复主屏焦点，请到「设置 - 虚拟屏」点击恢复/关闭，或退出后台虚拟屏模式"
+    private const val UNSUPPORTED_TEXT_MODE_MESSAGE =
+        "副屏只支持追加输入（mode=append）；替换/清空等模式不可用。如需替换文本，请先清空输入框再追加"
     private class Session(var client: VirtualDisplayOwnerClient? = null, var phase: String = "starting") {
         /** 当前使用这块副屏的 app run；adoption 会转移到新的 run。 */
         var runId: String = ""
@@ -66,6 +77,21 @@ internal object VirtualDisplaySession {
         // Bounded history survives a held-session adoption; includes successful later attempts.
         val handoffAttempts = JSONArray()
         var handoffDiagnostics: VirtualDisplayHandoffDiagnostics.Failure? = null
+        /** 放弃归位的兜底：一个 owner 会话只允许一次，且与 handoff 预算完全独立。 */
+        var forcedReleaseUsed = false
+        var forcedReleaseAttempted = false
+        /** 主屏焦点实际变化后仅允许重置一次 handoff 预算。 */
+        var focusBudgetResetUsed = false
+        /** 本会话累计被主屏焦点前置条件干净拒绝的次数；兜底释放只认可这个证据。 */
+        var focusRejections = 0
+        /** reclaim 是否曾因“焦点任务不可移动”而被拒绝；该拒绝不消耗也不产生 handoff 预算。 */
+        var reclaimFocusRefused = false
+        var lastFocusUserId: Int? = null
+        var lastFocusTaskId: Int? = null
+        /** 最近一次 reclaim 的结果，写进日志与回执；不再静默丢弃。 */
+        var reclaimCode: String? = null
+        var reclaimCount: Int = 0
+        var reclaimUncertain = false
     }
     private val sessions = linkedMapOf<String, Session>()
     /** 所有处于 active 的 owner 副屏，key 是正在使用它的 app runId。 */
@@ -206,6 +232,137 @@ internal object VirtualDisplaySession {
         if (s.handoffAttempts.length() > 0) {
             put("handoffAttempts", JSONArray(s.handoffAttempts.toString()))
         }
+        // reclaim 不再静默：失败码与回收计数随回执一起返回，便于区分“无法归位”与“归位成功”。
+        s.reclaimCode?.let { put("reclaim_error", it) }
+        if (s.reclaimCount > 0) put("reclaim_count", s.reclaimCount)
+    }
+
+    /** 只有“预算耗尽且未产生任何变更”的旧回执才会被这样解释，不会覆盖原始失败细节。 */
+    private fun withPreservedReceiptExplanation(s: Session, receipt: JSONObject): JSONObject =
+        VirtualDisplayHandoffDiagnostics.preservedReceipt(receipt).also { s.receipt = it }
+
+    /**
+     * 主屏焦点实际变化后，允许重置一次 handoff 预算。只对“干净停止”（无锚点、无移除、无变更）
+     * 生效；budget.blocked（可能已产生变更）永不重置，避免把不确定变更重放一次。
+     */
+    private fun maybeResetHandoffBudgetAfterFocusChange(
+        s: Session,
+        observed: VirtualDisplayHandoffRetry.OwnerState,
+    ) {
+        val previousUser = s.lastFocusUserId
+        val previousTask = s.lastFocusTaskId
+        s.lastFocusUserId = observed.focusUserId
+        s.lastFocusTaskId = observed.focusTaskId
+        if (s.focusBudgetResetUsed || s.handoffBudget.blocked) return
+        val user = observed.focusUserId ?: return
+        val task = observed.focusTaskId ?: return
+        if (previousUser == null || previousTask == null) return
+        if (previousUser == user && previousTask == task) return
+        if (!s.handoffBudget.resetAfterFocusChange()) return
+        s.focusBudgetResetUsed = true
+        AndroidAgentLogger.info(
+            "Virtual display handoff budget reset after focus change: " +
+                "$previousUser/$previousTask -> $user/$task"
+        )
+    }
+
+    /**
+     * 兜底释放的前置条件：必须是空选择清理、且本会话确实被主屏焦点连续拒绝过（>=2）。
+     * 正常 handoff 预算耗尽，或 reclaim 因“焦点任务不可移动”被拒绝且该拒绝在多次 finish
+     * 中重复出现，都算证据；普通失败永远不会触发。
+     */
+    private fun forcedReleaseEligible(s: Session): Boolean =
+        s.kept.isEmpty() && s.focusRejections >= 2 &&
+            (!s.handoffBudget.hasRemaining() || s.reclaimFocusRefused)
+
+    /**
+     * P0 兜底：空选择清理被连续拒绝时，放弃归位、只释放副屏。
+     *
+     * 不变量：不移动、不关闭任何主屏任务；每个保留 root 必须被证明为 live / gone / 同一 root
+     * 位于 display 0；一个 owner 会话只尝试一次；与 handoff 预算完全独立。成功后 phase=finished，
+     * 采用态（adopted）会释放本 run 的会话槽，可直接 start 新副屏。
+     */
+    private fun tryForcedRelease(
+        s: Session,
+        c: VirtualDisplayOwnerClient,
+        observed: VirtualDisplayHandoffRetry.OwnerState,
+        reason: String,
+    ): JSONObject? {
+        if (s.forcedReleaseUsed || s.kept.isNotEmpty()) return null
+        val live = observed.liveTaskIds
+        val gone = observed.goneTaskIds
+        val escaped = if (live != null && gone != null) observed.retainedTaskIds - live - gone else null
+        val decision = VirtualDisplayRecoveryPolicy.forcedReleaseDecision(
+            VirtualDisplayRecoveryPolicy.ForcedReleaseInput(
+                keptTaskIds = s.kept.toSet(),
+                retainedTaskIds = observed.retainedTaskIds,
+                liveTaskIds = live,
+                goneTaskIds = gone,
+                escapedTaskIds = escaped,
+                escapedMainTaskIds = observed.escapedMainTaskIds,
+                flags = observed.flags,
+                forceReleaseAttempted = s.forcedReleaseAttempted ||
+                    observed.forceReleaseAttempted == true,
+            ),
+        )
+        if (decision !is VirtualDisplayRecoveryPolicy.ForcedReleaseDecision.Allowed) {
+            AndroidAgentLogger.warn("Virtual display forced release blocked: ${decision.code} reason=$reason")
+            return null
+        }
+        val ctx = recoveryContext ?: run {
+            AndroidAgentLogger.warn("Virtual display forced release skipped: no context")
+            return null
+        }
+        s.forcedReleaseUsed = true
+        s.forcedReleaseAttempted = true
+        s.handoffBudget.stop() // 兜底与正常 handoff 预算彻底分开，失败也不再重试
+        if (!runCatching {
+                recoveryPrefs(ctx).edit()
+                    .putString(VirtualDisplayRecoveryRecord.BARRIER, "forced_release_pending").commit()
+            }.getOrDefault(false)
+        ) return fail(s, "RECOVERY_STATE_UNWRITABLE")
+        val authenticated = c.isAlive
+        AndroidAgentLogger.info(
+            "Virtual display forced release: reason=$reason retained=${observed.retainedTaskIds.size} " +
+                "live=${live?.size ?: -1} escapedMain=${observed.escapedMainTaskIds?.size ?: -1}"
+        )
+        if (!authenticated) return fail(s, "RELEASE_UNCERTAIN")
+        val released = try {
+            c.release(force = true)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt(); return fail(s, "RELEASE_UNCERTAIN")
+        } catch (_: Exception) {
+            return fail(s, "RELEASE_UNCERTAIN")
+        }
+        if (!VirtualDisplayHandoffEvidence.released(
+                observed.identity, authenticated,
+                released.ok && released.op == VirtualDisplayOwnerProtocol.OP_RELEASE,
+                { released.json?.opt(it) },
+            )
+        ) return fail(s, released.errorCode.ifBlank { "FORCED_RELEASE_FAILED" }, safeOwnerDetail(released))
+        val receipt = clearReleased(ctx, s)
+        val remainingIds = released.json?.optJSONArray("remainingOnMainTaskIds") ?: JSONArray()
+        val remainingPackages = released.json?.optJSONArray("remainingOnMainPackages") ?: JSONArray()
+        val remainingLabel = (0 until remainingIds.length()).joinToString(",") { remainingIds.optInt(it).toString() }
+        val packageLabel = (0 until remainingPackages.length()).joinToString(", ") { remainingPackages.optString(it) }
+        val remainingText = if (remainingIds.length() == 0) "没有已证明滞留在主屏的任务"
+        else "任务 $remainingLabel${if (packageLabel.isBlank()) "" else "（$packageLabel）"} 仍在主屏"
+        return receipt
+            .put("forceRelease", true)
+            .put("releaseOnly", true)
+            .put("handedOff", false)
+            .put("state", "finished")
+            .put("remainingOnMainTaskIds", remainingIds)
+            .put("remainingOnMainPackages", remainingPackages)
+            .put("releasedSourceTaskIds", released.json?.optJSONArray("releasedSourceTaskIds") ?: JSONArray())
+            .put("releasedSourcePackages", released.json?.optJSONArray("releasedSourcePackages") ?: JSONArray())
+            .put(
+                "forcedReleaseNote",
+                "副屏已强制关闭（未执行归位）：$remainingText，不会被移回或关闭；" +
+                    "本次清理不再重试，需要新副屏可直接重新调用 start_virtual_session",
+            )
+            .put("next_step", "如需继续使用后台副屏，直接调用 start_virtual_session 新开会话")
+            .withHandoffAttempts(s).also { s.receipt = it }
     }
 
     private fun recordHandoff(s: Session, response: OwnerResponse, completed: Boolean) {
@@ -717,21 +874,37 @@ internal object VirtualDisplaySession {
         }
         val s = sessions[runId] ?: return reply(false, "NO_VIRTUAL_SESSION")
         if (s.phase == "finished") return s.receipt?.let {
-            if (it.opt("ok") == false) VirtualDisplayHandoffDiagnostics.preservedReceipt(it) else it
+            if (it.opt("ok") == false) withPreservedReceiptExplanation(s, it) else it
         } ?: reply(true).put("already_finished", true).put("released", true)
         // An ambiguous attempt must not reach either handoff OR release, even after adoption.
         if (s.handoffBudget.blocked || Thread.currentThread().isInterrupted)
             return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
         val c = s.client ?: return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
+        // 每次 finish 重新记录 reclaim 结果，避免旧错误码被回放进新回执。
+        s.reclaimCode = null
+        s.reclaimCount = 0
+        s.reclaimUncertain = false
         // 被系统挪到主屏的任务先尝试归位；归位结果不确定时不再继续 handoff。
         val pre = runCatching { c.status() }.getOrNull()
         if (pre?.ok == true && escapedTaskIds(pre) > 0) {
             val reclaim = runCatching { c.reclaim() }.getOrNull()
-            if (reclaim != null && !reclaim.ok && reclaim.errorCode == "RECLAIM_UNCERTAIN") {
-                return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
+            s.reclaimCode = reclaim?.errorCode?.takeIf { it.isNotBlank() }
+            s.reclaimCount = reclaim?.json?.optInt("reclaimed", 0) ?: 0
+            s.reclaimUncertain = reclaim?.errorCode == "RECLAIM_UNCERTAIN"
+            // reclaim 因“焦点任务不能被移动”而拒绝，同样属于焦点阻挡的一次干净拒绝；
+            // 它不产生任何移动，也不会把风险带进 handoff 预算。
+            if (s.reclaimCode?.startsWith("focus ") == true) {
+                s.reclaimFocusRefused = true
+                s.focusRejections++
             }
+            AndroidAgentLogger.info(
+                "Virtual display reclaim: escaped=${escapedTaskIds(pre)} code=${s.reclaimCode ?: "-"} " +
+                    "reclaimed=${s.reclaimCount} uncertain=${s.reclaimUncertain}"
+            )
+            if (s.reclaimUncertain) return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
         }
         val observed = freshHandoffState(c) ?: return failPreservingPrior(s, "OWNER_STATE_UNKNOWN")
+        maybeResetHandoffBudgetAfterFocusChange(s, observed)
         val marked = s.kept.toSet()
         val baseline = s.handoffState
         val f = observed.flags
@@ -744,6 +917,23 @@ internal object VirtualDisplaySession {
         val directRelease = action == VirtualDisplayRecoveryPolicy.Action.HANDOFF && frozen.isEmpty() &&
             f.sourceEmpty && observed.retainedTaskIds.isEmpty()
         val cleanup = action == VirtualDisplayRecoveryPolicy.Action.HANDOFF && frozen.isEmpty() && !directRelease
+        // reclaim 被“焦点任务不可移动”拒绝后，逃逸任务仍在主屏。此时空选择 cleanup 的 handoff
+        // 必然在“残留 owned task”处失败，而它已经启动锚点、删除了源盘其它任务，会变成不可重放的
+        // uncertain。不要发起它：保持干净可重试，连续拒绝后再走独立的 release-only 兜底。
+        val escapedObserved = if (observed.liveTaskIds != null && observed.goneTaskIds != null)
+            observed.retainedTaskIds - observed.liveTaskIds - observed.goneTaskIds else null
+        if (cleanup && s.reclaimFocusRefused && (escapedObserved == null || escapedObserved.isNotEmpty())) {
+            if (forcedReleaseEligible(s)) {
+                tryForcedRelease(s, c, observed, "reclaim_focus_refused")?.let { return it }
+            }
+            s.phase = "handoff_pending"
+            return reply(
+                false,
+                "FOCUS_BLOCKED_CLEANUP",
+                "主屏焦点占用了逃逸任务，清理无法在不移动它的情况下归位；本次未发起任何移动。" +
+                    "请等焦点离开该任务后再次调用 finish_virtual_session；若持续失败，将只关闭副屏并把任务留在主屏",
+            ).withHandoffAttempts(s).also { s.receipt = it }
+        }
         if (action == VirtualDisplayRecoveryPolicy.Action.HANDOFF && frozen.isNotEmpty()) {
             // Never drop an escaped id out of the selection to make delivery succeed.
             VirtualDisplayHandoffRetry.frozenDeliveryCode(
@@ -753,7 +943,14 @@ internal object VirtualDisplaySession {
         if (baseline != null) {
             val fresh = if (cleanup) VirtualDisplayHandoffRetry.freshStateAllowsCleanup(baseline, observed)
                 else VirtualDisplayHandoffRetry.freshStateAllowsRetry(baseline, observed, frozen)
-            if (s.handoffSelection != frozen || !fresh) return failPreservingPrior(s, "OWNER_STATE_UNKNOWN")
+            if (s.handoffSelection != frozen || !fresh) {
+                // 状态已不再“干净”时不允许重试 handoff；但若此前已连续被焦点拒绝、预算耗尽且没有
+                // 任何交付承诺，仍可走独立的 release-only 兜底（它不重放任何移动）。
+                if (cleanup && forcedReleaseEligible(s)) {
+                    tryForcedRelease(s, c, observed, "focus_state_not_fresh")?.let { return it }
+                }
+                return failPreservingPrior(s, "OWNER_STATE_UNKNOWN")
+            }
         }
         if (action == VirtualDisplayRecoveryPolicy.Action.REFUSE)
             return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
@@ -772,12 +969,20 @@ internal object VirtualDisplaySession {
             val before = baseline ?: observed
             val allowed = if (cleanup) VirtualDisplayHandoffRetry.freshStateAllowsCleanup(before, observed)
                 else VirtualDisplayHandoffRetry.freshStateAllowsRetry(before, observed, frozen)
-            if (!allowed) return failPreservingPrior(s, "OWNER_STATE_UNKNOWN")
+            if (!allowed) {
+                if (cleanup && forcedReleaseEligible(s)) {
+                    tryForcedRelease(s, c, observed, "focus_state_not_fresh")?.let { return it }
+                }
+                return failPreservingPrior(s, "OWNER_STATE_UNKNOWN")
+            }
             if (!s.handoffBudget.hasRemaining()) {
                 // Same round: still a FAILURE, never another handoff/release or a budget reset.
                 // The status above is fresh; cached diagnostics alone cannot keep this pending.
+                if (forcedReleaseEligible(s)) {
+                    tryForcedRelease(s, c, observed, "focus_budget_exhausted")?.let { return it }
+                }
                 if (s.phase == "handoff_pending" && s.receipt?.opt("ok") == false)
-                    return VirtualDisplayHandoffDiagnostics.preservedReceipt(s.receipt!!)
+                    return withPreservedReceiptExplanation(s, s.receipt!!)
                 return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
             }
             s.handoffState = before
@@ -835,6 +1040,15 @@ internal object VirtualDisplaySession {
                     // ambiguity. Unknown/unauthenticated/post-anchor outcomes remain uncertain.
                     val failure = outcome.failure
                     s.phase = outcome.phase
+                    s.focusRejections += outcome.focusRejections
+                    if (outcome.cleanPreflight && outcome.focusRejections > 0) {
+                        s.handoffBudget.markCleanFocusStop()
+                    }
+                    // 空选择清理被连续 focus 拒绝（例如工作资料占前台）：只释放，不归位。
+                    if (cleanup && outcome.cleanPreflight && forcedReleaseEligible(s)) {
+                        tryForcedRelease(s, c, observed, "focus_rejected_${s.focusRejections}x")
+                            ?.let { return it }
+                    }
                     val receipt = if (failure != null) reply(false,
                         VirtualDisplayHandoffDiagnostics.safeHandoffError(failure.code), failure.detail).withHandoffAttempts(s)
                         else s.receipt?.let(VirtualDisplayHandoffDiagnostics::preservedReceipt)
@@ -899,9 +1113,14 @@ internal object VirtualDisplaySession {
         val pre = runCatching { c.status() }.getOrNull()
         if (pre?.ok == true && escapedTaskIds(pre) > 0) {
             val reclaim = runCatching { c.reclaim() }.getOrNull()
-            if (reclaim != null && !reclaim.ok && reclaim.errorCode == "RECLAIM_UNCERTAIN") {
-                return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
-            }
+            s.reclaimCode = reclaim?.errorCode?.takeIf { it.isNotBlank() }
+            s.reclaimCount = reclaim?.json?.optInt("reclaimed", 0) ?: 0
+            s.reclaimUncertain = reclaim?.errorCode == "RECLAIM_UNCERTAIN"
+            AndroidAgentLogger.info(
+                "Virtual display reclaim (abort): escaped=${escapedTaskIds(pre)} " +
+                    "code=${s.reclaimCode ?: "-"} reclaimed=${s.reclaimCount} uncertain=${s.reclaimUncertain}"
+            )
+            if (s.reclaimUncertain) return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
         }
         val observed = freshHandoffState(c) ?: return failPreservingPrior(s, "OWNER_STATE_UNKNOWN")
         val f = observed.flags
@@ -962,9 +1181,11 @@ internal object VirtualDisplaySession {
     }
     @Synchronized fun executeGui(context: Context,runId: String,tool: String,args: JSONObject, excludedPackages: Set<String> = emptySet()): AgentModelClient.ToolResult {
         fun text(obj: JSONObject)=AgentModelClient.ToolResult(obj.put("tool",tool).put("display","virtual").toString())
-        if(tool !in setOf("observe_screen","launch_app","wait","tap","tap_area","swipe","long_press","press_key","paste_text","input_text"))return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY"))
-        if(tool=="press_key" && args.optString("button") !in setOf("BACK","ENTER","PASTE"))return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY"))
-        if(tool=="input_text" && args.optString("mode","append")!="append")return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY"))
+        if(tool !in setOf("observe_screen","launch_app","wait","tap","tap_area","swipe","long_press","press_key","paste_text","input_text"))return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY",UNSUPPORTED_GUI_MESSAGE))
+        if(tool=="press_key" && args.optString("button") !in setOf("BACK","ENTER","PASTE"))return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY",UNSUPPORTED_KEY_MESSAGE)
+            .put("requested_button", args.optString("button").take(24)).put("supported_buttons", JSONArray(listOf("BACK","ENTER","PASTE")))
+            .put("alternative", "设置 - 虚拟屏：恢复/关闭副屏；或退出后台虚拟屏模式"))
+        if(tool=="input_text" && args.optString("mode","append")!="append")return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY",UNSUPPORTED_TEXT_MODE_MESSAGE))
         if(tool=="launch_app" && (args.optString("package_name").isBlank() || args.optString("package_name") in excludedPackages))return text(reply(false,"PACKAGE_NOT_ALLOWED"))
         if(sessions[runId]==null && tool !in setOf("launch_app","observe_screen"))return text(reply(false,"NO_VIRTUAL_SESSION"))
         if(sessions[runId]==null){
@@ -1088,11 +1309,11 @@ internal object VirtualDisplaySession {
                 }
                 "press_key" -> {
                     val key=mapOf("BACK" to 4,"ENTER" to 66,"PASTE" to 279)[args.getString("button")]
-                        ?:return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY"))
+                        ?:return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY",UNSUPPORTED_KEY_MESSAGE))
                     fields.putAll(mapOf("kind" to "key","keyCode" to key))
                 }
                 "paste_text","input_text" -> {
-                    if(tool=="input_text" && args.optString("mode","append")!="append")return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY"))
+                    if(tool=="input_text" && args.optString("mode","append")!="append")return text(reply(false,"UNSUPPORTED_ON_VIRTUAL_DISPLAY",UNSUPPORTED_TEXT_MODE_MESSAGE))
                     s.observation.require()
                     val value=args.getString("text");require(value.length<=20000)
                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("",value))
@@ -1132,7 +1353,15 @@ internal object VirtualDisplaySession {
     private fun reclaimBeforeGesture(c: VirtualDisplayOwnerClient): JSONObject? {
         val state = runCatching { c.status() }.getOrNull()
         if (state == null || !state.ok || escapedTaskIds(state) == 0) return null
-        val reclaim = runCatching { c.reclaim() }.getOrNull() ?: return reply(false, "RECLAIM_FAILED")
+        val reclaim = runCatching { c.reclaim() }.getOrNull()
+        if (reclaim == null) {
+            AndroidAgentLogger.info("Virtual display reclaim before gesture: code=NO_RESPONSE reclaimed=0")
+            return reply(false, "RECLAIM_FAILED")
+        }
+        AndroidAgentLogger.info(
+            "Virtual display reclaim before gesture: code=${reclaim.errorCode.ifBlank { "-" }} " +
+                "reclaimed=${reclaim.json?.optInt("reclaimed", 0) ?: 0}",
+        )
         return if (reclaim.ok) null else body(reclaim)
     }
     /** 胶囊画布手势：归一化坐标按副屏像素换算后直接投递给 owner。 */

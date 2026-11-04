@@ -1,6 +1,7 @@
 package vd.runtime;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -51,9 +52,23 @@ final class OwnerFocusPreflight {
 
     static Sample capture(Source reader, int sourceDisplay, Map<Integer, OwnerHandoff.Task> owned,
             Set<Integer> selected) throws OwnerHandoff.HandoffFailure {
+        return capture(reader, sourceDisplay, owned, selected, true);
+    }
+
+    /**
+     * @param requireMainFocus true for any delivery/handoff that addresses display 0. An empty-selection
+     *                         cleanup only removes roots from the source display and never launches or
+     *                         moves anything into display 0, so it validates source ownership and
+     *                         source stability only; a work-profile foreground cannot block it.
+     */
+    static Sample capture(Source reader, int sourceDisplay, Map<Integer, OwnerHandoff.Task> owned,
+            Set<Integer> selected, boolean requireMainFocus) throws OwnerHandoff.HandoffFailure {
         final long start = reader.nanoTime();
         FocusWitness previous = null;
-        FocusWitness.Rejected last = new FocusWitness.Rejected(FocusWitness.Reason.FOCUS_UNSTABLE);
+        Set<Integer> previousSourceIds = null;
+        Throwable last = requireMainFocus
+                ? new FocusWitness.Rejected(FocusWitness.Reason.FOCUS_UNSTABLE)
+                : new IllegalStateException("source inventory unstable");
         List<String> observations = new ArrayList<String>();
         for (int attempt = 0; attempt < MAX_SAMPLES; attempt++) {
             if (Thread.currentThread().isInterrupted()) {
@@ -67,6 +82,17 @@ final class OwnerFocusPreflight {
                 phase = "preflight:inventory";
                 Map<Integer, Object> current = reader.roots();
                 verifySourceInventory(sourceDisplay, selected, current, owned);
+                if (!requireMainFocus) {
+                    // Cleanup stability: the same source roots, re-verified against their registered
+                    // identities, on two consecutive rounds. No display-0 read is performed at all.
+                    Set<Integer> sourceIds = sourceTaskIds(sourceDisplay, current);
+                    if (previousSourceIds != null && previousSourceIds.equals(sourceIds)) {
+                        return new Sample(null, current, observations);
+                    }
+                    previousSourceIds = sourceIds;
+                    last = new IllegalStateException("source inventory unstable");
+                    continue;
+                }
                 phase = "preflight:focus";
                 FocusWitness witness;
                 try {
@@ -108,14 +134,24 @@ final class OwnerFocusPreflight {
         if (Thread.currentThread().isInterrupted()) {
             throw failure("preflight:cancelled", new InterruptedException(), observations);
         }
-        throw failure("preflight:focus", last, observations);
+        throw failure(requireMainFocus ? "preflight:focus" : "preflight:inventory", last, observations);
+    }
+
+    private static Set<Integer> sourceTaskIds(int source, Map<Integer, Object> current) throws Exception {
+        Set<Integer> ids = new LinkedHashSet<Integer>();
+        for (Object task : current.values()) {
+            if (OwnerHandoff.number(task, "displayId") == source) {
+                ids.add(OwnerHandoff.number(task, "taskId"));
+            }
+        }
+        return ids;
     }
 
     static void verifySourceInventory(int source, Set<Integer> selected, Map<Integer, Object> current,
             Map<Integer, OwnerHandoff.Task> owned) throws Exception {
         for (Object task : current.values()) if (OwnerHandoff.number(task, "displayId") == source) {
             OwnerHandoff.Task identity = owned.get(OwnerHandoff.number(task, "taskId"));
-            if (identity == null) throw new IllegalStateException("foreign source task");
+            if (identity == null) throw new OwnerHandoff.Rejection("ForeignSourceTask");
             identity.check(task, source);
         }
         for (Integer id : selected) owned.get(id).check(current.get(id), source);
