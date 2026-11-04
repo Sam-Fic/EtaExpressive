@@ -10,6 +10,7 @@ import io.github.mangi.eta.agent.delegation.*
 import io.github.mangi.eta.agent.decision.AgentDecisionMismatch
 import io.github.mangi.eta.agent.decision.AgentDecisionRouter
 import io.github.mangi.eta.agent.browser.ChildBrowserSession
+import io.github.mangi.eta.agent.dispatch.AgentDispatchPayload
 import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
 import io.github.mangi.eta.agent.model.AgentDispatchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolCatalog
@@ -68,6 +69,12 @@ internal class AgentRuntimeRunExecutor(
 
     fun execute(session: AgentRuntimeSession, request: AgentRuntimeWire.RunRequest): Outcome {
         val runController = session.controller
+        // 关联行：让诊断 zip 能把 run 对回会话与派发；缺失字段统一写 "-"，不打印正文。
+        val dispatchPayload = AgentDispatchPayload.from(request.handoff?.payload)
+        AndroidAgentLogger.info(
+            "Agent run start: conversation=${(dispatchPayload?.conversationId ?: request.effectiveModelSessionId).ifBlank { "-" }} " +
+                "run=${request.runId.ifBlank { "-" }} dispatch=${dispatchPayload?.dispatchId ?: "-"}",
+        )
         val archivedEvents = mutableListOf<AgentEvent>()
         var entrySurfaceGuard: EntrySurfaceGuard? = null
         var localTools: AgentLocalTools? = null

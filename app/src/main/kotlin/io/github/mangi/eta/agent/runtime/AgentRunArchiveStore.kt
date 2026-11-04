@@ -3,6 +3,8 @@ package io.github.mangi.eta.agent.runtime
 import android.content.Context
 import io.github.mangi.eta.agent.model.AgentConversationCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
+import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.RuntimeArchiveEventEntity
 import io.github.mangi.eta.data.db.RuntimeArchiveRunEntity
@@ -37,11 +39,17 @@ internal object AgentRunArchiveStore {
             val dao = EtaDatabase.get(appContext).runtimeRunDao()
             val compacted = run.copy(events = compactEvents(run.events))
             val archiveRunId = compacted.archiveRunId
+            val before = dao.archivedRunHeaders().size
             dao.replaceArchivedRun(
                 run = compacted.toEntity(archiveRunId),
                 events = compacted.toEventEntities(archiveRunId),
             )
-            prune(dao)
+            val retained = prune(dao)
+            // 只打计数：能看出归档是否被 32 条 / 7 天上限挤出，正文不进日志。
+            AndroidAgentLogger.info(
+                "Runtime archive add: run=$archiveRunId runs=${retained.size} " +
+                    "pruned=${(before + 1 - retained.size).coerceAtLeast(0)}",
+            )
         }
     }
 
@@ -49,7 +57,9 @@ internal object AgentRunArchiveStore {
         val appContext = context.applicationContext
         return runBlocking(Dispatchers.IO) {
             val dao = EtaDatabase.get(appContext).runtimeRunDao()
-            prune(dao).mapNotNull { run ->
+            val retained = prune(dao)
+            AndroidAgentLogger.info("Runtime archive restore: runs=${retained.size}")
+            retained.mapNotNull { run ->
                 runCatching {
                     run.toDomain(loadArchiveEvents(dao, run.archiveRunId))
                 }.getOrNull()
@@ -61,9 +71,11 @@ internal object AgentRunArchiveStore {
         if (runId.isBlank()) return
         val appContext = context.applicationContext
         runBlocking(Dispatchers.IO) {
-            EtaDatabase.get(appContext)
-                .runtimeRunDao()
-                .deleteArchivedRun(runId)
+            val dao = EtaDatabase.get(appContext).runtimeRunDao()
+            dao.deleteArchivedRun(runId)
+            AndroidAgentLogger.info(
+                "Runtime archive drop: run=$runId runs=${dao.archivedRunHeaders().size}",
+            )
         }
     }
 
@@ -111,9 +123,26 @@ internal object AgentRunArchiveStore {
             RuntimeArchiveEventEntity(
                 archiveRunId = archiveRunId,
                 sortIndex = index,
-                eventJson = AgentEventJsonCodec.encodeForCheckpoint(event).json,
+                eventJson = AgentEventJsonCodec.encodeForCheckpoint(event.withoutSensitiveToolDetails()).json,
             )
         }
+
+    /**
+     * 归档事件会被长期保留，并随「会话分析 JSON」导出；敏感工具的参数 / 结果 / 预览
+     * 不能借这条路径绕过消息落库时的剔除。这里复用同一份 [AgentSensitiveToolPolicy]，
+     * 不另造名单；命中后只清空明细，保留调用事实、状态与计数。
+     */
+    private fun AgentEvent.withoutSensitiveToolDetails(): AgentEvent = when (this) {
+        is AgentEvent.ToolStarted ->
+            if (AgentSensitiveToolPolicy.isSensitive(name)) copy(argumentsDetail = null) else this
+        is AgentEvent.ToolFinished ->
+            if (AgentSensitiveToolPolicy.isSensitive(name)) {
+                copy(resultDetail = null, mediaPreviewsJson = "[]")
+            } else {
+                this
+            }
+        else -> this
+    }
 
     private fun RuntimeArchiveRunEntity.toDomain(
         events: List<RuntimeArchiveEventEntity>,

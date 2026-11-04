@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.runtime
 import android.content.Context
 import io.github.mangi.eta.agent.model.AgentConversationCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.RuntimeResultEntity
 import kotlinx.coroutines.Dispatchers
@@ -39,8 +40,14 @@ internal object AgentRuntimeResultStore {
             if (recentlyAcknowledgedRunIds.containsKey(entity.runId)) return false
             runBlocking(Dispatchers.IO) {
                 val dao = EtaDatabase.get(appContext).runtimeRunDao()
+                val before = dao.runtimeResults().size
                 dao.upsertRuntimeResult(entity)
-                prune(dao)
+                val retained = prune(dao)
+                // 只打计数：诊断 zip 里要能看出待交付队列是否被挤出，正文不落日志。
+                AndroidAgentLogger.info(
+                    "Runtime outbox add: run=$stableRunId pending=${retained.size} " +
+                        "pruned=${(before + 1 - retained.size).coerceAtLeast(0)}",
+                )
             }
             return true
         }
@@ -50,8 +57,9 @@ internal object AgentRuntimeResultStore {
         val appContext = context.applicationContext
         return synchronized(deliveryLock) {
             runBlocking(Dispatchers.IO) {
-                prune(EtaDatabase.get(appContext).runtimeRunDao())
-                    .map { it.toDomain() }
+                val retained = prune(EtaDatabase.get(appContext).runtimeRunDao())
+                AndroidAgentLogger.info("Runtime outbox list: pending=${retained.size}")
+                retained.map { it.toDomain() }
             }
         }
     }
@@ -61,9 +69,11 @@ internal object AgentRuntimeResultStore {
         val appContext = context.applicationContext
         synchronized(deliveryLock) {
             runBlocking(Dispatchers.IO) {
-                EtaDatabase.get(appContext)
-                    .runtimeRunDao()
-                    .acknowledgeRuntimeResult(runId)
+                val dao = EtaDatabase.get(appContext).runtimeRunDao()
+                dao.acknowledgeRuntimeResult(runId)
+                AndroidAgentLogger.info(
+                    "Runtime outbox ack: run=$runId pending=${dao.runtimeResults().size}",
+                )
             }
             rememberAcknowledgement(runId, System.currentTimeMillis())
         }

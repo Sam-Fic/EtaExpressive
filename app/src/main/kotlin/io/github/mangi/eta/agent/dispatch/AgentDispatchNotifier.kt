@@ -1,5 +1,6 @@
 package io.github.mangi.eta.agent.dispatch
 
+import io.github.mangi.eta.core.AndroidAgentLogger
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -35,6 +36,8 @@ internal object AgentDispatchNotifier {
         val detail: String,
         val originText: String,
         val createdAt: Long,
+        /** 产生这条回执的 run id，仅用于诊断关联；空串表示未知。 */
+        val runId: String = "",
     ) {
         fun toConsoleText(): String = buildString {
             append(CONSOLE_TEXT_PREFIX).append("工作会话「").append(title).append("」")
@@ -66,7 +69,19 @@ internal object AgentDispatchNotifier {
     val notices: SharedFlow<Notice> = _notices
 
     fun publish(notice: Notice) {
-        _notices.tryEmit(notice)
+        val accepted = _notices.tryEmit(notice)
+        // 回执从这里交给 UI 落库；zip 里要能看到「哪一单、哪个 run 的回执发到了哪一步」。
+        AndroidAgentLogger.info(
+            "dispatch notice: conversation=${notice.conversationId} " +
+                "run=${notice.runId.ifBlank { "-" }} dispatch=${notice.dispatchId} " +
+                "outcome=${notice.outcome} emitted=$accepted",
+        )
+        if (!accepted) {
+            AndroidAgentLogger.warn(
+                "dispatch notice dropped: conversation=${notice.conversationId} " +
+                    "run=${notice.runId.ifBlank { "-" }} dispatch=${notice.dispatchId} outcome=${notice.outcome}",
+            )
+        }
     }
 }
 

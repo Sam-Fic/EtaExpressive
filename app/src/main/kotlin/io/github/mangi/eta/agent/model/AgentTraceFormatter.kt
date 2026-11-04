@@ -129,6 +129,22 @@ internal class AgentTraceFormatter(
             }
 
     /**
+     * 供导出层复用的凭据脱敏入口；规则与卡片展示完全一致，不再复制第二份正则。
+     *
+     * 只处理凭据形态（`KEY=...` 赋值、`--token ...` flag、`Authorization: Bearer ...`），
+     * 不会整段清空文本，也不会动工具参数里的业务内容。
+     */
+    fun redactCredentials(text: String): String = text.redactDisplaySecrets()
+
+    /** 卡片参数明细是否在写库时被截断（截断标记会让长度超过上限）。 */
+    fun isArgumentsDetailTruncated(detail: String?): Boolean =
+        detail != null && detail.length > MAX_ARGUMENT_DETAIL_CHARS
+
+    /** 卡片结果明细是否在写库时被截断。 */
+    fun isResultDetailTruncated(detail: String?): Boolean =
+        detail != null && detail.length > MAX_RESULT_DETAIL_CHARS
+
+    /**
      * 卡片展开后展示的完整调用参数：工具真正收到的字段原样保留（含路径、命令、查询词），
      * 只隐藏凭据与内联媒体。
      *

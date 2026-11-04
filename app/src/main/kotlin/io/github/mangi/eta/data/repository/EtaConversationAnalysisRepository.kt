@@ -2,16 +2,23 @@ package io.github.mangi.eta.data.repository
 
 import android.content.Context
 import androidx.room.withTransaction
+import io.github.mangi.eta.BuildConfig
 import io.github.mangi.eta.agent.media.AgentToolMediaPreviews
+import io.github.mangi.eta.agent.model.AgentContextBudget
 import io.github.mangi.eta.agent.model.AgentConversationCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
+import io.github.mangi.eta.agent.model.AgentTraceFormatter
 import io.github.mangi.eta.agent.model.ConversationCheckpointTooLargeException
+import io.github.mangi.eta.config.Prefs
+import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.db.ConversationContextCheckpointEntity
 import io.github.mangi.eta.data.db.ConversationEntity
 import io.github.mangi.eta.data.db.ConversationMessageEntity
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.RuntimeRunDao
 import io.github.mangi.eta.data.model.ReasoningEffort
+import io.github.mangi.eta.ui.model.DISPATCH_CONSOLE_CONVERSATION_ID
 import io.github.mangi.eta.ui.model.decodeUserMessageImages
 import io.github.mangi.eta.ui.model.encodeUserMessageImages
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +26,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import org.json.JSONArray
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -30,6 +38,9 @@ import java.util.UUID
  */
 internal object EtaConversationAnalysisRepository {
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** 只用于凭据脱敏与截断判断，不参与写库。 */
+    private val traceFormatter = AgentTraceFormatter()
 
     /** 应用认识的会话消息类型；其余类型在导入时直接丢弃。 */
     private val IMPORTABLE_MESSAGE_TYPES = setOf(
@@ -57,15 +68,27 @@ internal object EtaConversationAnalysisRepository {
         val checkpoint = dao.contextCheckpoint(conversationId)
         val runIds = decodeStringList(conversation.appliedRuntimeRunIdsJson)
 
-        val messages = rows.map { row -> row.toAnalysisMessage(options.includeImages) }
+        // 先读原始 history：图片的宽高 / MIME 只存在它的 image_file 部件里，
+        // messages 的 imagesJson 只有预览与引用，需要按同一 path 做一次 join。
+        val rawHistory = readHistory(appContext, conversationId, checkpoint)
+        val imageMetadata = imageMetadataFromHistory(rawHistory)
+        val messages = rows.map { row -> row.toAnalysisMessage(options.includeImages, imageMetadata) }
+        // history 是模型侧原文，不能整段清空（会破坏导入回放），只替换凭据形态。
+        val history = rawHistory.map(::redactHistoryCredentials)
         val rounds = EtaConversationAnalysisRounds.segment(messages, runIds)
         val summary = EtaConversationAnalysisRounds.summarize(messages, rounds)
-        val history = readHistory(appContext, conversationId, checkpoint)
         val runtimeRuns = if (options.includeRawRuntimeIo) {
             loadRuntimeRuns(database.runtimeRunDao(), runIds)
         } else {
             emptyList()
         }
+        val withheldToolCallIds = messages
+            .filter { it.type == "tool" && it.detailsWithheld == true }
+            .mapNotNull { it.toolCallId ?: it.id }
+            .distinct()
+        val truncatedItems = truncationItems(messages, history)
+        val config = readConfigSnapshot(conversationId)
+        val deletedAt = conversation.deletedAt
 
         EtaConversationAnalysisDocument(
             exportedAt = System.currentTimeMillis(),
@@ -80,6 +103,12 @@ internal object EtaConversationAnalysisRepository {
                 modelId = conversation.modelId,
                 assistantId = conversation.assistantId,
                 folderId = conversation.folderId,
+                isPinned = conversation.isPinned,
+                deletedAt = deletedAt?.takeIf { it > 0 },
+                hasCompletionMarker = conversation.hasCompletionMarker,
+                isDispatchConsole = conversation.id == DISPATCH_CONSOLE_CONVERSATION_ID,
+                dispatchParentId = conversation.dispatchParentId?.takeIf { it.isNotBlank() },
+                dispatchManagedAt = conversation.dispatchManagedAt?.takeIf { it > 0 },
             ),
             options = options,
             summary = summary,
@@ -87,8 +116,115 @@ internal object EtaConversationAnalysisRepository {
             messages = messages,
             history = history,
             runtimeRuns = runtimeRuns,
+            config = config,
+            withheldToolCallIds = withheldToolCallIds.takeIf { it.isNotEmpty() },
+            truncated = truncatedItems.isNotEmpty().takeIf { it },
+            truncatedIn = truncatedItems.takeIf { it.isNotEmpty() },
         )
     }
+
+    /**
+     * history 只做凭据形态替换，与卡片展示共用同一份正则；不按敏感工具整段清空，
+     * 否则模型侧原文回放会失真。
+     */
+    private fun redactHistoryCredentials(
+        message: AgentModelClient.ConversationMessage,
+    ): AgentModelClient.ConversationMessage = message.copy(
+        content = traceFormatter.redactCredentials(message.content),
+        contentJson = traceFormatter.redactCredentials(message.contentJson),
+        reasoningContent = traceFormatter.redactCredentials(message.reasoningContent),
+        toolCallsJson = traceFormatter.redactCredentials(message.toolCallsJson),
+        responsesReasoningJson = traceFormatter.redactCredentials(message.responsesReasoningJson),
+    )
+
+    /**
+     * 从 history 的 image_file 部件收集宽高 / MIME，按 `path` 建立索引。
+     *
+     * messages 的 imagesJson 只有预览与引用，没有这些元数据；这里只读已落库的 JSON，
+     * 不重新解码图片文件。
+     */
+    private fun imageMetadataFromHistory(
+        history: List<AgentModelClient.ConversationMessage>,
+    ): Map<String, HistoryImageMeta> {
+        val metadata = mutableMapOf<String, HistoryImageMeta>()
+        history.forEach { message ->
+            if (message.role != "user" || message.contentJson.isBlank()) return@forEach
+            val parts = runCatching { JSONArray(message.contentJson) }.getOrNull() ?: return@forEach
+            for (index in 0 until parts.length()) {
+                val part = parts.optJSONObject(index) ?: continue
+                if (part.optString("type") != AgentConversationCodec.IMAGE_FILE_TYPE) continue
+                val path = part.optString("path").takeIf { it.isNotBlank() } ?: continue
+                metadata[path] = HistoryImageMeta(
+                    width = part.optInt("width", 0).takeIf { it > 0 },
+                    height = part.optInt("height", 0).takeIf { it > 0 },
+                    mime = part.optString("mime").takeIf { it.isNotBlank() },
+                )
+            }
+        }
+        return metadata
+    }
+
+    /**
+     * 列出本次导出中已知被截断的位置。
+     *
+     * 只认存储层留下的确定性信号：卡片明细超过写入上限、history 工具参数变成
+     * [_eta_truncated] 标记、history 正文达到内容上限。不按消息条数或体积猜测。
+     */
+    private fun truncationItems(
+        messages: List<EtaConversationAnalysisMessage>,
+        history: List<AgentModelClient.ConversationMessage>,
+    ): List<String> {
+        val items = mutableListOf<String>()
+        messages.forEach { message ->
+            if (traceFormatter.isArgumentsDetailTruncated(message.argumentsDetail)) {
+                items += "messages[${message.id}].argumentsDetail"
+            }
+            if (traceFormatter.isResultDetailTruncated(message.resultDetail)) {
+                items += "messages[${message.id}].resultDetail"
+            }
+        }
+        history.forEachIndexed { index, message ->
+            if (message.toolCallsJson.contains(AgentConversationCodec.TRUNCATED_MARKER)) {
+                items += "history[$index].toolCallsJson"
+            }
+            if (AgentConversationCodec.isContentAtStorageLimit(message.content)) {
+                items += "history[$index].content"
+            }
+        }
+        return items
+    }
+
+    /**
+     * 只读配置快照：全部是值与枚举，不含密钥、端点或 provider 凭据。
+     *
+     * 工具加载档取「本会话实际生效值」：会话有锁定值就用锁定值，否则用当前全局值；
+     * 这里刻意不调用会写锁的解析函数，导出不应该改变会话状态。
+     */
+    private suspend fun readConfigSnapshot(conversationId: String): EtaConversationAnalysisConfig {
+        val settings = runCatching { SettingsDataStore.settings() }.getOrNull()
+        return EtaConversationAnalysisConfig(
+            appVersion = BuildConfig.VERSION_NAME,
+            versionCode = BuildConfig.VERSION_CODE,
+            locale = Locale.getDefault().toLanguageTag(),
+            toolLoadingMode = resolvedToolLoadingMode(conversationId),
+            mcpToolExposureDeferred = Prefs.mcpToolExposureDeferred(),
+            toolReviewMode = Prefs.toolReviewMode(),
+            errorReconnectPolicy = settings?.errorReconnectPolicy?.persistedValue.orEmpty(),
+        )
+    }
+
+    private fun resolvedToolLoadingMode(conversationId: String): String =
+        if (Prefs.getString(Prefs.Keys.TOOL_LOADING_MODE_CONVERSATION) == conversationId) {
+            Prefs.getString(Prefs.Keys.TOOL_LOADING_MODE_ACTIVE).ifBlank { Prefs.toolLoadingMode() }
+        } else {
+            Prefs.toolLoadingMode()
+        }
+
+    private data class HistoryImageMeta(
+        val width: Int?,
+        val height: Int?,
+        val mime: String?,
+    )
 
     /** 把导出文件还原成一条新会话，返回新会话 id。 */
     suspend fun import(
@@ -156,20 +292,37 @@ internal object EtaConversationAnalysisRepository {
         return AgentConversationCodec.decodeTranscript(checkpoint?.historyJson)
     }
 
-    private fun ConversationMessageEntity.toAnalysisMessage(includeImages: Boolean): EtaConversationAnalysisMessage {
+    private fun ConversationMessageEntity.toAnalysisMessage(
+        includeImages: Boolean,
+        imageMetadata: Map<String, HistoryImageMeta>,
+    ): EtaConversationAnalysisMessage {
         val decoded = decodeUserMessageImages(imagesJson)
         val images = if (includeImages) {
             decoded.previews.mapIndexed { index, preview ->
+                val source = decoded.sources.getOrNull(index)
+                val meta = source?.let(imageMetadata::get)
+                val metaWidth = meta?.width
+                val metaHeight = meta?.height
                 EtaConversationAnalysisImage(
                     preview = preview,
-                    source = decoded.sources.getOrNull(index),
+                    source = source,
                     isVideo = decoded.videoFlags.getOrNull(index) == true,
                     durationMs = decoded.durationsMs.getOrNull(index),
+                    width = metaWidth,
+                    height = metaHeight,
+                    mime = meta?.mime,
+                    estimatedTokens = if (metaWidth != null && metaHeight != null) {
+                        AgentContextBudget.countImageTokens(metaWidth, metaHeight)
+                    } else {
+                        null
+                    },
                 )
             }
         } else {
             emptyList()
         }
+        val safeToolName = toolName.orEmpty()
+        val withheld = type == "tool" && AgentSensitiveToolPolicy.isSensitive(safeToolName)
         return EtaConversationAnalysisMessage(
             id = id,
             sortIndex = sortIndex,
@@ -185,10 +338,12 @@ internal object EtaConversationAnalysisRepository {
             elapsedSeconds = elapsedSeconds,
             toolName = toolName,
             toolStatus = toolStatus,
+            toolCallId = if (type == "tool") EtaConversationAnalysisRounds.toolCallIdOf(id) else null,
             argumentsSummary = argumentsSummary,
             resultSummary = resultSummary,
             argumentsDetail = argumentsDetail,
             resultDetail = resultDetail,
+            detailsWithheld = withheld.takeIf { it },
             imageCount = imageCount,
             tools = decodeStringList(toolsJson),
             media = if (includeImages) AgentToolMediaPreviews.decode(mediaJson) else emptyList(),
@@ -255,7 +410,9 @@ internal object EtaConversationAnalysisRepository {
                 createdAt = result?.createdAt ?: archive?.createdAt ?: 0L,
                 ok = result?.ok ?: archive?.ok ?: false,
                 error = result?.error ?: archive?.error,
-                transcript = AgentConversationCodec.decodeTranscript(transcriptJson),
+                // 与 history 同一套凭据脱敏：运行时原文里同样可能有 `API_KEY=...` 这类终端回显。
+                transcript = AgentConversationCodec.decodeTranscript(transcriptJson)
+                    .map(::redactHistoryCredentials),
                 events = archive?.let { loadArchiveEvents(dao, it.archiveRunId) } ?: emptyList(),
             )
         }

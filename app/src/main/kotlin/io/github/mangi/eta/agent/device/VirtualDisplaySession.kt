@@ -201,6 +201,10 @@ internal object VirtualDisplaySession {
         s.handoffBudget.stop()
         s.phase = "uncertain"
         clearPresence(s)
+        AndroidAgentLogger.warn(
+            "Virtual display handoff terminal: conversation=- run=${s.runId.ifBlank { "-" }} " +
+                "dispatch=- state=uncertain code=$code",
+        )
         return VirtualDisplayHandoffDiagnostics.annotate(
             reply(false, code, detail).withHandoffAttempts(s), s.handoffDiagnostics, uncertain = true,
         ).also { s.receipt = it }
@@ -215,6 +219,10 @@ internal object VirtualDisplaySession {
         val priorCode = prior?.takeIf { !it.optBoolean("ok") }?.optString("error").orEmpty()
         if (code in setOf("RECOVERY_UNCERTAIN", "OWNER_STATE_UNKNOWN") && priorCode.isNotBlank()) {
             s.phase = "uncertain"
+            AndroidAgentLogger.warn(
+                "Virtual display handoff terminal: conversation=- run=${s.runId.ifBlank { "-" }} " +
+                    "dispatch=- state=uncertain code=$priorCode",
+            )
             return VirtualDisplayHandoffDiagnostics.preservedReceipt(prior!!)
         }
         return fail(s, code)
@@ -898,7 +906,8 @@ internal object VirtualDisplaySession {
                 s.focusRejections++
             }
             AndroidAgentLogger.info(
-                "Virtual display reclaim: escaped=${escapedTaskIds(pre)} code=${s.reclaimCode ?: "-"} " +
+                "Virtual display reclaim: conversation=- run=${runId.ifBlank { "-" }} dispatch=- " +
+                    "escaped=${escapedTaskIds(pre)} code=${s.reclaimCode ?: "-"} " +
                     "reclaimed=${s.reclaimCount} uncertain=${s.reclaimUncertain}"
             )
             if (s.reclaimUncertain) return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
@@ -1090,12 +1099,19 @@ internal object VirtualDisplaySession {
                 .put("removedTaskIds", JSONArray(removedForReceipt))
                 .put("goneTaskIds", JSONArray(goneForReceipt))
         }
+        AndroidAgentLogger.info(
+            "Virtual display handoff terminal: conversation=- run=${runId.ifBlank { "-" }} dispatch=- " +
+                "state=finished handedOff=$handedOff cleanedUp=$cleanedUp",
+        )
         return receipt.withHandoffAttempts(s).also { s.receipt = it }
     }
     /** Finalize only this failed/cancelled run, never adopt a different run's recovery owner. */
     @Synchronized fun onRunAborted(context: Context, runId: String): JSONObject? {
         val s = sessions[runId] ?: return null
         s.closedRun = true
+        AndroidAgentLogger.info(
+            "Virtual display handoff terminal: conversation=- run=${runId.ifBlank { "-" }} dispatch=- state=aborted",
+        )
         if (s.phase == "finished") return s.receipt
             ?: reply(false, "ABORT_CLEANUP_UNVERIFIED").put("released", false)
         if (s.abortCleanupAttempted) return s.receipt
@@ -1117,8 +1133,9 @@ internal object VirtualDisplaySession {
             s.reclaimCount = reclaim?.json?.optInt("reclaimed", 0) ?: 0
             s.reclaimUncertain = reclaim?.errorCode == "RECLAIM_UNCERTAIN"
             AndroidAgentLogger.info(
-                "Virtual display reclaim (abort): escaped=${escapedTaskIds(pre)} " +
-                    "code=${s.reclaimCode ?: "-"} reclaimed=${s.reclaimCount} uncertain=${s.reclaimUncertain}"
+                "Virtual display reclaim: conversation=- run=${runId.ifBlank { "-" }} dispatch=- " +
+                    "escaped=${escapedTaskIds(pre)} code=${s.reclaimCode ?: "-"} " +
+                    "reclaimed=${s.reclaimCount} uncertain=${s.reclaimUncertain}",
             )
             if (s.reclaimUncertain) return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
         }
@@ -1350,24 +1367,28 @@ internal object VirtualDisplaySession {
         return (s to (s.client ?: return null))
     }
     /** 任务被系统挪走时先归位；返回非空表示本次手势不应投递。 */
-    private fun reclaimBeforeGesture(c: VirtualDisplayOwnerClient): JSONObject? {
+    private fun reclaimBeforeGesture(c: VirtualDisplayOwnerClient, runId: String): JSONObject? {
         val state = runCatching { c.status() }.getOrNull()
         if (state == null || !state.ok || escapedTaskIds(state) == 0) return null
         val reclaim = runCatching { c.reclaim() }.getOrNull()
         if (reclaim == null) {
-            AndroidAgentLogger.info("Virtual display reclaim before gesture: code=NO_RESPONSE reclaimed=0")
+            AndroidAgentLogger.info(
+                "Virtual display reclaim: conversation=- run=${runId.ifBlank { "-" }} dispatch=- " +
+                    "escaped=${escapedTaskIds(state)} code=NO_RESPONSE reclaimed=0 uncertain=false",
+            )
             return reply(false, "RECLAIM_FAILED")
         }
         AndroidAgentLogger.info(
-            "Virtual display reclaim before gesture: code=${reclaim.errorCode.ifBlank { "-" }} " +
-                "reclaimed=${reclaim.json?.optInt("reclaimed", 0) ?: 0}",
+            "Virtual display reclaim: conversation=- run=${runId.ifBlank { "-" }} dispatch=- " +
+                "escaped=${escapedTaskIds(state)} code=${reclaim.errorCode.ifBlank { "-" }} " +
+                "reclaimed=${reclaim.json?.optInt("reclaimed", 0) ?: 0} uncertain=false",
         )
         return if (reclaim.ok) null else body(reclaim)
     }
     /** 胶囊画布手势：归一化坐标按副屏像素换算后直接投递给 owner。 */
     @Synchronized fun dispatchUserTap(runId: String, nx: Float, ny: Float, longPress: Boolean): JSONObject {
         val (s, c) = stageTarget(runId) ?: return reply(false, "SESSION_NOT_ACTIVE")
-        reclaimBeforeGesture(c)?.let { return it }
+        reclaimBeforeGesture(c, runId)?.let { return it }
         val x = (nx.coerceIn(0f, 1f) * (s.width - 1)).roundToInt().coerceIn(0, s.width - 1)
         val y = (ny.coerceIn(0f, 1f) * (s.height - 1)).roundToInt().coerceIn(0, s.height - 1)
         val fields = if (longPress) {
@@ -1382,7 +1403,7 @@ internal object VirtualDisplaySession {
         runId: String, sx: Float, sy: Float, ex: Float, ey: Float, durationMs: Int,
     ): JSONObject {
         val (s, c) = stageTarget(runId) ?: return reply(false, "SESSION_NOT_ACTIVE")
-        reclaimBeforeGesture(c)?.let { return it }
+        reclaimBeforeGesture(c, runId)?.let { return it }
         fun px(n: Float, size: Int) =
             (n.coerceIn(0f, 1f) * (size - 1)).roundToInt().coerceIn(0, size - 1)
         return body(c.input(linkedMapOf(

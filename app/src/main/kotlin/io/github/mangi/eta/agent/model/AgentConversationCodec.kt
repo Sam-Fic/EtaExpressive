@@ -30,6 +30,8 @@ internal object AgentConversationCodec {
     private const val MAX_REASONING_CHARS = 64_000
     private const val MAX_TOOL_ARGUMENT_CHARS = 32_000
     private const val MAX_TOOL_CALLS_PER_MESSAGE = 64
+    /** 超出存储上限的工具参数会被替换成这个标记对象；导出层据此判断历史是否被截断。 */
+    internal const val TRUNCATED_MARKER = "_eta_truncated"
     private const val IMAGE_OMITTED_TEXT = "[图片观察已在当前回合使用，未写入持久会话]"
     internal const val IMAGE_FILE_TYPE = "image_file"
     internal const val VIDEO_FILE_TYPE = "video_file"
@@ -65,6 +67,12 @@ internal object AgentConversationCodec {
 
     fun encodeConversationCheckpoint(messages: List<AgentModelClient.ConversationMessage>): String =
         encodeBounded(messages, MAX_CONVERSATION_CHECKPOINT_CHARS)
+
+    /**
+     * 导出层判断历史正文是否已到存储上限。
+     * 到限说明写库时可能已被 `take(MAX_CONTENT_CHARS)` 静默截断，导出文件需要提示。
+     */
+    fun isContentAtStorageLimit(content: String): Boolean = content.length >= MAX_CONTENT_CHARS
 
     fun messagesForIpc(
         messages: List<AgentModelClient.ConversationMessage>,
@@ -636,7 +644,7 @@ internal object AgentConversationCodec {
                                 if (arguments.length <= MAX_TOOL_ARGUMENT_CHARS) {
                                     arguments
                                 } else {
-                                    JSONObject().put("_eta_truncated", true).toString()
+                                    JSONObject().put(TRUNCATED_MARKER, true).toString()
                                 },
                             ),
                     ),

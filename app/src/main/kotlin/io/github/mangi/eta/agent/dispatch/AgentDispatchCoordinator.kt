@@ -9,6 +9,7 @@ import io.github.mangi.eta.agent.runtime.AgentRuntimePolicy
 import io.github.mangi.eta.agent.runtime.AgentRuntimeSession
 import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
 import io.github.mangi.eta.config.Prefs
+import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.db.ConversationEntity
 import io.github.mangi.eta.data.db.ConversationMessageEntity
 import io.github.mangi.eta.data.db.DispatchClaimEntity
@@ -121,6 +122,10 @@ internal class AgentDispatchCoordinator(
 
             is AgentDispatchLedger.Admission.Queued -> {
                 persistClaim(request, runId = null, state = DispatchClaimEntity.STATE_QUEUED)
+                AndroidAgentLogger.info(
+                    "dispatch admit: conversation=${request.conversationId} run=- " +
+                        "dispatch=${request.dispatchId} state=queued depth=${admission.queueDepth}",
+                )
                 JSONObject()
                     .put("ok", true)
                     .put("message", "目标会话正在运行，本单已排队；完成通知会按序送达")
@@ -155,6 +160,9 @@ internal class AgentDispatchCoordinator(
                 .put("conversation_id", target.id)
         }
         persistClaim(request, runId = runId, state = DispatchClaimEntity.STATE_ARMED)
+        AndroidAgentLogger.info(
+            "dispatch admit: conversation=${target.id} run=$runId dispatch=${request.dispatchId} state=armed",
+        )
         val config = resolveConfig(target, orchestratorConfig)
         val history = composedHistory(target.id)
         val payload = AgentDispatchPayload(
@@ -216,6 +224,11 @@ internal class AgentDispatchCoordinator(
         val settlement = ledger.settleRun(request.runId, outcome, detail = result.error.orEmpty())
             ?: return
         deleteClaim(settlement.claim.request.dispatchId)
+        AndroidAgentLogger.info(
+            "dispatch terminal: conversation=${settlement.claim.request.conversationId} " +
+                "run=${request.runId} dispatch=${settlement.claim.request.dispatchId} " +
+                "outcome=${settlement.outcome} receipt=emit",
+        )
         publishNotice(
             conversationId = settlement.claim.request.conversationId,
             dispatchId = settlement.claim.request.dispatchId,
@@ -223,6 +236,7 @@ internal class AgentDispatchCoordinator(
             summary = result.content.trim().take(NOTICE_SUMMARY_CHARS),
             detail = settlement.detail,
             originText = settlement.claim.request.originText,
+            runId = settlement.claim.runId,
         )
     }
 
@@ -231,6 +245,10 @@ internal class AgentDispatchCoordinator(
         val settlement = ledger.settleRun(runId, AgentDispatchLedger.Outcome.STOPPED, detail = "已停止")
             ?: return
         deleteClaim(settlement.claim.request.dispatchId)
+        AndroidAgentLogger.info(
+            "dispatch terminal: conversation=${settlement.claim.request.conversationId} " +
+                "run=$runId dispatch=${settlement.claim.request.dispatchId} outcome=STOPPED receipt=emit",
+        )
         publishNotice(
             conversationId = settlement.claim.request.conversationId,
             dispatchId = settlement.claim.request.dispatchId,
@@ -238,6 +256,7 @@ internal class AgentDispatchCoordinator(
             summary = "",
             detail = settlement.detail,
             originText = settlement.claim.request.originText,
+            runId = settlement.claim.runId,
         )
     }
 
@@ -267,6 +286,7 @@ internal class AgentDispatchCoordinator(
                     summary = "",
                     detail = "应用重启，任务中断；如需继续请重新派发或到会话内核实",
                     originText = claim.originText,
+                    runId = claim.runId,
                 )
                 return@forEach
             }
@@ -279,6 +299,7 @@ internal class AgentDispatchCoordinator(
                     summary = "",
                     detail = "目标会话已不存在，排队中的派发已放弃",
                     originText = claim.originText,
+                    runId = claim.runId,
                 )
                 return@forEach
             }
@@ -317,6 +338,7 @@ internal class AgentDispatchCoordinator(
                     summary = "",
                     detail = "没有可用模型，重启前排队的派发未能执行",
                     originText = claim.originText,
+                    runId = claim.runId,
                 )
                 return@forEach
             }
@@ -460,6 +482,7 @@ internal class AgentDispatchCoordinator(
         summary: String,
         detail: String,
         originText: String,
+        runId: String? = null,
     ) {
         AgentDispatchNotifier.publish(
             AgentDispatchNotifier.Notice(
@@ -472,6 +495,7 @@ internal class AgentDispatchCoordinator(
                 detail = detail,
                 originText = originText,
                 createdAt = System.currentTimeMillis(),
+                runId = runId.orEmpty(),
             ),
         )
     }

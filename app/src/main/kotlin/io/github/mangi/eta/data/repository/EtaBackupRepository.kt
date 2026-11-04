@@ -12,6 +12,7 @@ import io.github.mangi.eta.agent.media.index.Float16VectorCodec
 import io.github.mangi.eta.agent.media.index.MediaExtraction
 import io.github.mangi.eta.agent.media.index.MediaSourceScanner
 import io.github.mangi.eta.agent.media.index.MediaThumbnailStore
+import io.github.mangi.eta.agent.remote.RemoteServerConfig
 import io.github.mangi.eta.agent.skill.SkillRuntime
 import io.github.mangi.eta.agent.tool.AgentToolRecipeStore
 import io.github.mangi.eta.agent.tool.ToolRecipeConstants
@@ -39,6 +40,7 @@ import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.MediaIndexDao
 import io.github.mangi.eta.data.db.MediaIndexEntity
 import io.github.mangi.eta.data.db.MediaKind
+import io.github.mangi.eta.data.db.MediaSourceEntity
 import io.github.mangi.eta.data.db.McpServerEntity
 import io.github.mangi.eta.data.db.ProviderEntity
 import io.github.mangi.eta.data.db.ProviderModelEntity
@@ -143,6 +145,21 @@ internal data class EtaBackupDocument(
     val agentPreferences: Map<String, String> = emptyMap(),
     val messagesExternal: Boolean = false,
     val messageCount: Int = 0,
+    /**
+     * 用户确认过的媒体扫描源（SAF / 共享目录等）的可迁移子集。
+     *
+     * null 表示这份备份没有该段（schema 8 及以前的包、或「只带大件」的包），导入时保留本机源；
+     * 非 null 时只补插缺失 id，不覆盖同 id 的既有配置（enabled 与扫描统计以本机为准）。
+     */
+    val mediaSources: List<EtaBackupMediaSource>? = null,
+    /**
+     * 远程服务器配置。null 语义同 [mediaSources]：导入时不修改本机配置。
+     *
+     * 每项的 `authToken` 为 null 表示备份未携带凭据（导出时 `includeApiKeys=false`）。
+     * 导入时 null 只表示「这条配置的凭据不更新」：本机已有同 id 配置则保留其口令，
+     * 本机没有则按认证关闭处理。绝不用空串覆盖已有口令。
+     */
+    val remoteServers: List<EtaBackupRemoteServer>? = null,
 ) {
     companion object {
         const val FORMAT = "eta-backup"
@@ -156,6 +173,37 @@ internal data class EtaBackupDocument(
 internal data class EtaBackupProvider(
     val provider: ProviderEntity,
     val models: List<ProviderModelEntity> = emptyList(),
+)
+
+/**
+ * 媒体扫描源的可迁移快照。
+ *
+ * 只带用户确认结果，不带运行期统计（`last_scan_at` / `item_count` 由下次索引重建），
+ * 避免把旧设备的扫描进度当成新设备的事实。
+ */
+@Serializable
+internal data class EtaBackupMediaSource(
+    val id: String,
+    val type: String,
+    val uri: String,
+    val label: String,
+    val enabled: Boolean = false,
+)
+
+/**
+ * 远程服务器配置的可迁移快照。
+ *
+ * [authToken] 为 null 表示这份备份没有携带凭据（导出时勾选「包含 API Key」才写入）；
+ * 导入时 null 只表示「不更新凭据」，本机同 id 配置的口令会被保留。
+ */
+@Serializable
+internal data class EtaBackupRemoteServer(
+    val id: String,
+    val name: String,
+    val host: String,
+    val port: Int,
+    val protocolId: String = "pi",
+    val authToken: String? = null,
 )
 
 /**
@@ -1074,6 +1122,27 @@ internal object EtaBackupRepository {
             attachmentCount = countFiles(chatImages),
             importedFileCount = countFiles(imports),
             agentPreferences = Prefs.exportAgentPreferences(),
+            mediaSources = database.mediaIndexDao().sources().map { source ->
+                EtaBackupMediaSource(
+                    id = source.id,
+                    type = source.type,
+                    uri = source.uri,
+                    label = source.label,
+                    enabled = source.enabled,
+                )
+            },
+            // 口令与 provider key 同策略：不勾「包含 API Key」时写 null（而不是空串），
+            // 导入端据此区分「备份没带凭据」与「这台服务器本来就不需要认证」。
+            remoteServers = SettingsDataStore.remoteServers().map { server ->
+                EtaBackupRemoteServer(
+                    id = server.id,
+                    name = server.name,
+                    host = server.host,
+                    port = server.port,
+                    protocolId = server.protocolId,
+                    authToken = server.authToken.takeIf { options.includeApiKeys },
+                )
+            },
         )
     }
 
@@ -1149,6 +1218,31 @@ internal object EtaBackupRepository {
                 if (exactPreferences) mediaDao.clearAll()
                 if (mediaIndexRows.isNotEmpty()) mediaDao.upsertAll(mediaIndexRows)
             }
+            // 扫描源属于应用数据：随数据段恢复，不跟「只带大件」的备份走。
+            if (data) {
+                document.mediaSources?.let { sources ->
+                    val mediaDao = database.mediaIndexDao()
+                    val keepIds = sources.mapTo(mutableSetOf()) { it.id }
+                    // 回滚快照要精确还原：删除本次正向导入新插进来的源。
+                    if (exactPreferences) {
+                        mediaDao.sources().filterNot { it.id in keepIds }.forEach { mediaDao.deleteSource(it.id) }
+                    }
+                    // 正向导入只补缺失 id，同 id 的既有源（enabled 与扫描统计）保持本机现状。
+                    sources.forEach { source ->
+                        if (mediaDao.sourceById(source.id) == null) {
+                            mediaDao.upsertSource(
+                                MediaSourceEntity(
+                                    id = source.id,
+                                    type = source.type,
+                                    uri = source.uri,
+                                    label = source.label,
+                                    enabled = source.enabled,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
         }
         // 只含大件（Linux 环境 / 媒体索引 / 模型）的备份到此为止：
         // 后面全是「用清单内容覆盖本机」的动作，空清单会把对话、助手与设置清掉。
@@ -1209,6 +1303,7 @@ internal object EtaBackupRepository {
                 }
                 subAgentStore.refreshAfterRestore()
             }
+            document.remoteServers?.let { restoreRemoteServers(it, exact = exactPreferences) }
             LinuxEnvironmentSettingsRepository.initialize(context)
             if (reconcile) {
                 ProviderRepository.ensureBuiltInsMerged()
@@ -1224,6 +1319,36 @@ internal object EtaBackupRepository {
             }
             throw failure
         }
+    }
+
+    /**
+     * 合并恢复远程服务器配置（应用数据段）。
+     *
+     * `authToken == null` 表示备份没有携带凭据（导出时未勾「包含 API Key」）：
+     * 本机已有同 id 配置时保留原口令，不用空串覆盖；本机没有时才按认证关闭写入。
+     * 按 id 合并不删除本机已有服务器，避免导入一份旧备份把新配的服务器抹掉。
+     * `exact` 只在「导入失败回滚」这条快照路径为 true：此时 `restored` 就是导入前的完整配置，
+     * 本次导入新加的服务器 id 必须一并删除，否则回滚会留下半份新配置。
+     */
+    private suspend fun restoreRemoteServers(restored: List<EtaBackupRemoteServer>, exact: Boolean) {
+        val current = SettingsDataStore.remoteServers()
+        val existingById = current.associateBy { it.id }
+        val keepIds = restored.mapTo(mutableSetOf()) { it.id }
+        val merged = current.filterNot { exact && it.id !in keepIds }.toMutableList()
+        restored.forEach { server ->
+            val previous = existingById[server.id]
+            val config = RemoteServerConfig(
+                id = server.id,
+                name = server.name,
+                host = server.host,
+                port = server.port,
+                authToken = server.authToken ?: previous?.authToken ?: "",
+                protocolId = server.protocolId,
+            )
+            val index = merged.indexOfFirst { it.id == server.id }
+            if (index >= 0) merged[index] = config else merged += config
+        }
+        SettingsDataStore.setRemoteServers(merged)
     }
 
     private suspend fun rewriteRestoredPaths(context: Context, document: EtaBackupDocument) {

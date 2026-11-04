@@ -10,6 +10,10 @@ import kotlinx.serialization.json.JsonElement
  *
  * 除了消息本身，还带每回合的 token 账单、工具调用明细，以及可选的原始模型 I/O 与运行时事件日志。
  * 目的是事后定位 agent 对话流里出了什么问题；同一份文件也能导入成一条普通新会话继续聊。
+ *
+ * 隐私边界：敏感工具的 argumentsDetail / resultDetail / media 在落库时就已剔除，
+ * 归档事件在写库时也会做同样的剔除，因此本文件不含这些原文；被剔除的调用 id
+ * 列在 [withheldToolCallIds]，单条调用另有 detailsWithheld 标记。
  */
 @Serializable
 internal data class EtaConversationAnalysisDocument(
@@ -24,6 +28,15 @@ internal data class EtaConversationAnalysisDocument(
     /** 模型侧的历史；导入后用它把新会话接上上下文。 */
     val history: List<AgentModelClient.ConversationMessage> = emptyList(),
     val runtimeRuns: List<EtaConversationAnalysisRuntimeRun> = emptyList(),
+    /** 导出时生效的只读配置快照，用于复现同一段对话在不同配置下的行为。 */
+    val config: EtaConversationAnalysisConfig = EtaConversationAnalysisConfig(),
+    /** 因敏感工具策略而从未导出明细（参数 / 结果 / 预览）的工具调用 id。 */
+    val withheldToolCallIds: List<String>? = null,
+    /** 是否命中存储层的截断；命中时 [truncatedIn] 给出具体位置。 */
+    val truncated: Boolean? = null,
+    val truncatedIn: List<String>? = null,
+    /** 体积过大时的提示；按实际序列化长度判定，正常体积不写。 */
+    val sizeWarning: String? = null,
 ) {
     companion object {
         const val FORMAT = "eta-conversation-analysis"
@@ -44,6 +57,16 @@ internal data class EtaConversationAnalysisConversation(
     val modelId: String = "",
     val assistantId: String = "",
     val folderId: String = "",
+    val isPinned: Boolean = false,
+    /** 进入回收站的时间；未回收时省略。 */
+    val deletedAt: Long? = null,
+    /** 是否已跑完过一次完整回复（用于区分草稿会话）。 */
+    val hasCompletionMarker: Boolean = false,
+    /** 是否为调度台主会话；UI 标题固定显示为「调度台」，但 title 存的是真实标题。 */
+    val isDispatchConsole: Boolean = false,
+    /** 派生会话所属的调度台会话 id。 */
+    val dispatchParentId: String? = null,
+    val dispatchManagedAt: Long? = null,
 )
 
 /** 本次导出实际带了哪些可选内容。 */
@@ -51,6 +74,28 @@ internal data class EtaConversationAnalysisConversation(
 internal data class EtaConversationAnalysisOptions(
     val includeRawRuntimeIo: Boolean = false,
     val includeImages: Boolean = false,
+)
+
+/**
+ * 导出时生效的只读配置快照。
+ *
+ * 只放值与枚举，绝不放密钥、端点或 provider 凭据；用途是让读者知道
+ * 同一段会话在不同工具加载 / 审查 / 重连配置下为什么会表现不同。
+ */
+@Serializable
+internal data class EtaConversationAnalysisConfig(
+    val appVersion: String = "",
+    val versionCode: Int = 0,
+    /** BCP-47（如 zh-CN）；落库时的工具摘要文案跟随该语言。 */
+    val locale: String = "",
+    /** 本会话实际生效的延迟工具加载档：search / group / off。 */
+    val toolLoadingMode: String = "",
+    /** MCP 工具是否按需加载（当前值，不是默认值）。 */
+    val mcpToolExposureDeferred: Boolean = false,
+    /** 工具调用审查档位。 */
+    val toolReviewMode: String = "",
+    /** 错误重连策略的持久化值。 */
+    val errorReconnectPolicy: String = "",
 )
 
 /** 一次性汇总，省得看的人自己 jq 一遍。 */
@@ -81,12 +126,18 @@ internal data class EtaConversationAnalysisToolAggregate(
     val failedCount: Int,
 )
 
-/** 单个延迟工具组的打开次数；[rejected] 是被开关或能力挡掉的尝试。 */
+/**
+ * 单个延迟工具组的打开次数。
+ *
+ * [failed] 是打开失败次数，口径为「调用 tools_use_group 但状态为 Failed」；
+ * 可能包含参数错误、组名拼错等，并不等于「被开关或门禁拒绝」，消费方不要按拒绝解读。
+ */
 @Serializable
 internal data class EtaConversationAnalysisToolGroupAggregate(
     val name: String,
     val opens: Int,
-    val rejected: Int,
+    /** 缺省为 0：旧文件里这个位置叫 rejected，解码时按未知字段忽略，不因缺项报错。 */
+    val failed: Int = 0,
 )
 
 /** 一回合的 token 账单。 */
@@ -97,9 +148,12 @@ internal data class EtaConversationAnalysisUsage(
     val reasoningTokens: Long = 0,
     val cachedTokens: Long = 0,
     val contextTokens: Long = 0,
+    /**
+     * 计费口径：输入 + 输出。缓存命中的部分仍算在输入里。
+     * 旧文件缺这一项时按 input + output 补算。
+     */
+    val billedTokens: Long = inputTokens + outputTokens,
 ) {
-    /** 计费口径：输入 + 输出。缓存命中的部分仍算在输入里。 */
-    val billedTokens: Long get() = inputTokens + outputTokens
 
     operator fun plus(other: EtaConversationAnalysisUsage): EtaConversationAnalysisUsage =
         EtaConversationAnalysisUsage(
@@ -142,10 +196,14 @@ internal data class EtaConversationAnalysisToolCall(
     val name: String,
     val status: String,
     val command: String = "",
+    /** 工具调用 id；老消息只能从 message.id 里拆，拆不出时省略。 */
+    val toolCallId: String? = null,
     val argumentsSummary: String? = null,
     val resultSummary: String? = null,
     val argumentsDetail: String? = null,
     val resultDetail: String? = null,
+    /** 该调用属敏感工具，明细 / 结果 / 预览按策略未导出（即使原本就没有明细）。 */
+    val detailsWithheld: Boolean? = null,
     val mediaCount: Int = 0,
     /** 工具当次读到的图片预览；只有勾了「含图」才会带上。 */
     val media: List<String> = emptyList(),
@@ -168,10 +226,12 @@ internal data class EtaConversationAnalysisMessage(
     val elapsedSeconds: Int? = null,
     val toolName: String? = null,
     val toolStatus: String? = null,
+    val toolCallId: String? = null,
     val argumentsSummary: String? = null,
     val resultSummary: String? = null,
     val argumentsDetail: String? = null,
     val resultDetail: String? = null,
+    val detailsWithheld: Boolean? = null,
     val imageCount: Int = 0,
     val tools: List<String> = emptyList(),
     /** 工具当次读到的图片预览；只有勾了「含图」才会带上。 */
@@ -180,13 +240,22 @@ internal data class EtaConversationAnalysisMessage(
     val generatedAtMillis: Long? = null,
 )
 
-/** 用户消息里的图片或视频。preview 是 data URL 小图。 */
+/**
+ * 用户消息里的图片或视频。preview 是 data URL 小图。
+ *
+ * width / height / mime / estimatedTokens 来自 `history` 的 image_file 部件（老会话可能没有）。
+ */
 @Serializable
 internal data class EtaConversationAnalysisImage(
     val preview: String,
     val source: String? = null,
     val isVideo: Boolean = false,
     val durationMs: Long? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val mime: String? = null,
+    /** 按应用统一的图片 token 公式估算；缺宽高时省略。 */
+    val estimatedTokens: Int? = null,
 )
 
 /** 一次运行时任务。transcript 是原始模型 I/O，events 是运行时事件日志。 */
@@ -210,8 +279,18 @@ internal object EtaConversationAnalysisCodec {
         prettyPrintIndent = "  "
     }
 
-    fun encode(document: EtaConversationAnalysisDocument): String =
-        json.encodeToString(document)
+    /**
+     * 先按真实序列化长度判断体积；只有超阈值时才补写 [EtaConversationAnalysisDocument.sizeWarning]
+     * 并再编码一次，正常体积只编码一次。
+     */
+    fun encode(document: EtaConversationAnalysisDocument): String {
+        val raw = json.encodeToString(document)
+        if (raw.length <= SIZE_WARNING_CHARS) return raw
+        val millionChars = raw.length / 1_000_000
+        val warning = "导出体积较大（约 ${millionChars.coerceAtLeast(1)} 百万字符），" +
+            "部分编辑器或脚本可能无法一次打开；可关闭「原始模型 I/O」或「含图」后重新导出。"
+        return json.encodeToString(document.copy(sizeWarning = warning))
+    }
 
     fun decode(raw: String): EtaConversationAnalysisDocument {
         val document = json.decodeFromString<EtaConversationAnalysisDocument>(raw)
@@ -225,4 +304,7 @@ internal object EtaConversationAnalysisCodec {
     /** 只看开头就能判断是不是分析文件，用来在导入入口分流。 */
     fun looksLikeAnalysis(raw: String): Boolean =
         raw.contains(EtaConversationAnalysisDocument.FORMAT)
+
+    /** 超过约 8 百万字符时提示体积；阈值按真实序列化结果判断，不按消息条数猜。 */
+    private const val SIZE_WARNING_CHARS = 8_000_000
 }

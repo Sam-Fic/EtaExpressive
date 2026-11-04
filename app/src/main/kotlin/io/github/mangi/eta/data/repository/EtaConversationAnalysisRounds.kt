@@ -102,24 +102,25 @@ internal object EtaConversationAnalysisRounds {
                 )
             }
             .sortedWith(compareByDescending<EtaConversationAnalysisToolAggregate> { it.count }.thenBy { it.name })
-        // 延迟工具组的真实使用频次：成功打开与「想开但被挡掉」分开计数，
-        // 前者决定还该不该拆，后者说明门禁或索引文案有问题。
+        // 延迟工具组的真实使用频次：成功打开与打开失败分开计数，
+        // 前者决定还该不该拆；失败数只说明这次打开没成功（参数错、组名错或被门禁挡），
+        // 不单独代表「被拒绝」，因此字段命名为 failed。
         val groupAggregates = rounds
             .flatMap { it.toolCalls }
             .mapNotNull { call ->
                 groupNameOf(call)?.let { group -> group to (call.status == STATUS_FAILED) }
             }
             .groupBy({ it.first }, { it.second })
-            .map { (name, rejectedFlags) ->
+            .map { (name, failedFlags) ->
                 EtaConversationAnalysisToolGroupAggregate(
                     name = name,
-                    opens = rejectedFlags.count { !it },
-                    rejected = rejectedFlags.count { it },
+                    opens = failedFlags.count { !it },
+                    failed = failedFlags.count { it },
                 )
             }
             .sortedWith(
                 compareByDescending<EtaConversationAnalysisToolGroupAggregate> { it.opens }
-                    .thenByDescending { it.rejected }
+                    .thenByDescending { it.failed }
                     .thenBy { it.name },
             )
         return EtaConversationAnalysisSummary(
@@ -139,15 +140,31 @@ internal object EtaConversationAnalysisRounds {
             name = message.toolName.orEmpty().ifBlank { "unknown_tool" },
             status = message.toolStatus.orEmpty().ifBlank { "Unknown" },
             command = message.content,
+            toolCallId = message.toolCallId,
             argumentsSummary = message.argumentsSummary,
             resultSummary = message.resultSummary,
             argumentsDetail = message.argumentsDetail,
             resultDetail = message.resultDetail,
+            detailsWithheld = message.detailsWithheld,
             mediaCount = message.imageCount,
             media = message.media,
         )
 
-    /** 成功打开的那个组；被开关或能力挡掉的调用返回 null，单独计入 rejected。 */
+    /**
+     * 从工具行 id（`<run>-tool-<round>-<call>`）里拆出 tool_call_id。
+     * 老消息没有运行标识时返回 null，调用方不要据此认为调用不存在。
+     */
+    fun toolCallIdOf(messageId: String): String? {
+        val marker = "$TOOL_ID_MARKER"
+        val markerIndex = messageId.indexOf(marker)
+        if (markerIndex < 0) return null
+        val rest = messageId.substring(markerIndex + marker.length)
+        val roundSeparator = rest.indexOf('-')
+        if (roundSeparator < 0 || roundSeparator == rest.lastIndex) return null
+        return rest.substring(roundSeparator + 1).takeIf { it.isNotBlank() }
+    }
+
+    /** 成功打开的那个组；打开失败的调用返回 null，单独计入 failed。 */
     private fun openedGroupOf(call: EtaConversationAnalysisToolCall): String? =
         groupNameOf(call)?.takeIf { call.status != STATUS_FAILED }
 
@@ -191,6 +208,9 @@ internal object EtaConversationAnalysisRounds {
     }
 
     private const val SUPPLEMENT_MARKER = "-supplement-"
+
+    /** 工具行 id 里区分工具调用的固定段。 */
+    private const val TOOL_ID_MARKER = "-tool-"
 
     /** 延迟工具组的打开入口；组名是它唯一的参数。 */
     private const val USE_GROUP_TOOL = "tools_use_group"

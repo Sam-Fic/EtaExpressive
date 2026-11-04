@@ -1,6 +1,7 @@
 package io.github.mangi.eta.agent.runtime
 
 import android.content.Context
+import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.RuntimeInFlightEventEntity
 import io.github.mangi.eta.data.db.RuntimeInFlightRunEntity
@@ -36,7 +37,8 @@ internal object AgentRunCheckpointStore {
         if (handoff.source != AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE) return false
         val runId = request.runId.takeIf(String::isNotBlank) ?: return false
         runBlocking(Dispatchers.IO) {
-            EtaDatabase.get(context.applicationContext).runtimeRunDao().replaceInFlightRun(
+            val dao = EtaDatabase.get(context.applicationContext).runtimeRunDao()
+            dao.replaceInFlightRun(
                 RuntimeInFlightRunEntity(
                     runId = runId,
                     ownerInstanceId = ownerInstanceId,
@@ -47,6 +49,9 @@ internal object AgentRunCheckpointStore {
                     createdAt = now,
                     updatedAt = now,
                 )
+            )
+            AndroidAgentLogger.info(
+                "Runtime checkpoint start: run=$runId active=${dao.inFlightRunHeaders().size}",
             )
         }
         return true
@@ -162,8 +167,14 @@ internal object AgentRunCheckpointStore {
                     )
                 }
             }
+        }.also { checkpoints ->
+            AndroidAgentLogger.info(
+                "Runtime checkpoint restore: runs=${checkpoints.size} " +
+                    "incomplete=${checkpoints.count { it.recoveryIncomplete }}",
+            )
         }
     } catch (_: Exception) {
+        AndroidAgentLogger.warn("Runtime checkpoint restore failed: runs=0")
         emptyList()
     }
 
@@ -177,9 +188,11 @@ internal object AgentRunCheckpointStore {
     fun remove(context: Context, runId: String) {
         if (runId.isBlank()) return
         runBlocking(Dispatchers.IO) {
-            EtaDatabase.get(context.applicationContext)
-                .runtimeRunDao()
-                .deleteInFlightRun(runId)
+            val dao = EtaDatabase.get(context.applicationContext).runtimeRunDao()
+            dao.deleteInFlightRun(runId)
+            AndroidAgentLogger.info(
+                "Runtime checkpoint drop: run=$runId active=${dao.inFlightRunHeaders().size}",
+            )
         }
     }
 

@@ -450,7 +450,17 @@ internal class AgentToolCallDiagnostics(
 
     private fun toolMetadata(fields: JSONObject, name: Any?) {
         field(fields, "tool", name, "tool")
-        fields.put("tool", toolLabel(name))
+        fields.put("tool", toolName(name))
+    }
+
+    /**
+     * 可读工具名进日志：工具名本身不涉密，保留原名才能按 `task_dispatch` 等字样 grep。
+     * 只接受短标识字符集，避免把任意内容（含空白/换行）带进日志。
+     */
+    private fun toolName(name: Any?): String {
+        val raw = name as? String ?: return toolLabel(name)
+        return raw.takeIf { it.length in 1..64 && it.all { c -> c.isLetterOrDigit() || c in "_.:-" } }
+            ?: "unknown"
     }
 
     private fun toolLabel(name: Any?): String = when (name) {
