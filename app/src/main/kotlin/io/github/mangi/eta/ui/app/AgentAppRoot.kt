@@ -859,6 +859,8 @@ fun AgentAppRoot(
                                 is AgentHomeAction.EditAssistant -> pushRoute(AppRoute.AssistantEdit(action.id))
                                 AgentHomeAction.OpenModelProviders -> pushRoute(AppRoute.ModelProviders)
                                 AgentHomeAction.OpenAssistants -> pushRoute(AppRoute.Assistants())
+                                // 「+」菜单「去搜索」：媒体语义搜索页，多选后可添加回当前会话。
+                                AgentHomeAction.OpenMediaSearch -> pushRoute(AppRoute.MediaSearch)
                                 // 长按「助手与模型」入口复用设置页的子代理配置页，不单独做页面。
                                 AgentHomeAction.OpenSubAgentSettings -> pushRoute(AppRoute.SubAgents)
                                 AgentHomeAction.ExpandRunTrace -> Unit
@@ -933,6 +935,8 @@ fun AgentAppRoot(
                                 is AgentChatAction.EditAssistant -> pushRoute(AppRoute.AssistantEdit(action.id))
                                 AgentChatAction.OpenModelProviders -> pushRoute(AppRoute.ModelProviders)
                                 AgentChatAction.OpenAssistants -> pushRoute(AppRoute.Assistants())
+                                // 「+」菜单「去搜索」：媒体语义搜索页，多选后可添加回当前会话。
+                                AgentChatAction.OpenMediaSearch -> pushRoute(AppRoute.MediaSearch)
                                 // 长按「助手与模型」入口复用设置页的子代理配置页，不单独做页面。
                                 AgentChatAction.OpenSubAgentSettings -> pushRoute(AppRoute.SubAgents)
                                 is AgentChatAction.ImageAttached -> agentState.attachImage(action.uri)
@@ -1328,6 +1332,12 @@ fun AgentAppRoot(
                 io.github.mangi.eta.ui.screens.search.MediaSearchScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
+                    // 多选「添加到会话」：选中媒体进当前会话输入区（与系统分享进入同一入口
+                    // attachSharedUris，按类型落成图片/视频/文件附件），随后回聊天页看待发附件。
+                    onAddToChat = { uris ->
+                        agentState.attachSharedUris(uris)
+                        popRoute()
+                    },
                 )
             }
             composable<AppRoute.MediaIndexSettings> {

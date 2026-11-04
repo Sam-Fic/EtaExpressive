@@ -120,6 +120,7 @@ internal fun AgentHomeScreen(
             onEditAssistant = { id -> onAction(AgentHomeAction.EditAssistant(id)) },
             onOpenModelProviders = { onAction(AgentHomeAction.OpenModelProviders) },
             onOpenAssistants = { onAction(AgentHomeAction.OpenAssistants) },
+            onOpenMediaSearch = { onAction(AgentHomeAction.OpenMediaSearch) },
             onOpenSubAgentSettings = { onAction(AgentHomeAction.OpenSubAgentSettings) },
             onAssistantSelected = { id -> onAction(AgentHomeAction.AssistantSelected(id)) },
             gptSpeedMode = state.gptSpeedMode,

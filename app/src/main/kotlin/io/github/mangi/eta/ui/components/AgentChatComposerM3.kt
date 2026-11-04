@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.ImageSearch
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PhotoCamera
@@ -273,6 +274,11 @@ internal fun Material3ComposerBody(
     /** 从「模型与助手」弹窗进入助手管理页；入口浮层不显示该弹窗，默认空实现。 */
     onOpenAssistants: () -> Unit = {},
     /**
+     * 「+」菜单「去搜索」：进入媒体语义搜索页挑本机媒体再添加到会话。
+     * null（入口浮层）表示没有去处，菜单不渲染该行。
+     */
+    onOpenMediaSearch: (() -> Unit)? = null,
+    /**
      * 长按「助手与模型」按钮：进入设置页的子代理配置页（预设组列表 / 预设详情）。
      *
      * 子代理配置只保留设置页一套页面（列表 + 详情两条独立路由），输入栏不再单独承载
@@ -469,6 +475,7 @@ internal fun Material3ComposerBody(
                             expanded = attachMenuExpanded,
                             onExpandedChange = { attachMenuExpanded = it },
                             onScheduleSend = { showScheduleDialog = true },
+                            onOpenMediaSearch = onOpenMediaSearch,
                             onSaveDraft = {
                                 scope.launch {
                                     ComposerQueueStore.saveDraft(context, conversationKey, draftText)
@@ -1201,8 +1208,9 @@ private fun M3ComposerCancelButton(onClick: () -> Unit, modifier: Modifier = Mod
 
 /**
  * 「+」主操作按钮：无底板的标准图标（只有图标、按下无涟漪 / 色块），展开附件与发送选项菜单。
- * 点击展开菜单：定时发送 / 存草稿 / 分享，以及拍照 / 视频 / 文件 / 文件夹 / 输入路径等附件项
- * （动作由共享的 `rememberAgentAttachmentActions` 提供）。
+ * 点击展开菜单：定时发送 / 存草稿 / 分享，以及拍照 / 视频 / 文件 / 文件夹 / 输入路径 /
+ * 去搜索（媒体语义搜索）等附件项（附件动作由共享的 `rememberAgentAttachmentActions` 提供，
+ * 去搜索由 [onOpenMediaSearch] 导航）。
  *
  * 菜单展开时「+」同时旋转 45° 成为「×」（关闭语义），收起时转回，旋转取官方 Expressive
  * 弹簧规格；图标本身是同一个 `Icons.Rounded.Add`，旋转由 `graphicsLayer` 承担。
@@ -1219,6 +1227,7 @@ private fun M3ComposerAddButton(
     onScheduleSend: () -> Unit,
     onSaveDraft: () -> Unit,
     onShare: () -> Unit,
+    onOpenMediaSearch: (() -> Unit)? = null,
 ) {
     // 展开态把「+」转到 45°：视觉上成为「×」，与菜单“关闭”动作一致。
     val iconRotation by animateFloatAsState(
@@ -1235,13 +1244,18 @@ private fun M3ComposerAddButton(
         ComposerMenuEntry(R.string.composer_save_draft, Icons.Rounded.Save, onSaveDraft),
         ComposerMenuEntry(R.string.composer_share, Icons.Rounded.Share, onShare),
     )
-    val attachmentEntries = listOf(
-        ComposerMenuEntry(R.string.attachment_take_photo, Icons.Rounded.PhotoCamera, actions.takePhoto),
-        ComposerMenuEntry(R.string.attachment_video, Icons.Rounded.Videocam, actions.pickVideo),
-        ComposerMenuEntry(R.string.attachment_file, Icons.Rounded.Description, actions.pickFiles),
-        ComposerMenuEntry(R.string.attachment_folder, Icons.Rounded.FolderOpen, actions.pickFolder),
-        ComposerMenuEntry(R.string.attachment_enter_path, Icons.Rounded.Link, actions.inputPath),
-    )
+    val attachmentEntries = buildList {
+        add(ComposerMenuEntry(R.string.attachment_take_photo, Icons.Rounded.PhotoCamera, actions.takePhoto))
+        add(ComposerMenuEntry(R.string.attachment_video, Icons.Rounded.Videocam, actions.pickVideo))
+        add(ComposerMenuEntry(R.string.attachment_file, Icons.Rounded.Description, actions.pickFiles))
+        add(ComposerMenuEntry(R.string.attachment_folder, Icons.Rounded.FolderOpen, actions.pickFolder))
+        add(ComposerMenuEntry(R.string.attachment_enter_path, Icons.Rounded.Link, actions.inputPath))
+        // 「去搜索」：媒体语义搜索页挑本机图片/视频/文件，多选后添加到当前会话输入区；
+        // 入口浮层没有导航去处（null），不渲染该行。
+        onOpenMediaSearch?.let { handler ->
+            add(ComposerMenuEntry(R.string.media_action_open_search, Icons.Rounded.ImageSearch, handler))
+        }
+    }
     Box {
         // 这里刻意不走官方 `IconButton`（它带 `ripple` 水波纹，按下会浮出一层高亮），
         // 也不用任何容器色：改为无底板的圆形点击区 + `clickable(indication = null)`，

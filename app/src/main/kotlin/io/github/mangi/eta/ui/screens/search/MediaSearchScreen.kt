@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.BookmarkRemove
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Close
@@ -74,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.media.index.EmbeddingModelStore
+import io.github.mangi.eta.agent.media.index.EtaEmbeddingEngine
 import io.github.mangi.eta.agent.media.index.MediaFileOps
 import io.github.mangi.eta.agent.media.index.MediaFileOps.MediaDir
 import io.github.mangi.eta.agent.media.index.MediaFileOps.MediaTarget
@@ -114,6 +116,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -145,14 +148,21 @@ private fun kindsForFilter(index: Int): Set<MediaKind> = when (index) {
  *
  * 版式沿用应用内其它搜索页（[EtaSearchScaffold]）：顶栏是「返回钮 + 透明底搜索框 +
  * 清除按钮 + 搜索按钮」，没有大标题页，搜索词就在顶栏里改；类型标签条常驻在顶栏下方，
- * 搜索前后都能切换范围——切标签只对已持有的结果做本地筛选、不重跑检索，点搜索按钮
+ * 搜索前后都能切换范围——切标签只对已持有的结果做本地筛选、不重跑检索（流式中切标签
+ * 同样只过滤在途分片、不打断检索，命中行随分片到达逐步进入该分类视图），点搜索按钮
  * 才按当前标签定界真正跑一遍；「找到 X 项」行右端是纯图标按钮——多选入口（多选态原位
  * 变为「取消」，退出并清空勾选）与匹配度阈值（始终居最右；多选态已选计数以居中
  * 点号并入行首文案）——阈值是检索时参数：拖动结束落盘并同词静默重检，结果集就是
- * 「所有 ≥ 阈值的命中」，无数量上限；批量操作集中在底部官方浮动图标工具栏。
+ * 「所有 ≥ 阈值的命中」，无数量上限；批量操作集中在底部官方浮动图标工具栏，其中的
+ * 「添加到会话」把选中项经 [onAddToChat] 交给当前会话输入区（与系统分享同一入口，
+ * 按类型落成图片/视频/文件附件），回聊天页即见待发附件。
  *
  * 检索统一走 [MediaSearchService]（与 AI 工具 `search_media` 同一入口），全程离线；
- * 模型未下载或扫描源未确认时显示引导卡片跳设置页。
+ * 模型未下载或扫描源未确认时显示引导卡片跳设置页。结果流式渲染：命中行按匹配度分片
+ * 构建、分片到达即渲染（首屏不等全量 resolvePath 构建，低阈值万级命中收益最大）。
+ * 视频时刻精排异步补齐：搜索主流程以 refineMoments=false 先出结果，视频命中的命中
+ * 时刻再经 [MediaSearchService.refineTopMoments] 逐条原位回填（时刻缓存跨阈值重检
+ * 复用，不重复抽帧），进页先预热嵌入引擎免冷启动。
  *
  * 搜索记录与其它独立搜索页同源（[EtaSearchHistory]，分域键 `media`）：每次真正跑检索落一条，
  * 搜索框为空时先列记录（点一条直接检索），无记录才显示官方 Empty state。
@@ -161,6 +171,8 @@ private fun kindsForFilter(index: Int): Set<MediaKind> = when (index) {
 internal fun MediaSearchScreen(
     onNavigate: (AppRoute) -> Unit,
     onBack: () -> Unit,
+    /** 多选工具栏「添加到会话」：把选中项的 uri 清单交给当前会话输入区后由壳层回聊天页。 */
+    onAddToChat: (List<String>) -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -174,18 +186,29 @@ internal fun MediaSearchScreen(
     var status by remember { mutableStateOf<MediaSearchService.Status?>(null) }
     var searching by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<MediaSearchService.SearchResult?>(null) }
+    // 流式分片：检索中已到达、已构建的命中行（result 在检索完成前为空）。
+    // 首片到达即开始渲染，后续分片继续流入；检索完成由 result 整体接管并清空。
+    var partialHits by remember { mutableStateOf(listOf<MediaSearchService.Hit>()) }
     var errorText by remember { mutableStateOf<String?>(null) }
-    // 匹配度阈值：进页面恢复上次调节值（EmbeddingModelStore prefs，默认 0.7），拖动结束落盘
-    // 并同词静默重检——阈值是检索时参数，结果集就是「所有 ≥ 阈值的命中」。
-    var minScore by rememberSaveable { mutableStateOf(0.7f) }
+    // 匹配度阈值：进页面恢复上次调节值（EmbeddingModelStore prefs，默认 [EmbeddingModelStore.DEFAULT_SEARCH_MIN_SCORE]），
+    // 拖动结束落盘并同词静默重检——阈值是检索时参数，结果集就是「所有 ≥ 阈值的命中」。
+    // 初值直接取存储默认常量：滑杆默认停在对应档位（0.05 步进，0.75 恰为 15/20 档），
+    // 异步恢复前不会闪到旧位置。
+    var minScore by rememberSaveable { mutableStateOf(EmbeddingModelStore.DEFAULT_SEARCH_MIN_SCORE) }
     // 多选批量管理：勾选集合以 sourceKey 为键；操作完成或新一轮检索后退出并清空。
     var selectionMode by remember { mutableStateOf(false) }
     var selectedKeys by remember { mutableStateOf(setOf<String>()) }
     var confirmDeleteFiles by remember { mutableStateOf(false) }
     // 匹配度阈值面板：从多选工具栏的「阈值」按钮打开（官方 ModalBottomSheet）。
     var showThresholdSheet by remember { mutableStateOf(false) }
-    // 阈值滑杆松手触发的静默重检 Job：串行化换阈值重检，新检索取消在途旧检索。
-    var sliderSearchJob by remember { mutableStateOf<Job?>(null) }
+    // 检索协程 Job：显式检索与滑杆重检共用（同一时刻至多一个在跑，新检索先取消旧检索，
+    // 换词中途重搜即此路径）。
+    var searchJob by remember { mutableStateOf<Job?>(null) }
+    // 检索代数：每次 runSearch 递增。被取消的旧检索据此判断 searching 复位是否归属自己，
+    // 避免旧检索的收尾覆盖新检索的检索态。
+    var searchGeneration by remember { mutableIntStateOf(0) }
+    // 视频时刻异步精排 Job：结果先渲染，命中时刻逐条回填；新检索取消在途旧精排。
+    var momentJob by remember { mutableStateOf<Job?>(null) }
     var batchBusy by remember { mutableStateOf(false) }
     // 批量移动/复制：先由目录选择器拿目标文件夹，再二次确认；两者齐备才弹确认框。
     var pendingOperation by remember { mutableStateOf<MediaFileOps.Op?>(null) }
@@ -220,6 +243,10 @@ internal fun MediaSearchScreen(
     LaunchedEffect(Unit) {
         status = runCatching { MediaSearchService.status(context) }.getOrNull()
         minScore = EmbeddingModelStore.searchMinScore(context)
+        // 预热嵌入引擎：模型就绪时提前消化引擎初始化的秒级开销，首次搜索不吃冷启动。
+        if (status?.ready == true) {
+            runCatching { EtaEmbeddingEngine.warmUp(context) }
+        }
     }
 
     /** 记录一次检索词：空词忽略，去重置顶（与其它搜索页同一份实现）。 */
@@ -229,38 +256,68 @@ internal fun MediaSearchScreen(
     }
 
     /**
-     * 执行一次语义检索；查询为空或显式检索进行中时不动作（引导卡片负责指向设置页）。
+     * 执行一次语义检索；查询为空时不动作（引导卡片负责指向设置页）。
      * [text] 显式传入是为了「点搜索记录」这种先改词再检索的场景（state 还没重组，读 [query] 拿到的是旧值）。
      *
-     * [fromSlider] 为 true 时是阈值滑杆松手触发的重检：同词换阈值，结果集 = 所有 ≥ 新阈值的
-     * 命中（服务端过滤、不限量），查询向量缓存命中后通常 <150ms——静默在旧结果上原位更新，
-     * 不切 loading、不重复落搜索记录；瞬时失败保持旧结果不动。
+     * 新检索先取消在途检索与时刻精排（同一时刻至多一个检索在跑）：换词中途重搜即此路径，
+     * 在途流式分片整体作废、取消不计为检索失败（[CancellationException] 原样上抛，
+     * errorText 与旧结果都不动），last-wins。被取消方经 [searchGeneration] 判断
+     * searching 复位归属，不会覆盖新检索的检索态。
+     *
+     * [fromSlider] 为 true 是阈值滑杆松手触发的重检：空闲时走「静默原位更新」——旧结果
+     * 原位保留、不切 loading、不落搜索记录、不做流式分片，查询向量缓存命中后通常 <150ms，
+     * 瞬时失败保持旧结果不动；检索进行中（流式未完）则与显式检索相同，取消在途后按新
+     * 阈值重新流式（阈值是检索时参数，静默原位更新只对完整旧结果成立）。
+     *
+     * 显式检索走流式：先清旧结果出 loading，命中行按匹配度分片到达即渲染（[partialHits]），
+     * 检索完成由完整结果接管——低阈值万级命中时首屏不再等全量 resolvePath 构建。
      */
     fun runSearch(text: String = query.trim(), fromSlider: Boolean = false) {
-        if (text.isEmpty() || searching) return
+        if (text.isEmpty()) return
         if (!fromSlider) {
             // 真正跑过检索的词就是有效检索：落一条搜索记录。
             recordSearch(text)
             // 检索是显式动作：触发后立刻收起键盘，结果区不再被输入法挤成半屏。
             focusManager.clearFocus()
         }
+        // 滑杆重检的静默原位更新只在空闲时成立；流式进行中滑杆松手与显式检索同路径重启。
+        val silentRecheck = fromSlider && !searching
         // 换结果集先退出多选：旧结果上的勾选不延续到新结果。
         selectionMode = false
         selectedKeys = emptySet()
-        // 新检索开始前取消在途的滑杆重检，避免旧结果晚到覆盖新结果。
-        sliderSearchJob?.cancel()
+        // 新检索开始前取消在途检索与时刻精排，避免旧结果晚到覆盖新结果。
+        searchJob?.cancel()
+        momentJob?.cancel()
+        val generation = ++searchGeneration
         suspend fun executeSearch() {
             errorText = null
-            val outcome = runCatching {
-                MediaSearchService.search(
-                    context = context,
-                    query = text,
-                    kinds = kindsForFilter(filterIndex),
-                    limit = MediaSearchService.UNLIMITED_RESULTS,
-                    minScore = minScore,
+            val outcome: Result<MediaSearchService.SearchResult> = try {
+                Result.success(
+                    MediaSearchService.search(
+                        context = context,
+                        query = text,
+                        kinds = kindsForFilter(filterIndex),
+                        limit = MediaSearchService.UNLIMITED_RESULTS,
+                        minScore = minScore,
+                        // 时刻精排不阻塞结果：先渲染列表，视频命中时刻随后异步逐条补齐。
+                        refineMoments = false,
+                        // 命中行分片流式：逐片到达即渲染（静默重检不做，旧结果原位保留）。
+                        onPartialHits = if (silentRecheck) {
+                            null
+                        } else {
+                            { chunk ->
+                                withContext(Dispatchers.Main) { partialHits = partialHits + chunk }
+                            }
+                        },
+                    ),
                 )
+            } catch (cancellation: CancellationException) {
+                // 换词重启/离屏导致的取消原样上抛：不计为失败，errorText 与旧结果都不动。
+                throw cancellation
+            } catch (failure: Throwable) {
+                Result.failure(failure)
             }
-            if (fromSlider) {
+            if (silentRecheck) {
                 outcome.getOrNull()?.let { newResult ->
                     result = newResult
                     errorText = null
@@ -269,17 +326,42 @@ internal fun MediaSearchScreen(
                 result = outcome.getOrNull()
                 outcome.exceptionOrNull()?.let { errorText = it.message ?: "search failed" }
             }
+            // 检索完成由完整结果接管，分片清场（失败同样清掉，错误分支接管展示）。
+            partialHits = emptyList()
+            // 时刻精排异步补齐：逐条完成后按 sourceKey 原位更新行；时刻缓存命中时
+            // search 已直接带回时刻，这里对已带时刻的命中跳过（无可补即空转返回）。
+            // 失败保底也启动：静默重检失败时旧结果还在，补齐其中尚缺的时刻。
+            result?.let { current ->
+                momentJob = scope.launch {
+                    MediaSearchService.refineTopMoments(
+                        context = context,
+                        query = text,
+                        hits = current.hits,
+                    ) { refined ->
+                        val latest = result ?: return@refineTopMoments
+                        result = latest.copy(
+                            hits = latest.hits.map { hit ->
+                                if (hit.sourceKey == refined.sourceKey) refined else hit
+                            },
+                        )
+                    }
+                }
+            }
             status = runCatching { MediaSearchService.status(context) }.getOrNull()
         }
-        if (fromSlider) {
-            sliderSearchJob = scope.launch { executeSearch() }
+        if (silentRecheck) {
+            searchJob = scope.launch { executeSearch() }
         } else {
-            scope.launch {
-                searching = true
+            // 清旧结果与检索态同帧生效，不留空闲态闪帧；首片命中到达后边流边渲染。
+            result = null
+            partialHits = emptyList()
+            searching = true
+            searchJob = scope.launch {
                 try {
                     executeSearch()
                 } finally {
-                    searching = false
+                    // 期间又起了新检索（代数已变）时不动 searching，由新检索收尾。
+                    if (generation == searchGeneration) searching = false
                 }
             }
         }
@@ -295,8 +377,11 @@ internal fun MediaSearchScreen(
     }
 
     val ready = status?.ready == true
-    val rawHits = result?.hits.orEmpty()
+    // 结果行数据源：检索完成用最终结果；流式检索中 result 尚空，用已到达的分片。
+    val rawHits = result?.hits ?: partialHits
     // 类型标签是展示层过滤：切分类只筛已持有的命中，不重跑检索（空集合 = 「全部」不过滤）。
+    // 流式检索中同样适用——rawHits 是已到达的分片，切标签即刻按分类过滤在途命中，
+    // 该类目的命中行随分片到达逐步进入视图，不打断检索；要按新类目重新定界再点搜索按钮。
     // 匹配度阈值不在此过滤——它已下推到检索时（search 的 minScore），结果集本身就是
     // 「所有 ≥ 阈值的命中」，数量不设上限。
     val activeKinds = kindsForFilter(filterIndex)
@@ -423,7 +508,8 @@ internal fun MediaSearchScreen(
                 EtaTooltip(text = searchDescription) {
                     IconButton(
                         onClick = { runSearch() },
-                        enabled = query.trim().isNotEmpty() && ready && !searching,
+                        // 流式中保持可用：再点 = 取消在途检索并按当前词/标签重启（last-wins）。
+                        enabled = query.trim().isNotEmpty() && ready,
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Search,
@@ -488,8 +574,12 @@ internal fun MediaSearchScreen(
                         }
                     }
                 }
-                searching -> {
-                    // 检索中：块级 loading（M3E 官方 morph 指示器），整体居中展示。
+                searching && hits.isEmpty() -> {
+                    // 检索中且当前分类视图还没有可展示的命中：块级 loading（M3E 官方 morph
+                    // 指示器），整体居中展示。覆盖两种情形：首片未到；流式中切换了类目标签、
+                    // 该类目的命中还在后续分片里——此时不宣判「分类筛空态」（命中可能正在
+                    // 路上），检索结束后该类目确实无命中时才转下方的分类筛空态。
+                    // 首片命中到达且分类视图非空后转 else 分支边流边渲染，不再整屏 loading。
                     item(key = "searching") {
                         Box(
                             modifier = Modifier.fillParentMaxSize(),
@@ -523,7 +613,7 @@ internal fun MediaSearchScreen(
                         )
                     }
                 }
-                result == null -> {
+                result == null && rawHits.isEmpty() -> {
                     // 空闲态与其它搜索页同口径：搜索框为空且有搜索记录时先列记录（点一条直接检索），
                     // 其余情况退回官方 Empty state（装饰形状 + 放大镜 + 一句说明）。
                     if (query.isBlank() && history.isNotEmpty()) {
@@ -549,7 +639,7 @@ internal fun MediaSearchScreen(
                 }
                 rawHits.isEmpty() -> {
                     // 无结果态：有候选但全部低于阈值 → 提示调低匹配度阈值（点击直达阈值面板，
-                    // 默认 0.7 后这是常见状态）；索引为空时直接给「去建立索引」引导。
+                    // 默认 0.75 后这是常见状态）；索引为空时直接给「去建立索引」引导。
                     if ((result?.belowThresholdCount ?: 0) > 0) {
                         item(key = "threshold-empty") {
                             EtaSegmentedColumn(
@@ -714,6 +804,20 @@ internal fun MediaSearchScreen(
                             }
                         }
                     }
+                    if (searching) {
+                        // 流式尾部指示：还有分片在构建，列表与「找到 X 项」计数会继续增长；
+                        // 检索完成由 result 接管后自然消失。
+                        item(key = "streaming-more") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp, bottom = EtaSegmentedGroupSpacing),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                ContainedMorphLoadingIndicator(indicatorSize = 20.dp)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -731,6 +835,14 @@ internal fun MediaSearchScreen(
                     } else {
                         hits.map { it.sourceKey }.toSet()
                     }
+                },
+                onAddToChat = {
+                    TouchHaptics.click(view)
+                    // 选中项交给当前会话输入区：content uri 优先（与系统分享同一入口，
+                    // 按类型落成图片/视频/文件附件），无 uri 的本地文件回落绝对路径；
+                    // 全部不可解析时不动作也不跳转，留在原位可重选。
+                    val uris = selectedHits.mapNotNull { it.contentUri ?: it.path }
+                    if (uris.isNotEmpty()) onAddToChat(uris)
                 },
                 onMoveTo = {
                     TouchHaptics.click(view)
@@ -1001,7 +1113,7 @@ private fun MediaThresholdRow(
 
 /**
  * 多选批量操作栏：官方 M3E [HorizontalFloatingToolbar]（纯图标药丸），底部居中悬浮。
- * 操作顺序：全选（全不选）/ 移动到 / 复制到 / 移出索引 / 删除文件；
+ * 操作顺序：全选（全不选）/ 添加到会话 / 移动到 / 复制到 / 移出索引 / 删除文件；
  * 退出多选的「取消」在结果计数行（多选入口原位切换），已选数量提示也与
  * 「找到 X 项」合并显示在同一行。
  */
@@ -1012,6 +1124,7 @@ private fun MediaSelectionBar(
     allSelected: Boolean,
     busy: Boolean,
     onSelectAll: () -> Unit,
+    onAddToChat: () -> Unit,
     onMoveTo: () -> Unit,
     onCopyTo: () -> Unit,
     onRemoveFromIndex: () -> Unit,
@@ -1051,6 +1164,14 @@ private fun MediaSelectionBar(
                     ),
                     onClick = onSelectAll,
                     enabled = !busy,
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
+                )
+                EtaIconButton(
+                    icon = Icons.Rounded.AddComment,
+                    contentDescription = stringResource(R.string.media_action_add_to_chat),
+                    onClick = onAddToChat,
+                    enabled = selectedCount > 0 && !busy,
                     size = EtaIconSize.S,
                     style = EtaButtonStyle.Standard,
                 )

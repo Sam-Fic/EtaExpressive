@@ -229,6 +229,8 @@ internal fun AgentChatInputBar(
     onEditAssistant: (String) -> Unit,
     onOpenModelProviders: () -> Unit,
     onOpenAssistants: () -> Unit,
+    /** 「+」菜单「去搜索」：进媒体语义搜索页挑媒体后添加到会话；null（入口浮层）不渲染该行。 */
+    onOpenMediaSearch: (() -> Unit)? = null,
     /** 长按「助手与模型」按钮：进入设置页的子代理配置页（预设组列表 / 预设详情）。 */
     onOpenSubAgentSettings: () -> Unit = {},
     onAssistantSelected: (String) -> Unit = {},
@@ -520,6 +522,7 @@ internal fun AgentChatInputBar(
             onEditAssistant = onEditAssistant,
             onOpenModelProviders = onOpenModelProviders,
             onOpenAssistants = onOpenAssistants,
+            onOpenMediaSearch = onOpenMediaSearch,
             onOpenSubAgentSettings = onOpenSubAgentSettings,
             onAssistantSelected = onAssistantSelected,
             onModelSelected = onModelSelected,

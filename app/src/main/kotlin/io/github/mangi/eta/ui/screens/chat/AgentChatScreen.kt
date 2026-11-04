@@ -115,6 +115,7 @@ internal fun AgentChatScreen(
             onEditAssistant = { id -> onAction(AgentChatAction.EditAssistant(id)) },
             onOpenModelProviders = { onAction(AgentChatAction.OpenModelProviders) },
             onOpenAssistants = { onAction(AgentChatAction.OpenAssistants) },
+            onOpenMediaSearch = { onAction(AgentChatAction.OpenMediaSearch) },
             onOpenSubAgentSettings = { onAction(AgentChatAction.OpenSubAgentSettings) },
             onAssistantSelected = { id -> onAction(AgentChatAction.AssistantSelected(id)) },
             gptSpeedMode = state.gptSpeedMode,
