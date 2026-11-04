@@ -117,6 +117,7 @@ internal fun AgentHomeScreen(
             },
             onRunTraceClick = { onAction(AgentHomeAction.ExpandRunTrace) },
             onOpenBrowser = { onAction(AgentHomeAction.OpenBrowser) },
+            onOpenConversation = { id -> onAction(AgentHomeAction.OpenConversation(id)) },
             onEditAssistant = { id -> onAction(AgentHomeAction.EditAssistant(id)) },
             onOpenModelProviders = { onAction(AgentHomeAction.OpenModelProviders) },
             onOpenAssistants = { onAction(AgentHomeAction.OpenAssistants) },

@@ -36,6 +36,8 @@ sealed interface AgentHomeAction {
     data class BranchMessage(val id: String) : AgentHomeAction
     data class QuestionDraftChanged(val conversationId: String, val questionId: String, val answer: AgentQuestionAnswer) : AgentHomeAction
     data class SubmitQuestionAnswer(val conversationId: String, val questionId: String) : AgentHomeAction
+    /** 派发汇报卡「打开会话」：切到该子会话。 */
+    data class OpenConversation(val conversationId: String) : AgentHomeAction
     data object OpenTools : AgentHomeAction
     data object OpenSkills : AgentHomeAction
     data object OpenPermissions : AgentHomeAction
@@ -100,6 +102,8 @@ sealed interface AgentChatAction {
     data class BranchMessage(val id: String) : AgentChatAction
     data class QuestionDraftChanged(val conversationId: String, val questionId: String, val answer: AgentQuestionAnswer) : AgentChatAction
     data class SubmitQuestionAnswer(val conversationId: String, val questionId: String) : AgentChatAction
+    /** 派发汇报卡「打开会话」：切到该子会话。 */
+    data class OpenConversation(val conversationId: String) : AgentChatAction
 }
 
 sealed interface AgentToolsAction {

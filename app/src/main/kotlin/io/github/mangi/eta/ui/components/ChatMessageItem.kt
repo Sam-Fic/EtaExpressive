@@ -426,6 +426,8 @@ internal class ChatMessageActions {
     var onSuggestionClick: (String) -> Unit by mutableStateOf<(String) -> Unit>({})
     var onRunTraceClick: () -> Unit by mutableStateOf<() -> Unit>({})
     var onOpenBrowser: () -> Unit by mutableStateOf<() -> Unit>({})
+    /** 派发汇报卡上的「打开会话」：跳到该子会话。 */
+    var onOpenDispatchConversation: (String) -> Unit by mutableStateOf<(String) -> Unit>({})
     var onEditMessage: (String) -> Unit by mutableStateOf<(String) -> Unit>({})
     var onDeleteMessage: (String) -> Unit by mutableStateOf<(String) -> Unit>({})
     var onRegenerateMessage: (String) -> Unit by mutableStateOf<(String) -> Unit>({})
@@ -477,7 +479,13 @@ internal fun ChatMessageItem(
             position = segmentedPosition,
             onDraftChanged = { draft -> actions.onQuestionDraftChanged(message.request.conversationId, message.request.questionId, draft) },
             onSubmit = { actions.onSubmitQuestionAnswer(message.request.conversationId, message.request.questionId) })
-        is UserMessageUi -> UserMessageBubble(
+        is UserMessageUi -> if (
+            io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.isConsoleReceipt(message.content)
+        ) {
+            // 派发汇报的文本只是模型输入，展示由 task_dispatch 卡片承载；
+            // 正常路径已在 AgentVisibleMessagesCache 隐藏，这里兜底不画任何气泡。
+            Unit
+        } else UserMessageBubble(
             message = message,
             actionsEnabled = messageActionsEnabled,
             branchEnabled = branchEnabled,
@@ -566,6 +574,7 @@ internal fun ChatMessageItem(
         is ToolActivityMessageUi -> ToolActivityInline(
             message = message,
             onOpenBrowser = actions.onOpenBrowser,
+            onOpenConversation = actions.onOpenDispatchConversation,
             showBrowserShortcut = showBrowserShortcut,
             enableLivePreview = enableLivePreview,
             modifier = modifier,
@@ -3624,6 +3633,7 @@ private fun ToolStatusIndicator(status: ToolActivityStatusUi) {
 private fun ToolActivityInline(
     message: ToolActivityMessageUi,
     onOpenBrowser: () -> Unit,
+    onOpenConversation: (String) -> Unit = {},
     showBrowserShortcut: Boolean,
     enableLivePreview: Boolean = true,
     modifier: Modifier = Modifier,
@@ -3643,6 +3653,15 @@ private fun ToolActivityInline(
     }
 
     val title = message.argumentsSummary.ifBlank { toolDisplayName(message.toolName) }
+    // 派发汇报卡：复用 task_dispatch 工具卡承载子会话身份/结果；resultDetail 是身份信封
+    // （conversation_id 等），不直接当正文展示，正文在 resultSummary。
+    val dispatchMeta = if (
+        message.toolName == io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME
+    ) {
+        io.github.mangi.eta.agent.dispatch.AgentDispatchReport.parse(message.resultDetail)
+    } else {
+        null
+    }
     // 展开区至少要有一样真东西可看：命令、参数、结果、工具读到的图片，或浏览器入口。
     // 全都为空的行保持不可展开（箭头一并隐藏），不做「点开只有一句话」的空交互。
     val hasDetails = !message.command.isNullOrBlank() ||
@@ -3651,7 +3670,8 @@ private fun ToolActivityInline(
         !message.resultDetail.isNullOrBlank() ||
         message.mediaPreviews.isNotEmpty() ||
         message.detailsWithheld ||
-        showBrowserShortcut
+        showBrowserShortcut ||
+        dispatchMeta != null
     val browserSubtitle = browserSnapshot?.let { snapshot ->
         when {
             snapshot.isLoading ->
@@ -3678,9 +3698,18 @@ private fun ToolActivityInline(
     } else {
         null
     }
-
-    val toolRowSettled = message.status != ToolActivityStatusUi.Running
+    // 派发卡的折叠行副标题：终态后用汇报首行做预览（失败原因仍走 failureSubtitle）。
+    val dispatchPreview = if (
+        dispatchMeta != null && message.status != ToolActivityStatusUi.Failed
+    ) {
+        message.resultSummary
+            ?.lineSequence()?.firstOrNull()
+            ?.take(120)?.takeIf { it.isNotBlank() }
+    } else {
+        null
+    }
     // 展开前解除底部锚定，标题钉在原位、面板向屏幕下方生长可见。
+    val toolRowSettled = message.status != ToolActivityStatusUi.Running
     val releaseAnchor = LocalChatAnchorRelease.current
     val toggle: () -> Unit = {
         if (!isExpanded) releaseAnchor()
@@ -3736,7 +3765,38 @@ private fun ToolActivityInline(
                         if (message.mediaPreviews.isNotEmpty()) {
                             ToolMediaStrip(sources = message.mediaPreviews)
                         }
-                        if (!message.resultSummary.isNullOrBlank() || !message.resultDetail.isNullOrBlank()) {
+                        if (dispatchMeta != null) {
+                            // 派发汇报：正文是子会话的最终答复（失败时是失败原因），
+                            // resultDetail 只是身份信封，不当作 JSON 展示。
+                            // 子会话仍在跑时没有正文，此时不画空的「结果」标题。
+                            message.resultSummary?.takeIf { it.isNotBlank() }?.let { report ->
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.ui_result_0a2c91),
+                                        style = chatQuaternaryStyle(),
+                                        color = etaOnSurfaceVariant(),
+                                    )
+                                    HapticSelectionContainer {
+                                        Text(text = report, style = chatExpandedBodyStyle())
+                                    }
+                                }
+                            }
+                            if (dispatchMeta.conversationId.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    TextButton(
+                                        onClick = { onOpenConversation(dispatchMeta.conversationId) },
+                                    ) {
+                                        Text(
+                                            text = "打开会话",
+                                            style = MaterialTheme.typography.labelLarge,
+                                        )
+                                    }
+                                }
+                            }
+                        } else if (!message.resultSummary.isNullOrBlank() || !message.resultDetail.isNullOrBlank()) {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
                                     text = stringResource(R.string.ui_result_0a2c91),
@@ -3822,8 +3882,9 @@ private fun ToolActivityInline(
         title = title,
         titleColor = if (message.status == ToolActivityStatusUi.Running) etaPrimary() else null,
         modifier = modifier.let { completedContentDrawLayer(it, toolRowSettled) },
-        // 副标题优先级：失败原因 > 浏览器实时状态 > 图片张数；失败原因用官方 error 角色着色。
-        supporting = failureSubtitle ?: browserSubtitle ?: imageCountLabel,
+        // 副标题优先级：失败原因 > 派发汇报预览 > 浏览器实时状态 > 图片张数；
+        // 失败原因用官方 error 角色着色。
+        supporting = failureSubtitle ?: dispatchPreview ?: browserSubtitle ?: imageCountLabel,
         supportingColor = failureSubtitle?.let { MaterialTheme.colorScheme.error },
         trailingStatus = { ToolStatusIndicator(message.status) },
         expanded = isExpanded,

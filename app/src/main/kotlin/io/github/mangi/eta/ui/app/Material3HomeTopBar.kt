@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -75,7 +76,11 @@ internal fun Material3HomeTopBar(
     onOpenTokenUsage: () -> Unit,
     onOpenSubAgentStatus: () -> Unit,
     canDeleteCurrentConversation: Boolean = false,
+    isDispatchConsole: Boolean = false,
     onDeleteCurrentConversation: () -> Unit = {},
+    /** 调度台「清空主会话」：归档当前上下文并开新篇；为空或生成中时禁用。 */
+    canClearDispatchConsole: Boolean = false,
+    onClearDispatchConsole: () -> Unit = {},
 ) {
     val view = LocalView.current
     // 不加 Surface 底板：顶栏直接透在页面背景上，与下方内容保持同一底色。
@@ -201,6 +206,7 @@ internal fun Material3HomeTopBar(
                                 onOpenTokenUsage = onOpenTokenUsage,
                                 onOpenSubAgentStatus = onOpenSubAgentStatus,
                                 canDeleteCurrentConversation = canDeleteCurrentConversation,
+                                isDispatchConsole = isDispatchConsole,
                                 onDeleteCurrentConversation = onDeleteCurrentConversation,
                             )
                         }
@@ -226,6 +232,26 @@ internal fun Material3HomeTopBar(
                         // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
                         style = EtaButtonStyle.SurfaceHighest,
                         shapes = IconButtonDefaults.shapes(),
+                    )
+                }
+            }
+        } else if (isDispatchConsole) {
+            // 调度台右槽：清空主会话（归档 + 开新篇）。危险确认由上层弹窗负责，这里只出按钮。
+            Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                val clearDescription =
+                    if (canClearDispatchConsole) "清空主会话" else "当前没有可清空的内容"
+                FooterTooltipBox(text = clearDescription, enabled = true) {
+                    EtaIconButton(
+                        icon = Icons.Rounded.RestartAlt,
+                        contentDescription = clearDescription,
+                        onClick = {
+                            TouchHaptics.click(view)
+                            onClearDispatchConsole()
+                        },
+                        size = EtaIconSize.S,
+                        style = EtaButtonStyle.SurfaceHighest,
+                        shapes = IconButtonDefaults.shapes(),
+                        enabled = canClearDispatchConsole,
                     )
                 }
             }

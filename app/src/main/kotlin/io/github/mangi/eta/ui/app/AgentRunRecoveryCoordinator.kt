@@ -29,7 +29,12 @@ internal object AgentRunRecoveryCoordinator {
             .associateBy { it.runId }
         val completed = completedRuns
             .asSequence()
-            .filter { it.handoff.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE }
+            // 派发 run 不写 checkpoint，但 outbox 同样持其结果；只认 UI 来源会让派发结果
+            // 永远不能折叠回工作会话（这正是「派发出去的会话没有完整记录」的成因之一）。
+            .filter {
+                it.handoff.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE ||
+                    it.handoff.source == AgentRuntimeWire.ETA_DISPATCH_HANDOFF_SOURCE
+            }
             .filterNot { it.stableRunId in locallyObservedRunIds }
             .sortedBy { it.createdAt }
             .map { run -> Completed(run, uiCheckpoints[run.stableRunId]) }

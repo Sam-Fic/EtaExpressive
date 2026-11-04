@@ -203,6 +203,11 @@ internal sealed interface AgentEvent {
         val dispatchParentId: String,
         val dispatchId: String,
         val runId: String,
+        /**
+         * 下发给工作会话的任务指令。UI 侧据此补齐会话记录：新建会话由调度端先落了
+         * 一条 user 简讯，接续会话则没有任何 UI 可见载体，缺了它打开会话就看不到完整一轮。
+         */
+        val brief: String = "",
     ) : AgentEvent {
         override fun toLogLine(): String =
             "dispatch_created conversation=${conversationId.toSafeLogToken()} " +

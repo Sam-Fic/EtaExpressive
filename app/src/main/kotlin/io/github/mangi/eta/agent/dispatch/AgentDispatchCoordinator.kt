@@ -161,6 +161,7 @@ internal class AgentDispatchCoordinator(
             conversationId = target.id,
             dispatchId = request.dispatchId,
             originText = request.originText,
+            brief = request.brief,
         ).toJson()
         val runRequest = AgentRuntimeWire.RunRequest(
             runId = runId,
@@ -184,6 +185,7 @@ internal class AgentDispatchCoordinator(
                 dispatchParentId = orchestratorConversationId,
                 dispatchId = request.dispatchId,
                 runId = runId,
+                brief = request.brief,
             ),
         )
         return JSONObject()

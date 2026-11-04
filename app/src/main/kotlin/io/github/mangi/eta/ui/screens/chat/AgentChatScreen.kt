@@ -112,6 +112,7 @@ internal fun AgentChatScreen(
             },
             onRunTraceClick = { /* 对话页暂不做 Run trace 展开 */ },
             onOpenBrowser = { onAction(AgentChatAction.OpenBrowser) },
+            onOpenConversation = { id -> onAction(AgentChatAction.OpenConversation(id)) },
             onEditAssistant = { id -> onAction(AgentChatAction.EditAssistant(id)) },
             onOpenModelProviders = { onAction(AgentChatAction.OpenModelProviders) },
             onOpenAssistants = { onAction(AgentChatAction.OpenAssistants) },

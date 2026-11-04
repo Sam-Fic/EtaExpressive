@@ -428,6 +428,25 @@ data class SuggestionChipsMessageUi(
     val prompts: List<String>,
 ) : AgentChatMessageUi
 
+/**
+ * 归档快照需要复制整段消息流：只替换 UI key，不改消息内容与运行语义。
+ * 统一放在模型侧，避免 AppState 对每种消息类型做重复的 when 展开。
+ */
+internal fun AgentChatMessageUi.withMessageId(newId: String): AgentChatMessageUi = when (this) {
+    is UserMessageUi -> copy(id = newId)
+    is AgentMessageUi -> copy(id = newId)
+    is AgentQuestionMessageUi -> copy(id = newId)
+    is SystemNoticeMessageUi -> copy(id = newId)
+    is RemoteNoticeMessageUi -> copy(id = newId)
+    is ErrorReconnectMessageUi -> copy(id = newId)
+    is ThinkingMessageUi -> copy(id = newId)
+    is RunTraceMessageUi -> copy(id = newId)
+    is ToolSummaryMessageUi -> copy(id = newId)
+    is ContextCompactedMessageUi -> copy(id = newId)
+    is ToolActivityMessageUi -> copy(id = newId)
+    is SuggestionChipsMessageUi -> copy(id = newId)
+}
+
 @Immutable
 data class PendingImageUi(
     val id: String,

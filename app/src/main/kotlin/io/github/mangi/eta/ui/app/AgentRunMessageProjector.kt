@@ -2,6 +2,7 @@ package io.github.mangi.eta.ui.app
 
 import android.os.SystemClock
 import java.lang.ref.WeakReference
+import io.github.mangi.eta.agent.dispatch.AgentDispatchReport
 import io.github.mangi.eta.agent.media.AgentToolMediaPreviews
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
 import io.github.mangi.eta.agent.runtime.AgentEvent
@@ -651,6 +652,37 @@ internal class AgentRunMessageProjector(
         }
     }
 
+    /**
+     * 派发工具返回后重写它自己的卡片：调用本身已经结束，但任务交给子 run 仍在跑，
+     * 因此把状态留在 Running（不显示「已派发」成功），把 dispatch 身份写进 resultDetail，
+     * 供渲染层提供「打开会话」；终态正文在结算回报到达时再写入同一张卡。
+     */
+    fun markDispatchedTool(
+        runId: String,
+        round: Int,
+        toolCallId: String,
+        meta: AgentDispatchReport.Meta,
+        title: String,
+        messages: List<AgentChatMessageUi>,
+    ): List<AgentChatMessageUi> {
+        val targetId = toolActivityMessageId(runId, round, toolCallId)
+        return messages.map { message ->
+            if (message is ToolActivityMessageUi && message.id == targetId) {
+                message.copy(
+                    status = ToolActivityStatusUi.Running,
+                    argumentsSummary = title.ifBlank { message.argumentsSummary },
+                    resultSummary = null,
+                    imageCount = 0,
+                    resultDetail = AgentDispatchReport.encode(meta),
+                    mediaPreviews = emptyList(),
+                    detailsWithheld = false,
+                )
+            } else {
+                message
+            }
+        }
+    }
+
     fun startHostedTool(
         runId: String,
         event: AgentEvent.HostedToolStarted,
@@ -930,7 +962,7 @@ internal class AgentRunMessageProjector(
         return messageId == prefix || messageId.startsWith("$prefix-")
     }
 
-    private fun toolActivityMessageId(runId: String, round: Int, toolCallId: String): String =
+    internal fun toolActivityMessageId(runId: String, round: Int, toolCallId: String): String =
         "$runId-tool-$round-${toolCallId.ifBlank { "unknown" }}"
 
     companion object {

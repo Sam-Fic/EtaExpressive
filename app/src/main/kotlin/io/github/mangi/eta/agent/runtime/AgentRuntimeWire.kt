@@ -800,6 +800,7 @@ internal object AgentRuntimeWire {
                 putString("dispatch_parent_id", event.dispatchParentId)
                 putString("dispatch_id", event.dispatchId)
                 putString("run_id", event.runId)
+                putString("brief", event.brief)
             }
 
             is AgentEvent.RoundStarted -> {
@@ -1021,6 +1022,7 @@ internal object AgentRuntimeWire {
             dispatchParentId = bundle.getString("dispatch_parent_id").orEmpty(),
             dispatchId = bundle.getString("dispatch_id").orEmpty(),
             runId = bundle.getString("run_id").orEmpty(),
+            brief = bundle.getString("brief").orEmpty(),
         )
 
         "round_started" -> AgentEvent.RoundStarted(

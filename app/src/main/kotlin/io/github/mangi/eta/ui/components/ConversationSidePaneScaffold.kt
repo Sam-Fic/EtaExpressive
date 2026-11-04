@@ -72,6 +72,7 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.AccountTree
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Search
@@ -1411,7 +1412,18 @@ private fun Material3ConversationRow(
                     onLongClick = { showActionMenu = true },
                     onLongClickLabel = stringResource(R.string.action_conversation_menu),
                     modifier = Modifier.fillMaxWidth(),
-                    leadingContent = if (conversation.isDispatchManaged) ({
+                    leadingContent = if (conversation.isDispatchConsole) {
+                        // 调度台是系统级条目：行首用专属图标区分，不靠标题匹配。
+                        // 常驻在主色下，与派生会话的 AccountTree 标记同一尺寸与配色档位。
+                        ({
+                            Icon(
+                                imageVector = Icons.Rounded.Hub,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        })
+                    } else if (conversation.isDispatchManaged) ({
                         // 派生会话标记：调度台所建或接续使用中（fork 出的副本不继承）。
                         Icon(
                             imageVector = Icons.Rounded.AccountTree,
@@ -1454,7 +1466,7 @@ private fun Material3ConversationRow(
                     },
                 ) {
                     M3Text(
-                        text = conversation.title.ifBlank { conversation.preview },
+                        text = conversation.displayTitle.ifBlank { conversation.preview },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -1465,9 +1477,13 @@ private fun Material3ConversationRow(
                     onDismissRequest = { showActionMenu = false },
                 ) {
                     EtaMenuGroup(index = 0, count = 1) {
+                        // 调度台是系统条目：显示名固定，但重命名仍改真实标题；取消置顶与删除入口不提供。
+                        val systemEntry = conversation.isDispatchConsole
+                        val actionCount = if (systemEntry) 4 else 6
+                        var actionIndex = 0
                         DrawerActionMenuItem(
-                            index = 0,
-                            count = 6,
+                            index = actionIndex++,
+                            count = actionCount,
                             text = stringResource(R.string.action_rename),
                             icon = Icons.Rounded.Edit,
                             onClick = {
@@ -1475,22 +1491,24 @@ private fun Material3ConversationRow(
                                 onRename()
                             },
                         )
+                        if (!systemEntry) {
+                            DrawerActionMenuItem(
+                                index = actionIndex++,
+                                count = actionCount,
+                                text = stringResource(
+                                    if (conversation.isPinned) R.string.conversation_unpin
+                                    else R.string.conversation_pin,
+                                ),
+                                icon = Icons.Rounded.PushPin,
+                                onClick = {
+                                    showActionMenu = false
+                                    onTogglePin()
+                                },
+                            )
+                        }
                         DrawerActionMenuItem(
-                            index = 1,
-                            count = 6,
-                            text = stringResource(
-                                if (conversation.isPinned) R.string.conversation_unpin
-                                else R.string.conversation_pin,
-                            ),
-                            icon = Icons.Rounded.PushPin,
-                            onClick = {
-                                showActionMenu = false
-                                onTogglePin()
-                            },
-                        )
-                        DrawerActionMenuItem(
-                            index = 2,
-                            count = 6,
+                            index = actionIndex++,
+                            count = actionCount,
                             text = stringResource(R.string.conversation_export),
                             icon = Icons.Rounded.Download,
                             onClick = {
@@ -1499,8 +1517,8 @@ private fun Material3ConversationRow(
                             },
                         )
                         DrawerActionMenuItem(
-                            index = 3,
-                            count = 6,
+                            index = actionIndex++,
+                            count = actionCount,
                             text = stringResource(R.string.conversation_export_analysis),
                             icon = Icons.Rounded.QueryStats,
                             onClick = {
@@ -1509,8 +1527,8 @@ private fun Material3ConversationRow(
                             },
                         )
                         DrawerActionMenuItem(
-                            index = 4,
-                            count = 6,
+                            index = actionIndex++,
+                            count = actionCount,
                             text = stringResource(R.string.drawer_move_to_folder),
                             icon = Icons.Rounded.Folder,
                             onClick = {
@@ -1518,17 +1536,19 @@ private fun Material3ConversationRow(
                                 onMoveToFolder()
                             },
                         )
-                        DrawerActionMenuItem(
-                            index = 5,
-                            count = 6,
-                            text = stringResource(R.string.conversation_move_to_trash),
-                            icon = Icons.Rounded.Delete,
-                            destructive = true,
-                            onClick = {
-                                showActionMenu = false
-                                onDelete()
-                            },
-                        )
+                        if (!systemEntry) {
+                            DrawerActionMenuItem(
+                                index = actionIndex,
+                                count = actionCount,
+                                text = stringResource(R.string.conversation_move_to_trash),
+                                icon = Icons.Rounded.Delete,
+                                destructive = true,
+                                onClick = {
+                                    showActionMenu = false
+                                    onDelete()
+                                },
+                            )
+                        }
                     }
                 }
             }

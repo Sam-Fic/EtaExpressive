@@ -14,6 +14,12 @@ data class ConversationPaneUiState(
     val trashConversations: List<ConversationSummaryUi> = emptyList(),
 )
 
+/**
+ * 调度台系统会话的稳定 id。侧栏里它是系统级条目，而非普通用户会话：
+ * 身份只认这个固定 id（老档案额外兼容助手身份），不依赖标题或置顶标记。
+ */
+const val DISPATCH_CONSOLE_CONVERSATION_ID: String = "dispatch-console"
+
 @Immutable
 data class ConversationFolderUi(
     val id: String,
@@ -24,7 +30,13 @@ data class ConversationFolderUi(
 @Immutable
 data class ConversationSummaryUi(
     val id: String,
+    /** 真实会话标题：自动标题、手动重命名、Agent 工具改名与导出/备份都以此为准。 */
     val title: String,
+    /**
+     * 展示用标题：侧栏等「会话标题展示位」读这个字段。
+     * 普通会话与 [title] 相同；调度台固定显示「调度台」，但底层 [title] 仍是真实标题。
+     */
+    val displayTitle: String = title,
     val preview: String,
     val timeLabel: String,
     val updatedAtMillis: Long = 0L,
@@ -35,6 +47,8 @@ data class ConversationSummaryUi(
     val hasCompletionMarker: Boolean = false,
     /** 该会话由调度台所建或接续使用中；抽屉行前显示派生标记。 */
     val isDispatchManaged: Boolean = false,
+    /** 调度台本体：侧栏中的系统级条目，不可删除、置顶强制成立。 */
+    val isDispatchConsole: Boolean = false,
     val folderId: String? = null,
     // Captured with timeLabel; consumers must not classify it using a live clock.
     val isToday: Boolean = false,
@@ -68,6 +82,8 @@ internal fun ConversationPaneUiState.searchResults(): List<ConversationSummaryUi
     if (query.isEmpty()) return conversations
     return conversations.filter {
         it.title.contains(query, ignoreCase = true) ||
+            // 调度台显示名固定为「调度台」，只搜真实标题会让改名后的调度台搜不到。
+            it.displayTitle.contains(query, ignoreCase = true) ||
             it.preview.contains(query, ignoreCase = true)
     }
 }

@@ -212,6 +212,10 @@ fun AgentAppRoot(
                 assistantId = state.assistantId,
                 pendingConversationMentions = state.pendingConversationMentions,
                 tokenUsage = shellTokenUsage.project(state.messages),
+                // 只投影布尔量与运行 id：逐条流式增量不会改变这三个值，派生状态相等即不触发重组。
+                hasMessages = state.messages.isNotEmpty(),
+                isStreaming = state.isStreaming,
+                activeRunId = state.activeRunId,
             )
         }
     }
@@ -290,6 +294,8 @@ fun AgentAppRoot(
     )
     var conversationRenameTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     var conversationDeleteTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
+    // 调度台「清空主会话」：危险确认（归档到回收站，主会话从空白继续）。
+    var confirmClearDispatchConsole by remember { mutableStateOf(false) }
     var conversationMoveTarget by remember { mutableStateOf<ConversationSummaryUi?>(null) }
     // pi keeps ONE active session per server, so opening a different remote session switches
     // it on the PC (and every other client) too. Hold the pending target and confirm first.
@@ -603,6 +609,11 @@ fun AgentAppRoot(
                 keyboard?.hide()
                 agentState.ensureDispatchConsoleSelected()
             },
+            canClearDispatchConsole = agentState.currentIsDispatchConsole &&
+                shellHomeState.hasMessages &&
+                !shellHomeState.isStreaming &&
+                shellHomeState.activeRunId == null,
+            onClearDispatchConsole = { confirmClearDispatchConsole = true },
             onOpenTerminal = { pushRoute(AppRoute.Terminal) },
             onLaunchKimiWeb = {
                 requestExecutionNotifications()
@@ -816,6 +827,7 @@ fun AgentAppRoot(
                                 is AgentHomeAction.ReasoningEffortChanged ->
                                     agentState.updateReasoningEffort(action.effort)
                                 is AgentHomeAction.ContextTaskSelected -> agentState.selectContextTask(action.taskId, usageConversationId)
+                                is AgentHomeAction.OpenConversation -> agentState.selectConversation(action.conversationId)
                                 is AgentHomeAction.ModelSelected -> agentState.selectModel(action.modelId, action.providerId)
                                 is AgentHomeAction.SubmitMessage -> { requestExecutionNotifications(); agentState.sendCurrentMessage(action.text) }
                                 AgentHomeAction.StopRun -> agentState.pauseCurrentRun()
@@ -925,6 +937,7 @@ fun AgentAppRoot(
                                 is AgentChatAction.ReasoningEffortChanged ->
                                     agentState.updateReasoningEffort(action.effort)
                                 is AgentChatAction.ContextTaskSelected -> agentState.selectContextTask(action.taskId, usageConversationId)
+                                is AgentChatAction.OpenConversation -> agentState.selectConversation(action.conversationId)
                                 is AgentChatAction.ModelSelected -> agentState.selectModel(action.modelId, action.providerId)
                                 is AgentChatAction.SubmitMessage -> { requestExecutionNotifications(); agentState.sendCurrentMessage(action.text) }
                                 AgentChatAction.StopRun -> agentState.pauseCurrentRun()
@@ -1780,6 +1793,28 @@ fun AgentAppRoot(
         )
     }
 
+    if (confirmClearDispatchConsole) {
+        // 语义是「归档 + 开新篇」，不是删除：说明消息会整体进回收站，可恢复接回顶部。
+        EtaDialog(
+            show = true,
+            title = "清空主会话",
+            summary = "当前上下文会整体移入回收站，主会话从空白继续。之后可在回收站把这段内容恢复并接回顶部。",
+            onDismissRequest = { confirmClearDispatchConsole = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = "清空并归档",
+                    destructive = true,
+                    onCancel = { confirmClearDispatchConsole = false },
+                    onConfirm = {
+                        agentState.clearDispatchConsoleContext()
+                        confirmClearDispatchConsole = false
+                    },
+                )
+            },
+        ) {
+        }
+    }
+
     remoteSwitchTarget?.let { target ->
         val serverName = appViewModel.remoteCoordinator.servers
             .find { it.id == target.serverId }?.name.orEmpty()
@@ -1975,4 +2010,7 @@ private data class ShellHomeState(
     val assistantId: String,
     val pendingConversationMentions: List<io.github.mangi.eta.ui.model.PendingConversationMentionUi>,
     val tokenUsage: io.github.mangi.eta.ui.model.ConversationTokenUsageUi,
+    val hasMessages: Boolean,
+    val isStreaming: Boolean,
+    val activeRunId: String?,
 )

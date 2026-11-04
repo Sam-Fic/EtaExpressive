@@ -30,6 +30,7 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.ui.components.StreamPerformanceDiagnostics
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
+import io.github.mangi.eta.agent.dispatch.AgentDispatchPayload
 import io.github.mangi.eta.agent.device.AgentFileReferenceGateway
 import io.github.mangi.eta.agent.device.DeviceLocationProvider
 import io.github.mangi.eta.agent.device.RootAccess
@@ -52,6 +53,7 @@ import io.github.mangi.eta.agent.model.AgentConversationCodec
 import io.github.mangi.eta.agent.model.AgentImageGenerationClient
 import io.github.mangi.eta.agent.model.AgentImageGenerationParser
 import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.agent.model.AgentTurnIdentity
 import io.github.mangi.eta.agent.model.AgentVideoGenerationClient
 import io.github.mangi.eta.agent.model.AgentVideoGenerationParser
 import io.github.mangi.eta.agent.runtime.AgentEvent
@@ -63,11 +65,13 @@ import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
 import io.github.mangi.eta.ui.model.ErrorReconnectMessageUi
 import io.github.mangi.eta.ui.model.ErrorReconnectStatus
 import io.github.mangi.eta.agent.runtime.AgentExecutionService
+import io.github.mangi.eta.agent.runtime.AgentConversationIdentity
 import io.github.mangi.eta.agent.runtime.AgentExternalArchivePayload
 import io.github.mangi.eta.agent.runtime.AgentRunArchiveStore
 import io.github.mangi.eta.agent.runtime.AgentRunCheckpointStore
 import io.github.mangi.eta.agent.runtime.AgentRuntimeClient
 import io.github.mangi.eta.agent.runtime.AgentRuntimePolicy
+import io.github.mangi.eta.agent.runtime.AgentRuntimeResultStore
 import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
 import io.github.mangi.eta.agent.runtime.AgentTokenUsage
 import io.github.mangi.eta.agent.runtime.AgentUiHandoffPayload
@@ -91,6 +95,7 @@ import io.github.mangi.eta.data.model.supportsGptSpeedBinding
 import io.github.mangi.eta.data.model.withModels
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.EtaBackupExportOptions
+import io.github.mangi.eta.data.repository.AgentConversationHistoryFiles
 import io.github.mangi.eta.data.repository.EtaBackupRepository
 import io.github.mangi.eta.data.repository.EtaBackupSummary
 import io.github.mangi.eta.data.repository.EtaConversationAnalysisCodec
@@ -142,6 +147,7 @@ import io.github.mangi.eta.ui.model.ConversationModeUi
 import io.github.mangi.eta.ui.model.ConversationFolderUi
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
+import io.github.mangi.eta.ui.model.DISPATCH_CONSOLE_CONVERSATION_ID
 import io.github.mangi.eta.ui.model.filterForFolder
 import io.github.mangi.eta.ui.model.MessageEditUiState
 import io.github.mangi.eta.ui.model.PendingConversationMentionUi
@@ -160,11 +166,13 @@ import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.TokenUsageUi
 import io.github.mangi.eta.ui.model.ToolActivityMessageUi
+import io.github.mangi.eta.ui.model.ToolActivityStatusUi
 import io.github.mangi.eta.ui.model.ToolCapabilities
 import io.github.mangi.eta.ui.model.ToolCapabilityUi
 import io.github.mangi.eta.ui.model.ToolGroupSwitch
 import io.github.mangi.eta.ui.model.ToolItemUi
 import io.github.mangi.eta.ui.model.UserMessageUi
+import io.github.mangi.eta.ui.model.withMessageId
 import io.github.mangi.eta.ui.model.fullImageSourceAt
 import io.github.mangi.eta.ui.model.isVideoAt
 import io.github.mangi.eta.ui.model.durationMsAt
@@ -493,10 +501,10 @@ internal class AgentAppState(
                 homeState = selectedConversationId?.let(::conversationState) ?: newDraftChatState()
                 conversationPaneState = conversationPaneState.copy(selectedConversationId = selectedConversationId)
                 refreshConversationSummaries()
+                // 先把调度台从回收站恢复/补建，再清过期回收站，避免老版本删掉的调度台被误清理。
+                ensureDispatchConsoleSelected()
                 // 启动水合后先清一次过期回收站：App 长期不开回收站页也能按留存期落盘清理。
                 purgeExpiredTrash()
-                // 主页纯化为调度台：冷启动确保调度台会话存在并选中。
-                ensureDispatchConsoleSelected()
             }
         }
     }
@@ -506,26 +514,79 @@ internal class AgentAppState(
     private val handledDispatchNotices =
         java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
+    /**
+     * DispatchCreated 早于工具卡片落定（或队列稍后才开跑）时暂存子会话标题，
+     * 供 ToolFinished 在同一张卡上补齐身份；消费即删，避免无界增长。
+     */
+    private val pendingDispatchTitles = mutableMapOf<String, String>()
+
     /** 派生会话标记（调度台所建或接续中）；内存投影，真相在 conversations 两列。 */
     private var conversationDispatchMarks by mutableStateOf(setOf<String>())
 
-    /** 冷启动/回到主页都落到调度台会话；缺失即创建（固定 id，助手=内置调度台，置顶）。 */
+    /**
+     * 冷启动 / 回到主页 / 备份恢复后：确保调度台存在，软删除自动恢复，置顶强制成立。
+     *
+     * 已存在的条目只修复状态，不刷新时间戳，避免每次冷启动把它顶到最前；
+     * 只有真正缺失时才用固定 id 重建（幂等，不会产生重复行）。
+     */
     fun ensureDispatchConsoleSelected() {
         if (!conversationsHydrated) return
         val consoleId = dispatchConsoleId() ?: createDispatchConsole()
-        if (selectedConversationId != consoleId) selectConversation(consoleId)
+        var repaired = false
+        if (consoleId in conversationDeletedAt) {
+            // 老版本允许把调度台删进回收站：这里自动恢复，内容和配置原样保留。
+            conversationDeletedAt = conversationDeletedAt - consoleId
+            repaired = true
+        }
+        if (consoleId !in conversationPinned) {
+            conversationPinned = conversationPinned + consoleId
+            repaired = true
+        }
+        // 标题是真实会话属性：这里只修身份与保护状态，绝不改标题，也不动 updatedAt。
+        if (repaired) {
+            refreshConversationSummaries()
+            persistConversations()
+        }
+        if (repaired || selectedConversationId != consoleId) selectConversation(consoleId)
     }
 
-    private fun dispatchConsoleId(): String? = conversationsById.entries
-        .firstOrNull { it.value.assistantId == io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID }
-        ?.key
+    /**
+     * 调度台侧栏固定显示名：复用内置调度台助手的既有常量，不新增资源键。
+     * 只用于显示层与新建时的初始真实标题，不参与已有标题的持续纠正。
+     */
+    private fun dispatchConsoleTitle(): String =
+        io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_NAME
+
+    /**
+     * 调度台的稳定身份：固定 id 是权威来源；只有老档案里没有这行时，才退回内置调度台助手身份。
+     * 两种情况都不读标题，用户改名不会改变保护。
+     */
+    private fun dispatchConsoleId(): String? =
+        if (DISPATCH_CONSOLE_CONVERSATION_ID in conversationsById) {
+            DISPATCH_CONSOLE_CONVERSATION_ID
+        } else {
+            conversationsById.entries
+                // 归档快照沿用调度台助手的 assistantId，必须排除，否则固定 id 缺失时
+                // 回收站里的一段快照会被当成调度台本体，绕过「不可删除」保护。
+                .firstOrNull { (id, state) ->
+                    !isDispatchConsoleArchiveSnapshot(id) &&
+                        state.assistantId == io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID
+                }
+                ?.key
+        }
+
+    /** 调度台在侧栏是系统级条目：不可删除、不可取消置顶。 */
+    private fun isDispatchConsoleConversation(conversationId: String): Boolean =
+        conversationId == dispatchConsoleId()
 
     /** 当前选中会话是否为调度台本身；顶栏「回到调度台」按钮以此为显隐依据。 */
     val currentIsDispatchConsole: Boolean
         get() = selectedConversationId != null && selectedConversationId == dispatchConsoleId()
 
     private fun createDispatchConsole(): String {
-        val conversationId = "dispatch-console"
+        val conversationId = DISPATCH_CONSOLE_CONVERSATION_ID
+        // 幂等兜底：并发或重入时绝不生成第二行。
+        if (conversationId in conversationsById) return conversationId
         val draft = newDraftChatState().copy(
             assistantId = io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID,
         )
@@ -535,11 +596,327 @@ internal class AgentAppState(
         selectedConversationId = conversationId
         homeState = draft
         updateConversation(conversationId, draft)
-        conversationTitles = conversationTitles + (conversationId to "调度台")
+        conversationTitles = conversationTitles + (conversationId to dispatchConsoleTitle())
         conversationPinned = conversationPinned + conversationId
+        conversationDeletedAt = conversationDeletedAt - conversationId
+        conversationCompletionMarkers = conversationCompletionMarkers - conversationId
+        // 时间戳只在真正重建时写一次；后续冷启动沿用数据库里的原值，不会每次顶到最前。
         conversationUpdatedAt = conversationUpdatedAt + (conversationId to System.currentTimeMillis())
         persistConversations()
         return conversationId
+    }
+
+    // ---------------------------------------------------------------- 调度台清空主会话（归档 + 开新篇）
+
+    /**
+     * 调度台「清空主会话」：把当前全部消息复制成一段快照移入回收站，然后清空会话本体。
+     *
+     * 语义是归档而不是删除：
+     * - 快照是独立 id 的普通会话行（软删除），回收站里与普通会话一致，可恢复、可永久删除；
+     * - 调度台本体只清消息与上下文，真实标题、置顶、updatedAt 都不动（侧栏仍固定显示「调度台」）；
+     * - 快照消息 id 统一加 `archive-<seq>-` 前缀，多次清空的块据此排序，恢复时可精确去重。
+     */
+    fun clearDispatchConsoleContext() {
+        if (rejectConversationArchiveMutation()) return
+        val consoleId = dispatchConsoleId() ?: return
+        val console = conversationState(consoleId)?.takeIf { it.conversationContentLoaded } ?: return
+        // 空会话与生成中：按钮已禁用，这里再兜底一次，保证幂等且不会切走正在跑的一轮。
+        if (console.messages.isEmpty() || console.isStreaming || console.activeRunId != null) return
+
+        val now = System.currentTimeMillis()
+        val seq = archiveSequence(now)
+        val snapshotId = "$DISPATCH_CONSOLE_ARCHIVE_PREFIX$seq-${UUID.randomUUID().toString().take(8)}"
+        val snapshotMessages = console.messages.map { message ->
+            message.withMessageId("$ARCHIVE_MESSAGE_ID_PREFIX$seq-${message.id}")
+        }
+        val snapshot = emptyChatState(console.thinkingEnabled).copy(
+            messages = snapshotMessages,
+            // 另存模型历史，并给每一轮的 turnId 打上块序号：恢复时靠它把这段 history
+            // 按 A → B → 当前 插回正确位置，并避免同一轮重复写入。
+            history = tagArchiveHistory(console.history, seq),
+            providerId = console.providerId,
+            modelId = console.modelId,
+            assistantId = console.assistantId,
+            reasoningEffort = console.reasoningEffort,
+            availableReasoningEfforts = console.availableReasoningEfforts,
+            gptSpeedMode = console.gptSpeedMode,
+        )
+        conversationsById = conversationsById + (snapshotId to snapshot)
+        conversationTitles = conversationTitles + (snapshotId to archiveSnapshotTitle(now))
+        conversationCreatedAt = conversationCreatedAt + (snapshotId to now)
+        conversationUpdatedAt = conversationUpdatedAt + (snapshotId to now)
+        conversationDeletedAt = conversationDeletedAt + (snapshotId to now)
+        conversationPinned = conversationPinned - snapshotId
+        conversationCompletionMarkers = conversationCompletionMarkers - snapshotId
+
+        // 清空本体：只保留模型/助手绑定，其余上下文、草稿、子代理统计全部丢弃。
+        ownerContexts.remove(consoleId)
+        conversationDrafts.remove(consoleId)
+        // 排队待发消息与旧上下文绑定，不清的话新一轮会把它们当作后续追问补发。
+        queuedMessagesByConversation.remove(consoleId)
+        pendingConversationTitles.remove(consoleId)
+        titleRequestSeq.remove(consoleId)
+        manuallyRenamedDuringTitleRequest -= consoleId
+        val cleared = emptyChatState(console.thinkingEnabled).copy(
+            providerId = console.providerId,
+            modelId = console.modelId,
+            assistantId = console.assistantId,
+            reasoningEffort = console.reasoningEffort,
+            availableReasoningEfforts = console.availableReasoningEfforts,
+            gptSpeedMode = console.gptSpeedMode,
+            conversationContentLoaded = true,
+        )
+        updateConversation(consoleId, cleared, updateTimestamp = false)
+        refreshConversationSummaries()
+
+        // 快照与本体重写放在同一次持久化里：要么都落库，要么都保持原状。
+        val persisted = persistConversations()
+        scope.launch(Dispatchers.IO) {
+            val saved = persisted.await()
+            if (!saved) AndroidAgentLogger.warn("dispatch_console_clear_persist_failed")
+            // 兜底清掉运行态副作用：run history 文件、checkpoint、outbox、压缩原文。
+            discardRuntimeTracesForConversation(consoleId)
+            if (saved) AgentConversationHistoryFiles.file(appContext, consoleId).delete()
+        }
+    }
+
+    /**
+     * 回收站恢复调度台归档：把快照消息插到「当前消息之前」，按归档序号保持 A → B → 当前，
+     * 完成后删除回收站记录，避免重复恢复产生重复内容。
+     */
+    private fun restoreDispatchConsoleArchive(snapshotId: String) {
+        val consoleId = dispatchConsoleId() ?: return
+        if (consoleId == snapshotId) return
+        val snapshotSeq = archiveSequenceOfSnapshotId(snapshotId) ?: return
+        scope.launch(Dispatchers.Main.immediate) {
+            // 优先用内存里的快照：刚落库尚未完成时也能立刻接回，不必等持久化队列。
+            val snapshot = conversationState(snapshotId)?.takeIf { it.conversationContentLoaded }
+                ?: withContext(Dispatchers.IO) {
+                    AgentConversationStore.loadConversation(appContext, snapshotId)
+                }
+            if (snapshot == null) return@launch
+            val console = conversationState(consoleId)?.takeIf { it.conversationContentLoaded }
+                ?: withContext(Dispatchers.IO) {
+                    AgentConversationStore.loadConversation(appContext, consoleId)
+                }
+                ?: return@launch
+            if (console.isStreaming || console.activeRunId != null) {
+                Toast.makeText(appContext, "请先停止当前生成再恢复归档", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val seqTag = snapshotSeq.toString()
+            val seen = console.messages.mapTo(mutableSetOf()) { it.id }
+            // 恢复消息 id 统一成 `user-archive-<块序号>-<轮标识>` / `archive-<块序号>-<块内标识>`：
+            // 既与 history 的 turnId 对齐（编辑/分支按 `user-<turnId>` 找回轮次），
+            // 也保证同一块重复恢复时 id 稳定、可直接去重。
+            val restored = snapshot.messages.mapNotNull { message ->
+                val restoredId = canonicalArchiveMessageId(message, seqTag)
+                if (seen.add(restoredId)) message.withMessageId(restoredId) else null
+            }
+            // 模型上下文同步接回：优先用快照里另存的 history；文件缺失或为空时，
+            // 按普通会话的 legacy 路径由完整消息集合重建，保证下一轮 run 真的能读到。
+            val blockHistory = snapshot.history
+                .takeIf { it.isNotEmpty() }
+                ?.let { tagArchiveHistory(it, seqTag) }
+                ?: rebuildArchiveHistory(snapshot.messages, seqTag)
+            val historyAlreadyMerged = console.history.any { message ->
+                archiveSequenceOfBlockTag(message.turnId) == snapshotSeq
+            }
+            val mergedHistory = when {
+                blockHistory.isEmpty() || historyAlreadyMerged -> console.history
+                else -> {
+                    // 与消息同一规则：插到所有序号更大的归档轮之前，当前轮永远在最后。
+                    val insertAt = console.history.indexOfFirst { message ->
+                        val blockSeq = archiveSequenceOfBlockTag(message.turnId)
+                        blockSeq == null || blockSeq > snapshotSeq
+                    }.let { if (it < 0) console.history.size else it }
+                    buildList {
+                        addAll(console.history.subList(0, insertAt))
+                        addAll(blockHistory)
+                        addAll(console.history.subList(insertAt, console.history.size))
+                    }
+                }
+            }
+            val mergedMessages = if (restored.isEmpty()) {
+                console.messages
+            } else {
+                // 插到所有序号更大的归档块之前；当前消息（无归档序号）永远在最后。
+                val insertAt = console.messages.indexOfFirst { message ->
+                    val blockSeq = archiveSequenceOfBlockTag(message.id)
+                    blockSeq == null || blockSeq > snapshotSeq
+                }.let { if (it < 0) console.messages.size else it }
+                buildList {
+                    addAll(console.messages.subList(0, insertAt))
+                    addAll(restored)
+                    addAll(console.messages.subList(insertAt, console.messages.size))
+                }
+            }
+            if (mergedMessages !== console.messages || mergedHistory !== console.history) {
+                updateConversation(
+                    consoleId,
+                    console.copy(messages = mergedMessages, history = mergedHistory),
+                    updateTimestamp = false,
+                )
+            }
+            discardConversationRecord(snapshotId)
+            refreshConversationSummaries()
+            conversationPaneState = conversationPaneState.copy(selectedConversationId = selectedConversationId)
+            persistConversations()
+        }
+    }
+
+    /** 归档序号：固定 16 位，便于按字符串比较，也便于从 id 反解。 */
+    private fun archiveSequence(now: Long): String = now.toString().padStart(16, '0')
+
+    private fun archiveSnapshotTitle(now: Long): String =
+        "调度台归档 · " + DateFormat.format("yyyy-MM-dd HH:mm", now)
+
+    private fun isDispatchConsoleArchiveSnapshot(conversationId: String): Boolean =
+        conversationId.startsWith(DISPATCH_CONSOLE_ARCHIVE_PREFIX)
+
+    private fun archiveSequenceOfSnapshotId(conversationId: String): Long? {
+        if (!isDispatchConsoleArchiveSnapshot(conversationId)) return null
+        return conversationId.removePrefix(DISPATCH_CONSOLE_ARCHIVE_PREFIX)
+            .substringBefore('-').toLongOrNull()
+    }
+
+    /** 从 `archive-<块序号>-` 前缀（消息 id 与 history turnId 共用，user 消息带 `user-` 壳）反解块序号。 */
+    private fun archiveSequenceOfBlockTag(value: String): Long? {
+        val tag = when {
+            value.startsWith(ARCHIVE_MESSAGE_ID_PREFIX) -> value
+            value.startsWith("user-$ARCHIVE_MESSAGE_ID_PREFIX") -> value.removePrefix("user-")
+            else -> return null
+        }
+        return tag.removePrefix(ARCHIVE_MESSAGE_ID_PREFIX)
+            .substringBefore('-').toLongOrNull()
+    }
+
+    /**
+     * 把快照消息 id 归一成块标记形态。user 消息还原成 `user-archive-<seq>-<轮标识>`，
+     * 与 history 的 `turnId = archive-<seq>-<轮标识>` 对应；其余消息为 `archive-<seq>-<块内标识>`。
+     * 兼容三种来源：清空时刚打的 `archive-<seq>-user-<turnId>`、库里身份迁移后的
+     * `user-archive-<seq>-<turnId>`，以及嵌套块（`archive-<seqB>-archive-<seqA>-…`）。
+     */
+    private fun canonicalArchiveMessageId(message: AgentChatMessageUi, seq: String): String {
+        var raw = message.id
+        if (raw.startsWith("user-$ARCHIVE_MESSAGE_ID_PREFIX")) {
+            raw = raw.removePrefix("user-")
+        }
+        if (raw.startsWith(ARCHIVE_MESSAGE_ID_PREFIX)) {
+            raw = raw.removePrefix(ARCHIVE_MESSAGE_ID_PREFIX)
+        }
+        raw = raw.removePrefix("$seq-")
+        if (raw.startsWith("user-")) raw = raw.removePrefix("user-")
+        val prefix = if (message is UserMessageUi) {
+            "user-$ARCHIVE_MESSAGE_ID_PREFIX$seq-"
+        } else {
+            "$ARCHIVE_MESSAGE_ID_PREFIX$seq-"
+        }
+        return prefix + raw
+    }
+
+    /**
+     * 给一段模型历史的每一轮 turnId 打上块序号；已有同块标记的保持原样。
+     * turnId 只是本地元数据（不发给 Provider），加前缀不影响请求内容。
+     */
+    private fun tagArchiveHistory(
+        history: List<AgentModelClient.ConversationMessage>,
+        seq: String,
+    ): List<AgentModelClient.ConversationMessage> =
+        AgentTurnIdentity.migrate(history).map { message ->
+            val turnId = message.turnId
+            when {
+                turnId.isBlank() -> message
+                turnId.startsWith("$ARCHIVE_MESSAGE_ID_PREFIX$seq-") -> message
+                else -> message.copy(turnId = "$ARCHIVE_MESSAGE_ID_PREFIX$seq-$turnId")
+            }
+        }
+
+    /**
+     * 快照的 history 不可用（为空）时，按普通会话的 legacy 重建路径从消息还原上下文：
+     * 只有 user / assistant 文本轮进入模型输入；工具卡、状态注记、思考、工具汇总、
+     * 上下文压缩行等只用于展示，不重建进 history。
+     */
+    private fun rebuildArchiveHistory(
+        messages: List<AgentChatMessageUi>,
+        seq: String,
+    ): List<AgentModelClient.ConversationMessage> {
+        val rebuilt = messages.mapNotNull { message ->
+            when (message) {
+                is UserMessageUi -> message.content
+                    .takeIf { it.isNotBlank() }
+                    ?.let { AgentModelClient.ConversationMessage(role = "user", content = it) }
+                is AgentMessageUi -> message.content
+                    .takeIf { it.isNotBlank() }
+                    ?.let { AgentModelClient.ConversationMessage(role = "assistant", content = it) }
+                else -> null
+            }
+        }
+        return tagArchiveHistory(rebuilt, seq)
+    }
+
+    /** 仅移除会话记录本身，不走用量退休：归档快照是原会话的副本，退休会重复计费。 */
+    private fun discardConversationRecord(conversationId: String) {
+        conversationDrafts.remove(conversationId)
+        pendingSelectionByKey.remove(conversationId)
+        pendingConversationTitles.remove(conversationId)
+        titleRequestSeq.remove(conversationId)
+        manuallyRenamedDuringTitleRequest -= conversationId
+        conversationsById = conversationsById - conversationId
+        conversationTitles = conversationTitles - conversationId
+        conversationUpdatedAt = conversationUpdatedAt - conversationId
+        conversationCreatedAt = conversationCreatedAt - conversationId
+        conversationFolderIds = conversationFolderIds - conversationId
+        conversationPinned = conversationPinned - conversationId
+        conversationCompletionMarkers = conversationCompletionMarkers - conversationId
+        conversationDeletedAt = conversationDeletedAt - conversationId
+    }
+
+    /**
+     * 清空后让模型上下文真正失效：删除该会话的 checkpoint、归档终态、outbox 结果与压缩原文。
+     * Room 消息与上下文 checkpoint 由清空后的持久化覆盖；历史文件在持久化成功后再删一次。
+     */
+    private suspend fun discardRuntimeTracesForConversation(conversationId: String) {
+        runCatching {
+            AgentRunCheckpointStore.list(appContext).forEach { checkpoint ->
+                val owner = runCatching {
+                    AgentUiHandoffPayload.from(checkpoint.handoff.payload).conversationId
+                }.getOrNull()
+                if (owner == conversationId) {
+                    AgentRunCheckpointStore.remove(appContext, checkpoint.runId)
+                }
+            }
+            AgentRunArchiveStore.list(appContext).forEach { archived ->
+                val runId = archived.result.runId.ifBlank { archived.handoff.id }
+                val owner = runCatching {
+                    AgentConversationIdentity.fromHandoff(archived.handoff, runId)
+                }.getOrNull()
+                if (owner == conversationId) {
+                    AgentRunArchiveStore.remove(appContext, runId)
+                }
+            }
+            // outbox 双保险：先直接删本地待领取结果表，再尽力向 Runtime 确认（服务未起时前者仍然生效）。
+            AgentRuntimeResultStore.list(appContext).forEach { completed ->
+                if (completedRunConversationId(completed) == conversationId) {
+                    AgentRuntimeResultStore.remove(
+                        appContext,
+                        completed.result.runId.ifBlank { completed.handoff.id },
+                    )
+                }
+            }
+            val completedRuns =
+                (AgentRuntimeClient(appContext, AndroidAgentLogger).queryCompletedRuns() as?
+                    AgentRuntimeClient.CompletedRunsQuery.Known)?.runs.orEmpty()
+            completedRuns.forEach { run ->
+                if (completedRunConversationId(run) == conversationId) {
+                    AgentRuntimeClient(appContext, AndroidAgentLogger)
+                        .ackResult(run.result.runId.ifBlank { run.handoff.id })
+                }
+            }
+            io.github.mangi.eta.agent.model.AgentCompactionArchive(appContext.filesDir, conversationId).delete()
+        }.onFailure {
+            AndroidAgentLogger.warn("调度台上下文清理失败：${it.javaClass.simpleName}")
+        }
     }
 
     private fun handleDispatchNotice(notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.Notice) {
@@ -547,9 +924,163 @@ internal class AgentAppState(
         if (!handledDispatchNotices.add("${notice.dispatchId}:${notice.outcome.name}")) return
         scope.launch(Dispatchers.Main.immediate) {
             markDispatchManaged(notice.conversationId)
-            materializeDispatchConversation(notice.conversationId, notice.title)
+            pendingDispatchTitles.remove(notice.dispatchId)
+            // 先把终态、正文与跳转身份写进调度台的 `task_dispatch` 卡片，再走既有注入路径。
+            // 顺序反了会让模型的一轮复述先于卡片更新出现，看起来像凭空多一条回复。
+            updateDispatchReportCard(notice)
+            // 结算回报到达说明该 run 已经终态；物化完成后再用 outbox 兜底折叠结果，
+            // 避免会话尚未进内存时回收把结果丢掉。
+            materializeDispatchConversation(notice.conversationId, notice.title) {
+                refreshRuntimeResults()
+            }
             deliverDispatchNotice(notice.toConsoleText())
         }
+    }
+
+    /**
+     * 子任务回报落到调度台的同一张 `task_dispatch` 卡片：一个 dispatchId 一张卡，
+     * 只更新状态/正文/身份，不追加新消息，因此多个子任务先后完成也不会互相覆盖。
+     * 找不到卡片（旧数据、卡片被清理、调度台未加载）时才补建一张，保证汇报不丢。
+     */
+    private fun updateDispatchReportCard(
+        notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.Notice,
+    ) {
+        val consoleId = dispatchConsoleId() ?: return
+        val state = conversationState(consoleId) ?: return
+        if (!state.conversationContentLoaded) return
+        val status = when (notice.outcome) {
+            io.github.mangi.eta.agent.dispatch.AgentDispatchLedger.Outcome.COMPLETED ->
+                ToolActivityStatusUi.Success
+            io.github.mangi.eta.agent.dispatch.AgentDispatchLedger.Outcome.FAILED,
+            io.github.mangi.eta.agent.dispatch.AgentDispatchLedger.Outcome.STOPPED ->
+                ToolActivityStatusUi.Failed
+        }
+        val report = notice.summary.ifBlank { notice.detail }.trim()
+        val existingIndex = dispatchCardIndex(state.messages, notice.dispatchId)
+        val existingRunId = if (existingIndex >= 0) {
+            io.github.mangi.eta.agent.dispatch.AgentDispatchReport
+                .parse((state.messages[existingIndex] as ToolActivityMessageUi).resultDetail)
+                ?.runId.orEmpty()
+        } else {
+            ""
+        }
+        val meta = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.Meta(
+            dispatchId = notice.dispatchId,
+            conversationId = notice.conversationId,
+            runId = existingRunId,
+        )
+        val messages = if (existingIndex >= 0) {
+            val card = state.messages[existingIndex] as ToolActivityMessageUi
+            state.messages.incrementalSnapshot().replacing(
+                existingIndex,
+                card.copy(
+                    status = status,
+                    argumentsSummary = notice.title.ifBlank { card.argumentsSummary },
+                    resultSummary = report.takeIf { it.isNotBlank() } ?: card.resultSummary,
+                    resultDetail = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.encode(meta),
+                    detailsWithheld = false,
+                ),
+            )
+        } else {
+            state.messages + ToolActivityMessageUi(
+                id = "dispatch-report-${notice.dispatchId}",
+                toolName = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME,
+                status = status,
+                argumentsSummary = notice.title.ifBlank { "子任务" },
+                resultSummary = report.takeIf { it.isNotBlank() },
+                resultDetail = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.encode(meta),
+            )
+        }
+        updateConversation(consoleId, state.copy(messages = messages))
+        persistConversations()
+    }
+
+    /** 定位某个 dispatchId 对应的 `task_dispatch` 卡片；没有则 -1。 */
+    private fun dispatchCardIndex(messages: List<AgentChatMessageUi>, dispatchId: String): Int =
+        messages.indexOfLast { message ->
+            message is ToolActivityMessageUi &&
+                message.toolName == io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME &&
+                io.github.mangi.eta.agent.dispatch.AgentDispatchReport
+                    .parse(message.resultDetail)?.dispatchId == dispatchId
+        }
+
+    /**
+     * DispatchCreated 落定后把子会话标题写进那张卡（卡片在 ToolFinished 时才建好，
+     * 两个事件顺序不固定，先到的一方只暂存标题）。同时补齐 runId 供后续跳转/排查。
+     */
+    private fun bindDispatchCardTitle(
+        consoleRunId: String,
+        dispatchId: String,
+        title: String,
+        subRunId: String,
+    ) {
+        val consoleId = conversationIdForRun(consoleRunId) ?: return
+        val state = conversationState(consoleId) ?: return
+        if (!state.conversationContentLoaded) return
+        val index = dispatchCardIndex(state.messages, dispatchId)
+        if (index < 0) return
+        val card = state.messages[index] as ToolActivityMessageUi
+        val existing = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.parse(card.resultDetail)
+        val meta = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.Meta(
+            dispatchId = dispatchId,
+            conversationId = existing?.conversationId.orEmpty(),
+            runId = subRunId,
+        )
+        updateConversation(
+            consoleId,
+            state.copy(
+                messages = state.messages.incrementalSnapshot().replacing(
+                    index,
+                    card.copy(
+                        argumentsSummary = title.ifBlank { card.argumentsSummary },
+                        resultDetail = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.encode(meta),
+                    ),
+                ),
+            ),
+        )
+        persistConversations()
+    }
+
+    /**
+     * 进程重建/错过通知时，用 outbox 里的终态补一次卡片（live 通知可能已经随进程消失）。
+     * 只按子会话 id 找回既有卡片；找不到就不硬造，避免与 live 通知产生重复卡片。
+     */
+    private fun updateDispatchReportCardFromRecovery(
+        conversationId: String,
+        ok: Boolean,
+        content: String,
+        error: String?,
+    ): Boolean {
+        val consoleId = dispatchConsoleId() ?: return false
+        val state = conversationState(consoleId) ?: return false
+        if (!state.conversationContentLoaded) return false
+        val index = state.messages.indexOfLast { message ->
+            message is ToolActivityMessageUi &&
+                message.toolName == io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME &&
+                io.github.mangi.eta.agent.dispatch.AgentDispatchReport
+                    .parse(message.resultDetail)?.conversationId == conversationId
+        }
+        if (index < 0) return false
+        val card = state.messages[index] as ToolActivityMessageUi
+        if (card.status != ToolActivityStatusUi.Running) return false
+        if (io.github.mangi.eta.agent.dispatch.AgentDispatchReport.parse(card.resultDetail) == null) {
+            return false
+        }
+        val report = content.trim().ifBlank { error.orEmpty().trim() }
+        updateConversation(
+            consoleId,
+            state.copy(
+                messages = state.messages.incrementalSnapshot().replacing(
+                    index,
+                    card.copy(
+                        status = if (ok) ToolActivityStatusUi.Success else ToolActivityStatusUi.Failed,
+                        resultSummary = report.takeIf { it.isNotBlank() } ?: card.resultSummary,
+                        detailsWithheld = false,
+                    ),
+                ),
+            ),
+        )
+        return true
     }
 
     private fun markDispatchManaged(conversationId: String) {
@@ -559,42 +1090,62 @@ internal class AgentAppState(
     }
 
     /** 派生会话不在内存时从 Room 物化（通知与 DispatchCreated 事件共用）。 */
-    private fun materializeDispatchConversation(conversationId: String, title: String) {
-        if (conversationId.isBlank() || conversationsById.containsKey(conversationId)) return
+    private fun materializeDispatchConversation(
+        conversationId: String,
+        title: String,
+        onReady: (() -> Unit)? = null,
+    ) {
+        if (conversationId.isBlank()) return
+        if (conversationsById.containsKey(conversationId)) {
+            onReady?.invoke()
+            return
+        }
         scope.launch(Dispatchers.Main.immediate) {
             val state = runCatching {
                 withContext(Dispatchers.IO) {
                     AgentConversationStore.loadConversation(appContext, conversationId)
                 }
             }.getOrNull() ?: return@launch
-            if (conversationsById.containsKey(conversationId)) return@launch
+            if (conversationsById.containsKey(conversationId)) {
+                onReady?.invoke()
+                return@launch
+            }
             conversationsById = conversationsById + (conversationId to state)
             if (title.isNotBlank() && conversationTitles[conversationId].isNullOrBlank()) {
                 conversationTitles = conversationTitles + (conversationId to title)
             }
             conversationUpdatedAt = conversationUpdatedAt + (conversationId to System.currentTimeMillis())
             refreshConversationSummaries()
+            onReady?.invoke()
         }
     }
 
-    /** 结算回报注入调度台：在跑→steer 插话；空闲→按普通一轮起跑；暂停/未知→排队。 */
+    /**
+     * 结算回报注入调度台：在跑→steer 插话；空闲→发起一轮（现有 run 模型下「主智能体不停止」
+     * 靠完成即触发新一轮实现）。汇报文本只作模型输入，展示由 `task_dispatch` 卡片承载，
+     * 因此暂停/未知状态不再排队，避免把回报伪造成用户待发消息。
+     */
     private fun deliverDispatchNotice(text: String) {
         val consoleId = dispatchConsoleId() ?: return
         val state = conversationState(consoleId) ?: return
         val activeRunId = state.activeRunId
         when {
             activeRunId != null && state.isStreaming && !state.isPaused -> {
-                val steered = runCatching {
+                runCatching {
                     AgentRuntimeClient(appContext, AndroidAgentLogger).steerRun(activeRunId, text)
-                }.getOrDefault(false)
-                if (!steered) enqueueQueuedMessage(consoleId, text)
+                }
             }
             activeRunId == null && !state.isStreaming && !state.isPaused ->
                 dispatchNoticeAsConsoleTurn(consoleId, state, text)
-            else -> enqueueQueuedMessage(consoleId, text)
+            else -> Unit
         }
     }
 
+    /**
+     * 回执仍以 [UserMessageUi] 承载一轮：模型输入、历史对齐（AgentConversationRevisionReducer）
+     * 与编辑/分支语义都依赖 user 轮，换新类型会破坏边界判定。展示层按前缀隐藏
+     * （见 AgentVisibleMessagesCache），用户看到的只是 `task_dispatch` 工具卡与调度台的复述。
+     */
     private fun dispatchNoticeAsConsoleTurn(
         consoleId: String,
         state: AgentChatHomeUiState,
@@ -1587,23 +2138,28 @@ internal class AgentAppState(
             EtaBackupRepository.importModels(appContext, input)
         }
 
-    suspend fun importBackup(input: InputStream): EtaBackupSummary = withConversationArchive {
-        val activeRunQuery = withContext(Dispatchers.IO) {
-            AgentRuntimeClient(appContext, AndroidAgentLogger).queryActiveRun()
-        }
-        when (val active = activeRunQuery) {
-            is AgentRuntimeClient.ActiveRunQuery.Known -> check(active.runId == null) { "请先停止正在运行的 Agent 任务" }
-            AgentRuntimeClient.ActiveRunQuery.Unavailable -> error("无法确认 Agent Runtime 状态，请稍后重试")
-        }
-        withContext(kotlinx.coroutines.NonCancellable) {
-            try {
-                EtaBackupRepository.import(appContext, input)
-            } finally {
-                // Even a failed commit-marker fsync may have committed metadata already.
-                // Never unlock with stale in-memory data capable of overwriting the database.
-                reloadConversationsAfterBackup()
+    suspend fun importBackup(input: InputStream): EtaBackupSummary {
+        val summary = withConversationArchive {
+            val activeRunQuery = withContext(Dispatchers.IO) {
+                AgentRuntimeClient(appContext, AndroidAgentLogger).queryActiveRun()
+            }
+            when (val active = activeRunQuery) {
+                is AgentRuntimeClient.ActiveRunQuery.Known -> check(active.runId == null) { "请先停止正在运行的 Agent 任务" }
+                AgentRuntimeClient.ActiveRunQuery.Unavailable -> error("无法确认 Agent Runtime 状态，请稍后重试")
+            }
+            withContext(kotlinx.coroutines.NonCancellable) {
+                try {
+                    EtaBackupRepository.import(appContext, input)
+                } finally {
+                    // Even a failed commit-marker fsync may have committed metadata already.
+                    // Never unlock with stale in-memory data capable of overwriting the database.
+                    reloadConversationsAfterBackup()
+                }
             }
         }
+        // 归档锁释放后再补齐：备份可能不含调度台，或把它留在回收站里。
+        withContext(Dispatchers.Main.immediate) { ensureDispatchConsoleSelected() }
+        return summary
     }
 
     private suspend fun reloadConversationsAfterBackup() {
@@ -1635,6 +2191,8 @@ internal class AgentAppState(
             conversationFolderIds = snapshot.folderIds
             conversationPinned = snapshot.pinnedIds
             conversationCompletionMarkers = snapshot.completionMarkerIds - listOfNotNull(snapshot.selectedConversationId)
+            conversationDeletedAt = snapshot.deletedAt
+            conversationDispatchMarks = snapshot.dispatchMarkedIds
             conversationFolders = snapshot.folders
             selectedFolderId = null
             selectedRemoteServerId = null
@@ -1714,7 +2272,7 @@ internal class AgentAppState(
         // on the UI thread; AgentUiHandoffPayload.from is a pure parse.
         preloadConversationsForRecovery(
             buildList {
-                plan.completed.forEach { add(AgentUiHandoffPayload.from(it.result.handoff.payload).conversationId) }
+                plan.completed.forEach { add(completedRunConversationId(it.result)) }
                 plan.interrupted.forEach { add(AgentUiHandoffPayload.from(it.handoff.payload).conversationId) }
                 plan.reattach.forEach { add(AgentUiHandoffPayload.from(it.handoff.payload).conversationId) }
             },
@@ -1727,9 +2285,22 @@ internal class AgentAppState(
             plan.completed.forEach { recoveryPlan ->
                 val completedRun = recoveryPlan.result
                 val runId = completedRun.result.runId.ifBlank { completedRun.handoff.id }
-                val payload = AgentUiHandoffPayload.from(completedRun.handoff.payload)
-                val conversationId = payload.conversationId
-                val state = conversationState(conversationId) ?: return@forEach
+                val isDispatch = completedRun.handoff.source == AgentRuntimeWire.ETA_DISPATCH_HANDOFF_SOURCE
+                // 派发来源没有 UI 补充轮，载荷也不是 AgentUiHandoffPayload 的 JSON，
+                // 必须按 handoff source 解析，否则会话 id 会退化成整段 JSON。
+                val payload = if (isDispatch) null else AgentUiHandoffPayload.from(completedRun.handoff.payload)
+                val dispatchBrief = if (isDispatch) {
+                    AgentDispatchPayload.from(completedRun.handoff.payload)?.brief.orEmpty()
+                } else {
+                    ""
+                }
+                val conversationId = completedRunConversationId(completedRun)
+                val state = conversationState(conversationId)
+                if (state == null) {
+                    // 会话尚未进内存（或已被删除）：不 ACK，让结果留在 outbox，
+                    // 等物化/下次 recovery 再把终态折叠进会话，避免结果被丢弃。
+                    return@forEach
+                }
                 // A degraded checkpoint may omit an event boundary; apply the authoritative
                 // result but do not replay an incomplete trace into conversation history.
                 recoveryPlan.checkpoint
@@ -1741,13 +2312,27 @@ internal class AgentAppState(
                         ) || stateChanged
                     }
                 val result = completedRun.result
-                val beforeRecovery = conversationState(conversationId) ?: state
+                if (isDispatch) {
+                    // 通知可能随进程消失；用 outbox 终态把调度台那张卡从 Running 收到终态，
+                    // 否则重启后卡片会一直停在「执行中」。
+                    stateChanged = updateDispatchReportCardFromRecovery(
+                        conversationId = conversationId,
+                        ok = result.ok,
+                        content = result.content,
+                        error = result.error,
+                    ) || stateChanged
+                }
+                val beforeRecovery = ensureDispatchBrief(
+                    conversationState(conversationId) ?: state,
+                    runId,
+                    dispatchBrief,
+                )
                 val recovery = AgentPendingResultRecovery.apply(
                     state = beforeRecovery,
                     runId = runId,
                     result = result,
-                    promptSupplement = payload.promptSupplement,
-                    supplements = payload.supplements,
+                    promptSupplement = payload?.promptSupplement,
+                    supplements = payload?.supplements.orEmpty(),
                     generatedAtMillis = recoveryPlan.checkpoint?.events
                         ?.filterIsInstance<AgentEvent.RunFinished>()?.lastOrNull()?.generatedAtMillis,
                 )
@@ -1790,7 +2375,7 @@ internal class AgentAppState(
         // Query after local terminal projection, before the durable save/ACK boundary, so a
         // missed QuestionResolved can correct an Interrupted card even on alreadyApplied runs.
         val questionChanges = reconcileRecoveredQuestions(client, questionConversationIds,
-            completedRuns.map { AgentUiHandoffPayload.from(it.handoff.payload).conversationId })
+            completedRuns.map(::completedRunConversationId))
         if (changed || questionChanges) {
             val saved = withContext(Dispatchers.Main) { persistConversations() }.await()
             if (saved) {
@@ -1925,17 +2510,81 @@ internal class AgentAppState(
         return true
     }
 
+    /**
+     * 终态 outbox 条目所属会话。UI 来源从 AgentUiHandoffPayload 取，派发来源从
+     * AgentDispatchPayload 取；两者都用同一个 identity 解析，避免把整段载荷当会话 id。
+     */
+    private fun completedRunConversationId(completedRun: AgentRuntimeWire.CompletedRun): String {
+        val runId = completedRun.result.runId.ifBlank { completedRun.handoff.id }
+        return AgentConversationIdentity.fromHandoff(completedRun.handoff, runId)
+    }
+
     private fun startReattachedRun(checkpoint: AgentRunCheckpointStore.Checkpoint) {
         val runId = checkpoint.runId
         val conversationId = AgentUiHandoffPayload
             .from(checkpoint.handoff.payload)
             .conversationId
+        startAttachedRun(runId, conversationId)
+    }
+
+    /**
+     * 把调度台派发的子 run 挂到工作会话上。
+     *
+     * 派发 run 由 Runtime 自己 startRun，UI 既不写检查点也不订阅事件；若不主动 attach，
+     * 打开派发会话就只能看到调度端预先落下的那条简讯。这里补齐下发指令并复用与
+     * 前端 run 完全相同的 attach → 事件投影 → 终态持久化通路。
+     */
+    private fun attachDispatchedRun(conversationId: String, runId: String, brief: String) {
+        if (conversationId.isBlank() || runId.isBlank()) return
+        val current = conversationState(conversationId) ?: return
+        if (runId in runJobs || AgentRuntimeHistoryReducer.wasApplied(current, runId)) return
+        val prepared = ensureDispatchBrief(current, runId, brief)
+        bindUsageRun(runId, conversationId)
+        updateConversation(conversationId, prepared.copy(isStreaming = true, activeRunId = runId))
+        refreshConversationSummaries()
+        subscribeAttachedRun(runId)
+    }
+
+    /**
+     * 派发指令不一定由 UI 写入会话：新建工作会话由调度端落了 user 简讯，
+     * 接续的用户会话则没有。挂接/回收前把缺失的指令补进展示与模型历史，
+     * 保证打开会话能看到完整一轮；已有同文末轮时不重复插入。
+     */
+    private fun ensureDispatchBrief(
+        state: AgentChatHomeUiState,
+        runId: String,
+        brief: String,
+    ): AgentChatHomeUiState {
+        val text = brief.trim()
+        if (text.isEmpty()) return state
+        val historyHasBrief = state.history.lastOrNull()?.let { last ->
+            last.role.equals("user", ignoreCase = true) && last.content.trim() == text
+        } == true
+        val messagesHasBrief = (state.messages.lastOrNull() as? UserMessageUi)
+            ?.content?.trim() == text
+        if (historyHasBrief && messagesHasBrief) return state
+        val history = if (historyHasBrief) {
+            state.history
+        } else {
+            state.history + AgentModelClient.buildUserHistoryMessage(text, emptyList()).copy(turnId = runId)
+        }
+        val messages = if (messagesHasBrief) state.messages else {
+            state.messages + UserMessageUi(id = "user-$runId", content = text)
+        }
+        return state.copy(messages = messages, history = history)
+    }
+
+    private fun startAttachedRun(runId: String, conversationId: String) {
         val existing = conversationState(conversationId) ?: return
         if (runId in runJobs || AgentRuntimeHistoryReducer.wasApplied(existing, runId)) return
 
         bindUsageRun(runId, conversationId)
         updateConversation(conversationId, existing.copy(isStreaming = true, activeRunId = runId))
         refreshConversationSummaries()
+        subscribeAttachedRun(runId)
+    }
+
+    private fun subscribeAttachedRun(runId: String) {
         runJobs[runId] = scope.launch(Dispatchers.IO) {
             val client = AgentRuntimeClient(appContext, AndroidAgentLogger)
             val outcome = client.attachRun(
@@ -2254,17 +2903,24 @@ internal class AgentAppState(
             }.filterKeys { it !in conversationDeletedAt }
         val titles = conversationTitles
         val timestamps = conversationUpdatedAt
+        // 展示名与真实标题分离：调度台搜索既要命中真实标题关键词，也要能搜到固定显示名「调度台」。
+        val consoleId = dispatchConsoleId()
+        val consoleDisplayTitle = dispatchConsoleTitle()
+        val displayTitles = consoleId?.let { titles + (it to consoleDisplayTitle) } ?: titles
         return runInterruptible(Dispatchers.IO) {
         source.entries.sortedWith(compareBy<Map.Entry<String, AgentChatHomeUiState>> {
             timestamps[it.key] ?: 0L
         }.thenBy { it.key }).flatMap { (id, state) ->
             // 标题与正文一起匹配：标题命中排在同一会话的正文命中之前。
-            val titleHit = searchConversationTitle(id, titles[id].orEmpty(), query, titleRole)
+            val realTitle = titles[id].orEmpty()
+            val displayTitle = if (id == consoleId) consoleDisplayTitle else realTitle
+            val titleHit = searchConversationTitle(id, realTitle, query, titleRole)
+                ?: searchConversationTitle(id, displayTitle, query, titleRole)
             val messageHits = if (state.conversationContentLoaded) {
-                searchConversationMessages(mapOf(id to state), titles, timestamps, query, unnamed, roles)
+                searchConversationMessages(mapOf(id to state), displayTitles, timestamps, query, unnamed, roles)
             } else {
-                AgentConversationStore.searchStoredConversation(appContext, id, titles[id].orEmpty(),
-                    timestamps[id] ?: 0L, query, unnamed, roles)
+                AgentConversationStore.searchStoredConversation(appContext, id,
+                    displayTitles[id].orEmpty(), timestamps[id] ?: 0L, query, unnamed, roles)
             }
             listOfNotNull(titleHit) + messageHits
         }
@@ -2451,6 +3107,15 @@ internal class AgentAppState(
     fun toggleConversationPinned(conversationId: String) {
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) return
         if (conversationId !in conversationsById) return
+        // 调度台是系统条目：置顶强制成立，不接受取消（只补齐状态，不翻转）。
+        if (isDispatchConsoleConversation(conversationId)) {
+            if (conversationId !in conversationPinned) {
+                conversationPinned = conversationPinned + conversationId
+                refreshConversationSummaries()
+                persistConversations()
+            }
+            return
+        }
         conversationPinned = if (conversationId in conversationPinned) {
             conversationPinned - conversationId
         } else {
@@ -2467,12 +3132,16 @@ internal class AgentAppState(
                 withConversationArchive {
                     val source = conversationsById
                     val timestamps = conversationUpdatedAt
-                    val ids = source.keys.toList()
+                    // 调度台是系统条目：清空全部会话时保留它（内容、标题、文件夹、置顶状态都留着）。
+                    val consoleId = dispatchConsoleId()?.takeIf { it in source }
+                    val ids = source.keys.filter { it != consoleId }
+                    if (ids.isEmpty()) return@withConversationArchive
                     val aggregate = runInterruptible(Dispatchers.IO) {
                         var usage = ConversationTokenUsageUi()
                         var messageCount = 0
                         val heatmap = mutableMapOf<java.time.LocalDate, Int>()
-                        source.forEach { (id, state) ->
+                        ids.forEach { id ->
+                            val state = source.getValue(id)
                             val content = if (state.conversationContentLoaded) state else
                                 requireNotNull(AgentConversationStore.loadConversation(appContext, id))
                             val amount = conversationTokenUsage(content.messages)
@@ -2488,10 +3157,29 @@ internal class AgentAppState(
                     }
                     check(conversationsById === source && conversationUpdatedAt === timestamps) { "会话已变化，请重试" }
                     ids.forEach(::cancelConversationExecution)
+                    val keptState = consoleId?.let(source::get)
+                    val keptDraft = consoleId?.let { conversationDrafts.field(it).text.toString() }
+                    val keptUpdatedAt = consoleId?.let { conversationUpdatedAt[it] ?: System.currentTimeMillis() }
+                    val keptCreatedAt = consoleId?.let { conversationCreatedAt[it] }
+                    val keptTitle = consoleId?.let {
+                        conversationTitles[it]?.takeIf(String::isNotBlank) ?: dispatchConsoleTitle()
+                    }
+                    val keptFolderId = consoleId?.let { conversationFolderIds[it] }
+                    val keptMarkerIds = consoleId?.takeIf { it in conversationCompletionMarkers }?.let { setOf(it) } ?: emptySet()
                     // Commit before deleting drafts/images or changing UI. Once committed,
                     // cancellation must not leave UI representing rows that no longer exist.
                     withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
-                        AgentConversationStore.save(appContext, null, emptyMap(), emptyMap(), emptyMap(), folders = conversationFolders)
+                        AgentConversationStore.save(
+                            appContext,
+                            selectedConversationId = null,
+                            conversationsById = if (consoleId != null && keptState != null) mapOf(consoleId to keptState) else emptyMap(),
+                            titles = consoleId?.let { mapOf(it to (keptTitle ?: "")) } ?: emptyMap(),
+                            updatedAt = consoleId?.let { mapOf(it to (keptUpdatedAt ?: 0L)) } ?: emptyMap(),
+                            folderIds = consoleId?.let { id -> keptFolderId?.let { mapOf(id to it) } } ?: emptyMap(),
+                            pinnedIds = consoleId?.let { setOf(it) } ?: emptySet(),
+                            completionMarkerIds = keptMarkerIds,
+                            folders = conversationFolders,
+                        )
                         withContext(Dispatchers.Main.immediate) {
                             pendingRetiredUsage = ConversationTokenUsageUi(
                                 pendingRetiredUsage.inputTokens + aggregate.first.inputTokens,
@@ -2504,13 +3192,15 @@ internal class AgentAppState(
                                 pendingRetiredHeatmap = pendingRetiredHeatmap + (day to ((pendingRetiredHeatmap[day] ?: 0) + count))
                             }
                             conversationDrafts.clear()
-                            conversationsById = emptyMap()
-                            conversationTitles = emptyMap()
-                            conversationUpdatedAt = emptyMap()
-                            conversationCreatedAt = emptyMap()
-                            conversationFolderIds = emptyMap()
-                            conversationPinned = emptySet()
-                            conversationCompletionMarkers = emptySet()
+                            if (consoleId != null && keptDraft != null) conversationDrafts.replace(consoleId, keptDraft)
+                            conversationsById = if (consoleId != null && keptState != null) mapOf(consoleId to keptState) else emptyMap()
+                            conversationTitles = consoleId?.let { mapOf(it to (keptTitle ?: "")) } ?: emptyMap()
+                            conversationUpdatedAt = consoleId?.let { mapOf(it to (keptUpdatedAt ?: 0L)) } ?: emptyMap()
+                            conversationCreatedAt = consoleId?.let { id -> keptCreatedAt?.let { mapOf(id to it) } } ?: emptyMap()
+                            conversationFolderIds = consoleId?.let { id -> keptFolderId?.let { mapOf(id to it) } } ?: emptyMap()
+                            conversationPinned = consoleId?.let { setOf(it) } ?: emptySet()
+                            conversationCompletionMarkers = keptMarkerIds
+                            conversationDeletedAt = conversationDeletedAt - ids
                             fileAttachmentOwnerVersion += 1
                             beginNewSubAgentDraft()
                             selectedConversationId = null
@@ -2529,6 +3219,8 @@ internal class AgentAppState(
                 }
                 // Retired counters are written only after deletion has durably succeeded.
                 persistConversations()
+                // 清空后仍落到调度台（缺失时补建），保持主页语义。
+                ensureDispatchConsoleSelected()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -2544,6 +3236,8 @@ internal class AgentAppState(
      */
     fun deleteConversation(conversationId: String) {
         if (rejectConversationArchiveMutation()) return
+        // 调度台是系统条目：不进回收站，也不打断它自己的运行。
+        if (isDispatchConsoleConversation(conversationId)) return
         cancelConversationExecution(conversationId)
         if (conversationId !in conversationsById || conversationId in conversationDeletedAt) return
         if (selectedConversationId == conversationId) {
@@ -2561,6 +3255,11 @@ internal class AgentAppState(
     fun restoreConversationFromTrash(conversationId: String) {
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) return
         if (conversationId !in conversationDeletedAt) return
+        // 调度台归档不是独立会话：恢复语义是「接回当前调度台顶部」，并删除这条回收站记录。
+        if (isDispatchConsoleArchiveSnapshot(conversationId)) {
+            restoreDispatchConsoleArchive(conversationId)
+            return
+        }
         conversationDeletedAt = conversationDeletedAt - conversationId
         refreshConversationSummaries()
         persistConversations()
@@ -2570,9 +3269,14 @@ internal class AgentAppState(
     fun deleteConversationForever(conversationId: String) {
         if (rejectConversationArchiveMutation()) return
         if (conversationId !in conversationsById) return
+        // 调度台是系统条目：永久删除同样不可用。
+        if (isDispatchConsoleConversation(conversationId)) return
         val wasSelected = selectedConversationId == conversationId
         conversationState(conversationId)?.let { state ->
-            retainDeletedConversation(state.messages, conversationUpdatedAt[conversationId])
+            // 归档快照是原会话的副本：退休会把同一份用量重复计入，跳过。
+            if (!isDispatchConsoleArchiveSnapshot(conversationId)) {
+                retainDeletedConversation(state.messages, conversationUpdatedAt[conversationId])
+            }
         }
         conversationDrafts.remove(conversationId)
         pendingSelectionByKey.remove(conversationId)
@@ -2609,7 +3313,7 @@ internal class AgentAppState(
     /** 清空回收站：逐个走 [deleteConversationForever]，持久化队列会合并这些快照。 */
     fun emptyTrash() {
         if (rejectConversationArchiveMutation()) return
-        val trashedIds = conversationDeletedAt.keys.toList()
+        val trashedIds = conversationDeletedAt.keys.filterNot(::isDispatchConsoleConversation)
         if (trashedIds.isEmpty()) return
         trashedIds.forEach { id ->
             if (id in conversationsById) deleteConversationForever(id)
@@ -2627,6 +3331,10 @@ internal class AgentAppState(
         if (retentionDays <= 0) return
         val retentionMs = retentionDays * DAY_MILLIS
         val expired = conversationDeletedAt
+            // 调度台本体永不从回收站清理；调度台归档快照也不参与自动过期，保证「随时可接回」。
+            .filterKeys { id ->
+                !isDispatchConsoleConversation(id) && !isDispatchConsoleArchiveSnapshot(id)
+            }
             .filterValues { deletedAt -> now - deletedAt >= retentionMs }
             .keys
             .filter { it in conversationsById }
@@ -2717,6 +3425,10 @@ internal class AgentAppState(
     )
 
     private fun historyFailure(code: String, message: String) = HistoryMutation(ok = false, code = code, message = message)
+
+    /** 调度台是系统级条目：删除与取消置顶在工具侧显式拒绝；重命名则按普通会话放行。 */
+    private fun protectedConversationFailure() =
+        historyFailure("PROTECTED_CONVERSATION", "「调度台」是系统会话，不支持删除或取消置顶")
 
     // 失败文案真源在资源（三语），中文串只是纯 JVM 单测无 Context 时的兜底（同 StopSealNotices 模式）；
     // code 是模型解析用的机器语义，message 本地化不影响工具结果解析。
@@ -2874,6 +3586,9 @@ internal class AgentAppState(
         if (conversationId !in conversationsById) {
             return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
         }
+        if (!pinned && isDispatchConsoleConversation(conversationId)) {
+            return@withContext protectedConversationFailure()
+        }
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) {
             return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
@@ -2886,6 +3601,9 @@ internal class AgentAppState(
         awaitConversationsHydrated()
         val snapshot = historyConversationSnapshot(conversationId)
             ?: return@withContext historyFailure("CONVERSATION_NOT_FOUND", R.string.appst_history_conversation_not_found, "找不到对话：%1\$s", conversationId)
+        if (isDispatchConsoleConversation(conversationId)) {
+            return@withContext protectedConversationFailure()
+        }
         if (rejectConversationArchiveMutation()) {
             return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
@@ -2920,6 +3638,9 @@ internal class AgentAppState(
         if (snapshot.deletedAt == null) {
             return@withContext historyFailure("NOT_IN_TRASH", R.string.appst_history_not_in_trash_purge, "该对话不在回收站中；请先删除再永久清理")
         }
+        if (isDispatchConsoleConversation(conversationId)) {
+            return@withContext protectedConversationFailure()
+        }
         if (rejectConversationArchiveMutation()) {
             return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
@@ -2933,7 +3654,7 @@ internal class AgentAppState(
         if (rejectConversationArchiveMutation()) {
             return@withContext historyFailure("BUSY", R.string.appst_history_busy, "当前有对话归档任务在执行，请稍后再试")
         }
-        val count = conversationDeletedAt.size
+        val count = conversationDeletedAt.keys.count { !isDispatchConsoleConversation(it) }
         if (count == 0) return@withContext HistoryMutation(ok = true, deletedConversations = 0)
         emptyTrash()
         HistoryMutation(ok = true, deletedConversations = count)
@@ -3497,6 +4218,13 @@ internal class AgentAppState(
         revised: AgentChatHomeUiState,
     ) {
         if (revised.messages.isEmpty()) {
+            // 调度台是系统会话：删光消息也不移除会话本体，避免侧栏出现「无法再加回来」的缺口。
+            if (isDispatchConsoleConversation(conversationId)) {
+                updateConversation(conversationId, revised)
+                refreshConversationSummaries()
+                persistConversations()
+                return
+            }
             retainDeletedConversation(snapshot.messages, conversationUpdatedAt[conversationId])
             conversationsById = conversationsById - conversationId
             conversationTitles = conversationTitles - conversationId
@@ -6539,9 +7267,31 @@ internal class AgentAppState(
             }
 
             is AgentEvent.ToolFinished -> {
+                // 派发工具的返回里带 dispatch_id/conversation_id/run_id：调用本身结束，
+                // 但子任务仍在跑，因此把这同一张卡留在 Running，并写入可跳转身份。
+                val dispatchMeta =
+                    if (event.name == io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME) {
+                        io.github.mangi.eta.agent.dispatch.AgentDispatchReport
+                            .parse(event.resultDetail ?: event.resultSummary)
+                    } else {
+                        null
+                    }
                 updateRunTrace(runId) { messages ->
-                    runMessageProjector.finishTool(runId, event, messages)
+                    val finished = runMessageProjector.finishTool(runId, event, messages)
+                    if (dispatchMeta == null) {
+                        finished
+                    } else {
+                        runMessageProjector.markDispatchedTool(
+                            runId = runId,
+                            round = event.round,
+                            toolCallId = event.toolCallId,
+                            meta = dispatchMeta,
+                            title = pendingDispatchTitles.remove(dispatchMeta.dispatchId).orEmpty(),
+                            messages = finished,
+                        )
+                    }
                 }
+                if (dispatchMeta != null && !replaying) persistConversations()
             }
 
             is AgentEvent.HostedToolStarted -> {
@@ -6647,10 +7397,21 @@ internal class AgentAppState(
                 }
             }
             is AgentEvent.DispatchCreated -> {
-                // 派发落定：物化目标会话并触发一次恢复式挂接，让子 run 的流式事件进到会话里。
+                // 派发落定：物化目标会话后立刻挂接子 run，让工具调用/结果/错误与模型输出
+                // 走会话自己的事件投影并随终态持久化，而不是只留在 Runtime 内存里。
+                // outbox 回收必须排到物化之后：新建的派生会话在本次进程里还没进内存，
+                // 提前回收会因找不到会话而把结果丢掉。
+                //
+                // 调度台的 task_dispatch 卡片：标题就是子会话身份。事件可能早于或晚于
+                // ToolFinished 到达，两条路径都要落一次标题（排队单稍后开跑时也走这里）。
+                if (pendingDispatchTitles.size > 32) pendingDispatchTitles.clear()
+                pendingDispatchTitles[event.dispatchId] = event.title
+                bindDispatchCardTitle(runId, event.dispatchId, event.title, event.runId)
                 markDispatchManaged(event.conversationId)
-                materializeDispatchConversation(event.conversationId, event.title)
-                refreshRuntimeResults()
+                materializeDispatchConversation(event.conversationId, event.title) {
+                    attachDispatchedRun(event.conversationId, event.runId, event.brief)
+                    refreshRuntimeResults()
+                }
             }
             is AgentEvent.RoundStarted -> {
                 val source = conversationIdForRun(runId)?.let(::conversationState)
@@ -7520,6 +8281,8 @@ internal class AgentAppState(
             use24HourClock = use24HourClock,
         )
         conversationSummaryCache.retain(conversationsById.keys)
+        // 调度台身份在列表构建期间不会变化，这里只解析一次，避免每行重复扫描。
+        val consoleId = dispatchConsoleId()
         // 回收站成员不进正常列表；单独生成回收站快照，排序按删除时间由新到旧。
         fun buildSummary(id: String, state: AgentChatHomeUiState): ConversationSummaryUi {
             val lastMessage = state.messages.lastOrNull()
@@ -7533,6 +8296,7 @@ internal class AgentAppState(
                 isActiveRun = state.isStreaming && !state.isPaused,
                 hasCompletionMarker = id in conversationCompletionMarkers,
                 isDispatchManaged = id in conversationDispatchMarks,
+                isDispatchConsole = id == consoleId,
                 folderId = conversationFolderIds[id],
                 environment = environment,
             )
@@ -7543,17 +8307,20 @@ internal class AgentAppState(
                 conversationSummaryCache.current(id, environment)?.let { summary ->
                     // 流式增量只改预览，预览/时间标签沿用缓存；运行态必须实时反映，
                     // 否则新开的会话一开始回复时缓存里的 isActiveRun 仍是 false，抽屉永远不显示 loading。
-                    summary.copy(isActiveRun = key.isActiveRun)
+                    summary.copy(isActiveRun = key.isActiveRun, isDispatchConsole = key.isDispatchConsole)
                 }
             } else {
                 null
             }
             return cached ?: conversationSummaryCache.getOrBuild(id, key) {
+                val realTitle = conversationTitles[id].orEmpty().ifBlank {
+                    appContext.getString(R.string.conversation_unnamed)
+                }
                 ConversationSummaryUi(
                     id = id,
-                    title = conversationTitles[id].orEmpty().ifBlank {
-                        appContext.getString(R.string.conversation_unnamed)
-                    },
+                    title = realTitle,
+                    // 只有展示名固定；底层真实标题仍随自动标题/重命名变化。
+                    displayTitle = if (id == consoleId) dispatchConsoleTitle() else realTitle,
                     preview = when (lastMessage) {
                         is UserMessageUi -> AgentFileReferencePromptCodec
                             .parse(lastMessage.content)
@@ -7601,6 +8368,7 @@ internal class AgentAppState(
                     isPinned = id in conversationPinned,
                     isActiveRun = state.isStreaming && !state.isPaused,
                     hasCompletionMarker = id in conversationCompletionMarkers,
+                    isDispatchConsole = id == consoleId,
                     folderId = conversationFolderIds[id],
                     isToday = ConversationTimeLabels.isToday(
                         timestampMillis = conversationCreatedAt[id] ?: conversationUpdatedAt[id] ?: 0L,
@@ -7900,6 +8668,12 @@ internal class AgentAppState(
 
         /** 一天的毫秒数，用于回收站留存期计算。 */
         const val DAY_MILLIS = 24L * 60L * 60L * 1000L
+
+        /** 调度台归档快照 id 前缀：与固定 id `dispatch-console` 区分，也不会被调度台保护逻辑拦截。 */
+        const val DISPATCH_CONSOLE_ARCHIVE_PREFIX = "dispatch-console-archive-"
+
+        /** 归档快照内消息 id 前缀：`archive-<16位序号>-<原 id>`。 */
+        const val ARCHIVE_MESSAGE_ID_PREFIX = "archive-"
 
         fun emptyChatState(thinkingEnabled: Boolean): AgentChatHomeUiState =
             AgentChatHomeUiState(
@@ -8811,6 +9585,7 @@ internal data class ConversationSummaryKey(
     val isActiveRun: Boolean,
     val hasCompletionMarker: Boolean,
     val isDispatchManaged: Boolean = false,
+    val isDispatchConsole: Boolean = false,
     val folderId: String?,
     val environment: ConversationSummaryEnvironment,
 )

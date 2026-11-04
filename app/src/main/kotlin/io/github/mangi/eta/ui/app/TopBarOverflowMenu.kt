@@ -67,6 +67,7 @@ internal fun TopBarOverflowMenu(
     onOpenSubAgentStatus: () -> Unit = {},
     onOpenCompressConversation: () -> Unit = {},
     canDeleteCurrentConversation: Boolean = false,
+    isDispatchConsole: Boolean = false,
     onDeleteCurrentConversation: () -> Unit = {},
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -103,6 +104,7 @@ internal fun TopBarOverflowMenu(
                 onOpenTokenUsage = onOpenTokenUsage,
                 onOpenSubAgentStatus = onOpenSubAgentStatus,
                 canDeleteCurrentConversation = canDeleteCurrentConversation,
+                isDispatchConsole = isDispatchConsole,
                 onDeleteCurrentConversation = onDeleteCurrentConversation,
             )
         }
@@ -136,6 +138,7 @@ internal fun TopBarMenuItems(
     onOpenTokenUsage: () -> Unit = {},
     onOpenSubAgentStatus: () -> Unit = {},
     canDeleteCurrentConversation: Boolean = false,
+    isDispatchConsole: Boolean = false,
     onDeleteCurrentConversation: () -> Unit = {},
 ) {
     val interactiveModePreference = remember { InteractiveModePreference() }
@@ -144,13 +147,14 @@ internal fun TopBarMenuItems(
 
     // 整张菜单是一个连续的条目列表：分段只决定分割线，行形状按全局位置取首行 / 末行，
     // 末行按下的高亮才会和容器底角同心。
-    val itemCount = if (canStopKimiWeb) 13 else 12
+    // 调度台是系统条目，顶栏菜单直接移除「移动到回收站」这一行，条目总数与后续行位置同步收窄。
+    val itemCount = (if (canStopKimiWeb) 13 else 12) - if (isDispatchConsole) 1 else 0
     val firstSectionStart = 0
     val secondSectionStart = firstSectionStart + 2
     val thirdSectionStart = secondSectionStart + 1
     val fourthSectionStart = thirdSectionStart + 5
     val fifthSectionStart = fourthSectionStart + 3
-    val sixthSectionStart = fifthSectionStart + 1
+    val sixthSectionStart = fifthSectionStart + if (isDispatchConsole) 0 else 1
 
     // 整张菜单只用一个圆角容器，段落之间用分割线分开。
     EtaMenuGroup(index = 0, count = 1) {
@@ -276,20 +280,22 @@ internal fun TopBarMenuItems(
             }
         }
 
-        TopBarMenuSection {
-            TopBarMenuItem(
-                text = stringResource(R.string.conversation_move_to_trash),
-                index = fifthSectionStart,
-                count = itemCount,
-                enabled = canDeleteCurrentConversation,
-                emphasizeError = true,
-                onClick = { dismiss(); onDeleteCurrentConversation() },
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Delete,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                )
+        if (!isDispatchConsole) {
+            TopBarMenuSection {
+                TopBarMenuItem(
+                    text = stringResource(R.string.conversation_move_to_trash),
+                    index = fifthSectionStart,
+                    count = itemCount,
+                    enabled = canDeleteCurrentConversation,
+                    emphasizeError = true,
+                    onClick = { dismiss(); onDeleteCurrentConversation() },
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
 

@@ -329,6 +329,8 @@ internal fun AgentChatBody(
     onSuggestionClick: (String) -> Unit,
     onRunTraceClick: () -> Unit,
     onOpenBrowser: () -> Unit,
+    /** 派发汇报卡上的「打开会话」：切到该子会话。 */
+    onOpenConversation: (String) -> Unit = {},
     onEditAssistant: (String) -> Unit,
     onOpenModelProviders: () -> Unit,
     onOpenAssistants: () -> Unit,
@@ -591,6 +593,7 @@ internal fun AgentChatBody(
                 onSuggestionClick = onSuggestionClick,
                 onRunTraceClick = onRunTraceClick,
                 onOpenBrowser = onOpenBrowser,
+                onOpenConversation = onOpenConversation,
                 onEditAssistant = onEditAssistant,
                 onOpenModelProviders = onOpenModelProviders,
                 onOpenAssistants = onOpenAssistants,
@@ -674,6 +677,8 @@ internal fun AgentChatScaffold(
     onSuggestionClick: (String) -> Unit,
     onRunTraceClick: () -> Unit,
     onOpenBrowser: () -> Unit,
+    /** 派发汇报卡上的「打开会话」：切到该子会话。 */
+    onOpenConversation: (String) -> Unit = {},
     onEditAssistant: (String) -> Unit,
     onOpenModelProviders: () -> Unit,
     onOpenAssistants: () -> Unit,
@@ -834,6 +839,7 @@ internal fun AgentChatScaffold(
                 onSuggestionClick = onSuggestionClick,
                 onRunTraceClick = onRunTraceClick,
                 onOpenBrowser = onOpenBrowser,
+                onOpenConversation = onOpenConversation,
                 onEditMessage = onEditMessage,
                 onDeleteMessage = onDeleteMessage,
                 onRegenerateMessage = onRegenerateMessage,
@@ -880,6 +886,8 @@ internal fun AgentConversationMessages(
     onSuggestionClick: (String) -> Unit = {},
     onRunTraceClick: () -> Unit = {},
     onOpenBrowser: () -> Unit = {},
+    /** 派发汇报卡上的「打开会话」：切到该子会话。 */
+    onOpenConversation: (String) -> Unit = {},
     onEditMessage: (String) -> Unit = {},
     onDeleteMessage: (String) -> Unit = {},
     onRegenerateMessage: (String) -> Unit = {},
@@ -1693,6 +1701,7 @@ internal fun AgentConversationMessages(
             messageActions.onSuggestionClick = onSuggestionClick
             messageActions.onRunTraceClick = onRunTraceClick
             messageActions.onOpenBrowser = onOpenBrowser
+            messageActions.onOpenDispatchConversation = onOpenConversation
             messageActions.onEditMessage = onEditMessage
             messageActions.onDeleteMessage = onDeleteMessage
             messageActions.onRegenerateMessage = onRegenerateMessage

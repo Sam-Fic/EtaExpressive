@@ -121,8 +121,9 @@ internal fun ManageChatsScreen(
                 icon = Icons.Rounded.Delete,
                 contentDescription = stringResource(R.string.history_page_delete_all),
                 destructive = true,
-                enabled = conversations.isNotEmpty(),
-                onClick = { if (conversations.isNotEmpty()) showDeleteAll = true },
+                // 调度台是系统条目，不计入「清空全部」的可删除范围。
+                enabled = conversations.any { !it.isDispatchConsole },
+                onClick = { if (conversations.any { !it.isDispatchConsole }) showDeleteAll = true },
             )
         },
     ) {
@@ -219,7 +220,7 @@ private fun ManageChatRow(
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
-    val title = conversation.title.ifBlank { conversation.preview }
+    val title = conversation.displayTitle.ifBlank { conversation.preview }
     val pinDescription = stringResource(
         if (conversation.isPinned) R.string.conversation_unpin else R.string.conversation_pin,
     )
@@ -267,43 +268,53 @@ private fun ManageChatRow(
                 },
                 trailingContent = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // 置顶开关：选中态给官方 secondaryContainer 容器，一眼可辨。
-                        EtaTooltip(text = pinDescription) {
-                            IconToggleButton(
-                                checked = conversation.isPinned,
-                                onCheckedChange = { checked ->
-                                    TouchHaptics.toggle(view, checked)
-                                    onTogglePin()
-                                },
-                                colors = IconButtonDefaults.iconToggleButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    checkedContainerColor =
-                                        MaterialTheme.colorScheme.secondaryContainer,
-                                    checkedContentColor =
-                                        MaterialTheme.colorScheme.onSecondaryContainer,
-                                ),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.PushPin,
-                                    contentDescription = pinDescription,
-                                )
+                        if (conversation.isDispatchConsole) {
+                            // 系统条目：置顶强制成立，只显示静态标记，不提供取消置顶与删除。
+                            Icon(
+                                imageVector = Icons.Rounded.PushPin,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(EtaDimens.DenseIconSize),
+                            )
+                        } else {
+                            // 置顶开关：选中态给官方 secondaryContainer 容器，一眼可辨。
+                            EtaTooltip(text = pinDescription) {
+                                IconToggleButton(
+                                    checked = conversation.isPinned,
+                                    onCheckedChange = { checked ->
+                                        TouchHaptics.toggle(view, checked)
+                                        onTogglePin()
+                                    },
+                                    colors = IconButtonDefaults.iconToggleButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        checkedContainerColor =
+                                            MaterialTheme.colorScheme.secondaryContainer,
+                                        checkedContentColor =
+                                            MaterialTheme.colorScheme.onSecondaryContainer,
+                                    ),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.PushPin,
+                                        contentDescription = pinDescription,
+                                    )
+                                }
                             }
-                        }
-                        // 删除：破坏性动作取官方 error 角色色。
-                        EtaTooltip(text = deleteDescription) {
-                            M3IconButton(
-                                onClick = {
-                                    TouchHaptics.click(view)
-                                    onDelete()
-                                },
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error,
-                                ),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.DeleteOutline,
-                                    contentDescription = deleteDescription,
-                                )
+                            // 删除：破坏性动作取官方 error 角色色。
+                            EtaTooltip(text = deleteDescription) {
+                                M3IconButton(
+                                    onClick = {
+                                        TouchHaptics.click(view)
+                                        onDelete()
+                                    },
+                                    colors = IconButtonDefaults.iconButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error,
+                                    ),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.DeleteOutline,
+                                        contentDescription = deleteDescription,
+                                    )
+                                }
                             }
                         }
                     }

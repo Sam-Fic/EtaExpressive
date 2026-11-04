@@ -83,6 +83,9 @@ internal fun AgentAppShell(
     /** 非调度台会话时首页顶栏显示「回到调度台」按钮；调度台本身与远程目标不显示。 */
     showBackToConsole: Boolean = false,
     onBackToConsole: () -> Unit = {},
+    /** 调度台会话右上角「清空主会话」：为空或生成中时禁用。 */
+    canClearDispatchConsole: Boolean = false,
+    onClearDispatchConsole: () -> Unit = {},
     onOpenTerminal: () -> Unit,
     onLaunchKimiWeb: () -> Unit,
     kimiWebLabel: String,
@@ -181,9 +184,11 @@ internal fun AgentAppShell(
                     TopBarBackdrop(backdrop) {
                         // 顶栏菜单「删除当前会话」的可用性：pane.conversations 为全量摘要（未经筛选），
                         // 选中 id 在其中能查到才允许删除；删除走侧栏同一 onConversationDelete 确认弹窗链路。
-                        val currentDeletableConversation = conversationPaneState?.let { pane ->
+                        val selectedConversation = conversationPaneState?.let { pane ->
                             pane.selectedConversationId?.let { id -> pane.conversations.find { it.id == id } }
                         }
+                        // 调度台是系统条目：不可删除，顶栏删除入口也不显示。
+                        val currentDeletableConversation = selectedConversation?.takeIf { !it.isDispatchConsole }
                         AgentTopBar(
                             route = currentRoute,
                             scrollBehavior = scrollBehavior,
@@ -217,9 +222,12 @@ internal fun AgentAppShell(
                             onOpenTokenUsage = onOpenTokenUsage,
                             onOpenSubAgentStatus = onOpenSubAgentStatus,
                             canDeleteCurrentConversation = currentDeletableConversation != null,
+                            isDispatchConsole = selectedConversation?.isDispatchConsole == true,
                             onDeleteCurrentConversation = {
                                 currentDeletableConversation?.let(onConversationDelete)
                             },
+                            canClearDispatchConsole = canClearDispatchConsole,
+                            onClearDispatchConsole = onClearDispatchConsole,
                             selectedProviderId = selectedProviderId,
                         )
                     }
@@ -311,7 +319,11 @@ private fun AgentTopBar(
     onOpenTokenUsage: () -> Unit = {},
     onOpenSubAgentStatus: () -> Unit = {},
     canDeleteCurrentConversation: Boolean = false,
+    isDispatchConsole: Boolean = false,
     onDeleteCurrentConversation: () -> Unit = {},
+    /** 调度台右槽「清空主会话」入口：按钮可用性与点击回调。 */
+    canClearDispatchConsole: Boolean = false,
+    onClearDispatchConsole: () -> Unit = {},
     selectedProviderId: String? = null,
 ) {
     val view = LocalView.current
@@ -376,6 +388,7 @@ private fun AgentTopBar(
                 onOpenTokenUsage = onOpenTokenUsage,
                 onOpenSubAgentStatus = onOpenSubAgentStatus,
                 canDeleteCurrentConversation = canDeleteCurrentConversation,
+                isDispatchConsole = isDispatchConsole,
                 onDeleteCurrentConversation = onDeleteCurrentConversation,
             )
         }
@@ -415,7 +428,10 @@ private fun AgentTopBar(
             onOpenTokenUsage = onOpenTokenUsage,
             onOpenSubAgentStatus = onOpenSubAgentStatus,
             canDeleteCurrentConversation = canDeleteCurrentConversation,
+            isDispatchConsole = isDispatchConsole,
             onDeleteCurrentConversation = onDeleteCurrentConversation,
+            canClearDispatchConsole = canClearDispatchConsole,
+            onClearDispatchConsole = onClearDispatchConsole,
         )
     } else {
         // 二级路由（Chat / Terminal）用官方 TopAppBar：容器色与页面背景同为 surfaceContainer，
