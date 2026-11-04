@@ -13,6 +13,8 @@ import io.github.mangi.eta.data.db.ConversationEntity
 import io.github.mangi.eta.data.db.ConversationMessageEntity
 import io.github.mangi.eta.data.db.DispatchClaimEntity
 import io.github.mangi.eta.data.db.EtaDatabase
+import io.github.mangi.eta.data.model.AssistantProfile
+import io.github.mangi.eta.data.model.AssistantPrompt
 import io.github.mangi.eta.data.repository.AgentConversationHistoryFiles
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
@@ -520,6 +522,10 @@ internal class AgentDispatchCoordinator(
     ): ConversationEntity {
         val now = System.currentTimeMillis()
         val title = rawTitle?.trim()?.takeIf { it.isNotEmpty() } ?: slugTitle(brief)
+        // 工作会话必须绑定一个真实助手：留空会让运行执行器判定「助手不存在」而直接失败，
+        // 也会让用户从抽屉打开它时借用此刻的全局助手（通常是调度台）身份。
+        val workAssistantId = workSessionProfile()?.id.orEmpty()
+            assistantId = workAssistantId,
         val conversation = ConversationEntity(
             id = "task-${UUID.randomUUID()}",
             title = title,
@@ -585,7 +591,22 @@ internal class AgentDispatchCoordinator(
         }
         val config = fromConversation
             // 工作会话没有可用模型时回落调度台模型，但绝不能带着调度纪律提示词去干活。
-            ?: orchestratorConfig.copy(assistantId = profile?.id.orEmpty(), systemPrompt = profile?.prompt.orEmpty())
+            ?: workSessionProfile()
+            ?: orchestratorConfig.copy(
+                // assistantId 不能清空：执行器按它取助手档案，空值会直接抛「助手不存在」使 run 速死。
+                assistantId = profile?.id ?: orchestratorConfig.assistantId,
+                systemPrompt = profile?.let { AssistantPrompt.build(it.name, it.prompt) }.orEmpty(),
+            )
+    /**
+     * 工作会话的默认身份（新建会话，或旧派生会话没绑定助手时）。
+     *
+     * 必须落在真实存在的助手上，且不能落在调度台自身：身份即闸门，
+     * 调度台身份会让工作 run 重新拿到派发工具。
+     */
+    private fun workSessionProfile(): AssistantProfile? =
+        AssistantRepository.currentProfile(AssistantPrompt.DEFAULT_ID)
+            ?: AssistantRepository.profiles.value.firstOrNull { it.id != AssistantPrompt.DISPATCHER_ID }
+
         return AgentRuntimePolicy.constrain(
             config,
             AgentRuntimePolicy.permissions(Prefs.localAgentPreferences()),
