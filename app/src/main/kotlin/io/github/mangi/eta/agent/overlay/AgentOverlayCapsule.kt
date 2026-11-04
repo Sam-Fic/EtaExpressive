@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -107,6 +108,7 @@ import androidx.compose.ui.semantics.onClick as semanticsClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
@@ -114,6 +116,7 @@ import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
 import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.etaConnectedGroupColors
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
 import kotlin.math.hypot
@@ -196,6 +199,14 @@ internal fun AgentOverlayCapsule(
     // 因此这里统一收口到官方规格，只保留脉冲/进度这类自有节奏。
     val motionScheme = MaterialTheme.motionScheme
 
+    // 展开的四层（宽度 / 圆角 / 展开进度 / 正文高度）共用同一条定长时间轴：
+    // 彼此同时起步、同时收尾，不会出现「宽度先胀开、正文随后才浮出」的串联观感。
+    // 逐层套 Expressive spatial 弹簧会各自带过冲长尾，叠起来就是慢动作
+    // （取值与原因见 EtaMotion.CapsuleExpandDurationMillis）。
+    val expandMillis = EtaMotion.CapsuleExpandDurationMillis
+    val expandDpSpec = tween<Dp>(expandMillis, easing = FastOutSlowInEasing)
+    val expandSizeSpec = tween<IntSize>(expandMillis, easing = FastOutSlowInEasing)
+
     // 为 Agent 手势让路：离开时快速上移收小淡出，回来时用弹簧落回，只改绘制层不触发重排。
     val clearance by animateFloatAsState(
         targetValue = if (yielded) 1f else 0f,
@@ -216,7 +227,7 @@ internal fun AgentOverlayCapsule(
     // 展开进度只驱动绘制层的透明度与位移，不参与测量；控制区用 AnimatedVisibility 只在两端各测一次。
     val expansion by animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
-        animationSpec = motionScheme.defaultSpatialSpec(),
+        animationSpec = tween(expandMillis, easing = FastOutSlowInEasing),
         label = "capsule_expansion",
         finishedListener = { value ->
             if (value == 0f) {
@@ -243,7 +254,7 @@ internal fun AgentOverlayCapsule(
             virtualDisplay.active -> CapsuleMicroLensWidth
             else -> CapsuleDefaultWidth
         },
-        animationSpec = motionScheme.defaultSpatialSpec(),
+        animationSpec = expandDpSpec,
         label = "capsule_width",
     )
     // ── 窗口尺寸上报 ────────────────────────────────────────────────────
@@ -257,18 +268,14 @@ internal fun AgentOverlayCapsule(
             onContentSizeChanged(targetCapsuleWidth.roundToPx(), Int.MIN_VALUE)
         }
     }
-    val targetCapsuleCorner by animateDpAsState(
-        targetValue = when {
-            // 缩球 56dp 圆：角半径 = 直径一半，恰与内圈 28dp 令牌同值。
-            minimized -> CapsuleBallDiameter / 2
-            virtualDisplay.active && expanded -> CapsuleOuterCorner
-            else -> CapsuleInnerCorner
-        },
-        animationSpec = motionScheme.defaultSpatialSpec(),
-        label = "capsule_corner",
-    )
+    // 外轮廓圆角恒取官方 extraLarge 28dp，不随展开涨缩：收起 56dp 单行即全圆角胶囊，
+    // 缩球角半径 = 56/2 同值。曾按「外圆 = 内圆 + 8dp 间距」在舞台展开态涨到 36dp，
+    // 但那个配对内圆不存在——舞台画布按宽高比居中、两侧留白远大于 8dp，角落 8dp 处
+    // 并无 28dp 内圆。同心锚点是 40dp 阶段指示器（圆心落左上弧心，20 + 8 = 28），
+    // 收起/展开两态同源；展开体其余角均无贴角内圆（画布/按钮组皆居中），故全态恒 28dp。
+    val capsuleCorner = CapsuleInnerCorner
     // 缩球时正文文字淡出（宽度由弹簧收窄带走），恢复时随宽展开淡回。
-    // 淡出快（尽快让位给宽度收缩）；淡入慢半拍且带延迟——宽度弹簧 ~400ms，
+    // 淡出快（尽快让位给宽度收缩）；淡入慢半拍且带延迟——宽度 tween 320ms，
     // 文字太早浮现会先被窄容器省略截断、再解锁重排，看起来像卡了一下。
     val headerTextAlpha by animateFloatAsState(
         targetValue = if (minimized) 0f else 1f,
@@ -284,7 +291,7 @@ internal fun AgentOverlayCapsule(
             lensVisible -> CapsuleInnerCorner - MicroLensGlassWidth / 2
             else -> EtaDimens.SpaceLg
         },
-        animationSpec = motionScheme.defaultSpatialSpec(),
+        animationSpec = expandDpSpec,
         label = "capsule_header_end_padding",
     )
 
@@ -345,7 +352,7 @@ internal fun AgentOverlayCapsule(
                             onContentSizeChanged(Int.MIN_VALUE, coords.size.height)
                         }
                     },
-                shape = RoundedCornerShape(targetCapsuleCorner),
+                shape = RoundedCornerShape(capsuleCorner),
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 // M3E 浮层对齐 FloatingToolbar 官方默认：无投影，靠 surfaceContainer 色阶
                 // 与 tonal（官方 Level2，栏类组件档）分层。旧 8dp 投影在贴边窗口里只留
@@ -420,10 +427,9 @@ internal fun AgentOverlayCapsule(
                             }
                             // 左缘内缩与外轮廓圆角同心：28dp 圆角（主界面输入框大胶囊同款）的
                             // 弧心在 (R, R)，40dp 指示器（主界面输入框按钮同尺寸）中心要落在
-                            // 弧心上，左内缩 = R − 20dp，默认态即 8dp；纵向由 56dp 头部居中
-                            // 自动落位，舞台态圆角涨到 36dp 时随动到 16dp。
+                            // 弧心上，左内缩 = R − 20dp，恒为 8dp；纵向由 56dp 头部居中自动落位。
                             .padding(
-                                start = targetCapsuleCorner -
+                                start = capsuleCorner -
                                     IconButtonDefaults.smallContainerSize().width / 2,
                                 // 缩球态末端收到 8dp：8 + 40dp 指示器槽 + 8 = 56dp 球径内正中。
                                 end = headerEndPadding,
@@ -480,13 +486,13 @@ internal fun AgentOverlayCapsule(
                     AnimatedVisibility(
                         visible = expanded && !minimized,
                         enter = expandVertically(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
+                            animationSpec = expandSizeSpec,
                             clip = true,
                         ) + fadeIn(motionScheme.defaultEffectsSpec()),
                         exit = shrinkVertically(
-                            // 收起与展开、以及 graphicsLayer 的 expansion 都取同一条 defaultSpatialSpec，
+                            // 收起与展开、以及 graphicsLayer 的 expansion 都取同一条 320ms 时间轴，
                             // 三根动画同相推进，收起时正文不会先于高度收缩上蹿。
-                            animationSpec = motionScheme.defaultSpatialSpec(),
+                            animationSpec = expandSizeSpec,
                             clip = true,
                         ) + fadeOut(motionScheme.fastEffectsSpec()),
                     ) {
@@ -569,9 +575,9 @@ private enum class CapsuleBody { Stage, Controls, Supplement }
  * Small 按钮按官方 `clickableItem` 模板排布，间距取官方 12dp
  * （`ButtonGroupDefaults.HorizontalArrangement.spacing`）。按压原生动效：按钮变宽、
  * 邻居等量压缩（`Modifier.animateWidth`，官方默认 `ExpandedRatio` 0.15）。
- * 三个按钮排得下（展开体 360dp），`overflowIndicator` 不会被测量与放置；真折行时
- * 溢出菜单才接管（菜单项照官方 `ClickableButtonGroupItem.MenuContent`：先回调再
- * `dismiss()`）。常规动作取官方 tertiaryContainer / onTertiaryContainer 档，
+ * 展开定宽后三个按钮排得下；但宽度弹簧从收起宽度过渡时会短暂窄于按钮总和，
+ * 溢出菜单因此可能被测量与放置（菜单项照官方 `ClickableButtonGroupItem.MenuContent`：
+ * 先回调再 `dismiss()`）。常规动作取官方 tertiaryContainer / onTertiaryContainer 档，
  * 停止单独取 error 档。
  */
 @Composable
@@ -592,7 +598,15 @@ private fun CapsuleActions(
         overflowIndicator = { menuState ->
             ButtonGroupDefaults.OverflowIndicator(menuState = menuState)
         },
-        modifier = Modifier.fillMaxWidth(),
+        // 展开宽弹簧会从收起宽度（248/264dp）经过比三个按钮更窄的区间，ButtonGroup 会进入
+        // 溢出分支。若这里再套 fillMaxWidth，父约束会把 minWidth 抬到 maxWidth，M3 在溢出分支
+        // 用 constraints.copy(maxWidth = 剩余空间) 时就会抛 IllegalArgumentException
+        // （ButtonGroup.kt:712 maxWidth must be >= than minWidth）并闪退。
+        // 因此外层仍占满整宽、内层放松 minWidth 后居中：正常宽度下与原来视觉一致，
+        // 过窄时由官方 overflowIndicator 接管。
+        modifier = Modifier
+            .fillMaxWidth()
+            .wrapContentWidth(Alignment.CenterHorizontally),
         horizontalArrangement = Arrangement.spacedBy(
             ButtonGroupDefaults.HorizontalArrangement.spacing,
             Alignment.CenterHorizontally,
@@ -927,8 +941,8 @@ internal fun VirtualDisplayMicroLens(
 /**
  * 画廊装裱式虚拟屏视窗（Gallery Matte Stage）。
  *
- * 采用外圈 36.dp（extraLarge 28 + 间距 8）+ 8.dp 留白衬底 + 内画框 28.dp 的同心圆角装裱设计，
- * 支持用户手指直接在画布上点按/滑动接管，以及一键全屏投射至物理主屏。
+ * 内画框取官方 extraLarge 28dp，外层卡片同为 28dp 同族圆角；画布按宽高比居中装裱，
+ * 四周留白不做同心配对。支持用户手指直接在画布上点按/滑动接管，以及一键全屏投射至物理主屏。
  */
 @Composable
 internal fun VirtualDisplayStageSection(
@@ -943,7 +957,7 @@ internal fun VirtualDisplayStageSection(
     modifier: Modifier = Modifier,
     fullscreenEnabled: Boolean = true,
 ) {
-    // 同心：外圈 36dp（extraLarge 28 + 间距 8），内画框取官方 extraLarge 28dp。
+    // 内画框取官方 extraLarge 28dp，与外层卡片（恒 28dp，见 capsuleCorner）同族圆角。
     val frameShape = MaterialTheme.shapes.extraLarge
     // 接管/暂停切换时画框颜色渐渡，与胶囊其余状态色保持同一节奏。
     val borderColor by animateColorAsState(
@@ -1201,12 +1215,13 @@ private fun StageActionToggle(
 }
 
 /**
- * 圆角与聊天输入胶囊（AgentChatComposerM3）同一套同心规则：
- * 内层取官方 `extraLarge`（28dp，单行 56dp 高即胶囊），外层 = 内层 + 8dp 间距 = 36dp。
- * 舞台画布与补充输入框都用内层 28dp，距外圈正好 8dp（[EtaDimens.SpaceSm]），弧心重合。
+ * 悬浮胶囊外轮廓圆角，全态恒取官方 `extraLarge`（28dp）：收起 56dp 单行即全圆角胶囊，
+ * 缩球 R = 56/2 同值；同心锚点是 40dp 阶段指示器（圆心落外角弧心，20 + 8dp 间距），
+ * 收起/展开两态同源。展开成卡片亦不涨——曾按画框「28 + 8」推得 36dp，但展开体四角
+ * 均无贴角内圆可配对（舞台画布按宽高比居中、按钮组居中，距边远大于 8dp；补充框仅
+ * 底部两角贴边且其顶缘在直壁段，单一形状无法全角自洽），28dp 是唯一全态自洽的取值。
  */
 private val CapsuleInnerCorner = 28.dp
-private val CapsuleOuterCorner = 36.dp
 
 /**
  * 舞台画布高度 = 舞台窗口 524 − 上下留白 12 − 头部 56（`TextFieldDefaults.MinHeight`）
