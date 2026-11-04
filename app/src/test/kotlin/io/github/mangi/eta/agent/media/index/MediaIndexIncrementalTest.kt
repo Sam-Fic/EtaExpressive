@@ -44,6 +44,9 @@ class MediaIndexIncrementalTest {
         context.deleteDatabase("eta.db")
         // workspace 是固定扫描目录，清空保证候选集完全由本用例构造。
         MediaIndexTestFixtures.workspaceDir(context).deleteRecursively()
+        // 缩略图目录也要清空：自愈分支会用「文件是否存在」决定跳过量。
+        MediaThumbnailStore.directory(context).deleteRecursively()
+        File(context.cacheDir, "media-thumbs").deleteRecursively()
     }
 
     @After
@@ -120,12 +123,17 @@ class MediaIndexIncrementalTest {
     fun unchangedSizeAndMtimeAreSkippedWithoutTouchingVectors() {
         MediaIndexTestFixtures.installFakeModel(context)
         val file = MediaIndexTestFixtures.writeWorkspaceFile(context, "keep.png")
+        // 缩略图必须存在且可解析，否则跳过分支会走自愈重建，计入 thumbFailed 而不是 skipped。
+        val thumb = File(MediaThumbnailStore.directory(context), MediaThumbnailStore.fileNameFor(file.absolutePath))
+            .apply { writeBytes(ByteArray(16)) }
         val before = MediaIndexTestFixtures.entity(
             sourceKey = file.absolutePath,
             vector = MediaIndexTestFixtures.axisVector(768, 0),
             kind = MediaKind.IMAGE,
             sizeBytes = file.length(),
             modifiedAt = file.lastModified(),
+            // 旧版存的绝对路径：迁移会归一成文件名，可用性判断与跳过仍成立。
+            thumbPath = thumb.absolutePath,
             indexedAt = 111L,
         )
         val result = runBlocking {
@@ -138,6 +146,34 @@ class MediaIndexIncrementalTest {
         assertEquals(0, result.failed)
         assertEquals(0, result.removed)
         // 未变条目不应重新嵌入：向量与 indexed_at 均保持原样。
+        val after = runBlocking { dao().findBySourceKey(file.absolutePath).single() }
+        assertEquals(111L, after.indexedAt)
+        assertArrayEquals(before.vector, after.vector)
+    }
+
+    @Test
+    fun unchangedImageWithMissingThumbnailIsRepairedWithoutReembedding() {
+        MediaIndexTestFixtures.installFakeModel(context)
+        // 垃圾字节图片：缩略图生成必然失败，用来验证自愈分支被触发（而不是被误判成纯跳过）。
+        val file = MediaIndexTestFixtures.writeWorkspaceFile(context, "lost-thumb.png")
+        val before = MediaIndexTestFixtures.entity(
+            sourceKey = file.absolutePath,
+            vector = MediaIndexTestFixtures.axisVector(768, 3),
+            kind = MediaKind.IMAGE,
+            sizeBytes = file.length(),
+            modifiedAt = file.lastModified(),
+            thumbPath = null,
+            indexedAt = 111L,
+        )
+        val result = runBlocking {
+            dao().upsertAll(listOf(before))
+            dao().upsertSource(workspaceSource())
+            MediaIndexer.index(context)
+        }
+        assertEquals(0, result.indexed)
+        assertEquals(0, result.skipped)
+        assertEquals(1, result.thumbFailed)
+        // 自愈不重新嵌入：向量与 indexed_at 保持原样。
         val after = runBlocking { dao().findBySourceKey(file.absolutePath).single() }
         assertEquals(111L, after.indexedAt)
         assertArrayEquals(before.vector, after.vector)
@@ -178,7 +214,10 @@ class MediaIndexIncrementalTest {
     fun disappearedEntriesAreCleanedWithThumbnails() {
         MediaIndexTestFixtures.installFakeModel(context)
         val kept = MediaIndexTestFixtures.writeWorkspaceFile(context, "kept.png")
-        val goneThumb = File(context.cacheDir, "gone-thumb.jpg").apply { writeBytes(ByteArray(16)) }
+        // 缩略图统一放持久目录（旧版在 cacheDir，迁移后寻址为文件名）。
+        val keptThumb = File(MediaThumbnailStore.directory(context), MediaThumbnailStore.fileNameFor(kept.absolutePath))
+            .apply { writeBytes(ByteArray(16)) }
+        val goneThumb = File(MediaThumbnailStore.directory(context), "gone-thumb.jpg").apply { writeBytes(ByteArray(16)) }
         val goneKey = File(MediaIndexTestFixtures.workspaceDir(context), "gone.png").absolutePath
         val result = runBlocking {
             dao().upsertAll(
@@ -188,10 +227,12 @@ class MediaIndexIncrementalTest {
                         kind = MediaKind.IMAGE,
                         sizeBytes = kept.length(),
                         modifiedAt = kept.lastModified(),
+                        thumbPath = keptThumb.name,
                     ),
                     MediaIndexTestFixtures.entity(
                         sourceKey = goneKey,
                         kind = MediaKind.IMAGE,
+                        // 旧版绝对路径：迁移归一后仍应删除对应文件。
                         thumbPath = goneThumb.absolutePath,
                     ),
                 ),
@@ -202,6 +243,7 @@ class MediaIndexIncrementalTest {
         assertEquals(1, result.removed)
         assertEquals(1, result.skipped)
         assertEquals(0, result.indexed)
+        assertEquals(0, result.thumbFailed)
         // 消失条目的向量行与缩略图缓存一起清理。
         assertFalse(goneThumb.exists())
         assertEquals(listOf(kept.absolutePath), runBlocking { dao().all() }.map { it.sourceKey })

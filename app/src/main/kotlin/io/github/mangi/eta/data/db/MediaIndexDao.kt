@@ -62,4 +62,26 @@ internal interface MediaIndexDao {
 
     @Query("DELETE FROM media_source WHERE id = :id")
     suspend fun deleteSource(id: String)
+
+    /**
+     * 缩略图迁移用：只取四列，避免把向量 BLOB 全表读进内存。
+     * 注意这里返回**所有模型/维度**的行——缩略图文件名与模型无关，迁移必须一次覆盖干净。
+     */
+    @Query("SELECT source_key, model_id, vector_dim, thumb_path FROM media_index WHERE thumb_path IS NOT NULL")
+    suspend fun thumbRows(): List<MediaThumbRef>
+
+    @Query(
+        "UPDATE media_index SET thumb_path = :thumbPath " +
+            "WHERE source_key = :sourceKey AND model_id = :modelId AND vector_dim = :vectorDim",
+    )
+    suspend fun updateThumbPath(
+        sourceKey: String,
+        modelId: String,
+        vectorDim: Int,
+        thumbPath: String?,
+    )
+
+    /** LRU 淘汰后把同名缩略图的索引行标记为空串哨兵（渲染端走原图回退，索引端不再重建）。 */
+    @Query("UPDATE media_index SET thumb_path = '' WHERE thumb_path = :name")
+    suspend fun markThumbEvicted(name: String)
 }

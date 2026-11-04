@@ -11,6 +11,7 @@ import io.github.mangi.eta.agent.media.index.EmbeddingModelStore
 import io.github.mangi.eta.agent.media.index.Float16VectorCodec
 import io.github.mangi.eta.agent.media.index.MediaExtraction
 import io.github.mangi.eta.agent.media.index.MediaSourceScanner
+import io.github.mangi.eta.agent.media.index.MediaThumbnailStore
 import io.github.mangi.eta.agent.skill.SkillRuntime
 import io.github.mangi.eta.agent.tool.AgentToolRecipeStore
 import io.github.mangi.eta.agent.tool.ToolRecipeConstants
@@ -194,6 +195,7 @@ internal data class EtaBackupMediaRecord(
     val width: Int? = null,
     val height: Int? = null,
     val frameTimeMs: Long? = null,
+    /** 缩略图**文件名**（不含目录）。旧备份里可能是绝对路径，导入时由 MediaThumbnailStore 归一。 */
     val thumbPath: String? = null,
     val indexedAt: Long,
     val vector: String,
@@ -1350,8 +1352,8 @@ internal object EtaBackupRepository {
         return dominant ?: (modelId to vectorDim)
     }
 
-    /** 缩略图缓存目录：与 MediaExtraction 的 media-thumbs 一致，恢复后按归档里的原文件名重定位。 */
-    private fun thumbDirectory(context: Context): File = File(context.applicationContext.cacheDir, "media-thumbs")
+    /** 缩略图目录统一由 [MediaThumbnailStore] 提供（持久目录，非 cacheDir）。 */
+    private fun thumbDirectory(context: Context): File = MediaThumbnailStore.directory(context)
 
     /** 向量不进 manifest（受 MANIFEST_LIMIT 约束）：写独立条目 records.jsonl，缩略图写 media-index/thumbs/。 */
     private suspend fun exportMediaIndex(context: Context, writer: BackupZipWriter, meta: EtaBackupMediaIndex) {
@@ -1419,7 +1421,12 @@ internal object EtaBackupRepository {
         val file = File(operation, "previous-media-index.jsonl")
         if (!file.exists() && !File(file.path + ".bak").exists()) return null
         return android.util.AtomicFile(file).openRead().use { input ->
-            scanMediaRecords(input.bufferedReader(Charsets.UTF_8).lineSequence(), keep = true).rows
+            // 回滚快照是本次导入前同一安装的行：缩略图文件名直接沿用，不要按「归档是否携带」置空。
+            scanMediaRecords(
+                input.bufferedReader(Charsets.UTF_8).lineSequence(),
+                keep = true,
+                localThumbs = true,
+            ).rows
         }
     }
 
@@ -1435,6 +1442,7 @@ internal object EtaBackupRepository {
     /**
      * 逐行解析 records.jsonl 并做行级校验（向量维度、sourceKey 唯一）。
      * 归档行的切片由 [meta] 统一给出；回滚快照行自带 modelId/vectorDim（[meta] 传 null）。
+     * [localThumbs] 供回滚快照使用：缩略图文件就在当前安装目录，文件名可原样沿用。
      */
     private fun scanMediaRecords(
         lines: Sequence<String>,
@@ -1442,6 +1450,7 @@ internal object EtaBackupRepository {
         meta: EtaBackupMediaIndex? = null,
         thumbRoot: File? = null,
         thumbNames: Set<String> = emptySet(),
+        localThumbs: Boolean = false,
     ): MediaRecordScan {
         val scan = MediaRecordScan()
         lines.forEach { line ->
@@ -1481,13 +1490,15 @@ internal object EtaBackupRepository {
                     width = record.width,
                     height = record.height,
                     frameTimeMs = record.frameTimeMs,
-                    thumbPath = record.thumbPath?.let { path ->
-                        if (thumbRoot == null) {
-                            path
-                        } else {
-                            // 缩略图随备份恢复到本机缓存目录：按归档里的原文件名重定位绝对路径。
-                            val name = File(path).name
-                            if (name in thumbNames) File(thumbRoot, name).absolutePath else null
+                    // 缩略图寻址：新格式只存文件名；旧备份里的绝对/相对路径在这里一并归一。
+                    // 归档没带缩略图、或该文件名不在归档里时置空，交给增量索引自愈重建，
+                    // **绝不保留旧安装的绝对路径**（重装/换机后必然失效）。
+                    // 回滚快照（localThumbs）例外：文件就在当前安装目录，文件名直接沿用。
+                    thumbPath = MediaThumbnailStore.fileNameOf(record.thumbPath)?.let { name ->
+                        when {
+                            localThumbs -> name
+                            thumbRoot == null || name !in thumbNames -> null
+                            else -> name
                         }
                     },
                     // 经 FloatArray 往返，保证入库的半精度向量可解码且编码归一。

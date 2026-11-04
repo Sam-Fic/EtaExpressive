@@ -12,6 +12,7 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import android.util.Xml
 import io.github.mangi.eta.data.db.MediaKind
 import java.io.ByteArrayOutputStream
@@ -39,6 +40,8 @@ internal object MediaExtraction {
     /** 缩略图最长边。 */
     const val MAX_THUMB_EDGE = 256
 
+    private const val TAG = "MediaExtraction"
+
     /** 单个视频最多抽取的帧数；逐帧嵌入后聚合成一个向量。 */
     const val MAX_VIDEO_FRAMES = 8
 
@@ -62,8 +65,6 @@ internal object MediaExtraction {
 
     /** 音频总时长硬预算：超长只取前 5 分钟，避免长音频拖垮索引。 */
     const val MAX_AUDIO_MS = 5 * 60 * 1_000L
-
-    private const val THUMB_DIRECTORY = "media-thumbs"
 
     /** DOCX 正文所在 zip 条目。 */
     private const val DOCX_DOCUMENT_ENTRY = "word/document.xml"
@@ -492,33 +493,73 @@ internal object MediaExtraction {
             digest.digest().joinToString("") { "%02x".format(it) }
         }.getOrNull()
 
-    /** 生成并缓存缩略图，返回缓存绝对路径；失败返回 null（不影响索引）。 */
+    /**
+     * 生成并缓存缩略图，返回**文件名**（寻址见 [MediaThumbnailStore]，库里不再存绝对路径）。
+     * 失败返回 null 且留日志（带 kind/mime/sourceKey），不影响该条目的索引。
+     */
     fun saveThumbnail(context: Context, candidate: MediaSourceScanner.Candidate): String? =
         runCatching {
+            // 音频/文档本来就没有缩略图，直接返回 null，不当作失败记日志。
+            if (candidate.kind != MediaKind.IMAGE && candidate.kind != MediaKind.VIDEO) {
+                return@runCatching null
+            }
             val bitmap = when (candidate.kind) {
                 MediaKind.IMAGE -> decodeSampled(context, candidate, MAX_THUMB_EDGE)
-                MediaKind.VIDEO -> {
-                    val retriever = MediaMetadataRetriever()
-                    try {
-                        setDataSource(retriever, context, candidate)
-                        retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST)
-                            ?.scaleToEdge(MAX_THUMB_EDGE)
-                    } finally {
-                        retriever.release()
-                    }
-                }
-                else -> null
-            } ?: return@runCatching null
+                else -> videoThumbnail(context, candidate)
+            } ?: run {
+                // 解码/取帧返回 null（文件损坏、格式不支持、无可用帧）也是失败分支，必须留证据。
+                Log.w(
+                    TAG,
+                    "缩略图生成失败（无可解码图像） source=${candidate.sourceKey} " +
+                        "kind=${candidate.kind.wire} mime=${candidate.mime}",
+                )
+                return@runCatching null
+            }
             val bytes = bitmap.toJpeg(75)
             bitmap.recycle()
-            val dir = File(context.cacheDir, THUMB_DIRECTORY).apply { mkdirs() }
-            val name = MessageDigest.getInstance("SHA-1")
-                .digest(candidate.sourceKey.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
-            val file = File(dir, "$name.jpg")
-            file.writeBytes(bytes)
-            file.absolutePath
+            MediaThumbnailStore.write(context, candidate.sourceKey, bytes)
+        }.onFailure { failure ->
+            Log.w(
+                TAG,
+                "缩略图生成失败 source=${candidate.sourceKey} kind=${candidate.kind.wire} " +
+                    "mime=${candidate.mime} type=${failure.javaClass.simpleName}",
+            )
         }.getOrNull()
+
+    /**
+     * 视频缩略图取帧：固定 1 秒在时长 <1s 的视频上必然越界，会出现「有向量无缩略图」。
+     * 改为 `min(1s, duration/2)`，再依次回退首帧、均匀抽帧的首个时刻。
+     */
+    private fun videoThumbnail(
+        context: Context,
+        candidate: MediaSourceScanner.Candidate,
+    ): Bitmap? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            setDataSource(retriever, context, candidate)
+            val durationMs = candidate.durationMs
+                ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            val preferredUs = durationMs
+                ?.takeIf { it > 0 }
+                ?.let { minOf(1_000L, it / 2) * 1_000 }
+                ?: 1_000_000L
+            val frame = retriever.getFrameAtTime(preferredUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                ?: retriever.getFrameAtTime(0)
+                ?: durationMs?.takeIf { it > 0 }?.let { duration ->
+                    frameTimestamps(duration).firstOrNull()?.let { retriever.getFrameAtTime(it * 1_000) }
+                }
+            frame?.scaleToEdge(MAX_THUMB_EDGE)
+        } catch (failure: Throwable) {
+            Log.w(
+                TAG,
+                "视频缩略图取帧失败 source=${candidate.sourceKey} mime=${candidate.mime} " +
+                    "type=${failure.javaClass.simpleName}",
+            )
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
 
     private fun decodeSampled(
         context: Context,

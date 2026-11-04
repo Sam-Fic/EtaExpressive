@@ -10,7 +10,6 @@ import io.github.mangi.eta.data.db.EtaDatabase
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -781,8 +780,6 @@ internal object MediaFileOps {
 
     // ---------------------------------------------------------------- 索引同步
 
-    private const val THUMB_DIRECTORY = "media-thumbs"
-
     /**
      * 移动成功后的索引清理：删旧 source_key 的索引行 + 缩略图缓存。
      * 不原地改 source_key：目标位置可能不在扫描范围内，且 MediaStore uri / 绝对路径两种形态
@@ -794,13 +791,8 @@ internal object MediaFileOps {
         deleteThumbnail(context, sourceKey)
     }
 
-    /** 与 [MediaExtraction.saveThumbnail] 相同的命名：`media-thumbs/SHA1(sourceKey).jpg`。 */
+    /** 缩略图寻址统一交给 [MediaThumbnailStore]：库里存文件名，目录在持久区。 */
     private fun deleteThumbnail(context: Context, sourceKey: String) {
-        runCatching {
-            val name = MessageDigest.getInstance("SHA-1")
-                .digest(sourceKey.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
-            File(File(context.cacheDir, THUMB_DIRECTORY), "$name.jpg").delete()
-        }
+        MediaThumbnailStore.deleteForSourceKey(context, sourceKey, null)
     }
 }

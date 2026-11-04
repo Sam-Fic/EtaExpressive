@@ -159,7 +159,11 @@ internal class AgentMediaSearchTools(private val context: Context) {
                     .put("indexed", progress.indexed)
                     .put("skipped", progress.skipped)
                     .put("failed", progress.failed)
-                    .put("removed", progress.removed),
+                    .put("removed", progress.removed)
+                    // 缩略图自愈：repair 是"向量未变、仅重建缩略图"（不重新嵌入）；
+                    // thumb_failed 是缩略图生成失败数，不影响条目本身的索引状态。
+                    .put("thumb_repaired", progress.thumbRepaired)
+                    .put("thumb_failed", progress.thumbFailed),
             )
             .toString()
     }

@@ -7,6 +7,7 @@ import io.github.mangi.eta.agent.delegation.ConversationSubAgentPreferences
 import io.github.mangi.eta.agent.media.index.Float16VectorCodec
 import io.github.mangi.eta.agent.media.index.MediaIndexTestFixtures
 import io.github.mangi.eta.agent.media.index.MediaSourceScanner
+import io.github.mangi.eta.agent.media.index.MediaThumbnailStore
 import io.github.mangi.eta.agent.runtime.AgentExecutionService
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.data.datastore.SettingsDataStore
@@ -76,6 +77,8 @@ class EtaBackupMediaIndexTest {
         MediaIndexTestFixtures.installFakeModel(context)
         // 候选集（重关联扫描）与导出内容必须完全由本用例构造。
         MediaIndexTestFixtures.workspaceDir(context).deleteRecursively()
+        // 缩略图目录已迁到持久区；旧的 cacheDir 目录一并清掉，避免跨用例残留。
+        MediaThumbnailStore.directory(context).deleteRecursively()
         File(context.cacheDir, "media-thumbs").deleteRecursively()
     }
 
@@ -273,8 +276,8 @@ class EtaBackupMediaIndexTest {
 
     @Test
     fun exportThenImportRoundTripsEveryFieldAndHalfPrecisionVectors() = runBlocking {
-        val thumb = File(File(context.cacheDir, "media-thumbs"), "thumb-backup.jpg")
-            .apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        val thumb = File(MediaThumbnailStore.directory(context), "thumb-backup.jpg")
+            .apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
         val fullVector = halfExactVector()
         val full = MediaIndexTestFixtures.entity(
             sourceKey = "content://media/external/images/media/42",
@@ -294,7 +297,8 @@ class EtaBackupMediaIndexTest {
             sizeBytes = 8_192L,
             modifiedAt = 1_700_000_000_500L,
             contentHash = "b".repeat(64),
-            thumbPath = thumb.absolutePath,
+            // 新格式存文件名：导入后按当前安装目录重新拼接。
+            thumbPath = thumb.name,
             indexedAt = 1_700_000_000_501L,
         )
         dao().upsertAll(listOf(full, video))
@@ -349,6 +353,32 @@ class EtaBackupMediaIndexTest {
         assertRowsEqual(sortedRows(listOf(full, video)), sortedRows(dao().all()))
         val restoredFull = dao().findBySourceKey(full.sourceKey).single()
         assertTrue(Float16VectorCodec.decode(restoredFull.vector).contentEquals(fullVector))
+    }
+
+    @Test
+    fun importNormalizesLegacyAbsoluteThumbPathsAndDropsThumbsMissingFromArchive() = runBlocking {
+        val legacyName = "legacy-thumb.jpg"
+        val bytes = archive(
+            mediaDocument(count = 2),
+            listOf(
+                // 旧备份存绝对路径（Android cacheDir 形态）：导入时必须归一成文件名。
+                recordLine(
+                    "/a.png", MediaIndexTestFixtures.axisVector(768, 1),
+                    thumbPath = "/data/user/0/io.github.mangi.eta/cache/media-thumbs/$legacyName",
+                ),
+                // Windows 反斜杠路径，且归档里没有这个文件：置空交给增量索引重建。
+                recordLine(
+                    "/b.png", MediaIndexTestFixtures.axisVector(768, 2),
+                    thumbPath = "C:\\Users\\me\\AppData\\Local\\Temp\\windows-thumb.jpg",
+                ),
+            ),
+            extra = listOf(EtaBackupMediaIndex.THUMBS_PREFIX + legacyName to byteArrayOf(1, 2, 3)),
+        )
+        EtaBackupRepository.import(context, ByteArrayInputStream(bytes))
+
+        val rows = dao().all().associateBy { it.sourceKey }
+        assertEquals(legacyName, requireNotNull(rows["/a.png"]).thumbPath)
+        assertNull("归档未携带的缩略图应置空，交给重建", requireNotNull(rows["/b.png"]).thumbPath)
     }
 
     @Test

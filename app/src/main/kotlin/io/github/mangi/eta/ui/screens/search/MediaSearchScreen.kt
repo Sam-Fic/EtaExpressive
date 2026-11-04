@@ -2,9 +2,12 @@ package io.github.mangi.eta.ui.screens.search
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
+import android.util.LruCache
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,8 +51,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +71,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -80,6 +85,7 @@ import io.github.mangi.eta.agent.media.index.MediaFileOps
 import io.github.mangi.eta.agent.media.index.MediaFileOps.MediaDir
 import io.github.mangi.eta.agent.media.index.MediaFileOps.MediaTarget
 import io.github.mangi.eta.agent.media.index.MediaSearchService
+import io.github.mangi.eta.agent.media.index.MediaThumbnailStore
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.MediaKind
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
@@ -111,7 +117,6 @@ import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.navigation.AppRoute
 import java.io.File
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -120,6 +125,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /** 查询历史分域键：媒体搜索历史独立存储（与设置 / 助手 / 供应商 / 消息搜索互不干扰）。 */
@@ -1051,7 +1058,11 @@ private fun MediaThresholdSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        // 官方新版面板状态：只允许 Hidden / Expanded 两态，等价于旧的 skipPartiallyExpanded。
+        sheetState = rememberBottomSheetState(
+            initialValue = SheetValue.Hidden,
+            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+        ),
     ) {
         MediaThresholdRow(
             minScore = minScore,
@@ -1247,33 +1258,75 @@ private fun hitSummary(context: Context, hit: MediaSearchService.Hit): String {
     return parts.joinToString(" · ")
 }
 
-/** 结果行缩略图：thumbPath 有值用缩略图，否则按 kind 图标占位。 */
+/** 结果行缩略图宽度（与设置页行首图标一致）。 */
+private const val THUMB_DP = 48
+/** 原图回退解码的目标边长（px 按 density 换算，只用于行内小图）。 */
+private const val FALLBACK_THUMB_DP = 96
+private const val THUMB_LOG_TAG = "MediaSearchThumb"
+/** 原图回退解码的并发上限：避免快速滚动时几十张原图同时解码把内存打满。 */
+private val ThumbnailDecodePermits = Semaphore(3)
+/** 原图回退的进程内 LRU（只缓存行内小图，约 8MB）。 */
+private val ThumbnailBitmapCache = object : LruCache<String, ImageBitmap>(8 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
+}
+
+/** 缩略图状态：可显示 / 不可用（不可用时按 kind 与「本来就没有」区分底色，见 [HitThumbnail]）。 */
+private sealed interface ThumbState {
+    data object Loading : ThumbState
+    data class Ready(val bitmap: ImageBitmap) : ThumbState
+    data object Missing : ThumbState
+}
+
+/**
+ * 结果行缩略图。
+ *
+ * 1. 索引里的缩略图只存文件名（[MediaThumbnailStore] 解析到当前安装目录），按目标像素采样解码；
+ * 2. 缺失或解码失败时，对图片按原始 contentUri/路径在 IO 线程解一张 `96dp` 小图（带并发上限与 LRU）；
+ * 3. 仍不可用时：**图片/视频**用错误色底 + error 图标（这是"加载失败/索引缺图"），
+ *    音频/文档用中性底色 + 常规图标（它们本来就没有缩略图）。
+ */
 @Composable
 private fun HitThumbnail(hit: MediaSearchService.Hit) {
-    val thumbPath = hit.thumbPath
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, thumbPath) {
-        value = thumbPath?.let { path ->
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = 2 })
-                        ?.asImageBitmap()
-                }.getOrNull()
-            }
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val targetPx = with(density) { THUMB_DP.dp.roundToPx() }
+    val fallbackPx = with(density) { FALLBACK_THUMB_DP.dp.roundToPx() }
+    val state by produceState<ThumbState>(
+        initialValue = ThumbState.Loading,
+        key1 = hit.sourceKey,
+        key2 = hit.thumbPath,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            loadThumbnail(context, hit, targetPx, fallbackPx)
         }
     }
+    val colors = MaterialTheme.colorScheme
+    val isMediaKind = hit.kind == MediaKind.IMAGE || hit.kind == MediaKind.VIDEO
+    val ready = state as? ThumbState.Ready
+    // 只有"确实拿不到"才用错误色；加载中保持中性，避免快速滚动时红块闪烁。
+    // 空串是 LRU 主动淘汰的哨兵（不是失败，等下次索引/内容变更才重建），用中性占位。
+    val missingMedia = isMediaKind && state is ThumbState.Missing &&
+        hit.thumbPath != MediaThumbnailStore.EVICTED
     Box(
         modifier = Modifier
             // 右侧留 8dp：与设置主页行首图标的间距一致，标题起点对齐。
             .padding(end = 8.dp)
-            .size(48.dp)
+            .size(THUMB_DP.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            .background(
+                when {
+                    ready != null -> colors.surfaceContainerHighest
+                    // 媒体类缺图/解码失败与「本来没有缩略图」用不同底色区分；
+                    // 加载中保持中性，避免快速滚动时红块闪烁。
+                    missingMedia -> colors.errorContainer
+                    else -> colors.surfaceContainerHighest
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        val image = bitmap
-        if (image != null) {
+        if (ready != null) {
             Image(
-                bitmap = image,
+                bitmap = ready.bitmap,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -1287,10 +1340,90 @@ private fun HitThumbnail(hit: MediaSearchService.Hit) {
                     MediaKind.DOCUMENT -> Icons.Rounded.Description
                 },
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (missingMedia) colors.error else colors.onSurfaceVariant,
             )
         }
     }
+}
+
+/** 缩略图加载：缓存文件优先，图片再回退原图；全程 IO 线程。 */
+private suspend fun loadThumbnail(
+    context: Context,
+    hit: MediaSearchService.Hit,
+    targetPx: Int,
+    fallbackPx: Int,
+): ThumbState {
+    val cached = MediaThumbnailStore.fileFor(context, hit.thumbPath)
+    if (cached != null && cached.isFile && cached.length() > 0) {
+        decodeFileSampled(cached, targetPx)?.let { return ThumbState.Ready(it) }
+        // 文件在但解不出来（截断/损坏）：留证据，随后走原图回退。
+        Log.w(THUMB_LOG_TAG, "缩略图解码失败 source=${hit.sourceKey} kind=${hit.kind.wire}")
+    }
+    if (hit.kind != MediaKind.IMAGE) {
+        // 视频/音频没有原图可解；缺缩略图就是缺（视频取帧成本不适合在列表里做）。
+        return ThumbState.Missing
+    }
+    val key = "fallback:${hit.sourceKey}"
+    ThumbnailBitmapCache.get(key)?.let { return ThumbState.Ready(it) }
+    return ThumbnailDecodePermits.withPermit {
+        ThumbnailBitmapCache.get(key)?.let { return@withPermit ThumbState.Ready(it) }
+        val bitmap = runCatching { decodeOriginal(context, hit, fallbackPx) }
+            .onFailure { failure ->
+                Log.w(
+                    THUMB_LOG_TAG,
+                    "原图回退解码失败 source=${hit.sourceKey} mime=${hit.mime} " +
+                        "type=${failure.javaClass.simpleName}",
+                )
+            }.getOrNull()
+        if (bitmap == null) {
+            Log.w(THUMB_LOG_TAG, "缩略图与回退均不可用 source=${hit.sourceKey} kind=${hit.kind.wire}")
+            ThumbState.Missing
+        } else {
+            ThumbnailBitmapCache.put(key, bitmap)
+            ThumbState.Ready(bitmap)
+        }
+    }
+}
+
+/** 采样解码到不小于目标边长的最小 2 的幂，修正原先固定 `inSampleSize = 2` 导致的糊。 */
+private fun decodeFileSampled(file: File, targetPx: Int): ImageBitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+    val options = BitmapFactory.Options().apply { inSampleSize = sampleSizeFor(bounds, targetPx) }
+    BitmapFactory.decodeFile(file.absolutePath, options)?.asImageBitmap()
+}.getOrNull()
+
+@Suppress("SameParameterValue")
+private fun decodeOriginal(context: Context, hit: MediaSearchService.Hit, targetPx: Int): ImageBitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    decodeHit(context, hit, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sampleSizeFor(bounds, targetPx)
+        inPreferredConfig = Bitmap.Config.RGB_565
+    }
+    return decodeHit(context, hit, options)?.asImageBitmap()
+}
+
+private fun decodeHit(
+    context: Context,
+    hit: MediaSearchService.Hit,
+    options: BitmapFactory.Options,
+): Bitmap? = runCatching {
+    val uri = hit.contentUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
+    if (uri != null) {
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+    } else {
+        hit.path?.takeIf { it.isNotBlank() }?.let { BitmapFactory.decodeFile(it, options) }
+    }
+}.getOrNull()
+
+private fun sampleSizeFor(bounds: BitmapFactory.Options, targetPx: Int): Int {
+    var sample = 1
+    val longest = maxOf(bounds.outWidth, bounds.outHeight)
+    while (longest / (sample * 2) >= targetPx) sample *= 2
+    return sample
 }
 
 /**
@@ -1404,15 +1537,10 @@ private fun directoryLabel(context: Context, dir: MediaDir): String {
 }
 
 /**
- * 删缩略图缓存（源文件不受影响）：优先删索引行上的 thumbPath，
- * 兜底删 `media-thumbs/SHA1(sourceKey).jpg`（命名见 MediaExtraction.saveThumbnail）。
+ * 删缩略图（源文件不受影响）：索引里存的是文件名，统一交给 [MediaThumbnailStore] 解析与删除。
  */
 private fun deleteThumbnail(context: Context, hit: MediaSearchService.Hit) {
-    runCatching { hit.thumbPath?.let { File(it).delete() } }
-    val name = MessageDigest.getInstance("SHA-1")
-        .digest(hit.sourceKey.toByteArray(Charsets.UTF_8))
-        .joinToString("") { "%02x".format(it) }
-    runCatching { File(File(context.cacheDir, "media-thumbs"), "$name.jpg").delete() }
+    MediaThumbnailStore.deleteForSourceKey(context, hit.sourceKey, hit.thumbPath)
 }
 
 /**

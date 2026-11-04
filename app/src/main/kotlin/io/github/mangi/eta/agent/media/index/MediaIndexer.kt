@@ -32,6 +32,9 @@ internal object MediaIndexer {
         val failed: Int = 0,
         // 清理数（消失条目）收尾才确定：写回进度快照，供 UI/工具与 [Result.removed] 同源展示。
         val removed: Int = 0,
+        // 缩略图自愈：本轮重建成功/失败的数量（失败只影响缩略图，不影响条目本身的索引状态）。
+        val thumbRepaired: Int = 0,
+        val thumbFailed: Int = 0,
         val running: Boolean = false,
     )
 
@@ -40,6 +43,8 @@ internal object MediaIndexer {
         val skipped: Int,
         val failed: Int,
         val removed: Int,
+        val thumbRepaired: Int = 0,
+        val thumbFailed: Int = 0,
     )
 
     private val mutable = MutableStateFlow(Progress())
@@ -76,6 +81,8 @@ internal object MediaIndexer {
     private suspend fun runIndex(app: Context, mode: IndexMode): Result {
         // 模型未就绪直接失败，避免索引出无向量的空行。
         checkNotNull(EmbeddingModelStore.modelFile(app)) { "嵌入模型尚未下载或校验未通过" }
+        // 缩略图寻址迁移（旧 cacheDir 绝对路径 → 持久目录 + 文件名）先跑完，避免旧值被当成有效路径。
+        MediaThumbnailStore.ensureMigrated(app)
         // 档位参数（批大小/节流/抽取预算）本轮固定：中途切档下一轮才生效。
         val profile = IndexModeProfile.forMode(mode)
         val model = EmbeddingModelStore.state.value.model
@@ -88,6 +95,13 @@ internal object MediaIndexer {
         var indexed = 0
         var skipped = 0
         var failed = 0
+        var thumbRepaired = 0
+        var thumbFailed = 0
+        // 自愈分支的失败单独计数：这些条目已计入 skipped 之外的处理量，需并进 processed；
+        // 嵌入路径的 thumbFailed 已包含在 indexed 里，不能重复计入 processed。
+        var repairFailed = 0
+        // 单轮缩略图重建上限：低耗档下避免一次性重解整库缩略图，把恢复摊到后续轮次。
+        var repairAttempts = 0
 
         // 先统计总量，便于进度展示；统计失败不影响索引。
         val perSource = sources.associateWith { runCatching { MediaSourceScanner.scan(app, it) }.getOrDefault(emptyList()) }
@@ -100,7 +114,30 @@ internal object MediaIndexer {
                 seen += candidate.sourceKey
                 val old = existing[candidate.sourceKey]
                 if (old != null && old.sizeBytes == candidate.sizeBytes && old.modifiedAt == candidate.modifiedAt) {
-                    skipped++
+                    // 缩略图自愈：(size, mtime) 未变但缩略图不可用（系统清缓存/换机恢复/迁移后文件丢失/LRU 淘汰），
+                    // 就地重建并复用原向量，**不重新嵌入**。单轮有上限 [MediaThumbnailStore.MAX_REPAIRS_PER_RUN]
+                    // 并按档位节流，避免低耗档被大量缺失条目拖成全量重扫；音频/文档本就无缩略图，不重建。
+                    val stored = old.thumbPath
+                    // 只有图片/视频有缩略图；音频/文档本来就"没有"，不在这里重建。
+                    val supportsThumb = candidate.kind == MediaKind.IMAGE || candidate.kind == MediaKind.VIDEO
+                    val needsRepair = supportsThumb && !MediaThumbnailStore.isUsable(app, stored)
+                    when {
+                        !needsRepair -> skipped++
+                        repairAttempts >= MediaThumbnailStore.MAX_REPAIRS_PER_RUN -> skipped++
+                        else -> {
+                            repairAttempts++
+                            val name = MediaExtraction.saveThumbnail(app, candidate)
+                            if (name != null) {
+                                // 只更新缩略图列，向量原样复用；走同一批提交，收尾统一落库。
+                                pending += old.copy(thumbPath = name)
+                                thumbRepaired++
+                            } else {
+                                thumbFailed++
+                                repairFailed++
+                            }
+                            if (profile.throttleDelayMs > 0) delay(profile.throttleDelayMs)
+                        }
+                    }
                 } else {
                     // 单条嵌入失败（引擎异常/格式不支持）只计 failed，不中断整轮索引，
                     // 也不丢已累积待提交的批次；取消信号照常上抛。
@@ -114,6 +151,12 @@ internal object MediaIndexer {
                     if (entity == null) {
                         failed++
                     } else {
+                        // 图片/视频缺缩略图（生成失败）单独计数：条目本身仍已索引，不影响向量检索。
+                        if ((candidate.kind == MediaKind.IMAGE || candidate.kind == MediaKind.VIDEO) &&
+                            entity.thumbPath == null
+                        ) {
+                            thumbFailed++
+                        }
                         pending += entity
                         indexed++
                         if (pending.size >= profile.batchSize) {
@@ -129,24 +172,38 @@ internal object MediaIndexer {
                 }
                 mutable.value = Progress(
                     phase = "indexing",
-                    processed = indexed + skipped + failed,
+                    processed = indexed + skipped + failed + thumbRepaired + repairFailed,
                     total = total,
                     indexed = indexed,
                     skipped = skipped,
                     failed = failed,
+                    thumbRepaired = thumbRepaired,
+                    thumbFailed = thumbFailed,
                     running = true,
                 )
             }
             dao.updateSourceScan(source.id, candidates.size, System.currentTimeMillis())
         }
 
-        // 已消失的媒体：删除其向量行与缩略图缓存。
+        // 已消失的媒体：删除其向量行与缩略图（按文件名寻址，删不到也只是孤儿，由 LRU 兜底）。
         val stale = existing.keys - seen
-        stale.forEach { key -> existing[key]?.thumbPath?.let { runCatching { java.io.File(it).delete() } } }
+        stale.forEach { key ->
+            val stored = existing[key]?.thumbPath
+            MediaThumbnailStore.deleteForSourceKey(app, key, stored)
+        }
         dao.commitIndex(pending.toList(), stale.toList())
+        // 收尾做容量回收（超上限才真正动作），并同步把被淘汰行的缩略图标记为哨兵。
+        runCatching { MediaThumbnailStore.trim(app) }
         // 收尾把清理数写回进度快照，「清理」统计与下面的 Result 同源。
         mutable.value = mutable.value.copy(removed = stale.size)
-        return Result(indexed = indexed, skipped = skipped, failed = failed, removed = stale.size)
+        return Result(
+            indexed = indexed,
+            skipped = skipped,
+            failed = failed,
+            removed = stale.size,
+            thumbRepaired = thumbRepaired,
+            thumbFailed = thumbFailed,
+        )
     }
 
     private suspend fun embedCandidate(

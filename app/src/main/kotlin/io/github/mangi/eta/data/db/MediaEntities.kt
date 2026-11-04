@@ -68,3 +68,14 @@ internal data class MediaSourceEntity(
     @ColumnInfo(name = "last_scan_at") val lastScanAt: Long? = null,
     @ColumnInfo(name = "item_count") val itemCount: Int = 0,
 )
+
+/**
+ * 缩略图寻址迁移/清理用的轻量投影：只取定位与缩略图列，避免把向量 BLOB 读进内存。
+ * 注意 `thumb_path` 存的是**文件名**（见 MediaThumbnailStore），旧版绝对路径由迁移归一。
+ */
+internal data class MediaThumbRef(
+    @ColumnInfo(name = "source_key") val sourceKey: String,
+    @ColumnInfo(name = "model_id") val modelId: String,
+    @ColumnInfo(name = "vector_dim") val vectorDim: Int,
+    @ColumnInfo(name = "thumb_path") val thumbPath: String?,
+)

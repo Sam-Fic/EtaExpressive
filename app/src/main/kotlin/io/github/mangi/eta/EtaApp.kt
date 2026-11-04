@@ -132,6 +132,8 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
         // 媒体语义索引自动更新：完整运行时初始化之后再跑（启动开关 + 重排定时闹钟）。
         applicationScope.launch {
             runCatching {
+                // 先把旧的 cacheDir 缩略图搬到持久目录并归一寻址，避免自动索引先把旧路径当成可用值。
+                io.github.mangi.eta.agent.media.index.MediaThumbnailStore.ensureMigrated(this@EtaApp)
                 io.github.mangi.eta.agent.media.index.MediaIndexAutoUpdate.onAppLaunch(this@EtaApp)
             }
         }
