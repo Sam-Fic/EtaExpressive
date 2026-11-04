@@ -47,6 +47,7 @@ import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaNoticeBlockPadding
 import io.github.mangi.eta.ui.adaptive.EtaNoticeText
@@ -556,6 +557,8 @@ internal fun DecisionModelSettingsScreen(
                             )
                         },
                         enabled = controlsEnabled && modelReady && !connectivityRunning,
+                        // 瞬时动作：不进入子页、也不弹窗，尾槽不带导航箭头。
+                        showChevron = false,
                         onClick = {
                             connectivityRunning = true
                             connectivityDetailsExpanded = false
@@ -602,6 +605,7 @@ internal fun DecisionModelSettingsScreen(
                         )
                     }
                     item(key = "connectivity_details_toggle") {
+                        // 展开行走 EtaExpandChevron：收起朝右、展开旋转 90° 朝下（见 EtaChevrons.kt）。
                         EtaClickableRow(
                             title = stringResource(
                                 if (connectivityDetailsExpanded) {
@@ -610,8 +614,12 @@ internal fun DecisionModelSettingsScreen(
                                     R.string.decision_model_connectivity_details_show
                                 },
                             ),
-                            showChevron = true,
+                            showChevron = false,
+                            holdDownState = connectivityDetailsExpanded,
                             onClick = { connectivityDetailsExpanded = !connectivityDetailsExpanded },
+                            endActions = {
+                                EtaExpandChevron(expanded = connectivityDetailsExpanded)
+                            },
                         )
                     }
                     item(key = "connectivity_details", visible = connectivityDetailsExpanded) {
@@ -792,11 +800,16 @@ internal fun DecisionModelSettingsScreen(
                         summary = diagnosticsSummary
                             ?: stringResource(R.string.decision_model_diagnostics_empty),
                         leading = { PreferenceIcon(icon = Icons.Rounded.Memory) },
-                        showChevron = true,
+                        // 展开行：箭头随展开态旋转 90°（同「查看详情」）。
+                        showChevron = false,
+                        holdDownState = diagnosticsExpanded,
                         modifier = Modifier.semantics {
                             stateDescription = if (diagnosticsExpanded) expandedText else collapsedText
                         },
                         onClick = { diagnosticsExpanded = !diagnosticsExpanded },
+                        endActions = {
+                            EtaExpandChevron(expanded = diagnosticsExpanded)
+                        },
                     )
                 }
                 item(key = "diagnostics_body", visible = diagnosticsExpanded) {
