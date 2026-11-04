@@ -26,9 +26,7 @@ import androidx.compose.material.icons.rounded.Contacts
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.ContentPasteGo
 import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.FindReplace
 import androidx.compose.material.icons.rounded.FlashlightOn
@@ -38,7 +36,6 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Inventory2
-import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.KeyboardCommandKey
 import androidx.compose.material.icons.rounded.Language
@@ -48,13 +45,14 @@ import androidx.compose.material.icons.rounded.ManageAccounts
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MonitorHeart
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.ScreenshotMonitor
 import androidx.compose.material.icons.rounded.Search
@@ -63,11 +61,13 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.SmartToy
+import androidx.compose.material.icons.rounded.Sms
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.WebAsset
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Wifi
@@ -244,12 +244,13 @@ internal object ToolPresentation {
         "start_virtual_session", "keep_virtual_result", "finish_virtual_session", "inspect_virtual_backend" -> Icons.Rounded.ScreenshotMonitor
         // present_to_user：把虚拟屏内容呈现回物理主屏（收银台/安全窗口临门一脚）。
         "present_to_user" -> Icons.Rounded.ScreenshotMonitor
-        "observe" -> Icons.Rounded.DocumentScanner
-        "observe_screen" -> Icons.Rounded.DocumentScanner
+        // 屏幕观察族：眼睛语义，区别于虚拟屏（ScreenshotMonitor）的「屏幕搬运」。
+        "observe" -> Icons.Rounded.Visibility
+        "observe_screen" -> Icons.Rounded.Visibility
         "click" -> Icons.Rounded.AdsClick
         "tap" -> Icons.Rounded.AdsClick
         "tap_element" -> Icons.Rounded.AdsClick
-        "tap_area" -> Icons.Rounded.MyLocation
+        "tap_area" -> Icons.Rounded.AdsClick
         "long_press" -> Icons.Rounded.TouchApp
         "long_press_element" -> Icons.Rounded.TouchApp
         "swipe" -> Icons.Rounded.OpenWith
@@ -287,6 +288,7 @@ internal object ToolPresentation {
         "get_task_result" -> SubAgents
         "cancel_task" -> SubAgents
         "continue_task", "manage_agent_workspace" -> SubAgents
+        "supervise_task" -> SubAgents
         "memory_get" -> Icons.Rounded.Psychology
         "memory_write" -> Icons.Rounded.Psychology
         "conversations_list", "conversation_history", "conversation_status" -> Icons.Rounded.History
@@ -314,7 +316,7 @@ internal object ToolPresentation {
         "set_ringer_mode" -> Icons.AutoMirrored.Rounded.VolumeUp
         "set_do_not_disturb" -> Icons.Rounded.Notifications
         "set_brightness" -> Icons.Rounded.Tune
-        "screen_action" -> Icons.Rounded.Bolt
+        "screen_action" -> Icons.Rounded.PowerSettingsNew
         "list_installed_apps" -> Icons.Rounded.Apps
         "inspect_app" -> Icons.Rounded.Info
         "manage_app" -> Icons.Rounded.Apps
@@ -339,7 +341,7 @@ internal object ToolPresentation {
         "device_actions" -> Icons.Rounded.Bolt
         "top_memory_apps" -> Icons.Rounded.Layers
         "top_storage_apps" -> Icons.Rounded.Layers
-        "read_sms_code" -> Icons.Rounded.Key
+        "read_sms_code" -> Icons.Rounded.Sms
         "recent_notifications" -> Icons.Rounded.Notifications
         "search_notification_history" -> Icons.Rounded.Notifications
         "get_setting" -> Icons.Rounded.Settings
@@ -352,9 +354,10 @@ internal object ToolPresentation {
         "search_calendar_events" -> Icons.Rounded.CalendarMonth
         "search_contacts" -> Icons.Rounded.Contacts
         "search_call_history" -> Icons.Rounded.Phone
-        "ask_user", "search_messages" -> Icons.Rounded.ChatBubble
+        "ask_user" -> Icons.Rounded.ChatBubble
+        "search_messages" -> Icons.Rounded.Sms
         "search_media", "search_qq_chat_images", "search_wechat_chat_images" -> Icons.Rounded.Image
-        "semantic_search_media" -> Icons.Rounded.TravelExplore
+        "semantic_search_media" -> Icons.Rounded.Image
         "search_audio" -> Icons.Rounded.MusicNote
         "search_recordings", "search_coloros_recordings", "search_recording_summaries" -> Icons.Rounded.Mic
         "search_files" -> Icons.Rounded.FolderOpen
@@ -365,9 +368,9 @@ internal object ToolPresentation {
         "search_coloros_memories" -> Icons.Rounded.Psychology
         "search_personal_orders" -> Icons.Rounded.ShoppingBag
         "search_bills", "summarize_bills" -> Icons.Rounded.ShoppingBag
-        "search_todos" -> Icons.Rounded.EditNote
+        "search_todos" -> Icons.AutoMirrored.Rounded.StickyNote2
         "search_calendar_todos" -> Icons.Rounded.CalendarMonth
-        "search_memory_collections" -> Icons.Rounded.Layers
+        "search_memory_collections" -> Icons.Rounded.Psychology
         "search_daily_events" -> Icons.Rounded.History
         "search_flights", "search_trains" -> Icons.Rounded.TravelExplore
         "search_hotels" -> Icons.Rounded.Inventory2
@@ -376,12 +379,14 @@ internal object ToolPresentation {
         "terminal_job" -> Icons.Rounded.Terminal
         "run_command" -> Icons.Rounded.Terminal
         "read_file" -> Icons.Rounded.Description
-        "write_file" -> Icons.Rounded.EditNote
+        "write_file" -> Icons.Rounded.Save
         "list_directory" -> Icons.Rounded.FolderOpen
-        "stat_file" -> Icons.Rounded.Info
+        "stat_file" -> Icons.Rounded.Description
         "edit_file" -> Icons.Rounded.FindReplace
         "glob_files" -> Icons.Rounded.FolderOpen
         "grep_files" -> Icons.Rounded.Search
+        "read_compacted_history" -> Icons.Rounded.History
+        "tools_search" -> Icons.Rounded.Search
         "eta_get_settings" -> Icons.Rounded.Tune
         "eta_set_settings" -> Icons.Rounded.ManageAccounts
         "eta_manage_models" -> Icons.Rounded.SmartToy
@@ -390,7 +395,7 @@ internal object ToolPresentation {
         "eta_configure_mcp" -> Icons.Rounded.Extension
         AgentToolGroupCatalog.USE_GROUP -> Icons.Rounded.Widgets
         "eta_author_tool" -> Icons.Rounded.AutoFixHigh
-        "eta_list_recipes" -> Icons.Rounded.Inventory2
+        "eta_list_recipes" -> Icons.Rounded.AutoFixHigh
         "skills_list", "skills_list_curated" -> Icons.AutoMirrored.Rounded.MenuBook
         "skills_read", "skills_read_resource" -> Icons.Rounded.Description
         "skills_inspect_github" -> Icons.Rounded.Code

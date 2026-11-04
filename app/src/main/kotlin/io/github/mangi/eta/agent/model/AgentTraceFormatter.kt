@@ -3,6 +3,7 @@ package io.github.mangi.eta.agent.model
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.runtime.AgentAppContext
 import io.github.mangi.eta.agent.runtime.localizedText
+import io.github.mangi.eta.agent.tool.ToolPresentation
 import java.net.URI
 import java.util.Locale
 import org.json.JSONArray
@@ -44,7 +45,7 @@ internal class AgentTraceFormatter(
             "get_clipboard" -> localizedText(R.string.trace_action_get_clipboard, "读取剪贴板")
             "search_apps" -> summarizeQueryArguments(localizedText(R.string.trace_action_search_apps, "搜索应用"), toolCall.argumentsJson)
             "inspect_app" -> localizedText(R.string.tool_inspect_app, "应用详情")
-            "launch_app" -> localizedText(R.string.trace_action_launch_app, "打开应用")
+            "launch_app" -> summarizeLaunchAppArguments(toolCall.argumentsJson)
             "get_current_context" -> localizedText(R.string.trace_action_context, "读取当前上下文")
             "observe_screen" -> summarizeObservationArguments(toolCall.argumentsJson)
             "tap" -> summarizePointArguments(localizedText(R.string.trace_action_tap, "点击屏幕"), toolCall.argumentsJson)
@@ -61,6 +62,15 @@ internal class AgentTraceFormatter(
             "wait_for_text" -> localizedText(R.string.trace_action_wait_text, "等待文本出现")
             "wait_for_package" -> localizedText(R.string.trace_action_wait_package, "等待应用就绪")
             "open_system_panel" -> localizedText(R.string.trace_action_panel, "打开系统面板")
+            // 语音、虚拟屏与压缩归档：这些工具此前没有摘要分支，折叠态会落到「准备执行」。
+            "text_to_speech" -> "朗读文本"
+            "present_to_user" -> "呈现到主屏"
+            "start_virtual_session" -> "启动虚拟屏"
+            "keep_virtual_result" -> "保留虚拟屏结果"
+            "finish_virtual_session" -> "结束虚拟屏"
+            "inspect_virtual_backend" -> "检查虚拟屏状态"
+            "read_compacted_history" -> "读取压缩历史"
+            "tools_search" -> summarizeQueryArguments("搜索工具", toolCall.argumentsJson)
             "read_image" -> localizedText(R.string.trace_action_read_image, "查看图片或视频")
             "delegate_task" -> localizedText(R.string.trace_action_delegate, "委派子代理任务")
             "manage_agent_workspace" -> localizedText(R.string.trace_action_workspace, "管理任务工作区")
@@ -75,18 +85,17 @@ internal class AgentTraceFormatter(
             "skills_list_curated" -> localizedText(R.string.trace_action_skills_curated, "浏览精选技能")
             "skills_inspect_github" -> localizedText(R.string.trace_action_skills_inspect, "查看技能详情")
             "skills_install_from_github" -> localizedText(R.string.trace_action_skills_install, "安装技能")
+            "skills_install_local" -> "安装本地技能"
+            // 调度台派发：标题只说「派发给子代理」，不展示 brief 正文（正文在可展开的参数区）。
+            "task_dispatch" -> summarizeDispatchArguments(toolCall.argumentsJson)
+            "task_abort" -> "中止子会话任务"
             // 自建配方工具：名字是动态注册的 recipe_<name>，显示配方名比通用文案有用。
             else -> if (toolCall.name.startsWith("recipe_")) {
-                val recipeName = toolCall.name.removePrefix("recipe_")
-                localizedText(
-                    R.string.trace_dev_recipe_tool,
-                    "调用自建工具 %1\$s",
-                    recipeName,
-                )
+                "运行配方 · ${toolCall.name.removePrefix("recipe_")}"
             } else {
                 val label = DEVICE_ACTION_LABELS[toolCall.name]
                 when {
-                    label == null -> localizedText(R.string.trace_action_prepare, "准备执行")
+                    label == null -> fallbackToolTitle(toolCall.name, toolCall.argumentsJson)
                     toolCall.name.startsWith("search_") ->
                         summarizeQueryArguments(localizedText(label.first, label.second), toolCall.argumentsJson)
                     else -> localizedText(label.first, label.second)
@@ -304,8 +313,62 @@ internal class AgentTraceFormatter(
     private fun summarizePressKeyArguments(argumentsJson: String): String =
         runCatching {
             val button = JSONObject(argumentsJson).optString("button").pressKeyLabel()
-            listOfNotNull(localizedText(R.string.trace_action_key, "按键"), button).joinToString(" · ")
+            if (button != null) "按下${button}键" else localizedText(R.string.trace_action_key, "按键")
         }.getOrDefault(localizedText(R.string.trace_action_key, "按键"))
+
+    private fun summarizeLaunchAppArguments(argumentsJson: String): String {
+        val label = localizedText(R.string.trace_action_launch_app, "打开应用")
+        return runCatching {
+            val arguments = JSONObject(argumentsJson)
+            val name = arguments.optString("app_name").trim()
+                .ifBlank { arguments.optString("package_name").trim() }
+            if (name.isBlank()) {
+                label
+            } else {
+                "$label「${sanitizeSummaryValue(name, 40)}」"
+            }
+        }.getOrDefault(label)
+    }
+
+    private fun summarizeDispatchArguments(argumentsJson: String): String {
+        val label = "派发任务给子代理"
+        return runCatching {
+            val arguments = JSONObject(argumentsJson)
+            val title = sanitizeSummaryValue(arguments.optString("new_title"), 24)
+            when {
+                title.isNotBlank() -> "$label · $title"
+                arguments.optString("conversation_id").isNotBlank() -> "$label · 继续已有会话"
+                else -> label
+            }
+        }.getOrDefault(label)
+    }
+
+    /**
+     * 折叠态标题的最后一级兜底：优先复用 [ToolPresentation] 的工具显示名表，
+     * 搜索类再补查询词；都取不到时把 tool id 还原成可读短语，不再显示「准备执行」。
+     */
+    private fun fallbackToolTitle(toolId: String, argumentsJson: String): String {
+        val base = PLAIN_ACTION_LABELS[toolId]
+            ?: ToolPresentation.nameRes(toolId)?.let { localizedText(it, humanizeToolId(toolId)) }
+            ?: humanizeToolId(toolId)
+        return if (toolId.startsWith("search_")) {
+            summarizeQueryArguments(base, argumentsJson)
+        } else {
+            base
+        }
+    }
+
+    /** 动态 MCP 工具和未知工具：去掉 mcp_ 前缀、下划线转空格、首字母大写，避免直接甩原始 id。 */
+    private fun humanizeToolId(toolId: String): String {
+        val isMcp = toolId.startsWith("mcp_")
+        val readable = toolId
+            .removePrefix("mcp_")
+            .replace('_', ' ')
+            .trim()
+            .ifBlank { "工具" }
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() }
+        return if (isMcp) "MCP · $readable" else readable
+    }
 
     private fun summarizeWaitArguments(argumentsJson: String): String =
         runCatching {
@@ -826,6 +889,29 @@ internal class AgentTraceFormatter(
             "wait_for_selector",
         )
         val BROWSER_TEXT_ACTIONS = setOf("get_readable", "get_text")
+
+        /**
+         * 尚未进入本地化资源的工具动作名，以及历史别名。
+         * 与 [DEVICE_ACTION_LABELS] 走同一个解析入口，避免折叠态回落到「准备执行」。
+         */
+        val PLAIN_ACTION_LABELS: Map<String, String> = mapOf(
+            "ask_user" to "询问用户",
+            "supervise_task" to "监督子代理任务",
+            "search_notes" to "搜索便签",
+            "terminal_job" to "终端会话",
+            "observe" to "观察屏幕",
+            "click" to "点击屏幕",
+            "clipboard" to "剪贴板",
+            "open_app" to "打开应用",
+            "browser_read" to "读取网页",
+            "browser_interact" to "操作网页",
+            "browser_screenshot" to "网页截图",
+            "wait_text" to "等待文本出现",
+            "code_interpreter" to "执行代码",
+            "file_search" to "搜索文件",
+            "computer" to "操作电脑",
+            "image_generation" to "生成图片",
+        )
 
         /** 结构化设备工具只展示动作标签，不暴露任何参数。 */
         val DEVICE_ACTION_LABELS: Map<String, Pair<Int, String>> = mapOf(
