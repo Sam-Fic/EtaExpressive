@@ -52,6 +52,8 @@ import io.github.mangi.eta.agent.voice.doubao.VoiceCatalogSecretStore
 import io.github.mangi.eta.agent.voice.doubao.VoiceProjectCatalog
 import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -139,15 +141,23 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
         }
     }
     deleteVoice?.let { voice ->
-        AlertDialog(onDismissRequest = { deleteVoice = null }, title = { Text(stringResource(R.string.dv_remove_title, voice.name)) },
-            text = { Text(stringResource(R.string.dv_delete_local_note)) },
-            confirmButton = { TextButton(onClick = {
-                TouchHaptics.click(view)
-                try { PersonalVoices.removeLocal(voice); if (previewState.matches(voice.account, voice.id)) preview.stop(5); notice = context.getString(R.string.dv_local_removed) }
-                catch (_: Exception) { notice = context.getString(R.string.dv_local_remove_failed) }
-                deleteVoice = null
-            }) { Text(stringResource(R.string.dv_remove_record), color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { TouchHaptics.click(view); deleteVoice = null }) { Text(stringResource(R.string.action_cancel)) } },
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.dv_remove_title, voice.name),
+            onDismissRequest = { deleteVoice = null },
+            summary = stringResource(R.string.dv_delete_local_note),
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.dv_remove_record),
+                    onCancel = { deleteVoice = null },
+                    onConfirm = {
+                        try { PersonalVoices.removeLocal(voice); if (previewState.matches(voice.account, voice.id)) preview.stop(5); notice = context.getString(R.string.dv_local_removed) }
+                        catch (_: Exception) { notice = context.getString(R.string.dv_local_remove_failed) }
+                        deleteVoice = null
+                    },
+                    destructive = true,
+                )
+            },
         )
     }
     fun beginMode(next: String) {
@@ -841,9 +851,15 @@ private fun PersonalVoiceRow(
             }
         },
     )
-    if (showError) AlertDialog(
-        onDismissRequest = { showError = false }, title = { Text(stringResource(R.string.dv_error_details)) },
-        text = { Text(voice.error, modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) },
-        confirmButton = { TextButton(onClick = { TouchHaptics.click(view); showError = false }) { Text(stringResource(R.string.action_close)) } },
+    if (showError) EtaDialog(
+        show = true,
+        title = stringResource(R.string.dv_error_details),
+        onDismissRequest = { showError = false },
+        content = {
+            Text(voice.error, modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()))
+        },
+        actions = {
+            TextButton(onClick = { TouchHaptics.click(view); showError = false }) { Text(stringResource(R.string.action_close)) }
+        },
     )
 }

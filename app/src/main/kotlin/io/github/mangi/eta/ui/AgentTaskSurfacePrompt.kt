@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.TouchApp
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,6 +34,7 @@ import androidx.compose.ui.window.DialogProperties
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.AgentTaskPrompt
 import io.github.mangi.eta.agent.device.AgentTaskSurfaceMode
+import io.github.mangi.eta.ui.adaptive.EtaExpressiveDialog
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 
 /**
@@ -75,7 +75,7 @@ internal fun AgentTaskSurfaceChoiceDialog(
 ) {
     val view = LocalView.current
     var selected by rememberSaveable { mutableStateOf(AgentTaskSurfaceMode.FOREGROUND) }
-    AlertDialog(
+    EtaExpressiveDialog(
         onDismissRequest = onCancel,
         // 点到弹窗外不算取消，避免误触让这次操作失败；返回键仍可取消。
         properties = DialogProperties(dismissOnClickOutside = false),

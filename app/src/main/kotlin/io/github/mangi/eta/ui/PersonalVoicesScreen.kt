@@ -24,6 +24,8 @@ import io.github.mangi.eta.data.model.SpeechSynthesisModels
 import io.github.mangi.eta.data.repository.ProviderRepository
 import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
@@ -240,16 +242,27 @@ internal fun MimoVoicesScreen(onBack: () -> Unit) {
         }
     }
     deleting?.let { voice ->
-        AlertDialog(onDismissRequest = { deleting = null }, title = { Text(stringResource(R.string.pv_delete_title, voice.name)) },
-            text = { Text(stringResource(R.string.pv_delete_note)) },
-            confirmButton = { TextButton(onClick = {
-                TouchHaptics.click(view); SpeechPlayback.stop("settings"); deleting = null; busy = true
-                scope.launch {
-                    try { withContext(Dispatchers.IO) { MimoPersonalVoices.remove(voice.id) }; notice = context.getString(R.string.pv_deleted) }
-                    catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; notice = context.getString(R.string.pv_delete_failed) }
-                    finally { busy = false }
-                }
-            }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { TouchHaptics.click(view); deleting = null }) { Text(stringResource(R.string.action_cancel)) } })
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.pv_delete_title, voice.name),
+            onDismissRequest = { deleting = null },
+            summary = stringResource(R.string.pv_delete_note),
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.action_delete),
+                    onCancel = { deleting = null },
+                    onConfirm = {
+                        SpeechPlayback.stop("settings"); deleting = null; busy = true
+                        scope.launch {
+                            try { withContext(Dispatchers.IO) { MimoPersonalVoices.remove(voice.id) }; notice = context.getString(R.string.pv_deleted) }
+                            catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; notice = context.getString(R.string.pv_delete_failed) }
+                            finally { busy = false }
+                        }
+                    },
+                    destructive = true,
+                )
+            },
+        )
     }
 }
 

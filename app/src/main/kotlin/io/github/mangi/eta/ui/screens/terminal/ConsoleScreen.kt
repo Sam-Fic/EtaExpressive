@@ -223,8 +223,9 @@ internal fun TerminalIconButton(
 /**
  * 终端状态栏/浮层里的文字按钮。
  *
- * M3：官方 `TextButton`（默认胶囊 + `labelLarge`）；破坏性动作用官方
- * `ButtonDefaults.textButtonColors` 搭配 `errorContainer/onErrorContainer` 角色色。
+ * M3：官方 `TextButton`（默认胶囊 + `labelLarge`）；破坏性动作取 `error` 文字色，
+ * 与全局 [io.github.mangi.eta.ui.adaptive.EtaTextButton] 及各列表「删除」菜单项
+ * 同一约定（文字按钮不填底色，不用 errorContainer 实心块）。
  */
 @Composable
 internal fun TerminalTextButton(
@@ -244,8 +245,7 @@ internal fun TerminalTextButton(
         enabled = enabled,
         colors = if (destructive) {
             M3ButtonDefaults.textButtonColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                contentColor = MaterialTheme.colorScheme.error,
             )
         } else {
             M3ButtonDefaults.textButtonColors()

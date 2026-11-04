@@ -1,14 +1,13 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.runtime.AgentChildRunControl
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 
 /** The parent is already ending and its captured children are already paused before this opens. */
 @Composable
@@ -17,17 +16,19 @@ internal fun AgentStopTaskDialog(
     onStopChildren: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    EtaDialog(
+        show = true,
+        title = stringResource(R.string.ast_title),
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.ast_title)) },
-        text = {
-            Text(stringResource(R.string.ast_body))
-        },
-        confirmButton = {
-            TextButton(onClick = onStopChildren) { Text(stringResource(R.string.ast_stop)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onPauseChildren) { Text(stringResource(R.string.ast_pause)) }
+        summary = stringResource(R.string.ast_body),
+        actions = {
+            // 两个动作都不是「取消」：暂停语义与 onDismissRequest（等同暂停）一致，放取消位。
+            EtaDialogActions(
+                confirmText = stringResource(R.string.ast_stop),
+                onConfirm = onStopChildren,
+                cancelText = stringResource(R.string.ast_pause),
+                onCancel = onPauseChildren,
+            )
         },
     )
 }

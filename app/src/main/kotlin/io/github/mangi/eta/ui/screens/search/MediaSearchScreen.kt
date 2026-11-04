@@ -52,9 +52,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -113,6 +111,7 @@ import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.etaRandomDecorativeShape
+import io.github.mangi.eta.ui.adaptive.rememberEtaSheetState
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
 import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
@@ -1065,11 +1064,7 @@ private fun MediaThresholdSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        // 官方新版面板状态：只允许 Hidden / Expanded 两态，等价于旧的 skipPartiallyExpanded。
-        sheetState = rememberBottomSheetState(
-            initialValue = SheetValue.Hidden,
-            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
-        ),
+        sheetState = rememberEtaSheetState(),
     ) {
         MediaThresholdRow(
             minScore = minScore,

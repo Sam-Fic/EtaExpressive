@@ -30,6 +30,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 
 /**
+ * 项目统一的底部面板状态：官方新版两态配方（Hidden ↔ Expanded，等价旧
+ * skipPartiallyExpanded）的唯一出处。所有 [ModalBottomSheet] 一律从这里取状态，
+ * 不再各处内联重抄。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun rememberEtaSheetState() = rememberBottomSheetState(
+    initialValue = SheetValue.Hidden,
+    enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+)
+
+/**
  * 长列表选择器的统一底部面板：标题行、可选搜索框、调用方列表与可选动作区。
  * 关闭走面板下拉 / 点遮罩 / 返回键，不放右上角关闭按钮。
  * 面板不抢占半展开态；列表应有自己的高度上限与滚动，短列表保持内容高度。
@@ -49,11 +61,7 @@ internal fun EtaPickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = modifier,
-        // 官方新版面板状态：只允许 Hidden / Expanded 两态，等价于旧的 skipPartiallyExpanded。
-        sheetState = rememberBottomSheetState(
-            initialValue = SheetValue.Hidden,
-            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
-        ),
+        sheetState = rememberEtaSheetState(),
     ) {
         Column(
             Modifier

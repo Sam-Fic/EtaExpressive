@@ -67,7 +67,6 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material.icons.rounded.Videocam
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -134,6 +133,8 @@ import io.github.mangi.eta.data.model.GptSpeedMode
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.ComposerQueueStore
 import io.github.mangi.eta.ui.adaptive.EtaMenuDivider
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
@@ -1608,13 +1609,16 @@ private fun M3ScheduleSendDialog(
         initialMinute = now.minute,
         is24Hour = true,
     )
-    AlertDialog(
+    EtaDialog(
+        show = true,
+        title = stringResource(R.string.composer_schedule_title),
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.composer_schedule_title)) },
-        text = { TimePicker(state = timeState) },
-        confirmButton = {
-            TextButton(
-                onClick = {
+        content = { TimePicker(state = timeState) },
+        actions = {
+            EtaDialogActions(
+                confirmText = stringResource(R.string.action_confirm),
+                onCancel = onDismiss,
+                onConfirm = {
                     val calendar = Calendar.getInstance().apply {
                         set(Calendar.HOUR_OF_DAY, timeState.hour)
                         set(Calendar.MINUTE, timeState.minute)
@@ -1626,14 +1630,7 @@ private fun M3ScheduleSendDialog(
                     }
                     onConfirm(calendar.timeInMillis)
                 },
-            ) {
-                Text(stringResource(R.string.action_confirm))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel))
-            }
+            )
         },
     )
 }

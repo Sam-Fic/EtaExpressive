@@ -32,7 +32,6 @@ import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalContentColor
@@ -48,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.FileProvider
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
@@ -163,44 +164,32 @@ internal fun rememberAgentAttachmentActions(
     }
 
     if (showPathDialog) {
-        AlertDialog(
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.ui_input_file_path_36d474),
             onDismissRequest = { showPathDialog = false },
-            title = { M3Text(text = stringResource(R.string.ui_input_file_path_36d474)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    M3Text(
-                        text = stringResource(
-                            R.string.ui_supports_files_and_folders_under_internal_storage_or_520786
-                        ),
-                        style = etaTextStyle(EtaType.Secondary),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedTextField(
-                        value = pathInput,
-                        onValueChange = { pathInput = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { M3Text(text = stringResource(R.string.ui_absolute_path_9ac6fc)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    )
-                }
+            summary = stringResource(R.string.ui_supports_files_and_folders_under_internal_storage_or_520786),
+            content = {
+                OutlinedTextField(
+                    value = pathInput,
+                    onValueChange = { pathInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { M3Text(text = stringResource(R.string.ui_absolute_path_9ac6fc)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                )
             },
-            confirmButton = {
-                androidx.compose.material3.TextButton(
-                    onClick = {
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.attachment_add),
+                    onCancel = { showPathDialog = false },
+                    onConfirm = {
                         val path = pathInput.trim()
                         showPathDialog = false
                         onAttachFilePath(path)
                     },
-                    enabled = pathInput.trim().startsWith('/'),
-                ) {
-                    M3Text(text = stringResource(R.string.attachment_add))
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showPathDialog = false }) {
-                    M3Text(text = stringResource(R.string.action_cancel))
-                }
+                    confirmEnabled = pathInput.trim().startsWith('/'),
+                )
             },
         )
     }

@@ -44,6 +44,7 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.rememberEtaSheetState
 import io.github.mangi.eta.ui.components.AssistantAvatar
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.Dispatchers
@@ -56,9 +57,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.Text as M3Text
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,10 +97,7 @@ internal fun AssistantPickerDialog(
             onDismissRequest = {
                 if (deleteProfile == null) onDismiss()
             },
-            sheetState = rememberBottomSheetState(
-                initialValue = SheetValue.Hidden,
-                enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
-            ),
+            sheetState = rememberEtaSheetState(),
         ) {
             val deleteTarget = deleteProfile
             if (deleteTarget != null) {

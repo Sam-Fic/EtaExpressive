@@ -19,9 +19,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
+import io.github.mangi.eta.ui.adaptive.rememberEtaSheetState
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.delay
 
@@ -77,10 +76,7 @@ internal fun ContextCompactedSummarySheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberBottomSheetState(
-            initialValue = SheetValue.Hidden,
-            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
-        ),
+        sheetState = rememberEtaSheetState(),
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f),

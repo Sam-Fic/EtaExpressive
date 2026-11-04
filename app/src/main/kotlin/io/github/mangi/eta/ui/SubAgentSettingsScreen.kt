@@ -13,7 +13,6 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +43,8 @@ import io.github.mangi.eta.agent.delegation.ConversationSubAgentPreferences
 import io.github.mangi.eta.agent.delegation.SubAgentPreset
 import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.data.repository.ProviderRepository
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
@@ -304,12 +305,23 @@ internal fun SubAgentSettingsScreen(
                 },
             )
             delete?.let { preset ->
-                AlertDialog(onDismissRequest = { delete = null }, title = { Text(stringResource(R.string.sas_delete_group_title)) },
-                    text = { Text(stringResource(R.string.sas_delete_group_note, preset.name)) },
-                    dismissButton = { TextButton(onClick = { delete = null }) { Text(stringResource(R.string.action_cancel)) } },
-                    confirmButton = { TextButton(enabled = editable, onClick = {
-                        if (directory.change { check(repository.removePreset(preset.id)) { context.getString(R.string.sas_group_missing) } }) delete = null
-                    }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) } })
+                EtaDialog(
+                    show = true,
+                    title = stringResource(R.string.sas_delete_group_title),
+                    onDismissRequest = { delete = null },
+                    summary = stringResource(R.string.sas_delete_group_note, preset.name),
+                    actions = {
+                        EtaDialogActions(
+                            confirmText = stringResource(R.string.action_delete),
+                            onCancel = { delete = null },
+                            onConfirm = {
+                                if (directory.change { check(repository.removePreset(preset.id)) { context.getString(R.string.sas_group_missing) } }) delete = null
+                            },
+                            confirmEnabled = editable,
+                            destructive = true,
+                        )
+                    },
+                )
             }
             // 会话级新增草稿的配置弹窗挂在屏幕级（而非懒列表条目内）：滚动不应收起弹窗。
             addedDraft?.let { session ->
