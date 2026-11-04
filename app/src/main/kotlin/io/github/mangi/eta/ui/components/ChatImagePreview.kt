@@ -1102,8 +1102,10 @@ private fun ChatImagePreviewPage(
                         style = previewBodyStyle(),
                         modifier = Modifier.align(Alignment.Center),
                     )
-                    PreviewPageState.Loading -> PreviewProgressIndicator(
-                        size = 28.dp,
+                    PreviewPageState.Loading -> ContainedMorphLoadingIndicator(
+                        indicatorSize = 28.dp,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        indicatorColor = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
