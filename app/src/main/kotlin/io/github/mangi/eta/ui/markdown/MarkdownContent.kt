@@ -44,7 +44,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -70,6 +69,7 @@ import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButtonDefaults
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 
 /** 代码块 / 提示块 / 表格容器的圆角：取官方 shapes 令牌。 */
 @Composable
@@ -283,7 +283,7 @@ private fun MarkdownCodeBlock(block: MarkdownCode, scope: MarkdownRenderScope) {
 @Composable
 private fun CopyButton(text: String, tint: Color) {
     @Suppress("DEPRECATION")
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -293,7 +293,7 @@ private fun CopyButton(text: String, tint: Color) {
     }
     val copyAction: () -> Unit = {
         @Suppress("DEPRECATION")
-        clipboard.setText(AnnotatedString(text))
+        copyToClipboard(text)
         copied = true
     }
     val iconTint = if (copied) markdownAccentColor() else tint

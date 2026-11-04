@@ -59,7 +59,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -88,6 +87,7 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
+import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 import io.github.mangi.eta.ui.app.TerminalBlockUi
 import io.github.mangi.eta.ui.app.UserTerminalStore
 import io.github.mangi.eta.ui.app.UserTerminalUiState
@@ -336,7 +336,7 @@ private fun CommandBlock(
     onMessage: (String) -> Unit,
 ) {
     var showActions by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     val exitCode = block.exitCode
     val failed = exitCode != null && exitCode != 0
     val copiedCommandMessage = stringResource(R.string.terminal_copied_command)
@@ -350,7 +350,7 @@ private fun CommandBlock(
                 }
                 // 左滑：复制命令到剪贴板。
                 SwipeToDismissBoxValue.EndToStart -> {
-                    clipboard.setText(AnnotatedString(block.command))
+                    copyToClipboard(block.command)
                     onMessage(copiedCommandMessage)
                     false
                 }
@@ -518,7 +518,7 @@ private fun BlockActionMenu(
     onMessage: (String) -> Unit,
 ) {
     val view = LocalView.current
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     val copiedCommandMessage = stringResource(R.string.terminal_copied_command)
     val copiedOutputMessage = stringResource(R.string.terminal_copied_output)
     val itemCount = 3
@@ -534,7 +534,7 @@ private fun BlockActionMenu(
                 itemCount = itemCount,
             ) {
                 TouchHaptics.click(view)
-                clipboard.setText(AnnotatedString(block.command))
+                copyToClipboard(block.command)
                 onMessage(copiedCommandMessage)
                 onDismiss()
             }
@@ -546,7 +546,7 @@ private fun BlockActionMenu(
                 enabled = block.output.isNotEmpty(),
             ) {
                 TouchHaptics.click(view)
-                clipboard.setText(AnnotatedString(ansiPlainText(block.output)))
+                copyToClipboard(ansiPlainText(block.output))
                 onMessage(copiedOutputMessage)
                 onDismiss()
             }

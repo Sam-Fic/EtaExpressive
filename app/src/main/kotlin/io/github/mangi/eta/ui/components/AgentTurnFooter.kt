@@ -18,11 +18,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
@@ -43,6 +41,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
+import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 
 /**
  * 消息操作条的长按提示。实现已收编到 `ui/adaptive/EtaTooltips` 的 [EtaTooltip]，
@@ -139,7 +138,7 @@ internal fun AgentMessageActionRow(
     showCopyAction: Boolean = true,
 ) {
     @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     val view = LocalView.current
     var copied by remember(messageId) { mutableStateOf(false) }
     LaunchedEffect(copied) {
@@ -157,7 +156,7 @@ internal fun AgentMessageActionRow(
     val onCopyClick: () -> Unit = {
         TouchHaptics.click(view)
         @Suppress("DEPRECATION")
-        clipboardManager.setText(AnnotatedString(content))
+        copyToClipboard(content)
         copied = true
     }
     val onBranchClick: () -> Unit = { TouchHaptics.click(view); onBranch() }

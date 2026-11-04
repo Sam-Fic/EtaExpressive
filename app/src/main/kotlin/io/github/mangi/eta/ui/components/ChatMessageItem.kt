@@ -127,7 +127,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
@@ -191,6 +190,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.foregroundColor
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
+import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 import io.github.mangi.eta.agent.browser.AgentBrowserSession
 import io.github.mangi.eta.agent.browser.BrowserSessionSnapshot
 import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
@@ -919,7 +919,7 @@ private fun UserMessageBubble(
     modifier: Modifier = Modifier,
 ) {
     @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     var copied by remember(message.id) { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -1353,7 +1353,7 @@ private fun UserMessageBubble(
                                     onClick = {
                                         TouchHaptics.click(view)
                                         @Suppress("DEPRECATION")
-                                        clipboardManager.setText(AnnotatedString(copyText))
+                                        copyToClipboard(copyText)
                                         copied = true
                                     },
                                     enabled = true,
@@ -2855,7 +2855,7 @@ private fun ChatCodeBlock(
     showChrome: Boolean = true,
 ) {
     @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -2907,7 +2907,7 @@ private fun ChatCodeBlock(
                     ChatIconAction(
                         onClick = {
                             @Suppress("DEPRECATION")
-                            clipboardManager.setText(AnnotatedString(code))
+                            copyToClipboard(code)
                             copied = true
                         },
                         minWidth = 28.dp,
@@ -4062,7 +4062,7 @@ private fun ToolCommandBlock(
     modifier: Modifier = Modifier,
 ) {
     @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     var copied by remember(command) { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -4090,7 +4090,7 @@ private fun ToolCommandBlock(
                 ChatIconAction(
                     onClick = {
                         @Suppress("DEPRECATION")
-                        clipboardManager.setText(AnnotatedString(command))
+                        copyToClipboard(command)
                         copied = true
                     },
                     minWidth = 28.dp,
@@ -4150,7 +4150,7 @@ private fun ToolDetailBlock(
     label: String? = null,
 ) {
     @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     var copied by remember(text) { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -4181,7 +4181,7 @@ private fun ToolDetailBlock(
             EtaTooltip(text = copyLabel) {
                 ChatIconAction(
                     onClick = {
-                        clipboardManager.setText(AnnotatedString(text))
+                        copyToClipboard(text)
                         copied = true
                     },
                     minWidth = 28.dp,

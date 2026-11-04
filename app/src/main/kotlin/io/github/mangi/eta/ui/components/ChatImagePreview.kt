@@ -77,13 +77,11 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -95,6 +93,7 @@ import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
+import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
@@ -518,7 +517,7 @@ private fun ChatImagePreviewBody(
             val toolbarButtonColors = IconButtonDefaults.iconButtonColors(
                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
             )
-            val clipboard = LocalClipboardManager.current
+            val copyToClipboard = rememberCopyToClipboard()
             val copyPathAction: () -> Unit = {
                 TouchHaptics.click(view)
                 val path = previewAbsolutePath(context, source)
@@ -529,7 +528,7 @@ private fun ChatImagePreviewBody(
                         Toast.LENGTH_SHORT,
                     ).show()
                 } else {
-                    clipboard.setText(AnnotatedString(path))
+                    copyToClipboard(path)
                     Toast.makeText(
                         context,
                         context.getString(R.string.chat_image_path_copied),

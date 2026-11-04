@@ -28,16 +28,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
+import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 import io.github.mangi.eta.ui.adaptive.rememberEtaSheetState
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.delay
@@ -65,7 +64,7 @@ internal fun ContextCompactedSummarySheet(
     }
     val view = LocalView.current
     @Suppress("DEPRECATION")
-    val clipboardManager = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -93,7 +92,7 @@ internal fun ContextCompactedSummarySheet(
                         onClick = {
                             TouchHaptics.click(view)
                             @Suppress("DEPRECATION")
-                            clipboardManager.setText(AnnotatedString(summary))
+                            copyToClipboard(summary)
                             copied = true
                         },
                     ) {
