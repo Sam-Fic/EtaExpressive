@@ -17,7 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -194,8 +196,21 @@ internal fun RemoteAgentsScreen(
                                 summary = "${RemoteProtocols.displayNameOf(config.protocolId)} · " +
                                     "${config.host}:${config.port} · ${remoteStatusLabel(status)}",
                                 onClick = { onOpenEditor(config.id) },
-                                leading = { StatusDot(status) },
+                                // 行首是「服务器」类别图标（与 MCP 服务器页的 Dns 同族）；
+                                // 连接状态属于状态标记，挪到行尾，不与类别图标抢行首槽。
+                                leading = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Dns,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(EtaDimens.DenseIconSize),
+                                    )
+                                },
                                 endActions = {
+                                    // 连接状态圆点靠右、删除按钮最右，与「会话列表」尾槽节奏一致。
+                                    Box(modifier = Modifier.padding(end = 8.dp)) {
+                                        StatusDot(status)
+                                    }
                                     // 破坏性删除改成纯图标按钮，与「会话列表」尾槽一致：
                                     // 官方 48dp IconButton + error 内容色 + 统一 Tooltip/无障碍包装。
                                     EtaTooltipIconButton(

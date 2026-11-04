@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Javascript
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -481,7 +482,14 @@ internal fun LinuxEnvironmentScreen(
                                     stringResource(summaryRes)
                                 },
                                 showChevron = false,
-                                leading = { Icon(profileUi.icon, null) },
+                                // 行首类别图标统一 onSurfaceVariant（与设置页 PreferenceIcon 同档）。
+                                leading = {
+                                    Icon(
+                                        imageVector = profileUi.icon,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
                                 endActions = {
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
@@ -563,7 +571,13 @@ internal fun LinuxEnvironmentScreen(
                                 context.getString(R.string.linux_apk_tools_summary)
                             },
                             showChevron = false,
-                            leading = { Icon(Icons.Rounded.Android, null) },
+                            leading = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Android,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
                             endActions = {
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
@@ -610,7 +624,13 @@ internal fun LinuxEnvironmentScreen(
                     EtaClickableRow(
                         title = stringResource(R.string.capability_workspace),
                         summary = stringResource(R.string.capability_workspace_summary),
-                        leading = { Icon(Icons.Rounded.Folder, null) },
+                        leading = {
+                            Icon(
+                                imageVector = Icons.Rounded.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
                         onClick = { onNavigate(AppRoute.Workspace) },
                     )
                 }
@@ -618,7 +638,13 @@ internal fun LinuxEnvironmentScreen(
                     EtaClickableRow(
                         title = stringResource(R.string.shared_folders_entry_title),
                         summary = stringResource(R.string.linux_environment_shared_folders_summary),
-                        leading = { Icon(Icons.Rounded.Share, null) },
+                        leading = {
+                            Icon(
+                                imageVector = Icons.Rounded.Share,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
                         onClick = { onNavigate(AppRoute.SharedFolders) },
                     )
                 }
@@ -626,7 +652,13 @@ internal fun LinuxEnvironmentScreen(
                     EtaClickableRow(
                         title = stringResource(R.string.linux_files_entry_title),
                         summary = stringResource(R.string.linux_files_entry_summary),
-                        leading = { Icon(Icons.Rounded.Description, null) },
+                        leading = {
+                            Icon(
+                                imageVector = Icons.Rounded.Description,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
                         onClick = { onNavigate(AppRoute.LinuxFiles(selectedDistribution.wireName)) },
                     )
                 }

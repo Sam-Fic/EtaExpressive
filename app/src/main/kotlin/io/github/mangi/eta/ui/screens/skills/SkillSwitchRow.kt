@@ -60,9 +60,10 @@ internal fun SkillSwitchRow(
                 imageVector = iconForSkill(skill.id),
                 contentDescription = null,
                 tint = if (enabled) {
-                    MaterialTheme.colorScheme.onSurface
+                    // 行首类别图标统一 onSurfaceVariant（与设置页 PreferenceIcon 同一档）。
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                 },
             )
         },

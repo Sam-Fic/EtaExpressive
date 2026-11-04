@@ -77,6 +77,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import io.github.mangi.eta.R
@@ -1485,7 +1486,14 @@ private fun MediaHitRow(
                 HitThumbnail(hit)
             }
         },
-        content = { Text(text = hit.displayName) },
+        content = {
+            // 长文件名在单行内截断：行首缩略图与行尾状态不被长标题挤走。
+            Text(
+                text = hit.displayName,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
         supportingContent = { Text(text = summary) },
     )
 }

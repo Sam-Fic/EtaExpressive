@@ -564,7 +564,16 @@ private fun BackupActionRow(
                     color = MaterialTheme.colorScheme.primary,
                 )
             } else {
-                Icon(imageVector = icon, contentDescription = null)
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    // 行首类别图标统一 onSurfaceVariant；禁用行按 M3 惯例降到 38%。
+                    tint = if (enabled) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    },
+                )
             }
         },
         content = { M3Text(text = title) },
