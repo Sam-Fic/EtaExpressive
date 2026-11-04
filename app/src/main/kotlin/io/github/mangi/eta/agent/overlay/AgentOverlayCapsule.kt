@@ -98,6 +98,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -226,16 +228,34 @@ internal fun AgentOverlayCapsule(
 
     // 微缩镜只在收起 + 副屏在场时出现；尾部内缩让它中心落在右上圆角弧心上（与左上指示器对称）。
     val lensVisible = virtualDisplay.active && !expanded && !minimized
+    // 展开宽按屏钳制：CapsuleExpandedWidth(360) + 窗口外衬 24 = 384dp 在小米 13 Ultra
+    // （屏宽恰 384dp）上是零余量全宽请求，会被系统改写并触发「上报→收窗→再上报」的
+    // 逐帧缩水回路；留出 ≥40dp 余量保证窗口与放置钳制都有活动空间。
+    val density = LocalDensity.current
+    val expandedWidth = with(density) {
+        (LocalConfiguration.current.screenWidthDp.dp - 40.dp).coerceAtMost(CapsuleExpandedWidth)
+    }
     val targetCapsuleWidth by animateDpAsState(
         targetValue = when {
             minimized -> CapsuleBallDiameter
-            expanded -> CapsuleExpandedWidth
+            expanded -> expandedWidth
             virtualDisplay.active -> CapsuleMicroLensWidth
             else -> CapsuleDefaultWidth
         },
         animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
         label = "capsule_width",
     )
+    // ── 窗口尺寸上报 ────────────────────────────────────────────────────
+    // 宽度上报【状态目标值】（targetCapsuleWidth 的当前弹簧值，纯状态函数），
+    // 绝不能上报 onGloballyPositioned 的测量宽：那是被窗口钳制后的结果，会构成
+    // 「窗口钳制内容 → 内容上报变窄 → 窗口跟着收窄」的 runaway 反馈（首帧窗口估计
+    // 272dp < 展开目标时整窗逐帧缩水）。高度没有固定的状态目标（正文行数可变），
+    // 仍用测量值，但加非负兜底（历史上出现过高度 < 0 闪退）。
+    LaunchedEffect(targetCapsuleWidth, density) {
+        with(density) {
+            onContentSizeChanged(targetCapsuleWidth.roundToPx(), Int.MIN_VALUE)
+        }
+    }
     val targetCapsuleCorner by animateDpAsState(
         targetValue = when {
             // 缩球 56dp 圆：角半径 = 直径一半，恰与内圈 28dp 令牌同值。
@@ -320,7 +340,9 @@ internal fun AgentOverlayCapsule(
                         transformOrigin = TransformOrigin(0.5f, 0f)
                     }
                     .onGloballyPositioned { coords ->
-                        onContentSizeChanged(coords.size.width, coords.size.height)
+                        if (coords.size.height >= 0) {
+                            onContentSizeChanged(Int.MIN_VALUE, coords.size.height)
+                        }
                     },
                 shape = RoundedCornerShape(targetCapsuleCorner),
                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -1175,6 +1197,10 @@ private val CapsuleMicroLensWidth = 264.dp
  * 文字测量容差），标准档 button group 永不触发溢出
  * （`overflowIndicator` 不会被测量、放置）。
  * 舞台画布高锁定比例、独立于体宽，加宽只多出两侧留白。
+ *
+ * 上限值本身不再直接落窗：调用处按「屏宽 − 40dp」钳制（见 [AgentOverlayCapsule]
+ * 内 expandedWidth），保证窗口（+24dp 外衬）与放置钳制始终有余量——小米 13 Ultra
+ * 屏宽恰 384dp，360+24 = 全宽请求会被系统改写并触发逐帧缩水（见 2026-11 修复）。
  */
 private val CapsuleExpandedWidth = 360.dp
 

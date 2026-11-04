@@ -1826,7 +1826,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun capsuleWindowWidthPx(): Int {
         val vd = virtualDisplayActive()
         val widthDp = when {
-            vd && capsuleExpanded.value -> CAPSULE_STAGE_WINDOW_WIDTH_DP
+            capsuleExpanded.value -> CAPSULE_EXPANDED_WINDOW_WIDTH_DP
             vd -> CAPSULE_MICRO_WINDOW_WIDTH_DP
             else -> CAPSULE_WINDOW_WIDTH_DP
         }
@@ -1850,13 +1850,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var capsuleContentHeightPx = 0
 
     /**
-     * 胶囊内容尺寸回调：展开/收起/舞台互切的每一帧布局都会来。
-     * 窗口据此外扩固定留白后逐帧贴合，全程连续无缝，不再分档跳变
-     * （旧方案瞬间撑窗/缩窗会让合成器把上一帧 buffer 拉伸一帧，肉眼可见抽搐）。
+     * 胶囊内容尺寸回调：宽度来自 Compose 状态目标值（弹簧逐帧值），高度来自布局测量。
+     * 两者分开上报——宽度绝不能用测量值：窗口对内容的钳制会经「钳制→上报→收窗」
+     * 反馈成逐帧缩水；高度没有状态目标，只能测量，但负值一律丢弃（防 <0 闪退）。
+     * 窗口据此外扩固定留白后逐帧贴合，全程连续无缝。
      */
     private fun updateCapsuleWindowSize(contentWidthPx: Int, contentHeightPx: Int) {
-        capsuleContentWidthPx = contentWidthPx
-        capsuleContentHeightPx = contentHeightPx
+        if (contentWidthPx != Int.MIN_VALUE) capsuleContentWidthPx = contentWidthPx
+        if (contentHeightPx != Int.MIN_VALUE) capsuleContentHeightPx = contentHeightPx.coerceAtLeast(0)
         applyCapsuleWindowBounds()
     }
 
@@ -2548,7 +2549,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         // 高度 = 上下留白 12 + 头部 56（TextFieldDefaults.MinHeight）+ 8dp 间距 + 内容 + 8dp 间距。
         private const val CAPSULE_WINDOW_WIDTH_DP = 272
         private const val CAPSULE_MICRO_WINDOW_WIDTH_DP = 290
-        private const val CAPSULE_STAGE_WINDOW_WIDTH_DP = 324
+        // 展开宽 360（Compose 侧还会按屏宽−40 钳制）+ 上下留白 12*2 之外留出的余量；
+        // 首帧估计偏大没关系，逐帧回调会立刻收敛，偏小则会被钳制触发缩水。
+        private const val CAPSULE_EXPANDED_WINDOW_WIDTH_DP = 368
         private const val CAPSULE_COLLAPSED_HEIGHT_DP = 68
         private const val CAPSULE_CONTROLS_HEIGHT_DP = 132
         private const val CAPSULE_STAGE_HEIGHT_DP = 524
