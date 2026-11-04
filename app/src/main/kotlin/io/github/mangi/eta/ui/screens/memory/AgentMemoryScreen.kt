@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,7 +33,6 @@ import io.github.mangi.eta.ui.model.AgentMemoryAction
 import io.github.mangi.eta.ui.model.AgentMemoryUiState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text as M3Text
@@ -99,14 +96,8 @@ internal fun AgentMemoryScreen(
                         if (!globalEnabled) {
                             item {
                                 EtaSegmentedRow(
-                                    leadingContent = {
-                                        // 严格官方默认尺寸/间距（裸 Icon），仅保留特殊状态着色。
-                                        Icon(
-                                            imageVector = Icons.Rounded.Info,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                        )
-                                    },
+                                    // 全局关闭提示是「状态提示」而非条目类别，不占行首类别槽；
+                                    // 与下方开关行、预算行统一从 16dp 起排。
                                     supportingContent = {
                                         M3Text(
                                             text = stringResource(R.string.memory_global_off_notice_summary),

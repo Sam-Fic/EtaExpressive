@@ -12,7 +12,6 @@ import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -61,7 +60,6 @@ import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.LocalConversationSubAgentEditor
-import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.SubAgentDropdownMenu
 import io.github.mangi.eta.ui.components.SubAgentEditorState
 import io.github.mangi.eta.ui.components.SubAgentPresetDirectoryStatus
@@ -423,9 +421,7 @@ private fun SubAgentConversationSection(
                             checked = panelConfig?.enabled == true,
                             enabled = panelEnabled,
                             onCheckedChange = { if (panelEnabled) panelEditor?.setEnabled(it) },
-                            leading = {
-                                PreferenceIcon(icon = Icons.Rounded.Hub, enabled = panelEnabled)
-                            },
+                            // 自动委派是属性开关，不是条目类别：不占行首图标槽，
                         )
                     }
                     panelConfig?.profiles.orEmpty().forEach { profile ->

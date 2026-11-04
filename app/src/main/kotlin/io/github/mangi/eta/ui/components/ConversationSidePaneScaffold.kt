@@ -1434,7 +1434,7 @@ private fun Material3ConversationRow(
                                 imageVector = Icons.Rounded.Hub,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(EtaDimens.DenseIconSize),
                             )
                         })
                     } else if (conversation.isDispatchManaged) ({
@@ -1443,9 +1443,13 @@ private fun Material3ConversationRow(
                             imageVector = Icons.Rounded.AccountTree,
                             contentDescription = stringResource(R.string.conversation_dispatch_managed),
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(EtaDimens.DenseIconSize),
                         )
-                    }) else null,
+                    }) else ({
+                        // 普通会话没有类别图标：保留与系统条目同宽的空槽（同一尺寸令牌），
+                        // 保证同一分组内所有会话的文字起点一致（不靠「有没有图标」参差）。
+                        Spacer(modifier = Modifier.size(EtaDimens.DenseIconSize))
+                    }),
                     trailingContent = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

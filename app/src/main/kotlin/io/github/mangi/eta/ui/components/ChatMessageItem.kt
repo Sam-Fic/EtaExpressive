@@ -4343,6 +4343,10 @@ private fun RunTraceRow(
         )
         // 对话流里的紧凑入口行：沿用 16dp 状态图标槽与 0.7 alpha 的弱化着色，
         // 只把图标资源与方向语义收敛到共享箭头。
+        // 对齐说明（勿随手改）：本行无 leading 槽，正文起点靠
+        // 16(Surface 外边距) + 12(Row 内边距) + 16(状态图标) + 8(图标后间距) = 52dp，
+        // 恰好等于官方分段行 16(ContentPadding) + 24(Icon) + 12(ItemBetweenSpace)。
+        // 这两组常量各自独立，任一侧调整都会让本行与工具行错位；要改就两边一起按同一常量推导。
         EtaTrailingChevron(
             size = EtaDimens.StatusIconSize,
             tint = etaOnSurfaceVariant().copy(alpha = 0.7f),

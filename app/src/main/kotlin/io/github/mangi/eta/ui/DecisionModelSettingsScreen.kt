@@ -5,12 +5,17 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Percent
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Visibility
@@ -504,6 +509,7 @@ internal fun DecisionModelSettingsScreen(
                     // 编辑收进弹窗：行外只留标题，输入框与说明都在弹窗里（同「判断模型」行的编辑模式）。
                     EtaClickableRow(
                         title = stringResource(R.string.decision_model_endpoint_title),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Link, enabled = controlsEnabled) },
                         enabled = controlsEnabled,
                         onClick = {
                             endpointDraft = endpointOverride
@@ -615,6 +621,9 @@ internal fun DecisionModelSettingsScreen(
                                 },
                             ),
                             showChevron = false,
+                            // 详情开合是动作行：行首用「内容/详情」图标补齐类别槽，
+                            // 展开方向仍由行尾 EtaExpandChevron 表达。
+                            leading = { PreferenceIcon(icon = Icons.Rounded.Article) },
                             holdDownState = connectivityDetailsExpanded,
                             onClick = { connectivityDetailsExpanded = !connectivityDetailsExpanded },
                             endActions = {
@@ -707,6 +716,7 @@ internal fun DecisionModelSettingsScreen(
                             stringResource(R.string.decision_model_escalation_confidence_title),
                             confidenceOptions[nearestIndex(CONFIDENCE_VALUES, confidencePct)],
                         ),
+                        icon = Icons.Rounded.Percent,
                         items = confidenceOptions,
                         selectedIndex = nearestIndex(CONFIDENCE_VALUES, confidencePct),
                         enabled = controlsEnabled && escalationEnabled,
@@ -726,6 +736,7 @@ internal fun DecisionModelSettingsScreen(
                             stringResource(R.string.decision_model_failure_policy_title),
                             failureOptions[if (failurePolicy == Prefs.Keys.AGENT_DECISION_FAILURE_CLOSED) 1 else 0],
                         ),
+                        icon = Icons.Rounded.Shield,
                         items = failureOptions,
                         selectedIndex = if (failurePolicy == Prefs.Keys.AGENT_DECISION_FAILURE_CLOSED) 1 else 0,
                         enabled = controlsEnabled,
@@ -749,6 +760,7 @@ internal fun DecisionModelSettingsScreen(
                             stringResource(R.string.decision_model_history_turns_title),
                             turnOptions[nearestIndex(HISTORY_TURN_VALUES, historyTurns.coerceIn(0, 10))],
                         ),
+                        icon = Icons.Rounded.History,
                         items = turnOptions,
                         selectedIndex = nearestIndex(HISTORY_TURN_VALUES, historyTurns.coerceIn(0, 10)),
                         enabled = controlsEnabled,

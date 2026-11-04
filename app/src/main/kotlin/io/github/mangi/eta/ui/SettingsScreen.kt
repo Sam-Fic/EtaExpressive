@@ -1088,6 +1088,8 @@ private fun ToolReviewModeRow(title: String, summary: String) {
     )
     EtaSegmentedDropdownRow(
         title = title,
+        // 审查档位是「执行策略」：与同组其余四行共用行首图标槽。
+        icon = Icons.Rounded.Security,
         items = labels,
         selectedIndex = options.indexOf(mode).coerceAtLeast(0),
         onItemSelected = { index ->
