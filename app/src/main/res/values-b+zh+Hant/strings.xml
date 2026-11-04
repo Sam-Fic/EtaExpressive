@@ -30,6 +30,7 @@
   <string name="action_reinstall">重新安裝</string>
   <string name="action_settings">設定</string>
   <string name="action_new_conversation">新增對話</string>
+  <string name="action_back_to_dispatch_console">返回調度台</string>
   <string name="action_conversation_history">對話記錄</string>
   <string name="action_more">更多選項</string>
   <string name="action_open_terminal">開啟終端機</string>
@@ -393,6 +394,7 @@
   <string name="appearance_morph_loading_expand">展開顯示時機</string>
   <string name="appearance_morph_loading_collapse">收起顯示時機</string>
   <string name="conversation_unnamed">新對話</string>
+  <string name="conversation_dispatch_managed">由調度台管理</string>
   <string name="conversation_search_hint">搜尋對話</string>
   <string name="model_picker_title">選擇模型</string>
   <string name="model_search_hint">搜尋模型</string>
@@ -2170,6 +2172,11 @@
   <string name="tool_delegate_task">委派子代理</string>
   <string name="tool_get_task_result">查詢子代理結果</string>
   <string name="tool_cancel_task">取消子代理</string>
+  <string name="tool_conversations_list">對話列表</string>
+  <string name="tool_conversation_history">讀取對話</string>
+  <string name="tool_conversation_status">對話狀態</string>
+  <string name="tool_task_dispatch">派發任務</string>
+  <string name="tool_task_abort">中止已派發的任務</string>
   <string name="vd_recovery_title">副螢幕復原</string>
   <string name="vd_recovery_empty">沒有待復原的Eta副螢幕工作階段</string>
   <string name="vd_recovery_record">復原記錄：副螢幕 %1$d · %2$s</string>

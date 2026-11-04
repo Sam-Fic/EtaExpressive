@@ -28,6 +28,7 @@
   <string name="action_reinstall">重新安装</string>
   <string name="action_settings">设置</string>
   <string name="action_new_conversation">新建对话</string>
+  <string name="action_back_to_dispatch_console">返回调度台</string>
   <string name="action_conversation_history">会话历史</string>
   <string name="action_more">更多选项</string>
   <string name="action_open_terminal">打开终端</string>
@@ -286,6 +287,7 @@
   <string name="appearance_morph_loading_expand">展开显示时机</string>
   <string name="appearance_morph_loading_collapse">收起显示时机</string>
   <string name="conversation_unnamed">新对话</string>
+  <string name="conversation_dispatch_managed">由调度台管理</string>
   <string name="conversation_search_hint">搜索对话</string>
   <string name="model_search_hint">搜索模型</string>
   <string name="model_search_empty">没有匹配的模型</string>
@@ -2061,6 +2063,11 @@
   <string name="tool_delegate_task">委派子代理</string>
   <string name="tool_get_task_result">查询子代理结果</string>
   <string name="tool_cancel_task">取消子代理</string>
+  <string name="tool_conversations_list">对话列表</string>
+  <string name="tool_conversation_history">读取对话</string>
+  <string name="tool_conversation_status">对话状态</string>
+  <string name="tool_task_dispatch">派发任务</string>
+  <string name="tool_task_abort">中止已派发的任务</string>
   <string name="vd_recovery_title">副屏恢复</string>
   <string name="vd_recovery_empty">没有待恢复的Eta副屏会话</string>
   <string name="vd_recovery_record">恢复记录：副屏 %1$d · %2$s</string>
