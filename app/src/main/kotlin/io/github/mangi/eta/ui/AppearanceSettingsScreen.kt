@@ -39,13 +39,20 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.MenuOpen
+import androidx.compose.material.icons.filled.Brightness1
 import androidx.compose.material.icons.filled.Brightness3
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.Brightness7
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.rounded.Animation
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Circle
+import androidx.compose.material.icons.rounded.Launch
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.UnfoldLess
+import androidx.compose.material.icons.rounded.Style
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
@@ -77,6 +84,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -124,9 +132,11 @@ import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaTonalCard
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.lazyRowEdgeFade
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.app.LocalAppearanceSettings
+import io.github.mangi.eta.ui.app.seedColor
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -167,12 +177,6 @@ internal fun AppearanceSettingsScreen(onBack: () -> Unit) {
         update { current -> current.copy(interfaceScale = scale) }
     }
 
-    val themeModes = AppearanceThemeMode.entries
-    val themeModeLabels = listOf(
-        stringResource(R.string.appearance_theme_system),
-        stringResource(R.string.appearance_theme_light),
-        stringResource(R.string.appearance_theme_dark),
-    )
     val paletteStyles = AppearancePaletteStyle.entries
     val paletteLabels = listOf(
         stringResource(R.string.appearance_palette_tonal_spot),
@@ -199,11 +203,9 @@ internal fun AppearanceSettingsScreen(onBack: () -> Unit) {
         onBack = onBack,
     ) {
         // Material 3：KernelSU ColorPalette 式布局 —— 预览卡、色板按钮行、
-        // 主题模式连接按钮组、分段下拉组、滑杆卡。
+        // 主题模式 4 连按钮组（含纯黑）、分段下拉/开关组、滑杆卡收尾。
         appearanceMaterial3Content(
             appearance = appearance,
-            themeModes = themeModes,
-            themeModeLabels = themeModeLabels,
             paletteStyles = paletteStyles,
             paletteLabels = paletteLabels,
             foldLevelLabels = foldLevelLabels,
@@ -271,15 +273,15 @@ internal fun AppearanceSettingsScreen(onBack: () -> Unit) {
 
 /**
  * Material 3 外观页内容（KernelSU ColorPalette 式）：
- * 主题预览卡 → 色板按钮行 → 主题模式连接按钮组 → 分段下拉组 → 滑杆卡。
+ * 主题预览卡 → 色板按钮行 → 主题模式 4 连按钮组 → 配色风格 → 预测性返回 →
+ * 图标外观 → 界面行为 → 加载动效 → 界面缩放卡（KernelSU 有对应功能的条目
+ * 按对方顺序排在前，Eta 独有条目居后，滑杆卡收尾与对方节奏一致）。
  *
  * 以 [androidx.compose.foundation.lazy.LazyListScope] 扩展声明（非 @Composable），
  * 各条目内容写在 `item { … }` 的可组合 lambda 内。
  */
 private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Content(
     appearance: AppearanceSettings,
-    themeModes: List<AppearanceThemeMode>,
-    themeModeLabels: List<String>,
     paletteStyles: List<AppearancePaletteStyle>,
     paletteLabels: List<String>,
     foldLevelLabels: List<String>,
@@ -336,7 +338,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.BLUE.m3Swatch(),
+                    color = AppearanceAccentColor.BLUE.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.BLUE,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.BLUE) },
@@ -344,7 +346,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.PURPLE.m3Swatch(),
+                    color = AppearanceAccentColor.PURPLE.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.PURPLE,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.PURPLE) },
@@ -352,7 +354,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.PINK.m3Swatch(),
+                    color = AppearanceAccentColor.PINK.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.PINK,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.PINK) },
@@ -360,7 +362,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.RED.m3Swatch(),
+                    color = AppearanceAccentColor.RED.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.RED,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.RED) },
@@ -368,7 +370,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.ORANGE.m3Swatch(),
+                    color = AppearanceAccentColor.ORANGE.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.ORANGE,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.ORANGE) },
@@ -376,7 +378,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.YELLOW.m3Swatch(),
+                    color = AppearanceAccentColor.YELLOW.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.YELLOW,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.YELLOW) },
@@ -384,7 +386,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.GREEN.m3Swatch(),
+                    color = AppearanceAccentColor.GREEN.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.GREEN,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.GREEN) },
@@ -392,7 +394,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             }
             item {
                 ColorButtonM3(
-                    color = AppearanceAccentColor.TEAL.m3Swatch(),
+                    color = AppearanceAccentColor.TEAL.seedColor(),
                     isSelected = appearance.accentColor == AppearanceAccentColor.TEAL,
                     appearance = appearance,
                     onClick = { onSetAccentColor(AppearanceAccentColor.TEAL) },
@@ -401,18 +403,20 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         }
     }
 
-    // ③ 主题模式：连接按钮组（语义 Role.RadioButton）
+    // ③ 主题模式：4 连按钮组（跟随系统 / 浅色 / 深色 / 纯黑，语义 Role.RadioButton）。
+    // 对齐 KernelSU 把 AMOLED 作为第 4 个模式按钮：纯黑态 = 深色 + 纯黑背景。
+    // 跟随系统下开启的纯黑仍然合法（随系统暗色生效），选中态只认「深色+纯黑」组合。
     item(key = "m3_theme_mode") {
         ThemeModeButtonGroup(
-            modes = themeModes,
-            labels = themeModeLabels,
             selectedMode = appearance.themeMode,
-            onSelectedMode = onSetThemeMode,
+            pureBlackEnabled = appearance.pureBlackEnabled,
+            onSetThemeMode = onSetThemeMode,
+            onSetPureBlack = onSetPureBlack,
         )
     }
 
-    // ④ 配色规格组（分段下拉行）
-    item(key = "m3_color_spec") {
+    // ④ 配色风格组（分段下拉行）。纯黑背景不再是开关行：已并入主题模式的第 4 个按钮。
+    item(key = "m3_color_style") {
         EtaSegmentedColumn(
             modifier = Modifier.padding(
                 start = EtaGroupHorizontalPadding,
@@ -422,6 +426,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         ) {
             item {
                 EtaSegmentedDropdownRow(
+                    icon = Icons.Rounded.Style,
                     title = stringResource(R.string.appearance_palette_style),
                     items = paletteLabels,
                     selectedIndex = appearance.paletteStyle.ordinal,
@@ -430,22 +435,36 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
                     },
                 )
             }
-            // 纯黑背景只作用于暗色渲染：强制浅色下设置永久无效，整行隐藏。
-            // 跟随系统时保留——解析结果随系统切换，开关仍有意义。
-            if (appearance.themeMode != AppearanceThemeMode.LIGHT) {
+        }
+    }
+
+    // ⑤ 预测性返回：独立开关行（KernelSU 同位置，色彩条目之后）。
+    // 仅 API 34+ 显示——底层 PredictiveBackController.apply 在更低版本本就 no-op。
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        item(key = "m3_predictive_back") {
+            EtaSegmentedColumn(
+                modifier = Modifier.padding(
+                    start = EtaGroupHorizontalPadding,
+                    end = EtaGroupHorizontalPadding,
+                    bottom = EtaSegmentedGroupSpacing,
+                ),
+            ) {
                 item {
                     EtaSwitchRow(
-                        title = stringResource(R.string.appearance_pure_black),
-                        summary = stringResource(R.string.appearance_pure_black_summary),
-                        checked = appearance.pureBlackEnabled,
-                        onCheckedChange = onSetPureBlack,
+                        leading = {
+                            PreferenceIcon(icon = Icons.AutoMirrored.Rounded.MenuOpen)
+                        },
+                        title = stringResource(R.string.appearance_predictive_back),
+                        summary = stringResource(R.string.appearance_predictive_back_summary),
+                        checked = appearance.predictiveBackEnabled,
+                        onCheckedChange = onSetPredictiveBack,
                     )
                 }
             }
         }
     }
 
-    // ⑤ 图标外观组
+    // ⑥ 图标外观组
     item(key = "m3_icon") {
         EtaSegmentedColumn(
             modifier = Modifier.padding(
@@ -456,6 +475,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         ) {
             item {
                 EtaClickableRow(
+                    leading = {
+                        PreferenceIcon(icon = Icons.Rounded.Launch)
+                    },
                     title = stringResource(R.string.appearance_icon),
                     summary = stringResource(R.string.appearance_icon_summary),
                     showChevron = false,
@@ -482,7 +504,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         }
     }
 
-    // ⑥ 界面行为组（分段开关行）
+    // ⑦ 界面行为组（分段开关行；预测性返回已独立成组⑤）
     item(key = "m3_interface") {
         EtaSegmentedColumn(
             modifier = Modifier.padding(
@@ -493,6 +515,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         ) {
             item {
                 EtaSwitchRow(
+                    leading = {
+                        PreferenceIcon(icon = Icons.Rounded.Schedule)
+                    },
                     title = stringResource(R.string.appearance_message_timestamps),
                     summary = stringResource(R.string.appearance_message_timestamps_summary),
                     checked = appearance.messageTimestampsEnabled,
@@ -502,6 +527,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
             item {
                 // 三档分级：激进只留用户消息与最终回复；普通只收推理/工具；不折叠始终摊开。
                 EtaSegmentedDropdownRow(
+                    // 1.7.8 里 UnfoldLess 未迁移进 AutoMirrored，只能用常规 rounded 集。
+                    icon = Icons.Rounded.UnfoldLess,
                     title = stringResource(R.string.appearance_fold_work_process),
                     summary = stringResource(R.string.appearance_fold_work_process_summary),
                     items = foldLevelLabels,
@@ -511,18 +538,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
                     },
                 )
             }
-            item {
-                EtaSwitchRow(
-                    title = stringResource(R.string.appearance_predictive_back),
-                    summary = stringResource(R.string.appearance_predictive_back_summary),
-                    checked = appearance.predictiveBackEnabled,
-                    onCheckedChange = onSetPredictiveBack,
-                )
-            }
         }
     }
 
-    // ⑦ 加载动效组（可展开子项）
+    // ⑧ 加载动效组（可展开子项）
     item(key = "m3_morph_loading") {
         EtaSegmentedColumn(
             modifier = Modifier.padding(
@@ -533,6 +552,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         ) {
             item {
                 EtaClickableRow(
+                    leading = {
+                        PreferenceIcon(icon = Icons.Rounded.Animation)
+                    },
                     title = stringResource(R.string.appearance_morph_loading),
                     summary = when {
                         !appearance.morphLoadingIndicator ->
@@ -590,7 +612,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         }
     }
 
-    // ⑧ 界面缩放滑杆卡（KernelSU TonalCard + Slider 布局）
+    // ⑨ 界面缩放滑杆卡（KernelSU TonalCard + Slider 布局）
     item(key = "m3_interface_scale") {
         EtaTonalCard(
             modifier = Modifier.padding(
@@ -651,18 +673,28 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
 
 }
 
+/** 主题模式单钮的选中态 / 图标 / 无障碍名 / 点击动作。 */
+private data class ThemeModeOption(
+    val checked: Boolean,
+    val icon: ImageVector,
+    val label: String,
+    val onSelect: () -> Unit,
+)
+
 /**
  * 主题模式连接按钮组（KernelSU `ExpressiveToggleButton` + `ButtonGroupDefaults.connected*Shapes`）。
+ * 4 态 = 跟随系统 / 浅色 / 深色 / 纯黑（AMOLED）：纯黑态 = 深色 + 纯黑背景，点深色会关掉纯黑、
+ * 点纯黑会切到深色并打开——数据仍是 themeMode + pureBlackEnabled 两个字段，无需迁移。
  */
 @Composable
 private fun ThemeModeButtonGroup(
-    modes: List<AppearanceThemeMode>,
-    labels: List<String>,
     selectedMode: AppearanceThemeMode,
-    onSelectedMode: (AppearanceThemeMode) -> Unit,
+    pureBlackEnabled: Boolean,
+    onSetThemeMode: (AppearanceThemeMode) -> Unit,
+    onSetPureBlack: (Boolean) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
-    // 三种主题模式恒为一行：不再按 4 个分行，也就没有额外的行间距需要手写。
+    // 四种模式恒为一行（KernelSU 按 chunked(4) 分行，这里恰好只占一行）。
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -673,13 +705,47 @@ private fun ThemeModeButtonGroup(
             ),
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
-        modes.forEachIndexed { index, mode ->
+        val options = listOf(
+            ThemeModeOption(
+                checked = selectedMode == AppearanceThemeMode.SYSTEM,
+                icon = Icons.Filled.Brightness4,
+                label = stringResource(R.string.appearance_theme_system),
+            ) {
+                onSetThemeMode(AppearanceThemeMode.SYSTEM)
+            },
+            ThemeModeOption(
+                checked = selectedMode == AppearanceThemeMode.LIGHT,
+                icon = Icons.Filled.Brightness7,
+                label = stringResource(R.string.appearance_theme_light),
+            ) {
+                onSetThemeMode(AppearanceThemeMode.LIGHT)
+            },
+            ThemeModeOption(
+                checked = selectedMode == AppearanceThemeMode.DARK && !pureBlackEnabled,
+                icon = Icons.Filled.Brightness3,
+                label = stringResource(R.string.appearance_theme_dark),
+            ) {
+                onSetThemeMode(AppearanceThemeMode.DARK)
+                onSetPureBlack(false)
+            },
+            ThemeModeOption(
+                checked = selectedMode == AppearanceThemeMode.DARK && pureBlackEnabled,
+                icon = Icons.Filled.Brightness1,
+                // 与 KernelSU 不同处：这里给纯黑钮独立的无障碍名（复用「纯黑背景」文案），
+                // 而不是和深色共用一个「深色」。
+                label = stringResource(R.string.appearance_pure_black),
+            ) {
+                onSetThemeMode(AppearanceThemeMode.DARK)
+                onSetPureBlack(true)
+            },
+        )
+        options.forEachIndexed { index, option ->
             EtaExpressiveToggleButton(
-                checked = selectedMode == mode,
+                checked = option.checked,
                 onCheckedChange = { checked ->
                     if (checked) {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onSelectedMode(mode)
+                        option.onSelect()
                     }
                 },
                 modifier = Modifier
@@ -687,18 +753,11 @@ private fun ThemeModeButtonGroup(
                     .semantics { role = Role.RadioButton },
                 shapes = when (index) {
                     0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                    modes.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                     else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                 },
             ) {
-                Icon(
-                    imageVector = when (mode) {
-                        AppearanceThemeMode.SYSTEM -> Icons.Filled.Brightness4
-                        AppearanceThemeMode.LIGHT -> Icons.Filled.Brightness7
-                        AppearanceThemeMode.DARK -> Icons.Filled.Brightness3
-                    },
-                    contentDescription = labels[mode.ordinal],
-                )
+                Icon(imageVector = option.icon, contentDescription = option.label)
             }
         }
     }
@@ -921,19 +980,6 @@ private fun ColorButtonM3(
     }
 }
 
-/** 强调色的固定色样（与 AgentAppTheme 的 seedColor 定义同源）。 */
-private fun AppearanceAccentColor.m3Swatch(): Color = when (this) {
-    AppearanceAccentColor.SYSTEM -> Color.Unspecified
-    AppearanceAccentColor.BLUE -> Color(0xFF3482FF)
-    AppearanceAccentColor.PURPLE -> Color(0xFF6750A4)
-    AppearanceAccentColor.PINK -> Color(0xFFF26D9A)
-    AppearanceAccentColor.RED -> Color(0xFFBA1A1A)
-    AppearanceAccentColor.ORANGE -> Color(0xFFF27A1A)
-    AppearanceAccentColor.YELLOW -> Color(0xFFF5C542)
-    AppearanceAccentColor.GREEN -> Color(0xFF006D3B)
-    AppearanceAccentColor.TEAL -> Color(0xFF006A6A)
-}
-
 /**
  * 候选配色：与 [io.github.mangi.eta.ui.app.AgentAppTheme] 的 M3 分支同源 ——
  * material-color-utilities（Spec2025，materialkolor）生成的动态取色，经同样的色板映射成
@@ -958,7 +1004,7 @@ private fun AppearanceSettings.previewM3ColorScheme(
             platformDynamicPrimary(context, isDark)
         accentColor == AppearanceAccentColor.SYSTEM ->
             platformDynamicPrimary(context, isDark)
-        else -> accentColor.m3Swatch()
+        else -> accentColor.seedColor()
     }
     val scheme = remember(keyColor.value, paletteStyle, isDark) {
         previewDynamicScheme(paletteStyle, keyColor.toArgb(), isDark)

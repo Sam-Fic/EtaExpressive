@@ -160,8 +160,8 @@ private fun DynamicScheme.toMaterial3ColorScheme(
 
 private fun Int.toColor(): Color = Color(this)
 
-/** 强调色的预设种子。 */
-private fun AppearanceAccentColor.seedColor(): Color = when (this) {
+/** 强调色的预设种子（外观页色板 / 预览与真实主题共用的唯一真相源）。 */
+internal fun AppearanceAccentColor.seedColor(): Color = when (this) {
     AppearanceAccentColor.SYSTEM, AppearanceAccentColor.BLUE -> Color(0xFF3482FF)
     AppearanceAccentColor.PURPLE -> Color(0xFF6750A4)
     AppearanceAccentColor.PINK -> Color(0xFFB0006D)

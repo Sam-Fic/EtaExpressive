@@ -76,13 +76,16 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text as M3Text
+import androidx.compose.material3.toShape
 
 private enum class UsageStatsTab { Overview, Models }
 
@@ -241,7 +244,11 @@ private fun HeatmapGroup(conversationsPerDay: Map<LocalDate, Int>) {
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    ChatHeatmap(conversationsPerDay = conversationsPerDay)
+                    val cellShapes = heatmapCellShapes()
+                    ChatHeatmap(
+                        conversationsPerDay = conversationsPerDay,
+                        cellShapes = cellShapes,
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
@@ -253,7 +260,11 @@ private fun HeatmapGroup(conversationsPerDay: Map<LocalDate, Int>) {
                             maxLines = 1,
                         )
                         listOf(0f, 0.25f, 0.5f, 0.75f, 1f).forEach { alpha ->
-                            HeatmapCell(alpha = alpha, sizeDp = 10)
+                            HeatmapCell(
+                                alpha = alpha,
+                                shape = cellShapes[heatShapeIndex(alpha)],
+                                sizeDp = 10,
+                            )
                         }
                         StatsLabel(
                             text = stringResource(R.string.stats_page_heatmap_more),
@@ -712,7 +723,7 @@ private fun ProviderUsageGroup(
 }
 
 @Composable
-private fun ChatHeatmap(conversationsPerDay: Map<LocalDate, Int>) {
+private fun ChatHeatmap(conversationsPerDay: Map<LocalDate, Int>, cellShapes: List<Shape>) {
     val today = LocalDate.now()
     val startSunday = today
         .with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))
@@ -802,8 +813,10 @@ private fun ChatHeatmap(conversationsPerDay: Map<LocalDate, Int>) {
                             val date = startSunday.plusDays((weekIdx * 7 + dow).toLong())
                             val isFuture = date.isAfter(today)
                             val count = if (isFuture) 0 else (conversationsPerDay[date] ?: 0)
+                            val alpha = heatmapAlpha(count, q1, q2, q3, isFuture)
                             HeatmapCell(
-                                alpha = heatmapAlpha(count, q1, q2, q3, isFuture),
+                                alpha = alpha,
+                                shape = cellShapes[heatShapeIndex(alpha)],
                                 sizeDp = cellSize.value.toInt(),
                             )
                         }
@@ -817,9 +830,9 @@ private fun ChatHeatmap(conversationsPerDay: Map<LocalDate, Int>) {
 /** 热力图滚动区两端的淡出带宽：约一格半（格子 11dp + 间距 2dp）。 */
 private val HeatmapEdgeFadeWidth = 16.dp
 
-/** 热力图色块：非交互数据可视化，颜色只取主题角色。 */
+/** 热力图色块：非交互数据可视化，颜色只取主题角色，形状随用量档位热闹递增。 */
 @Composable
-private fun HeatmapCell(alpha: Float, sizeDp: Int) {
+private fun HeatmapCell(alpha: Float, shape: Shape, sizeDp: Int) {
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val primary = MaterialTheme.colorScheme.primary
     val color = when {
@@ -827,14 +840,36 @@ private fun HeatmapCell(alpha: Float, sizeDp: Int) {
         alpha == 0f -> surfaceVariant
         else -> primary.copy(alpha = alpha)
     }
-    // 走官方形状令牌里最小的一档。
-    val cellShape: Shape = MaterialTheme.shapes.extraSmall
     Box(
         modifier = Modifier
             .size(sizeDp.dp)
-            .clip(cellShape)
+            .clip(shape)
             .background(color),
     )
+}
+
+/**
+ * 热力图五档形状：用量少 → 多，取 M3 官方表达式形状库热闹度递增的五枚：
+ * 方块（安静底色）→ 四叶饼干 → 太阳（八段浅波）→ 花朵（八瓣）→ 爆开（十二尖刺）。
+ * 格子只有 11dp，优先挑剪影在小尺寸仍可辨的形状；非对称与朝向形（箭头、心形等）不参与。
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun heatmapCellShapes(): List<Shape> = listOf(
+    MaterialShapes.Square.toShape(),
+    MaterialShapes.Cookie4Sided.toShape(),
+    MaterialShapes.Sunny.toShape(),
+    MaterialShapes.Flower.toShape(),
+    MaterialShapes.Burst.toShape(),
+)
+
+/** 用量档位 → 形状阶梯下标：空档/未来日与「少」同用第 0 档的安静方块。 */
+private fun heatShapeIndex(alpha: Float): Int = when {
+    alpha <= 0f -> 0
+    alpha <= 0.25f -> 1
+    alpha <= 0.5f -> 2
+    alpha <= 0.75f -> 3
+    else -> 4
 }
 
 private fun formatCurrentLifetime(current: String, lifetime: String): String =
