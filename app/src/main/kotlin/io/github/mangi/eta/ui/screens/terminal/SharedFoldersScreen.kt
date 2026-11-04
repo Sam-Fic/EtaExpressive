@@ -31,6 +31,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text as M3Text
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -55,17 +60,14 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text as M3Text
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 共享文件夹管理：把 Android 目录配置为 Linux 环境 /workspace/mounts/ 下的挂载点。
@@ -304,6 +306,7 @@ internal fun SharedFolderPickerScreen(
  * Root 模式可以访问系统目录。公共存储授权在进入本页前按需申请。
  * 确认时挂载的是当前已列出内容的目录（path）；路径输入框只用于跳转。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SharedFolderPickerPage(
     context: Context,
@@ -471,9 +474,11 @@ private fun SharedFolderPickerPage(
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
                 ) {
-                    androidx.compose.material3.CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
+                    // 行内“图标 + 文字”统一用无容器 LoadingIndicator（18dp 槽），
+                    // 不再用 CircularProgressIndicator 形成第二套行内语言。
+                    LoadingIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     M3Text(
                         text = stringResource(R.string.spc_reading),

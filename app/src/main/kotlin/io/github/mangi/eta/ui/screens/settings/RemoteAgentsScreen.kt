@@ -59,6 +59,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaTooltipIconButton
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
+import io.github.mangi.eta.ui.adaptive.etaConnectedColor
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -398,7 +399,8 @@ private fun probeLocalNetworkDialogText(state: LocalNetworkPermission.AccessStat
 @Composable
 private fun StatusDot(status: RemoteConnectionStatus) {
     val color: Color = when (status) {
-        RemoteConnectionStatus.Connected -> MaterialTheme.colorScheme.primary
+        // 已连接与抽屉、分类页共用同一成功语义绿，避免三处各写一种绿色。
+        RemoteConnectionStatus.Connected -> etaConnectedColor()
         RemoteConnectionStatus.Connecting, is RemoteConnectionStatus.Reconnecting ->
             MaterialTheme.colorScheme.tertiary
         is RemoteConnectionStatus.Failed -> MaterialTheme.colorScheme.error

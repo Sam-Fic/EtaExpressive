@@ -89,7 +89,10 @@ fun BrowserDownloadsSheet(
                 actions = {
                     if (hasFinished) {
                         TextButton(onClick = { tabPool.clearFinishedDownloads() }) {
-                            Text(stringResource(R.string.om_browser_downloads_clear))
+                            Text(
+                                text = stringResource(R.string.om_browser_downloads_clear),
+                                color = MaterialTheme.colorScheme.error,
+                            )
                         }
                     }
                 },

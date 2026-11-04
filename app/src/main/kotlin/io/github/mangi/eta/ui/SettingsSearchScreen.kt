@@ -104,8 +104,14 @@ internal fun SettingsSearchScreen(
                             // 摘要与所属分组一起给，结果里始终看得出「这行在哪个分区」。
                             summary = listOfNotNull(hit.entry.summary, hit.entry.group)
                                 .joinToString(" · "),
-                            leading = { PreferenceIcon(icon = hit.entry.icon) },
+                            leading = {
+                                PreferenceIcon(
+                                    icon = hit.entry.icon,
+                                    destructive = hit.entry.destructive,
+                                )
+                            },
                             highlight = highlightTerm,
+                            destructive = hit.entry.destructive,
                             onClick = {
                                 EtaSearchHistory.add(context, HISTORY_KEY, query)
                                 when (val destination = hit.entry.destination) {

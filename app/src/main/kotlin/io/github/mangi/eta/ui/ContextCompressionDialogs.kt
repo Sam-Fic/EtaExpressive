@@ -6,14 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +31,7 @@ import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
 import io.github.mangi.eta.ui.components.filterModelProviderGroups
 import io.github.mangi.eta.ui.model.AgentModelOptionUi
 import io.github.mangi.eta.ui.model.AgentModelPickerProjector
@@ -96,7 +94,6 @@ internal fun CompressModelMissingWindowDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun CompressModelPickerDialog(
     state: AgentModelPickerUiState,
@@ -151,7 +148,8 @@ internal fun CompressModelPickerDialog(
                         .padding(horizontal = 4.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    LoadingIndicator(modifier = Modifier.size(22.dp))
+                    // 块级空态统一 28dp contained，归入 loading 选型表的块级档。
+                    ContainedMorphLoadingIndicator()
                 }
             } else if (groups.isEmpty()) {
                 Text(

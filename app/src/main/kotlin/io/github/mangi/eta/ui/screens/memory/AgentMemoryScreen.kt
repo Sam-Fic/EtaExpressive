@@ -34,6 +34,7 @@ import io.github.mangi.eta.ui.layout.horizontalCutoutPadding
 import io.github.mangi.eta.ui.model.AgentMemoryAction
 import io.github.mangi.eta.ui.model.AgentMemoryUiState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -209,6 +210,9 @@ internal fun AgentMemoryScreen(
                             M3TextButton(
                                 onClick = { showClearDialog = true },
                                 enabled = !state.isLoading && !state.isSaving && state.draft.isNotEmpty(),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
                                 modifier = Modifier.weight(1f),
                             ) {
                                 M3Text(stringResource(R.string.ui_clear_84fcd7))

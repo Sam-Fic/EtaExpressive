@@ -459,8 +459,11 @@ internal fun VirtualDisplayRecoverySection(
                                 horizontalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm),
                             ) {
                                 if (working) {
-                                    // M3E LoadingIndicator：行内 16dp 槽，按 loading 选型表统一。
-                                    LoadingIndicator(modifier = Modifier.size(16.dp))
+                                    // M3E LoadingIndicator：正文行内 18dp 槽，配色显式取 primary。
+                                    LoadingIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
                                 } else {
                                     EtaStatusDot(active = readable && present && !busy)
                                 }

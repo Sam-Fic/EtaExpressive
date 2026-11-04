@@ -130,6 +130,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaType
+import io.github.mangi.eta.ui.adaptive.etaConnectedColor
 import io.github.mangi.eta.ui.adaptive.etaConnectedButtonShapes
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.layout.LocalPageContentWidth
@@ -861,7 +862,7 @@ private fun Material3ConversationPane(
         ) {
             Spacer(modifier = Modifier.height(DrawerMetrics.TopInset))
 
-            // 胶囊行：左侧可横向滚动的「本机 / [远程…] / 未分类 / [文件夹…]」，右侧固定「管理文件夹」。
+            // 胶囊行：左侧可横向滚动的「本机 / [远程…] / 未分类 / [分类…]」，右侧固定「管理分类」。
             // 行内混着两类高度：官方 ToggleButton 是纯 40dp 布局；走官方 Surface 的按钮
             // （FilledTonalButton、文件夹胶囊的 Surface）自带 48dp 最小触摸目标——布局被撑到
             // 48dp、40dp 可视区在内部居中，整行随之变 48dp，全部胶囊的可视中线整体下移 4dp，
@@ -1967,13 +1968,12 @@ private fun remoteSessionTitle(session: RemoteSessionInfo): String =
         ?: session.path.substringAfterLast('/').ifBlank { session.path }
 
 @Composable
-private fun RemoteStatusDot(status: RemoteConnectionStatus) {
+internal fun RemoteStatusDot(status: RemoteConnectionStatus) {
     val color = when (status) {
-        // 已连接不用 primary：它与胶囊选中态（primaryContainer 一族）同源，pi 胶囊
-        // 被选中时点会融进选中底色里。改用官方 vibrant FAB 容器色——即抽屉工具栏
-        // 新建按钮的绿：与选中紫拉开距离，语义上也是通行的「在线」信号色。
-        RemoteConnectionStatus.Connected ->
-            FloatingToolbarDefaults.vibrantFloatingToolbarColors().fabContainerColor
+        // 已连接固定走成功语义绿（etaConnectedColor）：抽屉、分类页、设置页三处同源。
+        // 不用 primary：它与胶囊选中态（primaryContainer 一族）同源，pi 胶囊被选中时
+        // 点会融进选中底色里；也不再用 vibrant FAB 容器色，因为那会随壁纸漂移。
+        RemoteConnectionStatus.Connected -> etaConnectedColor()
         RemoteConnectionStatus.Connecting, is RemoteConnectionStatus.Reconnecting ->
             MaterialTheme.colorScheme.tertiary
         is RemoteConnectionStatus.Failed -> MaterialTheme.colorScheme.error

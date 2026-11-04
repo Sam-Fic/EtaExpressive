@@ -253,7 +253,10 @@ private fun SkillActionRow(
         enabled = enabled,
         leadingContent = {
             if (iconLoading) {
-                LoadingIndicator(modifier = Modifier.size(24.dp))
+                LoadingIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                )
             } else {
                 Icon(imageVector = icon, contentDescription = null)
             }

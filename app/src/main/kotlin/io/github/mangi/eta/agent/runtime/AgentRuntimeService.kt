@@ -1826,7 +1826,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun capsuleWindowWidthPx(): Int {
         val vd = virtualDisplayActive()
         val widthDp = when {
-            vd && capsuleExpanded.value -> CAPSULE_STAGE_WINDOW_WIDTH_DP
+            capsuleExpanded.value -> CAPSULE_EXPANDED_WINDOW_WIDTH_DP
             vd -> CAPSULE_MICRO_WINDOW_WIDTH_DP
             else -> CAPSULE_WINDOW_WIDTH_DP
         }
@@ -1850,13 +1850,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var capsuleContentHeightPx = 0
 
     /**
-     * 胶囊内容尺寸回调：展开/收起/舞台互切的每一帧布局都会来。
-     * 窗口据此外扩固定留白后逐帧贴合，全程连续无缝，不再分档跳变
-     * （旧方案瞬间撑窗/缩窗会让合成器把上一帧 buffer 拉伸一帧，肉眼可见抽搐）。
+     * 胶囊内容尺寸回调：宽度来自 Compose 状态目标值（弹簧逐帧值），高度来自布局测量。
+     * 两者分开上报——宽度绝不能用测量值：窗口对内容的钳制会经「钳制→上报→收窗」
+     * 反馈成逐帧缩水；高度没有状态目标，只能测量，但负值一律丢弃（防 <0 闪退）。
+     * 窗口据此外扩固定留白后逐帧贴合，全程连续无缝。
      */
     private fun updateCapsuleWindowSize(contentWidthPx: Int, contentHeightPx: Int) {
-        capsuleContentWidthPx = contentWidthPx
-        capsuleContentHeightPx = contentHeightPx
+        if (contentWidthPx != Int.MIN_VALUE) capsuleContentWidthPx = contentWidthPx
+        if (contentHeightPx != Int.MIN_VALUE) capsuleContentHeightPx = contentHeightPx.coerceAtLeast(0)
         applyCapsuleWindowBounds()
     }
 
@@ -1865,8 +1866,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         val view = capsuleView ?: return
         val lp = capsuleParams ?: return
         if (capsuleContentWidthPx <= 0 || capsuleContentHeightPx <= 0) return
-        val width = capsuleContentWidthPx + dpToPx(CAPSULE_WINDOW_MARGIN_HORIZONTAL_DP)
-        val height = capsuleContentHeightPx + dpToPx(CAPSULE_WINDOW_MARGIN_VERTICAL_DP)
+        // 外衬必须与 Compose 侧 Surface padding 的实际像素严格对齐再加缓冲：
+        // Compose 是每侧独立 roundToPx(12dp / 6dp)，而 dpToPx 是截断——2.8125 密度下
+        // 12dp 截断成 33px、Compose 实际消耗 34px，窗口每帧比内容矮 1px，内容被
+        // 钳小后上报更小，形成「钳制→上报→收窗」逐帧缩水回路（几秒缩到消失）。
+        val width = capsuleContentWidthPx + capsulePaddingPx(CAPSULE_PADDING_HORIZONTAL_DP) +
+            CAPSULE_WINDOW_SLACK_PX
+        val height = capsuleContentHeightPx + capsulePaddingPx(CAPSULE_PADDING_VERTICAL_DP) +
+            CAPSULE_WINDOW_SLACK_PX
         // 位置归属：拖拽/惯性期间由手势与 scroller 逐帧下发（中心不动、窗口对称收放），
         // 静止时才做边界钳制——否则会把越界回弹和橡皮筋钳回边上，打断物理轨迹。
         val position = if (capsuleFlingScroller != null || capsulePointerCaptured) {
@@ -2389,6 +2396,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun dpToPx(dp: Int): Int =
         (dp * resources.displayMetrics.density).toInt()
 
+    /**
+     * Compose 侧胶囊 Surface 的水平/垂直 padding 实际像素：每侧独立 roundToPx 后求和
+     * （与 Compose `Modifier.padding` 的测量公式一致）。窗口外衬必须用本函数而不是
+     * [dpToPx]（截断）——两者在小数密度（如 2.8125）下差 1px，会被逐帧贴合反馈放大。
+     */
+    private fun capsulePaddingPx(perSideDp: Int): Int =
+        2 * (perSideDp * resources.displayMetrics.density).roundToInt()
+
     private fun enterFinalState(
         finalState: AgentOverlayState,
         keepVisible: Boolean = false,
@@ -2548,14 +2563,19 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         // 高度 = 上下留白 12 + 头部 56（TextFieldDefaults.MinHeight）+ 8dp 间距 + 内容 + 8dp 间距。
         private const val CAPSULE_WINDOW_WIDTH_DP = 272
         private const val CAPSULE_MICRO_WINDOW_WIDTH_DP = 290
-        private const val CAPSULE_STAGE_WINDOW_WIDTH_DP = 324
+        // 展开宽 360（Compose 侧还会按屏宽−40 钳制）+ 上下留白 12*2 之外留出的余量；
+        // 首帧估计偏大没关系，逐帧回调会立刻收敛，偏小则会被钳制触发缩水。
+        private const val CAPSULE_EXPANDED_WINDOW_WIDTH_DP = 368
         private const val CAPSULE_COLLAPSED_HEIGHT_DP = 68
         private const val CAPSULE_CONTROLS_HEIGHT_DP = 132
         private const val CAPSULE_STAGE_HEIGHT_DP = 524
         private const val CAPSULE_SUPPLEMENT_HEIGHT_DP = 260
-        // Compose 侧胶囊 Surface 外圈留白（horizontal 12dp / vertical 6dp）的外扩余量。
-        private const val CAPSULE_WINDOW_MARGIN_HORIZONTAL_DP = 24
-        private const val CAPSULE_WINDOW_MARGIN_VERTICAL_DP = 12
+        // Compose 侧胶囊 Surface 外圈留白（每侧 12dp / 6dp，按 roundToPx 求和）。
+        // 2px 缓冲确保窗口永远略大于「内容 + padding」，钝化任何取整误差；
+        // 透明边距肉眼不可见，但任何 1px 缺口都会触发逐帧缩水回路。
+        private const val CAPSULE_PADDING_HORIZONTAL_DP = 12
+        private const val CAPSULE_PADDING_VERTICAL_DP = 6
+        private const val CAPSULE_WINDOW_SLACK_PX = 2
         private const val CAPSULE_CLEARANCE_SLOP_DP = 8
         // 拖拽越界段的阻尼系数（橡皮筋）：越界位移按此比例缩放跟手。
         private const val CAPSULE_OVERDRAG_RESISTANCE = 0.35f

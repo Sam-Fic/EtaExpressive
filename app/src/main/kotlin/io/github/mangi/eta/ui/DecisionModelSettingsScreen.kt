@@ -853,9 +853,16 @@ internal fun DecisionModelSettingsScreen(
                     EtaClickableRow(
                         title = stringResource(R.string.decision_model_cleanup_title),
                         summary = stringResource(R.string.decision_model_cleanup_summary),
-                        leading = { PreferenceIcon(icon = Icons.Rounded.DeleteSweep, enabled = writable) },
+                        leading = {
+                            PreferenceIcon(
+                                icon = Icons.Rounded.DeleteSweep,
+                                enabled = writable,
+                                destructive = true,
+                            )
+                        },
                         enabled = writable,
                         onClick = { showCleanupDialog = true },
+                        destructive = true,
                     )
                 }
             }

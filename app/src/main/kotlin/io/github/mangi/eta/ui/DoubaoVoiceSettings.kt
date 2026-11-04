@@ -707,6 +707,7 @@ private fun VoiceSlotSync(apiKey: String, onBusy: (Boolean) -> Unit, onResult: (
     VoiceGroup {
         item {
             EtaClickableRow(title = stringResource(R.string.dv_clear_remembered), showChevron = false, enabled = !working,
+                destructive = true,
                 onClick = {
                     runCatching { secretStore.clear() }.onSuccess {
                         VoiceCatalogPreferences.clear(context); ak = ""; project = "default"; sk = ""; storageError = ""

@@ -393,7 +393,7 @@ private fun CommandBlock(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(top = 6.dp),
                                 ) {
-                                    TerminalBusyIndicator(size = 14.dp)
+                                    TerminalBusyIndicator(size = 16.dp)
                                     TerminalMonoText(
                                         text = AnnotatedString(stringResource(R.string.terminal_running)),
                                         color = terminalMutedForeground(),

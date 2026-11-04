@@ -150,6 +150,8 @@ internal data class SettingsEntry(
     val icon: ImageVector,
     val group: String,
     val destination: SettingsDestination,
+    /** 破坏性设置项（清理、清除、删除、移除、重置等）：搜索结果的标题与图标取官方 `error` 角色色。 */
+    val destructive: Boolean = false,
 )
 
 /**
@@ -573,6 +575,7 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 icon = Icons.Rounded.DeleteSweep,
                 group = groupDiagnostics,
                 destination = SettingsDestination.Inline,
+                destructive = true,
             ),
         )
 
