@@ -1,5 +1,10 @@
 package io.github.mangi.eta.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -190,26 +195,39 @@ internal fun M3ComposerPickerSheet(
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState()),
             ) {
-                if (tabIndex == 0) {
-                    M3ModelPickerTab(
-                        state = modelPickerState,
-                        onModelSelected = onModelSelected,
-                    )
-                } else if (remoteAgentName != null) {
-                    // 远程会话：助手只有服务器上那一个，本机没有可换的目标。
-                    RemoteAssistantTab(name = remoteAgentName)
-                } else {
-                    M3AssistantPickerTab(
-                        assistantId = assistantId,
-                        onOpen = { id ->
-                            onDismiss()
-                            onAssistantSelected(id)
-                        },
-                        onEdit = { id ->
-                            onDismiss()
-                            onEditAssistant(id)
-                        },
-                    )
+                // 页签切换走 fade-through：旧内容快速淡出、新内容稍慢淡入，尺寸同步收放，
+                // 不再让「模型列表 ⇄ 助手列表」整块硬跳。
+                val tabMotionScheme = MaterialTheme.motionScheme
+                AnimatedContent(
+                    targetState = tabIndex,
+                    transitionSpec = {
+                        (fadeIn(tabMotionScheme.defaultEffectsSpec()) togetherWith
+                            fadeOut(tabMotionScheme.fastEffectsSpec()))
+                            .using(SizeTransform(clip = false))
+                    },
+                    label = "composerPickerTab",
+                ) { tab ->
+                    if (tab == 0) {
+                        M3ModelPickerTab(
+                            state = modelPickerState,
+                            onModelSelected = onModelSelected,
+                        )
+                    } else if (remoteAgentName != null) {
+                        // 远程会话：助手只有服务器上那一个，本机没有可换的目标。
+                        RemoteAssistantTab(name = remoteAgentName)
+                    } else {
+                        M3AssistantPickerTab(
+                            assistantId = assistantId,
+                            onOpen = { id ->
+                                onDismiss()
+                                onAssistantSelected(id)
+                            },
+                            onEdit = { id ->
+                                onDismiss()
+                                onEditAssistant(id)
+                            },
+                        )
+                    }
                 }
             }
             HorizontalDivider()

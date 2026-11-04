@@ -1,11 +1,20 @@
 package io.github.mangi.eta.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,8 +37,19 @@ internal fun SkillSlashMentionPanel(
     selectedIds: Set<String>,
     onSelect: (SkillIndexEntry) -> Unit,
 ) {
-    if (query == null) return
-    val candidates = SkillSlashMention.candidates(skills, query, selectedIds)
+    // 候选面板随 / 查询出现/收起；退场期间沿用上一次查询的候选，避免列表先消失再淡出。
+    var lastQuery by remember { mutableStateOf<String?>(null) }
+    if (query != null) lastQuery = query
+    val shownQuery = query ?: lastQuery
+    AnimatedVisibility(
+        visible = query != null,
+        enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+            expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+    ) {
+    if (shownQuery == null) return@AnimatedVisibility
+    val candidates = SkillSlashMention.candidates(skills, shownQuery, selectedIds)
     // M3 Expressive：官方 Surface 承担面板底板（官方 shapes.medium + surfaceContainerHigh），
     // 候选行改用官方可交互 ListItem——容器形状、内容间距、涟漪、Role 与禁用处理全部由官方组件提供，
     // 排版只用 MaterialTheme.typography，文字色只用官方 onSurface / onSurfaceVariant 角色。
@@ -81,5 +101,6 @@ internal fun SkillSlashMentionPanel(
                 }
             }
         }
+    }
     }
 }

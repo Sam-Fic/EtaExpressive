@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
@@ -299,14 +300,11 @@ internal fun Material3ComposerBody(
     // （重连中）/ 重试圆钮（失败）接管。队列条一并让位：断线期间本来就发不出去。
     // 草稿按会话键存于 ComposerQueueStore / coordinator 草稿表，恢复连接后原样回来。
     val remoteComposerStatus = io.github.mangi.eta.ui.remote.LocalRemoteComposerStatus.current
-    if (remoteComposerStatus != null) {
-        RemoteStatusComposerPill(
-            status = remoteComposerStatus,
-            onPositionedTopPx = onPositionedTopPx,
-            onToolbarHeightPx = onToolbarHeightPx,
-        )
-        return
-    }
+
+    // 草稿输入栏的整棵子树：断线期间由外层 AnimatedContent 整颗替换成状态胶囊，
+    // 两条分支用同一条 Expressive 淡入淡出（尺寸同步收放、不裁切），不再硬切。
+    @Composable
+    fun DraftComposerBody() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var attachMenuExpanded by remember { mutableStateOf(false) }
@@ -696,6 +694,29 @@ internal fun Material3ComposerBody(
         onReasoningEffortChange = onReasoningEffortChange,
         onCycleGptSpeedMode = onCycleGptSpeedMode,
     )
+    }
+
+    // 状态切换的规格必须在 Composable 作用域取一次：transitionSpec 不是 @Composable。
+    val composerMotionScheme = MaterialTheme.motionScheme
+    AnimatedContent(
+        targetState = remoteComposerStatus,
+        transitionSpec = {
+            (fadeIn(composerMotionScheme.defaultEffectsSpec()) togetherWith
+                fadeOut(composerMotionScheme.fastEffectsSpec()))
+                .using(SizeTransform(clip = false))
+        },
+        label = "composerStatus",
+    ) { status ->
+        if (status != null) {
+            RemoteStatusComposerPill(
+                status = status,
+                onPositionedTopPx = onPositionedTopPx,
+                onToolbarHeightPx = onToolbarHeightPx,
+            )
+        } else {
+            DraftComposerBody()
+        }
+    }
 }
 
 /**

@@ -9,12 +9,9 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -193,19 +190,23 @@ internal fun AgentOverlayCapsule(
         }
     }
 
+    // 浮窗内容确实持有 Expressive 的 motionScheme（下方 bodySpatial 等已直接用），
+    // 因此这里统一收口到官方规格，只保留脉冲/进度这类自有节奏。
+    val motionScheme = MaterialTheme.motionScheme
+
     // 为 Agent 手势让路：离开时快速上移收小淡出，回来时用弹簧落回，只改绘制层不触发重排。
     val clearance by animateFloatAsState(
         targetValue = if (yielded) 1f else 0f,
         animationSpec = if (yielded) {
-            tween(durationMillis = 180, easing = FastOutLinearInEasing)
+            motionScheme.fastEffectsSpec()
         } else {
-            spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+            motionScheme.defaultSpatialSpec()
         },
         label = "capsule_clearance",
     )
     val accent by animateColorAsState(
         targetValue = phaseAccent(state.phase),
-        animationSpec = tween(240),
+        animationSpec = motionScheme.defaultEffectsSpec(),
         label = "capsule_accent",
     )
     val statusText = state.status.localizedText()
@@ -213,7 +214,7 @@ internal fun AgentOverlayCapsule(
     // 展开进度只驱动绘制层的透明度与位移，不参与测量；控制区用 AnimatedVisibility 只在两端各测一次。
     val expansion by animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
-        animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+        animationSpec = motionScheme.defaultSpatialSpec(),
         label = "capsule_expansion",
         finishedListener = { value ->
             if (value == 0f) {
@@ -233,7 +234,7 @@ internal fun AgentOverlayCapsule(
             virtualDisplay.active -> CapsuleMicroLensWidth
             else -> CapsuleDefaultWidth
         },
-        animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = motionScheme.defaultSpatialSpec(),
         label = "capsule_width",
     )
     val targetCapsuleCorner by animateDpAsState(
@@ -243,7 +244,7 @@ internal fun AgentOverlayCapsule(
             virtualDisplay.active && expanded -> CapsuleOuterCorner
             else -> CapsuleInnerCorner
         },
-        animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = motionScheme.defaultSpatialSpec(),
         label = "capsule_corner",
     )
     // 缩球时正文文字淡出（宽度由弹簧收窄带走），恢复时随宽展开淡回。
@@ -251,7 +252,7 @@ internal fun AgentOverlayCapsule(
     // 文字太早浮现会先被窄容器省略截断、再解锁重排，看起来像卡了一下。
     val headerTextAlpha by animateFloatAsState(
         targetValue = if (minimized) 0f else 1f,
-        animationSpec = if (minimized) tween(160) else tween(280, delayMillis = 60),
+        animationSpec = if (minimized) motionScheme.fastEffectsSpec() else motionScheme.defaultEffectsSpec(),
         label = "capsule_header_text_alpha",
     )
     // 末端内边距随缩球同步收放，不能硬切：morph 首帧文字仍 ~95% 不透明，
@@ -263,7 +264,7 @@ internal fun AgentOverlayCapsule(
             lensVisible -> CapsuleInnerCorner - MicroLensGlassWidth / 2
             else -> EtaDimens.SpaceLg
         },
-        animationSpec = tween(180),
+        animationSpec = motionScheme.defaultSpatialSpec(),
         label = "capsule_header_end_padding",
     )
 
@@ -273,9 +274,9 @@ internal fun AgentOverlayCapsule(
         virtualDisplay.active -> CapsuleBody.Stage
         else -> CapsuleBody.Controls
     }
-    val bodySpatial = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-    val bodyFastSpatial = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
-    val bodySizeSpatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
+    val bodySpatial = motionScheme.defaultSpatialSpec<Float>()
+    val bodyFastSpatial = motionScheme.fastSpatialSpec<Float>()
+    val bodySizeSpatial = motionScheme.defaultSpatialSpec<IntSize>()
     val bodyOrigin = TransformOrigin(0.5f, 0f)
 
     // 头部拖动与光球同一套物理手势流：窗口被 WindowManager 移动时 raw 坐标依旧稳定，
@@ -291,15 +292,15 @@ internal fun AgentOverlayCapsule(
         visible = visible && !virtualDisplay.materializingToMain,
         // 窗口逐帧贴合本 Surface 的布局尺寸（onGloballyPositioned 回调宿主），
         // 位移/缩放只走绘制层不参与测量，所以入场/退场走缩放+淡入淡出。
-        enter = fadeIn(tween(180)) + scaleIn(
+        enter = fadeIn(motionScheme.defaultEffectsSpec()) + scaleIn(
             initialScale = 0.92f,
             transformOrigin = TransformOrigin(0.5f, 0f),
-            animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            animationSpec = motionScheme.defaultSpatialSpec(),
         ),
-        exit = fadeOut(tween(120)) + scaleOut(
+        exit = fadeOut(motionScheme.fastEffectsSpec()) + scaleOut(
             targetScale = 0.92f,
             transformOrigin = TransformOrigin(0.5f, 0f),
-            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+            animationSpec = motionScheme.fastSpatialSpec(),
         ),
     ) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
@@ -417,8 +418,10 @@ internal fun AgentOverlayCapsule(
                             AnimatedContent(
                                 targetState = statusText,
                                 transitionSpec = {
-                                    (slideInVertically(tween(220)) { it / 2 } + fadeIn(tween(220))) togetherWith
-                                        (slideOutVertically(tween(180)) { -it / 2 } + fadeOut(tween(160))) using
+                                    (slideInVertically(motionScheme.defaultSpatialSpec()) { it / 2 } +
+                                        fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
+                                        (slideOutVertically(motionScheme.defaultSpatialSpec()) { -it / 2 } +
+                                            fadeOut(motionScheme.fastEffectsSpec())) using
                                         SizeTransform(clip = false) { _, _ -> snap() }
                                 },
                                 label = "capsule_status",
@@ -436,12 +439,12 @@ internal fun AgentOverlayCapsule(
                         }
                         AnimatedVisibility(
                             visible = lensVisible,
-                            enter = fadeIn(tween(180)) + expandHorizontally(
-                                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                            enter = fadeIn(motionScheme.defaultEffectsSpec()) + expandHorizontally(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
                                 expandFrom = Alignment.End,
                             ),
-                            exit = fadeOut(tween(120)) + shrinkHorizontally(
-                                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                            exit = fadeOut(motionScheme.fastEffectsSpec()) + shrinkHorizontally(
+                                animationSpec = motionScheme.fastSpatialSpec(),
                                 shrinkTowards = Alignment.End,
                             ),
                         ) {
@@ -455,15 +458,15 @@ internal fun AgentOverlayCapsule(
                     AnimatedVisibility(
                         visible = expanded && !minimized,
                         enter = expandVertically(
-                            animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                            animationSpec = motionScheme.defaultSpatialSpec(),
                             clip = true,
-                        ) + fadeIn(tween(180, delayMillis = 40)),
+                        ) + fadeIn(motionScheme.defaultEffectsSpec()),
                         exit = shrinkVertically(
-                            // 收起与展开、以及 graphicsLayer 的 expansion 浮点同用 MediumLow，
+                            // 收起与展开、以及 graphicsLayer 的 expansion 都取同一条 defaultSpatialSpec，
                             // 三根动画同相推进，收起时正文不会先于高度收缩上蹿。
-                            animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                            animationSpec = motionScheme.defaultSpatialSpec(),
                             clip = true,
-                        ) + fadeOut(tween(90)),
+                        ) + fadeOut(motionScheme.fastEffectsSpec()),
                     ) {
                         Column(
                             modifier = Modifier
@@ -474,12 +477,12 @@ internal fun AgentOverlayCapsule(
                                 targetState = bodyMode,
                                 contentAlignment = Alignment.TopCenter,
                                 transitionSpec = {
-                                    val enter = fadeIn(tween(200)) + scaleIn(
+                                    val enter = fadeIn(motionScheme.defaultEffectsSpec()) + scaleIn(
                                         initialScale = 0.94f,
                                         transformOrigin = bodyOrigin,
                                         animationSpec = bodySpatial,
                                     )
-                                    val exit = fadeOut(tween(140)) + scaleOut(
+                                    val exit = fadeOut(motionScheme.fastEffectsSpec()) + scaleOut(
                                         targetScale = 0.94f,
                                         transformOrigin = bodyOrigin,
                                         animationSpec = bodyFastSpatial,
@@ -598,10 +601,12 @@ private fun CapsuleActions(
         )
         customItem(
             buttonGroupContent = {
+                val actionMotionScheme = MaterialTheme.motionScheme
                 AnimatedContent(
                     targetState = phase,
                     transitionSpec = {
-                        (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
+                        (fadeIn(actionMotionScheme.fastEffectsSpec()) togetherWith
+                            fadeOut(actionMotionScheme.fastEffectsSpec())) using SizeTransform(clip = false)
                     },
                     modifier = Modifier.animateWidth(phaseSource),
                     label = "capsule_phase_action",
@@ -676,6 +681,7 @@ private fun CapsuleActions(
  */
 @Composable
 private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
+    val glyphMotionScheme = MaterialTheme.motionScheme
     Box(
         modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
         contentAlignment = Alignment.Center,
@@ -683,8 +689,10 @@ private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
         AnimatedContent(
             targetState = phase,
             transitionSpec = {
-                (fadeIn(tween(200)) + scaleIn(initialScale = 0.7f)) togetherWith
-                    (fadeOut(tween(140)) + scaleOut(targetScale = 0.7f))
+                (fadeIn(glyphMotionScheme.defaultEffectsSpec()) +
+                    scaleIn(initialScale = 0.7f, animationSpec = glyphMotionScheme.defaultSpatialSpec())) togetherWith
+                    (fadeOut(glyphMotionScheme.fastEffectsSpec()) +
+                        scaleOut(targetScale = 0.7f, animationSpec = glyphMotionScheme.fastSpatialSpec()))
             },
             label = "capsule_phase_glyph",
         ) { current ->
@@ -735,8 +743,10 @@ private fun DetailLine(detail: String) {
     if (shown) lastDetail = detail
     AnimatedVisibility(
         visible = shown,
-        enter = fadeIn(tween(220)) + expandVertically(tween(220)),
-        exit = fadeOut(tween(220)) + shrinkVertically(tween(220)),
+        enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+            expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
     ) {
         Text(
             text = lastDetail,
@@ -842,10 +852,14 @@ internal fun VirtualDisplayMicroLens(
         val frame = snapshot.frame ?: lastFrame
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             // 帧到达/退出时淡入淡出，避免占位点与缩略画面硬切。
+            val lensMotionScheme = MaterialTheme.motionScheme
             AnimatedContent(
                 targetState = snapshot.frame != null,
                 modifier = Modifier.fillMaxSize(),
-                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+                transitionSpec = {
+                    fadeIn(lensMotionScheme.defaultEffectsSpec()) togetherWith
+                        fadeOut(lensMotionScheme.fastEffectsSpec())
+                },
                 contentAlignment = Alignment.Center,
                 label = "lens_frame_presence",
             ) { hasFrame ->
@@ -912,7 +926,7 @@ internal fun VirtualDisplayStageSection(
         } else {
             MaterialTheme.colorScheme.outlineVariant
         },
-        animationSpec = tween(220),
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "stage_border_color",
     )
 
@@ -981,10 +995,14 @@ internal fun VirtualDisplayStageSection(
             val frame = snapshot.frame ?: lastFrame
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 // 首帧到达 / 副屏结束时淡入淡出，避免占位文字与画面硬切；逐帧更新不触发过渡。
+                val stageMotionScheme = MaterialTheme.motionScheme
                 AnimatedContent(
                     targetState = snapshot.frame != null,
                     modifier = Modifier.fillMaxSize(),
-                    transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(160)) },
+                    transitionSpec = {
+                        fadeIn(stageMotionScheme.defaultEffectsSpec()) togetherWith
+                            fadeOut(stageMotionScheme.fastEffectsSpec())
+                    },
                     contentAlignment = Alignment.Center,
                     label = "stage_frame_presence",
                 ) { hasFrame ->
@@ -1034,10 +1052,14 @@ internal fun VirtualDisplayStageSection(
             } else {
                 modeLabel
             }
+            val footerMotionScheme = MaterialTheme.motionScheme
             AnimatedContent(
                 targetState = footerTitle,
                 modifier = Modifier.weight(1f),
-                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                transitionSpec = {
+                    fadeIn(footerMotionScheme.defaultEffectsSpec()) togetherWith
+                        fadeOut(footerMotionScheme.fastEffectsSpec())
+                },
                 label = "stage_footer_title",
             ) { title ->
                 Text(
@@ -1071,11 +1093,11 @@ internal fun VirtualDisplayStageSection(
                 )
                 AnimatedVisibility(
                     visible = fullscreenEnabled,
-                    enter = fadeIn(tween(180)) + expandHorizontally(
+                    enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) + expandHorizontally(
                         animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                         expandFrom = Alignment.End,
                     ),
-                    exit = fadeOut(tween(140)) + shrinkHorizontally(
+                    exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) + shrinkHorizontally(
                         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                         shrinkTowards = Alignment.End,
                     ),
@@ -1112,10 +1134,12 @@ private fun StageActionToggle(
     val colors = etaConnectedGroupColors()
     val content: @Composable RowScope.() -> Unit = {
         // 文案切换（接管 ↔ 继续）时按钮宽度随内容平滑过渡，不瞬间跳宽。
+        val labelMotionScheme = MaterialTheme.motionScheme
         AnimatedContent(
             targetState = label,
             transitionSpec = {
-                (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
+                (fadeIn(labelMotionScheme.defaultEffectsSpec()) togetherWith
+                    fadeOut(labelMotionScheme.fastEffectsSpec())) using SizeTransform(clip = false)
             },
             contentAlignment = Alignment.Center,
             label = "stage_action_label",

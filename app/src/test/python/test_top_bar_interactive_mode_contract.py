@@ -57,6 +57,15 @@ def callback(source, name):
     return balanced(source, match.end() - 1)
 
 
+def entry_call(source, start):
+    """Extract one composable call together with its optional trailing lambda."""
+    paren = balanced(source, source.index("(", start))
+    after = source.index(paren, start) + len(paren)
+    if source[after:].lstrip().startswith("{"):
+        return paren + balanced(source, source.index("{", after))
+    return paren
+
+
 def compact(source):
     return re.sub(r"\s+", "", source)
 
@@ -65,24 +74,29 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.menu = read("ui/app/TopBarOverflowMenu.kt")
-        popup = cls.menu.index("EtaDropdownMenu(")
-        # 「压缩会话」已改为独立页面：菜单项集合的切片终点取 TopBarMenuItems 之后的
-        # MenuSectionDivider 定义（其后不再有随菜单打开的弹窗调用）。
-        cls.content = cls.menu[popup:cls.menu.index("private fun MenuSectionDivider(", popup)]
+        start = cls.menu.index("internal fun TopBarMenuItems(")
+        # 弹层容器已统一为官方的 EtaMenuPopup，菜单条目由 TopBarMenuItems 组装；
+        # 切片从 TopBarMenuItems 的定义开始，到行/段封装函数之前结束。
+        cls.content = cls.menu[start:cls.menu.index("private fun ColumnScope.TopBarMenuSection(", start)]
         cls.entries = []
         cls.sequence = []
-        for match in re.finditer(r"\b(DropdownMenuItem|MenuSectionDivider)\(", cls.content):
-            if match.group(1) == "MenuSectionDivider":
-                cls.sequence.append("divider")
+        # 段落头有两种写法：带参数 `TopBarMenuSection(first = true)` 与裸 `TopBarMenuSection {`，
+        # 所以只匹配名字本身，再向后取到 `{` 之前的签名来判断是否首段。
+        for match in re.finditer(r"\bTopBarMenuSection\b|\bTopBarMenuItem\s*\(", cls.content):
+            if match.group(0).startswith("TopBarMenuSection"):
+                header = cls.content[match.start():cls.content.index("{", match.start())]
+                # 首段之前不加分割线；其余每段由 TopBarMenuSection 自行补一条分割线。
+                if "first = true" not in header:
+                    cls.sequence.append("divider")
             else:
-                entry = balanced(cls.content, match.end() - 1)
+                entry = entry_call(cls.content, match.start())
                 cls.entries.append(entry)
-                # 行文案可以是 Text(stringResource(...))，也可以再带着色参数
-                # （如「删除当前会话」的 error 色）；标签只认资源名。
-                label = re.search(r"text\s*=\s*\{\s*Text\(\s*stringResource\(R\.string\.(\w+)\)", entry)
+                # 行文案直接传 stringResource，或复用 kimiWebLabel 变量。
+                # 标签只认资源名或 kimiWebLabel，文案改动不影响契约。
+                label = re.search(r"text\s*=\s*stringResource\(R\.string\.(\w+)\)", entry)
                 if label:
                     cls.sequence.append(label.group(1))
-                elif "text = { Text(kimiWebLabel) }" in entry:
+                elif "text = kimiWebLabel" in entry:
                     cls.sequence.append("kimiWebLabel")
                 else:
                     raise AssertionError("Unexpected menu row label")
@@ -91,9 +105,9 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
             raise AssertionError("Expected exactly one interactive-mode menu row")
         cls.interactive = interactive[0]
 
-    def test_exact_menu_order_restores_only_the_two_missing_group_lines(self):
+    def test_exact_menu_order_keeps_semantic_sections_and_conditional_rows(self):
         # M3 壳层把「新建对话」独立成顶栏按钮（AgentAppShell 里的 AddComment IconButton），
-        # 不再占溢出菜单一行；菜单末尾新增「删除当前会话」分组行。
+        # 不再占溢出菜单一行；「移动到回收站」只在非调度台出现，「停止 Kimi Web」只在可停止时出现。
         self.assertEqual([
             "action_search_history",
             "action_voice_settings",
@@ -101,29 +115,33 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
             "action_open_terminal", "action_open_browser", "action_browse_workspace_files",
             "action_sub_agent_status", "kimiWebLabel", "divider", "action_token_usage",
             "action_compress_conversation", "action_auto_compress_context",
-            "divider", "action_delete_current_conversation",
+            "divider", "conversation_move_to_trash",
             "divider", "capability_kimi_stop",
         ], self.sequence)
         stop_at = self.content.index("if (canStopKimiWeb)")
         stop = balanced(self.content, self.content.index("{", stop_at))
-        self.assertEqual(1, stop.count("MenuSectionDivider()"))
+        self.assertEqual(1, stop.count("TopBarMenuSection {"))
         self.assertIn("R.string.capability_kimi_stop", stop)
-        self.assertEqual(4, self.content[:stop_at].count("MenuSectionDivider()"))
-        self.assertEqual(5, self.content.count("MenuSectionDivider()"))
+        self.assertEqual(4, self.content[:stop_at].count("TopBarMenuSection {"))
+        self.assertEqual(5, self.content.count("TopBarMenuSection {"))
+        self.assertEqual(1, self.content.count("TopBarMenuSection(first = true)"))
 
-    def test_divider_uses_the_existing_helper_and_exact_original_style(self):
-        helper_at = self.menu.index("private fun MenuSectionDivider()")
+    def test_dividers_come_from_the_section_helper_and_the_official_divider(self):
+        helper_at = self.menu.index("private fun ColumnScope.TopBarMenuSection(")
         helper = balanced(self.menu, self.menu.index("{", helper_at))
-        # 注释里说明了「保持官方默认」，比对结构时先剔除注释再压缩空白。
-        self.assertEqual(compact("""{
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-        }"""), compact(re.sub(r"//[^\n]*", "", helper)))
+        # 段落只负责「非首段才补线」，线本身取官方 EtaMenuDivider。
+        self.assertEqual(
+            compact("{ if (!first) EtaMenuDivider() content() }"),
+            compact(re.sub(r"//[^\n]*", "", helper)),
+        )
+        self.assertIn("import io.github.mangi.eta.ui.adaptive.EtaMenuDivider", self.menu)
+        self.assertNotIn("HorizontalDivider(", self.menu)
+        self.assertEqual(1, self.menu.count("EtaMenuDivider()"))
+        self.assertNotIn("Divider(", self.content)  # 分割线只在 helper 里出现
         self.assertNotIn("MiuixTheme", helper)
         self.assertNotIn("thickness", helper)  # 官方默认厚度
         self.assertNotIn("color =", helper)  # 官方默认 outlineVariant，不再自绘透明度
-        self.assertEqual(1, self.menu.count("HorizontalDivider("))
+        self.assertNotIn("MiuixTheme", self.content)
 
     def test_menu_observes_the_real_preference_without_initialization_writes(self):
         self.assertIn("val interactiveModePreference = remember { InteractiveModePreference() }", self.menu)
@@ -134,21 +152,21 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
             self.assertNotIn(forbidden, self.menu)
 
     def test_row_and_switch_are_both_clickable_without_dismissing_the_popup(self):
-        self.assertIn('modifier = CompactMenuItemModifier.testTag("top-bar-interactive-mode-row")', self.interactive)
-        self.assertIn("contentPadding = CompactMenuItemPadding", self.interactive)
+        self.assertIn('modifier = Modifier.testTag("top-bar-interactive-mode-row")', self.interactive)
         self.assertIn("imageVector = Icons.Rounded.TouchApp", self.interactive)
-        self.assertIn("modifier = Modifier.size(TopBarMenuIconSize)", self.interactive)
-        switch = arguments(self.interactive, "Switch")
+        switch = arguments(self.interactive, "EtaSwitch")
         self.assertIn("checked = interactiveModeEnabled", switch)
         self.assertIn("interactiveModePreference.setEnabled(enabled)", callback(switch, "onCheckedChange"))
         self.assertIn("onCheckedChange = { enabled ->", switch)
-        self.assertIn('Modifier.scale(0.72f).testTag("top-bar-interactive-mode-switch")', switch)
+        self.assertIn('Modifier.testTag("top-bar-interactive-mode-switch")', switch)
         click = callback(self.interactive, "onClick")
         self.assertIn("interactiveModePreference.setEnabled(!interactiveModeEnabled)", click)
         self.assertNotIn("menuState.dismiss", self.interactive)
-        self.assertEqual(2, self.interactive.count("TouchHaptics.click(view)"))
-        self.assertIn("private val CompactMenuItemModifier = Modifier.height(40.dp)", self.menu)
-        self.assertIn("private val CompactMenuItemPadding = PaddingValues(horizontal = 12.dp)", self.menu)
+        # 行点击的触感由 TopBarMenuItem 统一处理，开关自己再补一次。
+        self.assertEqual(1, self.interactive.count("TouchHaptics.click(view)"))
+        self.assertIn("shape = EtaMenuItemShape(index = index, count = count)", self.menu)
+        row = balanced(self.menu, self.menu.index("{", self.menu.index("private fun TopBarMenuItem(")))
+        self.assertIn("TouchHaptics.click(view)", row)
 
     def test_preference_cold_read_and_observer_use_only_the_independent_local_boolean(self):
         preference = read("config/InteractiveModePreference.kt")
@@ -231,7 +249,7 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
         self.assertNotIn("interactiveMode", declaration)
         self.assertNotIn("interactiveMode", caller)
         auto = next(entry for entry in self.entries if "R.string.action_auto_compress_context" in entry)
-        self.assertIn("checked = autoCompressEnabled", arguments(auto, "Switch"))
+        self.assertIn("checked = autoCompressEnabled", arguments(auto, "EtaExpressiveSwitch"))
         self.assertIn("onToggleAutoCompress(!autoCompressEnabled)", callback(auto, "onClick"))
 
 

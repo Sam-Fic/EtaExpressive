@@ -404,10 +404,13 @@ internal fun EtaVoicePanel(
             }.coerceAtLeast(with(density) { 220.dp.toPx() })
             // 图片预览宿主：与应用内（AgentChatBody）同款。消息里的图片与输入区待发缩略图
             // 都依赖 LocalOpenChatImagePreview，没有宿主时点击没有任何反应。
+            // 语音面板整体被 maxContentHeightPx 限高，同窗口 overlay 只能盖住面板本身，
+            // 因此这里继续用独立窗口的 Dialog，预览仍是整屏。
             ChatImagePreviewHost(
                 gallery = collectPreviewableChatImages(state.messages, composer.pendingImages),
                 onAttachImageToConversation = composer::attachImage,
                 onAttachVideoToConversation = composer::attachVideo,
+                preferWindowDialog = true,
             ) {
                 AssistantPanel(
                     state = state,

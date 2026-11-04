@@ -252,6 +252,8 @@ internal fun Material3HomeTopBar(
                         style = EtaButtonStyle.SurfaceHighest,
                         shapes = IconButtonDefaults.shapes(),
                         enabled = canClearDispatchConsole,
+                        // 禁用态只淡图标，底板保持 surfaceContainerHighest 不透明。
+                        keepContainerWhenDisabled = true,
                     )
                 }
             }

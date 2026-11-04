@@ -2,7 +2,7 @@ package io.github.mangi.eta.ui.adaptive
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,14 +79,13 @@ val LocalEtaSegmentedShapes = staticCompositionLocalOf<ListItemShapes?> { null }
 /**
  * 分段列表的几何令牌（与 KernelSU `SegmentedList.kt` 逐值一致）：
  * 组首/末项外圆角 16dp、中间项内圆角 4dp，条目间距 2dp，
- * 显隐动画 spring(damping=0.9, stiffness=800)。
+ * 显隐与形状动画取官方 `MotionScheme` 的 defaultSpatialSpec（不再自带刚度）。
  */
 internal val EtaSegmentedOuterCornerRadius = 16.dp
 private val SegmentedOuterRadius = EtaSegmentedOuterCornerRadius
 private val SegmentedInnerRadius = 4.dp
 private val SegmentedEntryGap = 2.dp
-private const val SegmentedSpringStiffness = 800f
-private const val SegmentedSpringDamping = 0.9f
+
 
 /**
  * 分段形状：单条目组整体用 [MaterialTheme.shapes.large]（KernelSU `defaultSingleSegmentedShape`），
@@ -273,8 +272,12 @@ fun EtaSegmentedColumn(
             )
         }
 
-        val floatSpring = spring<Float>(SegmentedSpringDamping, SegmentedSpringStiffness)
-        val dpSpring = spring<Dp>(SegmentedSpringDamping, SegmentedSpringStiffness)
+        // 分段显隐、首末圆角与间距统一取官方 Expressive spatial 规格，与全局动效同源。
+        // 原先这里自带 spring(0.9, 800)（刚度偏硬），是项目内第二套时间轴；官方规格更软，
+        // 也更接近 M3 分段列表的实际手感。
+        val motionScheme = MaterialTheme.motionScheme
+        val floatSpring: FiniteAnimationSpec<Float> = motionScheme.defaultSpatialSpec()
+        val dpSpring: FiniteAnimationSpec<Dp> = motionScheme.defaultSpatialSpec()
 
         val progresses = entries.mapIndexed { index, entry ->
             key(entry.key ?: index) {

@@ -1,6 +1,10 @@
 package io.github.mangi.eta.ui.components
 
 import android.os.SystemClock
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -88,13 +92,25 @@ internal fun ErrorReconnectDivider(message: ErrorReconnectMessageUi, modifier: M
             color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ) {
-            M3Text(
-                text = label,
-                style = etaTextStyle(EtaType.Caption),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // 状态文案切换用 fade-through；contentKey 取状态，秒表每秒刷新时不触发重播。
+            val motionScheme = MaterialTheme.motionScheme
+            AnimatedContent(
+                targetState = message.status to label,
+                contentKey = { it.first },
+                transitionSpec = {
+                    fadeIn(motionScheme.defaultEffectsSpec()) togetherWith
+                        fadeOut(motionScheme.fastEffectsSpec())
+                },
+                label = "reconnectStatus",
+            ) { (_, text) ->
+                M3Text(
+                    text = text,
+                    style = etaTextStyle(EtaType.Caption),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         HorizontalDivider(modifier = Modifier.weight(1f))
     }

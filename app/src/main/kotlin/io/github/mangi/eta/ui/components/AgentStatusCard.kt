@@ -1,5 +1,10 @@
 package io.github.mangi.eta.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -96,7 +101,18 @@ private fun StatusIndicator(status: RunStatusUi) {
     // 颜色只用官方 primary 角色。
     val indicatorSize = IconButtonDefaults.extraSmallIconSize
     val indicatorTint = etaPrimary()
-    when (status) {
+    // 进度指示 ⇄ 结果图标的切换走同一套 Expressive 淡入 + 轻微放大，不再硬换。
+    val motionScheme = MaterialTheme.motionScheme
+    AnimatedContent(
+        targetState = status,
+        transitionSpec = {
+            (fadeIn(motionScheme.defaultEffectsSpec()) +
+                scaleIn(initialScale = 0.8f, animationSpec = motionScheme.defaultSpatialSpec()))
+                .togetherWith(fadeOut(motionScheme.fastEffectsSpec()))
+        },
+        label = "runStatus",
+    ) { state ->
+    when (state) {
         RunStatusUi.Running -> LoadingIndicator(
             modifier = Modifier.size(indicatorSize),
             color = indicatorTint,
@@ -119,5 +135,6 @@ private fun StatusIndicator(status: RunStatusUi) {
             modifier = Modifier.size(indicatorSize),
             tint = etaOnSurfaceVariant(),
         )
+    }
     }
 }

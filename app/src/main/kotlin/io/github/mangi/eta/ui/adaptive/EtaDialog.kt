@@ -1,5 +1,9 @@
 package io.github.mangi.eta.ui.adaptive
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -94,11 +99,25 @@ fun EtaPageSurface(
             decorFitsSystemWindows = false,
         ),
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            content = content,
-        )
+        // 主题把 android:windowAnimationStyle 置为 @null，窗口本身是瞬现的，
+        // 所以进出场只能由内容自己做：从 0.94 缩放 + 淡入落位（官方 Expressive 规格）。
+        // 退场仍由窗口直接销毁——Dialog 关闭时协程作用域随之取消，无法在窗口外继续播完。
+        val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+        val motionScheme = MaterialTheme.motionScheme
+        AnimatedVisibility(
+            visibleState = visibleState,
+            enter = fadeIn(motionScheme.defaultEffectsSpec()) +
+                scaleIn(
+                    initialScale = 0.94f,
+                    animationSpec = motionScheme.defaultSpatialSpec(),
+                ),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                content = content,
+            )
+        }
     }
 }
 

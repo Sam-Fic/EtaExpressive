@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -101,6 +100,8 @@ internal fun VirtualDisplayLiveStage(
     val view = LocalView.current
     val currentOnTap by rememberUpdatedState(onTap)
     val currentOnSwipe by rememberUpdatedState(onSwipe)
+    // 舞台内所有过渡统一取官方 Expressive 规格，不再自带 220/180/160ms 的裸 tween。
+    val motionScheme = MaterialTheme.motionScheme
     // 接管状态切换时画框描边颜色与粗细同段位渐渡，避免边界瞬跳。
     val frameBorderColor by animateColorAsState(
         targetValue = if (takeover) {
@@ -108,12 +109,12 @@ internal fun VirtualDisplayLiveStage(
         } else {
             MaterialTheme.colorScheme.outlineVariant
         },
-        animationSpec = tween(220),
+        animationSpec = motionScheme.defaultEffectsSpec(),
         label = "vd_stage_border_color",
     )
     val frameBorderWidth by animateDpAsState(
         targetValue = if (takeover) 2.dp else 1.dp,
-        animationSpec = tween(220),
+        animationSpec = motionScheme.defaultSpatialSpec(),
         label = "vd_stage_border_width",
     )
 
@@ -136,9 +137,11 @@ internal fun VirtualDisplayLiveStage(
                 targetState = stageMode,
                 contentAlignment = Alignment.Center,
                 transitionSpec = {
-                    (fadeIn(tween(220)) + scaleIn(initialScale = 0.98f)) togetherWith
-                        (fadeOut(tween(160)) + scaleOut(targetScale = 0.99f)) using
-                        SizeTransform(clip = false) { _, _ -> tween(220) }
+                    (fadeIn(motionScheme.defaultEffectsSpec()) +
+                        scaleIn(initialScale = 0.98f, animationSpec = motionScheme.defaultSpatialSpec())) togetherWith
+                        (fadeOut(motionScheme.fastEffectsSpec()) +
+                            scaleOut(targetScale = 0.99f, animationSpec = motionScheme.defaultSpatialSpec())) using
+                        SizeTransform(clip = false) { _, _ -> motionScheme.defaultSpatialSpec() }
                 },
                 modifier = Modifier.fillMaxSize(),
                 label = "vd_stage_mode",
@@ -270,8 +273,8 @@ internal fun VirtualDisplayLiveStage(
                             )
                             AnimatedVisibility(
                                 visible = materializing,
-                                enter = fadeIn(tween(180)),
-                                exit = fadeOut(tween(160)),
+                                enter = fadeIn(motionScheme.defaultEffectsSpec()),
+                                exit = fadeOut(motionScheme.fastEffectsSpec()),
                             ) {
                                 HandoffOverlay()
                             }

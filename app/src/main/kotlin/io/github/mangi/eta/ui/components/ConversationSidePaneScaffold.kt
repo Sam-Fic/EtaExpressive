@@ -2,7 +2,6 @@ package io.github.mangi.eta.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
@@ -123,6 +122,7 @@ import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
+import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
@@ -191,8 +191,6 @@ private object DrawerMetrics {
     val SideSheetWidthFraction = 0.46f
     val SideSheetCornerRadius = 16.dp
     val DrawerCornerRadius = 24.dp
-    const val OpenDurationMs = 220
-    const val CloseDurationMs = 200
     // 手势松手后的合拢速度下限（dp/s）。低于它算「拖着不放」，按位置判；高于它算甩，
     // 直接朝甩的方向定锚，速度越快越早到位——这是「跟手」的关键。
     // 官方是 400dp/s；取 480 略高一点，避免列表里横向轻扫误关，正常甩动仍能直接命中。
@@ -295,6 +293,15 @@ fun ConversationSidePaneScaffold(
         drawerState.applyEtaDrawerMotion(density)
     }
     val drawerScope = rememberCoroutineScope()
+    // 侧栏跟随页面退场时用的时长：直接按导航弹簧的收敛时间推导（+两帧余量）。
+    // 只要不短于新页推入，新页就会先把侧栏盖住，侧栏收得再慢也不会露出空档。
+    val navigationSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.defaultSpatialSpec()
+    val drawerNavExitMotion: FiniteAnimationSpec<Float> = remember(navigationSpec) {
+        tween(
+            durationMillis = EtaMotion.drawerNavExitMillis(navigationSpec).toInt(),
+            easing = EtaMotion.DrawerEasing,
+        )
+    }
     val currentVisible by rememberUpdatedState(visible)
     val currentOnOpen by rememberUpdatedState(onOpen)
     val currentOnDismiss by rememberUpdatedState(onDismiss)
@@ -332,10 +339,16 @@ fun ConversationSidePaneScaffold(
         val target = if (visible) DrawerValue.Open else DrawerValue.Closed
         if (drawerState.targetValue == target) return@LaunchedEffect
         if (!visible && drawerState.currentValue == DrawerValue.Open) {
-            // 程序化收起且侧栏随页面一起退场（切页入栈、命中跳转）：瞬时合上，
-            // 否则打开的侧栏会跟着新页做转场。
+            // 程序化收起且侧栏随页面一起退场（切页入栈、命中跳转）。
+            // 不再 snapTo：瞬时合上会让侧栏先消失、新页后到，中间露出一段空白。
+            // 这里改用「与新页推入同收敛时间」的收拢动画——新页从右侧压过来覆盖侧栏，
+            // 侧栏在下面同步左移，两者读起来是同一个横向动作，收完时侧栏已完全被盖住。
             // 返回键 / 点选会话不走这里——它们先播收拢动画，动画结束才把 visible 复位。
-            drawerState.snapTo(target)
+            @Suppress("DEPRECATION")
+            drawerState.animateTo(
+                targetValue = target,
+                anim = drawerNavExitMotion,
+            )
             return@LaunchedEffect
         }
         @Suppress("DEPRECATION")
@@ -1556,16 +1569,15 @@ private fun Material3ConversationRow(
     }
 }
 
-private val DrawerMotionEasing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
-
+// 时间轴统一取 EtaMotion 单一出处，本文件不再各自持有时长与曲线。
 private val DrawerOpenMotion: FiniteAnimationSpec<Float> = tween(
-    durationMillis = DrawerMetrics.OpenDurationMs,
-    easing = DrawerMotionEasing,
+    durationMillis = EtaMotion.DrawerOpenDurationMillis,
+    easing = EtaMotion.DrawerEasing,
 )
 
 private val DrawerCloseMotion: FiniteAnimationSpec<Float> = tween(
-    durationMillis = DrawerMetrics.CloseDurationMs,
-    easing = DrawerMotionEasing,
+    durationMillis = EtaMotion.DrawerCloseDurationMillis,
+    easing = EtaMotion.DrawerEasing,
 )
 
 /** 停靠侧栏是 station side sheet：贴着页面站好，直角、无投影。 */

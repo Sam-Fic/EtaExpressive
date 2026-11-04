@@ -10,6 +10,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import java.util.Locale
 import androidx.core.content.FileProvider
 import io.github.mangi.eta.agent.media.AgentVideoCodec
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -58,16 +63,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -138,7 +147,10 @@ private fun PreviewProgressIndicator(
 private const val MIN_ZOOM = 1f
 private const val MAX_ZOOM = 5f
 
-internal val LocalOpenChatImagePreview = staticCompositionLocalOf<(String) -> Unit> { {} }
+/** 单页预览的三种稳定状态；用于加载圈 → 画面 / 失败文案的淡入淡出。 */
+private enum class PreviewPageState { Loading, Loaded, Failed }
+
+internal val LocalOpenChatImagePreview = staticCompositionLocalOf<(String, Rect?) -> Unit> { { _, _ -> } }
 
 @Composable
 internal fun ChatImagePreviewHost(
@@ -157,22 +169,55 @@ internal fun ChatImagePreviewHost(
      * 宿主同样按能力提供；缺失时预览视频的添加按钮置灰，其余按钮不受影响。
      */
     onAttachVideoToConversation: ((String) -> Unit)? = null,
+    /**
+     * 是否继续用独立窗口的 Dialog 承载预览。
+     *
+     * 宿主被高度约束时（语音面板按 maxContentHeightPx 排布）同窗口 overlay 只能盖住面板本身，
+     * 因此那里必须保留独立窗口；整屏宿主（AgentChatBody）走同窗口 overlay。
+     */
+    preferWindowDialog: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     var source by remember { mutableStateOf<String?>(null) }
-    CompositionLocalProvider(LocalOpenChatImagePreview provides { source = it }) {
-        content()
+    var anchor by remember { mutableStateOf(Rect.Zero) }
+    // 稳定引用：CompositionLocal 每次重组换 lambda 会让所有图片一起失效重排。
+    val open = remember {
+        { next: String, rect: Rect? ->
+            anchor = rect ?: Rect.Zero
+            source = next
+        }
     }
-    val current = source
-    if (current != null) {
-        val sources = remember(current, gallery) { previewGalleryFor(current, gallery) }
-        ChatImagePreviewDialog(
-            sources = sources,
-            initialIndex = sources.indexOf(current).coerceAtLeast(0),
-            onDismiss = { source = null },
-            onAttachImageToConversation = onAttachImageToConversation,
-            onAttachVideoToConversation = onAttachVideoToConversation,
-        )
+    CompositionLocalProvider(LocalOpenChatImagePreview provides open) {
+        val current = source
+        if (preferWindowDialog) {
+            content()
+            if (current != null) {
+                val sources = remember(current, gallery) { previewGalleryFor(current, gallery) }
+                ChatImagePreviewDialog(
+                    sources = sources,
+                    initialIndex = sources.indexOf(current).coerceAtLeast(0),
+                    onDismiss = { source = null },
+                    onAttachImageToConversation = onAttachImageToConversation,
+                    onAttachVideoToConversation = onAttachVideoToConversation,
+                )
+            }
+        } else {
+            // 同窗口 overlay：预览不再是另一个窗口，缩略图 → 全屏的放大与退场都在本窗口内完成。
+            Box(modifier = Modifier.fillMaxSize()) {
+                content()
+                if (current != null) {
+                    val sources = remember(current, gallery) { previewGalleryFor(current, gallery) }
+                    ChatImagePreviewOverlay(
+                        sources = sources,
+                        initialIndex = sources.indexOf(current).coerceAtLeast(0),
+                        anchorInWindow = anchor,
+                        onDismiss = { source = null },
+                        onAttachImageToConversation = onAttachImageToConversation,
+                        onAttachVideoToConversation = onAttachVideoToConversation,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -218,14 +263,18 @@ internal fun ChatClickableImage(
 ) {
     val openPreview = LocalOpenChatImagePreview.current
     val view = LocalView.current
+    // 记录缩略图在窗口内的矩形，预览 overlay 从这块矩形连续放大到全屏。
+    var bounds by remember { mutableStateOf(Rect.Zero) }
     Image(
         bitmap = bitmap,
         contentDescription = contentDescription,
         contentScale = contentScale,
-        modifier = modifier.clickable {
-            TouchHaptics.click(view)
-            openPreview(source)
-        },
+        modifier = modifier
+            .onGloballyPositioned { bounds = it.boundsInWindow() }
+            .clickable {
+                TouchHaptics.click(view)
+                openPreview(source, bounds)
+            },
     )
 }
 
@@ -336,15 +385,18 @@ private fun ChatRemoteClickableImage(
                     )
                 }
             }
+            var posterBounds by remember { mutableStateOf(Rect.Zero) }
             val openPreviewAction: () -> Unit = {
                 TouchHaptics.click(view)
-                openPreview(source)
+                openPreview(source, posterBounds)
             }
             // M3 Expressive：官方 Surface(onClick) 承担容器、形状、容器色与按压涟漪；
             // 纯黑是视频信箱底色，属于媒体浮层固有色，不随主题变化。
             M3Surface(
                 onClick = openPreviewAction,
-                modifier = modifier.heightIn(min = 180.dp),
+                modifier = modifier
+                    .heightIn(min = 180.dp)
+                    .onGloballyPositioned { posterBounds = it.boundsInWindow() },
                 color = Color.Black,
                 content = videoPoster,
             )
@@ -366,9 +418,12 @@ private fun ChatRemoteClickableImage(
     }
 }
 
+/**
+ * 预览正文（不含窗口 / overlay 外壳）：返回键、分页、缩放平移与底部工具栏都不依赖外层容器。
+ */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ChatImagePreviewDialog(
+private fun ChatImagePreviewBody(
     sources: List<String>,
     initialIndex: Int,
     onDismiss: () -> Unit,
@@ -400,14 +455,7 @@ private fun ChatImagePreviewDialog(
     }
 
     BackHandler(onBack = onDismiss)
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        Box(
+    Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black),
@@ -652,6 +700,111 @@ private fun ChatImagePreviewDialog(
                 )
             }
         }
+}
+
+/** 独立窗口版本：宿主被高度约束（语音面板）时仍能整屏预览。 */
+@Composable
+private fun ChatImagePreviewDialog(
+    sources: List<String>,
+    initialIndex: Int,
+    onDismiss: () -> Unit,
+    onAttachImageToConversation: ((String) -> Unit)?,
+    onAttachVideoToConversation: ((String) -> Unit)?,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        ChatImagePreviewBody(
+            sources = sources,
+            initialIndex = initialIndex,
+            onDismiss = onDismiss,
+            onAttachImageToConversation = onAttachImageToConversation,
+            onAttachVideoToConversation = onAttachVideoToConversation,
+        )
+    }
+}
+
+/**
+ * 同窗口 overlay：从缩略图矩形连续放大到全屏，退场反向收回同一矩形。
+ *
+ * 这里没有用 `LookaheadScope` + `animateBounds`：后者的语义是把一个节点的可视边界
+ * 对齐到它在 lookahead 里的测量结果，适用于「同一元素在两个布局之间换位置」；
+ * 本次目标是从任意缩略图矩形放大到全屏，用 Animatable 驱动 graphicsLayer 的
+ * scale/alpha 更直接，也不会因缩略图滚出屏幕而丢失匹配目标。
+ *
+ * 返回键：正文里的 BackHandler 接管第一次返回，触发与按钮相同的收起动画。
+ * 预测式返回预览不适用于同窗口浮层（不是 NavHost 目的地），系统手势会直接走到返回回调。
+ */
+@Composable
+private fun ChatImagePreviewOverlay(
+    sources: List<String>,
+    initialIndex: Int,
+    anchorInWindow: Rect,
+    onDismiss: () -> Unit,
+    onAttachImageToConversation: ((String) -> Unit)?,
+    onAttachVideoToConversation: ((String) -> Unit)?,
+) {
+    val motionScheme = MaterialTheme.motionScheme
+    val appear = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    var rootBounds by remember { mutableStateOf(Rect.Zero) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(1f, motionScheme.defaultSpatialSpec())
+    }
+    // 退场先收回缩略图矩形再摘掉 overlay，避免点关闭时直接消失。
+    val dismissWithExit: () -> Unit = {
+        scope.launch {
+            appear.animateTo(0f, motionScheme.fastSpatialSpec())
+            onDismiss()
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // 同窗口浮层没有独立窗口兜底：必须自己成为命中目标，否则点/滑会穿透到下面的聊天列表。
+            // 只占位不消费，内部的翻页与缩放手势照常收到事件。
+            .pointerInput(Unit) {
+                awaitEachGesture { awaitFirstDown(requireUnconsumed = false) }
+            }
+            .onGloballyPositioned { rootBounds = it.boundsInWindow() }
+            .graphicsLayer {
+                val root = rootBounds
+                val hasAnchor = root.width > 0f &&
+                    anchorInWindow.width > 0f &&
+                    anchorInWindow.height > 0f
+                val fromScaleX = if (hasAnchor) {
+                    (anchorInWindow.width / root.width).coerceIn(0.05f, 1f)
+                } else {
+                    0.86f
+                }
+                val fromScaleY = if (hasAnchor) {
+                    (anchorInWindow.height / root.height).coerceIn(0.05f, 1f)
+                } else {
+                    0.86f
+                }
+                val progress = appear.value
+                scaleX = fromScaleX + (1f - fromScaleX) * progress
+                scaleY = fromScaleY + (1f - fromScaleY) * progress
+                alpha = progress
+                if (hasAnchor) {
+                    transformOrigin = TransformOrigin(
+                        pivotX = ((anchorInWindow.left - root.left) + anchorInWindow.width / 2f) / root.width,
+                        pivotY = ((anchorInWindow.top - root.top) + anchorInWindow.height / 2f) / root.height,
+                    )
+                }
+            },
+    ) {
+        ChatImagePreviewBody(
+            sources = sources,
+            initialIndex = initialIndex,
+            onDismiss = dismissWithExit,
+            onAttachImageToConversation = onAttachImageToConversation,
+            onAttachVideoToConversation = onAttachVideoToConversation,
+        )
     }
 }
 
@@ -891,50 +1044,65 @@ private fun ChatImagePreviewPage(
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-        val image = loaded
-        when {
-            image != null -> {
-                Image(
-                    bitmap = image.bitmap,
-                    contentDescription = stringResource(R.string.chat_image_preview),
-                    contentScale = ContentScale.Fit,
-                    filterQuality = FilterQuality.High,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxSize()
-                        .pointerInput(source, active) {
-                            if (!active) return@pointerInput
-                            detectPreviewGestures(
-                                scale = { currentScale.value },
-                                offset = { currentOffset.value },
-                                onTransform = { nextScale, nextOffset ->
-                                    currentTransform.value(nextScale, nextOffset)
-                                },
-                            )
-                        }
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            translationX = offset.x,
-                            translationY = offset.y,
-                        ),
-                )
+            val image = loaded
+            // 加载圈 → 画面 / 失败文案用同一条淡入淡出，避免解码完成瞬间硬跳。
+            val pageState = when {
+                image != null -> PreviewPageState.Loaded
+                failed -> PreviewPageState.Failed
+                else -> PreviewPageState.Loading
             }
-            failed -> {
-                Text(
-                    text = stringResource(R.string.chat_image_load_failed),
-                    color = Color.White,
-                    style = previewBodyStyle(),
-                    modifier = Modifier.align(Alignment.Center),
-                )
+            val pageMotionScheme = MaterialTheme.motionScheme
+            AnimatedContent(
+                targetState = pageState,
+                transitionSpec = {
+                    fadeIn(pageMotionScheme.defaultEffectsSpec()) togetherWith
+                        fadeOut(pageMotionScheme.fastEffectsSpec())
+                },
+                label = "previewPageState",
+            ) { state ->
+                // AnimatedContentScope 不是 BoxScope，居中对齐要在自己的 Box 里做。
+                Box(modifier = Modifier.fillMaxSize()) {
+                when (state) {
+                    PreviewPageState.Loaded -> if (image != null) {
+                        Image(
+                            bitmap = image.bitmap,
+                            contentDescription = stringResource(R.string.chat_image_preview),
+                            contentScale = ContentScale.Fit,
+                            filterQuality = FilterQuality.High,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .fillMaxSize()
+                                .pointerInput(source, active) {
+                                    if (!active) return@pointerInput
+                                    detectPreviewGestures(
+                                        scale = { currentScale.value },
+                                        offset = { currentOffset.value },
+                                        onTransform = { nextScale, nextOffset ->
+                                            currentTransform.value(nextScale, nextOffset)
+                                        },
+                                    )
+                                }
+                                .graphicsLayer(
+                                    scaleX = scale,
+                                    scaleY = scale,
+                                    translationX = offset.x,
+                                    translationY = offset.y,
+                                ),
+                        )
+                    }
+                    PreviewPageState.Failed -> Text(
+                        text = stringResource(R.string.chat_image_load_failed),
+                        color = Color.White,
+                        style = previewBodyStyle(),
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                    PreviewPageState.Loading -> PreviewProgressIndicator(
+                        size = 28.dp,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+                }
             }
-            else -> {
-                PreviewProgressIndicator(
-                    size = 28.dp,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
-        }
         }
     }
 }

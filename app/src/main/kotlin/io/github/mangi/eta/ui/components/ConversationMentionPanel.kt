@@ -1,5 +1,10 @@
 package io.github.mangi.eta.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -14,6 +19,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -91,8 +100,20 @@ internal fun ConversationMentionPanel(
             }
         }
     }
-    if (query == null) return
-    val candidates = ConversationMention.candidates(state.conversations, query, state.currentConversationId,
+    // 候选面板随 @ 查询出现/收起；退场期间沿用上一次查询的候选，
+    // 否则列表会在查询清空的瞬间先消失、再播一段空白淡出。
+    var lastQuery by remember { mutableStateOf<String?>(null) }
+    if (query != null) lastQuery = query
+    val shownQuery = query ?: lastQuery
+    AnimatedVisibility(
+        visible = query != null,
+        enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
+            expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+        exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+            shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+    ) {
+    if (shownQuery == null) return@AnimatedVisibility
+    val candidates = ConversationMention.candidates(state.conversations, shownQuery, state.currentConversationId,
         state.pending.map { it.conversationId }.toSet())
     // M3 Expressive：官方 Surface 承担面板底板，候选行改用官方可交互 ListItem——
     // 形状、内容间距、涟漪、Role 与排版档位全部由官方组件提供。
@@ -148,5 +169,6 @@ internal fun ConversationMentionPanel(
                 }
             }
         }
+    }
     }
 }

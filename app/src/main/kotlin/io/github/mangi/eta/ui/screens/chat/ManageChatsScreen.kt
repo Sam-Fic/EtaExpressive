@@ -150,7 +150,7 @@ internal fun ManageChatsScreen(
                         .animateItem(
                             fadeInSpec = null,
                             fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                            placementSpec = null,
+                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                         )
                         .padding(horizontal = EtaGroupHorizontalPadding),
                 )

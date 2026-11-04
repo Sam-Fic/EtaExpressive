@@ -122,6 +122,9 @@ enum class EtaButtonStyle { Filled, Tonal, TonalEmphasis, SurfaceHighest, Outlin
  * @param stretch 为 true 时横向拉伸占满剩余宽度（用于“最后的按钮向右拉伸”的行布局）。
  * @param tooltipText 长按提示文案，默认与 [contentDescription] 同源；纯图标按钮按规范
  *   必须带长按提示。传 `null` 可显式关闭；外层已包 [EtaTooltip] 时自动跳过，不会叠两层。
+ * @param keepContainerWhenDisabled 仅影响 `SurfaceHighest` 档：true 时禁用态的容器底色
+ *   保持 `surfaceContainerHighest` 不参与淡化，只有图标按官方 disabled content alpha 变淡；
+ *   默认 false，各档位仍完全走官方 disabled 配色，共享组件的既有表现不变。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -136,6 +139,7 @@ fun EtaIconButton(
     fillWidth: Boolean = false,
     shapes: IconButtonShapes? = null,
     tooltipText: String? = contentDescription,
+    keepContainerWhenDisabled: Boolean = false,
 ) {
     val button: @Composable () -> Unit = {
         EtaIconButtonBase(
@@ -148,6 +152,7 @@ fun EtaIconButton(
             enabled = enabled,
             fillWidth = fillWidth,
             shapes = shapes,
+            keepContainerWhenDisabled = keepContainerWhenDisabled,
         )
     }
     if (tooltipText != null && !LocalEtaTooltipActive.current) {
@@ -169,6 +174,7 @@ private fun EtaIconButtonBase(
     enabled: Boolean = true,
     fillWidth: Boolean = false,
     shapes: IconButtonShapes? = null,
+    keepContainerWhenDisabled: Boolean = false,
 ) {
     val containerSize = size.containerSize()
     val iconSize = size.iconSize()
@@ -244,16 +250,27 @@ private fun EtaIconButtonBase(
                     content = content,
                 )
             }
-        EtaButtonStyle.SurfaceHighest ->
+        EtaButtonStyle.SurfaceHighest -> {
+            // 禁用态默认沿用官方 disabled 令牌（整颗按钮，含底板，一起淡化）；
+            // keepContainerWhenDisabled 打开时只固化底板，图标仍走官方 disabled 内容透明度。
+            val surfaceColors = if (keepContainerWhenDisabled) {
+                IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                )
+            } else {
+                IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             if (shapes == null) {
                 FilledTonalIconButton(
                     onClick = onClick,
                     modifier = sizedModifier,
                     enabled = enabled,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
+                    colors = surfaceColors,
                     content = content,
                 )
             } else {
@@ -262,13 +279,11 @@ private fun EtaIconButtonBase(
                     shapes = shapes,
                     modifier = sizedModifier,
                     enabled = enabled,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
+                    colors = surfaceColors,
                     content = content,
                 )
             }
+        }
         EtaButtonStyle.Outlined ->
             if (shapes == null) {
                 OutlinedIconButton(onClick = onClick, modifier = sizedModifier, enabled = enabled, content = content)
