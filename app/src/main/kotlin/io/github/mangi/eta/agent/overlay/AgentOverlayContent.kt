@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Pause
@@ -89,26 +91,29 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.components.verticalScrollEdgeFade
 
-// 无语义 success 色，沿用项目既有值；失败色走主题 error
-private val SuccessColor = Color(0xFF34C759)
-
 private const val SupplementExitDelayMs = 380L
 
+/**
+ * 阶段强调色：全部取官方 colorScheme 角色（M3 没有 success/warning 专用角色），
+ * 与全应用语义状态色约定一致（StatusColors.kt）：
+ * 进行中＝`primary`、注意（暂停）＝`tertiary`、完成＝`primary`、失败＝`error`。
+ */
 @Composable
 internal fun phaseAccent(phase: AgentOverlayPhase): Color = when (phase) {
     AgentOverlayPhase.RUNNING -> MaterialTheme.colorScheme.primary
-    AgentOverlayPhase.PAUSED -> Color(0xFFFF9F0A)
-    AgentOverlayPhase.FINISHED -> SuccessColor
+    AgentOverlayPhase.PAUSED -> MaterialTheme.colorScheme.tertiary
+    AgentOverlayPhase.FINISHED -> MaterialTheme.colorScheme.primary
     AgentOverlayPhase.FAILED -> MaterialTheme.colorScheme.error
 }
 
@@ -123,6 +128,8 @@ internal fun AgentOverlayOrb(
     onToggleCollapse: () -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Float, Float) -> Unit,
+    /** 抬手抛掷速度（px/s）；仅真拖动过 slop 才回调，宿主起 OverScroller 惯性，与胶囊同套物理。 */
+    onDragEnd: (velocityX: Float, velocityY: Float) -> Unit = { _, _ -> },
 ) {
     var visible by remember { mutableStateOf(false) }
     val clickLabel = stringResource(if (collapsed) R.string.overlay_expand else R.string.overlay_collapse)
@@ -154,6 +161,7 @@ internal fun AgentOverlayOrb(
             onClick = onToggleCollapse,
             onDragStart = onDragStart,
             onDrag = onDrag,
+            onDragEnd = onDragEnd,
         )
     }
 }
@@ -172,6 +180,7 @@ private fun AssistantOrb(
     onClick: () -> Unit,
     onDragStart: () -> Unit,
     onDrag: (Float, Float) -> Unit,
+    onDragEnd: (velocityX: Float, velocityY: Float) -> Unit = { _, _ -> },
 ) {
     // 阶段切换时颜色渐渡，避免光球在一帧内换色。
     val accent by animateColorAsState(phaseAccent(phase), tween(240), label = "orb_accent")
@@ -180,6 +189,8 @@ private fun AssistantOrb(
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val gesture = remember(touchSlop) { AgentOrbDragGesture(touchSlop) }
     val activationKey = remember { AgentOrbActivationKey() }
+    val dragVelocity = remember { VelocityTracker.obtain() }
+    var dragging by remember { mutableStateOf(false) }
     // Screen coordinates stay stable while WindowManager moves this small window.
     // One recognizer owns the physical stream: dragging never toggles the controls.
     val tapModifier = Modifier
@@ -205,22 +216,40 @@ private fun AssistantOrb(
         .pointerInteropFilter { event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    dragVelocity.clear()
+                    dragVelocity.addMovement(event)
+                    dragging = false
                     gesture.begin(event.getPointerId(0), event.rawX, event.rawY)
                     onDragStart()
                 }
                 MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
-                    if (event.pointerCount != 1) gesture.cancel()
-                    else {
+                    dragVelocity.addMovement(event)
+                    if (event.pointerCount != 1) {
+                        dragging = false
+                        gesture.cancel()
+                    } else {
                         gesture.move(event.getPointerId(0), event.rawX, event.rawY)?.let {
+                            dragging = true
                             onDrag(it.x, it.y)
                         }
-                        if (event.actionMasked == MotionEvent.ACTION_UP &&
-                            gesture.finish(event.getPointerId(0))
-                        ) onClick()
+                        if (event.actionMasked == MotionEvent.ACTION_UP) {
+                            if (gesture.finish(event.getPointerId(0))) {
+                                dragging = false
+                                onClick()
+                            } else if (dragging) {
+                                dragging = false
+                                dragVelocity.computeCurrentVelocity(1000)
+                                onDragEnd(dragVelocity.xVelocity, dragVelocity.yVelocity)
+                            }
+                        }
                     }
                 }
                 MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN,
-                MotionEvent.ACTION_POINTER_UP -> gesture.cancel()
+                MotionEvent.ACTION_POINTER_UP -> {
+                    dragging = false
+                    dragVelocity.clear()
+                    gesture.cancel()
+                }
             }
             true
         }
@@ -317,7 +346,7 @@ internal fun AgentOverlayBubble(
     val accent = phaseAccent(state.phase)
     val statusText = state.status.localizedText()
     val statusColor by animateColorAsState(
-        targetValue = if (state.phase == AgentOverlayPhase.RUNNING) accent else Color(0xFFFF9F0A),
+        targetValue = if (state.phase == AgentOverlayPhase.RUNNING) accent else MaterialTheme.colorScheme.tertiary,
         animationSpec = tween(240),
         label = "bubble_status_color",
     )
@@ -347,14 +376,12 @@ internal fun AgentOverlayBubble(
             Column(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
             ) {
-                // 一句话状态
+                // 一句话状态：官方 labelMedium 档（12sp/500/16sp），即原手排 bodySmall+Bold 的标尺位。
                 Text(
                     text = statusText,
                     color = statusColor,
-                    fontSize = MaterialTheme.typography.bodySmall.fontSize,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium,
                     maxLines = 2,
-                    lineHeight = 16.sp,
                     overflow = TextOverflow.Ellipsis,
                 )
 
@@ -445,6 +472,12 @@ internal fun AgentOverlayBubble(
     }
 }
 
+/** 补充输入右下角按钮组占位宽：幽灵取消 40 + 间距 8 + 发送实心圆 40。 */
+private val SupplementActionClusterWidth = 88.dp
+
+/** 补充输入内胶囊端距：内层圆角 28dp − 圆钮半径 20dp，与主界面输入框同一同心规则。 */
+private val SupplementConcentricGap = 8.dp
+
 @Composable
 internal fun SupplementInput(
     value: String,
@@ -465,51 +498,78 @@ internal fun SupplementInput(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm),
     ) {
-        // 官方 M3 TextField：实色容器 + 无指示线；圆角取官方 extraLarge（28dp），
-        // 与胶囊外圈 36dp 保持 8dp 间距的同心关系。
-        TextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 112.dp)
-                .focusRequester(focusRequester),
-            shape = MaterialTheme.shapes.extraLarge,
-            textStyle = MaterialTheme.typography.bodyMedium,
-            placeholder = {
-                Text(
-                    text = stringResource(R.string.overlay_supplement_hint),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-            maxLines = 4,
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-                cursorColor = MaterialTheme.colorScheme.primary,
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onCancel) {
-                Text(stringResource(R.string.action_cancel))
-            }
-            Spacer(modifier = Modifier.width(EtaDimens.SpaceSm))
-            TextButton(onClick = onSend, enabled = value.isNotBlank()) {
-                Text(stringResource(R.string.overlay_send))
+        // 主界面输入框（AgentChatComposerM3）同款设计：
+        // 官方 M3 TextField（实色容器 + 无指示线），内层圆角固定官方 extraLarge（28dp）——
+        // 补充框始终位于胶囊直壁段（顶缘 y ≥ 64 > 外角半径区），不参与外角同心推演，
+        // 固定 28dp 才能让 40dp 圆钮在单行 56dp 场内 8+40+8 垂直居中。
+        // 布局同 composer：官方 trailingIcon 槽只预留按钮组宽度，取消（幽灵）/
+        // 发送（primary 实心圆）成组叠放在右下角，端距 = 28 − 20 = 8dp 与内层圆角同心，
+        // 多行长高后贴住右下角，单行时恰好竖直居中。
+        Box(modifier = Modifier.fillMaxWidth()) {
+            TextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 112.dp)
+                    .focusRequester(focusRequester),
+                shape = MaterialTheme.shapes.extraLarge,
+                textStyle = MaterialTheme.typography.bodyMedium,
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.overlay_supplement_hint),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                maxLines = 4,
+                // 官方尾部槽只做占位（双钮 40+8+40），真实按钮在共享容器里右下角对齐叠放，
+                // 文字由槽位与占位 Spacer 共同让位。
+                trailingIcon = {
+                    Spacer(Modifier.width(SupplementActionClusterWidth))
+                },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = SupplementConcentricGap, bottom = SupplementConcentricGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(
+                    onClick = onCancel,
+                    modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.action_cancel),
+                    )
+                }
+                Spacer(Modifier.width(EtaDimens.SpaceSm))
+                FilledIconButton(
+                    onClick = onSend,
+                    enabled = value.isNotBlank(),
+                    modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = stringResource(R.string.overlay_send),
+                    )
+                }
             }
         }
     }
@@ -581,14 +641,15 @@ internal fun AgentResultCard(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = statusLabel,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = MaterialTheme.typography.bodySmall.fontSize,
                         )
                         Spacer(modifier = Modifier.weight(1f))
                         // 关闭直接交给 Service，不经 Compose 协程延迟
                         IconButton(
                             onClick = onClose,
-                            modifier = Modifier.size(32.dp),
+                            // 官方 XS 档容器令牌（32dp），与手写 32dp 等值。
+                            modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Close,

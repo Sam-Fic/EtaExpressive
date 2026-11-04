@@ -1,6 +1,8 @@
 package io.github.mangi.eta.agent.overlay
 
 import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.VelocityTracker
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -29,10 +31,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,12 +55,13 @@ import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -75,31 +76,44 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick as semanticsClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
 import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
+import io.github.mangi.eta.ui.adaptive.EtaConnectedPosition
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.etaConnectedButtonShapes
 import io.github.mangi.eta.ui.adaptive.etaConnectedGroupColors
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
 import kotlin.math.hypot
@@ -113,6 +127,7 @@ import kotlinx.coroutines.launch
  * 位置固定在状态栏下方居中，不随 Agent 的点击位置移动，避免和目标控件重叠。
  * 状态文字只在语义变化时以上滑淡入切换，流式正文不进入胶囊。
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun AgentOverlayCapsule(
     state: AgentOverlayState,
@@ -133,6 +148,15 @@ internal fun AgentOverlayCapsule(
     onFullscreenVirtualDisplay: () -> Unit = {},
     onTapVirtualCanvas: (Float, Float, Boolean) -> Unit = { _, _, _ -> },
     onSwipeVirtualCanvas: (Float, Float, Float, Float, Int) -> Unit = { _, _, _, _, _ -> },
+    /** 每次布局上报 Surface 实际尺寸（px）；宿主据此外扩留白、逐帧贴合窗口，展开收起才无缝。 */
+    onContentSizeChanged: (widthPx: Int, heightPx: Int) -> Unit = { _, _ -> },
+    /** 头部拖动：与光球同一套 [AgentOrbDragGesture]——未过 slop 是点击，过了就是整窗拖动。 */
+    onDragStart: () -> Unit = {},
+    onDrag: (Float, Float) -> Unit = { _, _ -> },
+    /** 抬手抛掷速度（px/s，VelocityTracker 实测）；仅真拖动过 slop 才回调，供宿主起惯性 fling。 */
+    onDragEnd: (velocityX: Float, velocityY: Float) -> Unit = { _, _ -> },
+    /** 缩球态：大力甩向横边后停靠用，内容只剩阶段指示器（运行中即 contained LoadingIndicator）。 */
+    minimized: Boolean = false,
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
@@ -201,6 +225,7 @@ internal fun AgentOverlayCapsule(
 
     val targetCapsuleWidth by animateDpAsState(
         targetValue = when {
+            minimized -> CapsuleBallDiameter
             virtualDisplay.active && expanded -> CapsuleStageWidth
             virtualDisplay.active -> CapsuleMicroLensWidth
             else -> CapsuleDefaultWidth
@@ -209,9 +234,34 @@ internal fun AgentOverlayCapsule(
         label = "capsule_width",
     )
     val targetCapsuleCorner by animateDpAsState(
-        targetValue = if (virtualDisplay.active && expanded) CapsuleOuterCorner else CapsuleInnerCorner,
+        targetValue = when {
+            // 缩球 56dp 圆：角半径 = 直径一半，恰与内圈 28dp 令牌同值。
+            minimized -> CapsuleBallDiameter / 2
+            virtualDisplay.active && expanded -> CapsuleOuterCorner
+            else -> CapsuleInnerCorner
+        },
         animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
         label = "capsule_corner",
+    )
+    // 缩球时正文文字淡出（宽度由弹簧收窄带走），恢复时随宽展开淡回。
+    // 淡出快（尽快让位给宽度收缩）；淡入慢半拍且带延迟——宽度弹簧 ~400ms，
+    // 文字太早浮现会先被窄容器省略截断、再解锁重排，看起来像卡了一下。
+    val headerTextAlpha by animateFloatAsState(
+        targetValue = if (minimized) 0f else 1f,
+        animationSpec = if (minimized) tween(160) else tween(280, delayMillis = 60),
+        label = "capsule_header_text_alpha",
+    )
+    // 末端内边距随缩球同步收放，不能硬切：morph 首帧文字仍 ~95% 不透明，
+    // 16↔8dp 跳变会让整段文字横移一瞬。微缩镜在场时收到 28−9=19dp，
+    // 让 18dp 宽的镜身中心恰好落在右上圆角弧心上（28,28），与左上指示器同一同心规则。
+    val headerEndPadding by animateDpAsState(
+        targetValue = when {
+            minimized -> EtaDimens.SpaceSm
+            lensVisible -> CapsuleInnerCorner - MicroLensGlassWidth / 2
+            else -> EtaDimens.SpaceLg
+        },
+        animationSpec = tween(180),
+        label = "capsule_header_end_padding",
     )
 
     // 展开体三态互切：舞台 / 控制 / 补充都走同一套交叉过渡，避免舞台与输入框瞬间互换。
@@ -220,14 +270,26 @@ internal fun AgentOverlayCapsule(
         virtualDisplay.active -> CapsuleBody.Stage
         else -> CapsuleBody.Controls
     }
+    // 微缩镜只在收起 + 副屏在场时出现；尾部内缩让它中心落在右上圆角弧心上（与左上指示器对称）。
+    val lensVisible = virtualDisplay.active && !expanded && !minimized
     val bodySpatial = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     val bodyFastSpatial = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
     val bodySizeSpatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
     val bodyOrigin = TransformOrigin(0.5f, 0f)
 
+    // 头部拖动与光球同一套物理手势流：窗口被 WindowManager 移动时 raw 坐标依旧稳定，
+    // 单一识别器持有事件流，拖动不会误触发展开；未过 slop 的抬起按点击处理。
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    val dragGesture = remember(touchSlop) { AgentOrbDragGesture(touchSlop) }
+    val activationKey = remember { AgentOrbActivationKey() }
+    val dragVelocity = remember { VelocityTracker.obtain() }
+    var dragging by remember { mutableStateOf(false) }
+    val toggleLabel = stringResource(if (expanded) R.string.overlay_collapse else R.string.overlay_expand)
+
     AnimatedVisibility(
         visible = visible && !virtualDisplay.materializingToMain,
-        // 窗口本身按内容分档定死不随动画改尺寸，位移会被窗口裁掉，所以入场/退场走缩放+淡入淡出。
+        // 窗口逐帧贴合本 Surface 的布局尺寸（onGloballyPositioned 回调宿主），
+        // 位移/缩放只走绘制层不参与测量，所以入场/退场走缩放+淡入淡出。
         enter = fadeIn(tween(180)) + scaleIn(
             initialScale = 0.92f,
             transformOrigin = TransformOrigin(0.5f, 0f),
@@ -255,29 +317,102 @@ internal fun AgentOverlayCapsule(
                         translationY = -12.dp.toPx() * clearance
                         alpha = 1f - clearance
                         transformOrigin = TransformOrigin(0.5f, 0f)
+                    }
+                    .onGloballyPositioned { coords ->
+                        onContentSizeChanged(coords.size.width, coords.size.height)
                     },
                 shape = RoundedCornerShape(targetCapsuleCorner),
                 color = MaterialTheme.colorScheme.surfaceContainer,
+                // M3E 浮层对齐 FloatingToolbar 官方默认：无投影，靠 surfaceContainer 色阶
+                // 与 tonal（官方 Level2，栏类组件档）分层。旧 8dp 投影在贴边窗口里只留
+                // 6dp 下边距，被窗口边界裁掉一截，反而显脏。
                 tonalElevation = 3.dp,
-                shadowElevation = 8.dp,
+                shadowElevation = 0.dp,
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(TextFieldDefaults.MinHeight)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onToggleExpanded,
-                            )
-                            .semantics { contentDescription = expandDescription }
-                            .padding(horizontal = EtaDimens.SpaceLg),
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = expandDescription
+                                semanticsClick(label = toggleLabel) { onToggleExpanded(); true }
+                            }
+                            .onKeyEvent { event ->
+                                if (event.key == Key.Enter || event.key == Key.NumPadEnter ||
+                                    event.key == Key.DirectionCenter || event.key == Key.Spacebar
+                                ) {
+                                    when (event.type) {
+                                        KeyEventType.KeyDown -> activationKey.down(event.key.hashCode())
+                                        KeyEventType.KeyUp -> if (activationKey.up(event.key.hashCode())) onToggleExpanded()
+                                        else -> Unit
+                                    }
+                                    true
+                                } else false
+                            }
+                            .onFocusChanged { if (!it.isFocused) activationKey.cancel() }
+                            .pointerInteropFilter { event ->
+                                when (event.actionMasked) {
+                                    MotionEvent.ACTION_DOWN -> {
+                                        dragVelocity.clear()
+                                        dragVelocity.addMovement(event)
+                                        dragging = false
+                                        dragGesture.begin(event.getPointerId(0), event.rawX, event.rawY)
+                                        onDragStart()
+                                    }
+                                    MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+                                        dragVelocity.addMovement(event)
+                                        if (event.pointerCount != 1) {
+                                            dragging = false
+                                            dragGesture.cancel()
+                                        } else {
+                                            dragGesture.move(event.getPointerId(0), event.rawX, event.rawY)?.let {
+                                                dragging = true
+                                                onDrag(it.x, it.y)
+                                            }
+                                            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                                if (dragGesture.finish(event.getPointerId(0))) {
+                                                    // 点击：不抛掷。
+                                                    dragVelocity.clear()
+                                                    onToggleExpanded()
+                                                } else if (dragging) {
+                                                    // 拖过 slop 的抬手：回传实测速度给宿主起惯性。
+                                                    dragging = false
+                                                    dragVelocity.computeCurrentVelocity(1000)
+                                                    onDragEnd(dragVelocity.xVelocity, dragVelocity.yVelocity)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN,
+                                    MotionEvent.ACTION_POINTER_UP -> {
+                                        dragging = false
+                                        dragVelocity.clear()
+                                        dragGesture.cancel()
+                                    }
+                                }
+                                true
+                            }
+                            // 左缘内缩与外轮廓圆角同心：28dp 圆角（主界面输入框大胶囊同款）的
+                            // 弧心在 (R, R)，40dp 指示器（主界面输入框按钮同尺寸）中心要落在
+                            // 弧心上，左内缩 = R − 20dp，默认态即 8dp；纵向由 56dp 头部居中
+                            // 自动落位，舞台态圆角涨到 36dp 时随动到 16dp。
+                            .padding(
+                                start = targetCapsuleCorner -
+                                    IconButtonDefaults.smallContainerSize().width / 2,
+                                // 缩球态末端收到 8dp：8 + 40dp 指示器槽 + 8 = 56dp 球径内正中。
+                                end = headerEndPadding,
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         PhaseIndicator(phase = state.phase, accent = accent)
                         Spacer(Modifier.width(EtaDimens.SpaceSm))
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .graphicsLayer { alpha = headerTextAlpha },
+                        ) {
                             AnimatedContent(
                                 targetState = statusText,
                                 transitionSpec = {
@@ -289,9 +424,9 @@ internal fun AgentOverlayCapsule(
                             ) { text ->
                                 Text(
                                     text = text,
+                                    // 官方类型标尺 labelLarge 档（14sp/500）：状态主行不做手排规格。
+                                    style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -299,7 +434,7 @@ internal fun AgentOverlayCapsule(
                             DetailLine(detail = state.detailText.takeIf { state.phase == AgentOverlayPhase.RUNNING }.orEmpty())
                         }
                         AnimatedVisibility(
-                            visible = virtualDisplay.active && !expanded,
+                            visible = lensVisible,
                             enter = fadeIn(tween(180)) + expandHorizontally(
                                 animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                                 expandFrom = Alignment.End,
@@ -317,13 +452,15 @@ internal fun AgentOverlayCapsule(
                     }
 
                     AnimatedVisibility(
-                        visible = expanded,
+                        visible = expanded && !minimized,
                         enter = expandVertically(
                             animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
                             clip = true,
                         ) + fadeIn(tween(180, delayMillis = 40)),
                         exit = shrinkVertically(
-                            animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium),
+                            // 收起与展开、以及 graphicsLayer 的 expansion 浮点同用 MediumLow，
+                            // 三根动画同相推进，收起时正文不会先于高度收缩上蹿。
+                            animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
                             clip = true,
                         ) + fadeOut(tween(90)),
                     ) {
@@ -401,7 +538,12 @@ internal fun AgentOverlayCapsule(
 /** 展开体互切的三态；舞台与输入框共用尺寸过渡，不靠条件分支硬切。 */
 private enum class CapsuleBody { Stage, Controls, Supplement }
 
-/** 补充 / 暂停恢复 / 停止：官方 M3E 小号图标按钮一行居中。 */
+/**
+ * 补充 / 暂停恢复 / 停止：官方 M3 connected button group —— [EtaConnectedGroupRow] 给官方
+ * 2dp 连体间距（`ButtonGroupDefaults.ConnectedSpaceBetween`），[etaConnectedButtonShapes]
+ * 给官方连体形状（外侧 CornerFull、内侧 8dp，按压时内角 morph 到 4dp）。
+ * 常规动作取官方 tertiaryContainer / onTertiaryContainer 档，停止单独取 error 档。
+ */
 @Composable
 private fun CapsuleActions(
     phase: AgentOverlayPhase,
@@ -410,60 +552,80 @@ private fun CapsuleActions(
     onResume: () -> Unit,
     onStop: () -> Unit,
 ) {
-    Row(
+    Box(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm, Alignment.CenterHorizontally),
+        contentAlignment = Alignment.Center,
     ) {
-        CapsuleAction(
-            icon = Icons.Rounded.Edit,
-            label = stringResource(R.string.overlay_supplement),
-            tint = MaterialTheme.colorScheme.onSurface,
-            onClick = onSupplement,
-        )
-        AnimatedContent(
-            targetState = phase,
-            transitionSpec = {
-                (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
-            },
-            label = "capsule_phase_action",
-        ) { current ->
-            when (current) {
-                AgentOverlayPhase.RUNNING -> CapsuleAction(
-                    icon = Icons.Rounded.Pause,
-                    label = stringResource(R.string.overlay_pause),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    onClick = onPause,
-                )
-                AgentOverlayPhase.PAUSED -> CapsuleAction(
-                    icon = Icons.Rounded.PlayArrow,
-                    label = stringResource(R.string.overlay_resume),
-                    tint = MaterialTheme.colorScheme.primary,
-                    onClick = onResume,
-                )
-                else -> Spacer(Modifier.size(0.dp))
+        EtaConnectedGroupRow {
+            val scheme = MaterialTheme.colorScheme
+            CapsuleAction(
+                position = EtaConnectedPosition.Leading,
+                icon = Icons.Rounded.Edit,
+                label = stringResource(R.string.overlay_supplement),
+                containerColor = scheme.tertiaryContainer,
+                contentColor = scheme.onTertiaryContainer,
+                onClick = onSupplement,
+            )
+            AnimatedContent(
+                targetState = phase,
+                transitionSpec = {
+                    (fadeIn(tween(160)) togetherWith fadeOut(tween(120))) using SizeTransform(clip = false)
+                },
+                label = "capsule_phase_action",
+            ) { current ->
+                when (current) {
+                    AgentOverlayPhase.RUNNING -> CapsuleAction(
+                        position = EtaConnectedPosition.Middle,
+                        icon = Icons.Rounded.Pause,
+                        label = stringResource(R.string.overlay_pause),
+                        containerColor = scheme.tertiaryContainer,
+                        contentColor = scheme.onTertiaryContainer,
+                        onClick = onPause,
+                    )
+                    AgentOverlayPhase.PAUSED -> CapsuleAction(
+                        position = EtaConnectedPosition.Middle,
+                        icon = Icons.Rounded.PlayArrow,
+                        label = stringResource(R.string.overlay_resume),
+                        containerColor = scheme.tertiaryContainer,
+                        contentColor = scheme.onTertiaryContainer,
+                        onClick = onResume,
+                    )
+                    else -> Spacer(Modifier.size(0.dp))
+                }
             }
+            CapsuleAction(
+                position = EtaConnectedPosition.Trailing,
+                icon = Icons.Rounded.Stop,
+                label = stringResource(R.string.action_stop),
+                containerColor = scheme.errorContainer,
+                contentColor = scheme.onErrorContainer,
+                onClick = onStop,
+            )
         }
-        CapsuleAction(
-            icon = Icons.Rounded.Stop,
-            label = stringResource(R.string.action_stop),
-            tint = MaterialTheme.colorScheme.error,
-            onClick = onStop,
-        )
     }
 }
 
-/** 运行中是官方 M3E [LoadingIndicator]，其余阶段用官方图标；不自绘旋转弧线。 */
+/**
+ * 运行中是官方 M3E [ContainedLoadingIndicator]（contained 变体），其余阶段用官方图标；
+ * 不自绘旋转弧线。槽位固定为官方 Small 容器（40dp，主界面输入框按钮同尺寸）：
+ * 指示器撑满槽位，各阶段图标槽内居中，阶段互切时文字起点不左右挪。
+ */
 @Composable
 private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
-    AnimatedContent(
-        targetState = phase,
-        transitionSpec = {
-            (fadeIn(tween(200)) + scaleIn(initialScale = 0.7f)) togetherWith
-                (fadeOut(tween(140)) + scaleOut(targetScale = 0.7f))
-        },
-        label = "capsule_phase_glyph",
-    ) { current ->
-        PhaseGlyph(phase = current, accent = accent)
+    Box(
+        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = phase,
+            transitionSpec = {
+                (fadeIn(tween(200)) + scaleIn(initialScale = 0.7f)) togetherWith
+                    (fadeOut(tween(140)) + scaleOut(targetScale = 0.7f))
+            },
+            label = "capsule_phase_glyph",
+        ) { current ->
+            PhaseGlyph(phase = current, accent = accent)
+        }
     }
 }
 
@@ -471,9 +633,9 @@ private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
 @Composable
 private fun PhaseGlyph(phase: AgentOverlayPhase, accent: Color) {
     when (phase) {
-        AgentOverlayPhase.RUNNING -> LoadingIndicator(
-            modifier = Modifier.size(EtaDimens.StatusIconSize),
-            color = accent,
+        AgentOverlayPhase.RUNNING -> ContainedLoadingIndicator(
+            modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+            indicatorColor = accent,
         )
         AgentOverlayPhase.PAUSED -> Icon(
             imageVector = Icons.Rounded.Pause,
@@ -498,45 +660,63 @@ private fun PhaseGlyph(phase: AgentOverlayPhase, accent: Color) {
 
 /**
  * 状态副行：单行、从左侧裁掉旧内容，让最新的字始终可见。
- * 流式增量只改文字，不做逐字动画；行的出现与消失用淡入淡出，避免胶囊上下跳动。
+ * 流式增量只改文字，不做逐字动画；副行只在有内容时占高——只有一行状态字时
+ * 状态行在 56dp 头部里 y 向居中。出现/消失用官方 expand/shrink 顺带淡入淡出，
+ * 头部高度恒定（[TextFieldDefaults.MinHeight]），不会带动胶囊整体跳动。
  */
 @Composable
 private fun DetailLine(detail: String) {
     val shown = detail.isNotBlank()
-    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(220), label = "detail_alpha")
     var lastDetail by remember { mutableStateOf("") }
     if (shown) lastDetail = detail
-    Text(
-        text = lastDetail,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
-        maxLines = 1,
-        // 起始端省略：保留尾部最新的推理，像滚动字幕一样向前推进。
-        overflow = TextOverflow.StartEllipsis,
-        modifier = Modifier
-            .padding(top = 1.dp)
-            .graphicsLayer { this.alpha = alpha },
-    )
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(220)) + expandVertically(tween(220)),
+        exit = fadeOut(tween(220)) + shrinkVertically(tween(220)),
+    ) {
+        Text(
+            text = lastDetail,
+            // 官方类型标尺最小档 labelSmall（11sp/500），副行字号与原手排值一致。
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            // 起始端省略：保留尾部最新的推理，像滚动字幕一样向前推进。
+            overflow = TextOverflow.StartEllipsis,
+            modifier = Modifier.padding(top = 1.dp),
+        )
+    }
 }
 
-/** 官方 M3E [FilledTonalIconButton]（S 档容器 + 按压 morph），容器与图标尺寸取官方令牌。 */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+/**
+ * 相连按钮组里的单个动作：官方 [FilledTonalButton]（M3E `shapes` 档，按压时形状 morph），
+ * 连体形状取官方 [etaConnectedButtonShapes]（不带选中态形状——这排都是瞬时动作）。
+ * 尺寸取官方 Small 档（`ButtonDefaults.MinHeight` 40dp 方容器），图标取官方
+ * `iconSizeFor(MinHeight)` 档；`contentPadding` 置零让纯图标居中，同
+ * [EtaConnectedIconAction] 的官方纯图标做法。容器色由调用方按动作角色给。
+ */
 @Composable
-private fun CapsuleAction(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    FilledTonalIconButton(
+private fun CapsuleAction(
+    position: EtaConnectedPosition,
+    icon: ImageVector,
+    label: String,
+    containerColor: Color,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    FilledTonalButton(
         onClick = onClick,
-        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-        shapes = IconButtonDefaults.shapes(),
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = tint,
+        shapes = etaConnectedButtonShapes(position),
+        modifier = Modifier.size(ButtonDefaults.MinHeight),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = containerColor,
+            contentColor = contentColor,
         ),
+        contentPadding = PaddingValues(0.dp),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight)),
         )
     }
 }
@@ -573,7 +753,7 @@ internal fun VirtualDisplayMicroLens(
     Surface(
         modifier = modifier
             .size(
-                width = 18.dp,
+                width = MicroLensGlassWidth,
                 height = IconButtonDefaults.extraSmallContainerSize().height,
             )
             .graphicsLayer {
@@ -751,8 +931,8 @@ internal fun VirtualDisplayStageSection(
                             text = snapshot.appName.ifBlank {
                                 stringResource(R.string.overlay_virtual_canvas_auto)
                             },
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp,
                         )
                     }
                 }
@@ -791,9 +971,9 @@ internal fun VirtualDisplayStageSection(
             ) { title ->
                 Text(
                     text = title,
+                    // 官方 labelSmall 档：画廊页脚与状态副行同一标尺位（原 11.5sp 手排值）。
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
@@ -917,3 +1097,12 @@ private val StageCanvasHeight = 328.dp
 private val CapsuleDefaultWidth = 248.dp
 private val CapsuleMicroLensWidth = 264.dp
 private val CapsuleStageWidth = 296.dp
+
+/**
+ * 缩球直径：56dp 正圆（角半径 28dp 恰与内圈官方令牌同值），内容只剩阶段指示器。
+ * 大力甩向屏幕横边时触发，停靠在边缘；点按恢复成收起态胶囊。
+ */
+private val CapsuleBallDiameter = 56.dp
+
+/** 微缩镜镜身宽度；尾部同心内缩 = 胶囊内角 − 此值一半（镜身中心落在右上圆角弧心上）。 */
+private val MicroLensGlassWidth = 18.dp
