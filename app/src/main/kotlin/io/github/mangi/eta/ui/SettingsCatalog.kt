@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Groups
@@ -461,9 +462,9 @@ internal fun settingsCatalog(): List<SettingsEntry> {
         add(
             SettingsEntry(
                 key = SettingsKeys.TOOL_CONFIRM_DANGEROUS,
-                title = stringResource(R.string.settings_confirm_dangerous_tools),
-                summary = stringResource(R.string.settings_confirm_dangerous_tools_summary),
-                keywords = "dangerous confirm 危险 高危 确认 二次确认 安全 拦截",
+                title = stringResource(R.string.settings_tool_review_mode),
+                summary = stringResource(R.string.settings_tool_review_mode_summary),
+                keywords = "dangerous confirm 危险 高危 确认 审查 只读 严格 标准 自动 安全 拦截 review permission",
                 icon = Icons.Rounded.Warning,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Inline,

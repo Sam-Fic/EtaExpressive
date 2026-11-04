@@ -22,9 +22,14 @@ internal enum class AgentConfirmationScope { NONE, ONCE, SESSION }
 internal data class AgentRiskAssessment(
     val level: AgentRiskLevel,
     val reasons: List<String> = emptyList(),
+    /**
+     * 审查档位对授权粒度的覆盖：严格审查档把中风险的「本会话允许一次」
+     * 压成逐次确认（一次性）。null = 不覆盖，按 [level] 推导。
+     */
+    val scopeOverride: AgentConfirmationScope? = null,
 ) {
     val scope: AgentConfirmationScope
-        get() = when (level) {
+        get() = scopeOverride ?: when (level) {
             AgentRiskLevel.LOW -> AgentConfirmationScope.NONE
             AgentRiskLevel.MEDIUM -> AgentConfirmationScope.SESSION
             // 高危与致命操作不允许「本会话一直允许」：授权只对这一次生效。

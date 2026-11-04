@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -63,6 +64,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
@@ -74,6 +77,7 @@ import io.github.mangi.eta.agent.accessibility.AccessibilityProtectionClient
 import io.github.mangi.eta.agent.device.AgentTaskSurface
 import io.github.mangi.eta.config.PowerAssistantTarget
 import io.github.mangi.eta.config.Prefs
+import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.ToolCapabilities
 import io.github.mangi.eta.core.AppFileLogger
 import io.github.mangi.eta.data.datastore.SettingsDataStore
@@ -106,6 +110,9 @@ import io.github.mangi.eta.ui.components.LanguagePreference
 import io.github.mangi.eta.ui.components.TrashRetentionPreference
 import io.github.mangi.eta.ui.components.SwitchPreference
 import androidx.compose.material3.Text as M3Text
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -565,13 +572,9 @@ internal fun SettingsScreen(
                 }
 
                 row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
-                    SwitchPref(
-                        context = context,
-                        prefs = agentPrefs,
-                        title = stringResource(R.string.settings_confirm_dangerous_tools),
-                        summary = stringResource(R.string.settings_confirm_dangerous_tools_summary),
-                        key = Prefs.Keys.AGENT_CONFIRM_DANGEROUS_TOOLS,
-                        icon = Icons.Rounded.Warning,
+                    ToolReviewModeRow(
+                        title = stringResource(R.string.settings_tool_review_mode),
+                        summary = stringResource(R.string.settings_tool_review_mode_summary),
                     )
                 }
 
@@ -1056,6 +1059,62 @@ private fun buildToolsCapabilitySummary(context: Context, prefs: SharedPreferenc
     if (disabledTools == 0) return groups
     return groups + "；" +
         context.getString(R.string.settings_tools_summary_tools_off, disabledTools)
+}
+
+// ── 工具调用审查模式（四档） ───────────────────────────────────────────────
+
+/**
+ * 审查模式选择行：只读 / 严格 / 标准 / 自动。
+ *
+ * 每次调用实时读取（见 AgentDangerousOperationPolicy），因此这里改完立即生效，
+ * 不像渐进加载那样等新会话。直接读写 Prefs（与 DecisionModelSettingsScreen 同模式）；
+ * 四个档位的语义见 [AgentToolReviewMode]。
+ */
+@Composable
+private fun ToolReviewModeRow(title: String, summary: String) {
+    val view = LocalView.current
+    var mode by remember { mutableStateOf(Prefs.toolReviewMode()) }
+    val options = listOf(
+        Prefs.Keys.TOOL_REVIEW_MODE_READONLY,
+        Prefs.Keys.TOOL_REVIEW_MODE_STRICT,
+        Prefs.Keys.TOOL_REVIEW_MODE_STANDARD,
+        Prefs.Keys.TOOL_REVIEW_MODE_AUTO,
+    )
+    val labels = listOf(
+        stringResource(R.string.settings_tool_review_mode_readonly),
+        stringResource(R.string.settings_tool_review_mode_strict),
+        stringResource(R.string.settings_tool_review_mode_standard),
+        stringResource(R.string.settings_tool_review_mode_auto),
+    )
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        M3Text(text = title)
+        SingleChoiceSegmentedButtonRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+        ) {
+            options.forEachIndexed { index, value ->
+                SegmentedButton(
+                    selected = mode == value,
+                    onClick = {
+                        if (mode != value) {
+                            TouchHaptics.toggle(view, value != Prefs.Keys.TOOL_REVIEW_MODE_READONLY)
+                            mode = value
+                            Prefs.setToolReviewMode(value)
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                ) {
+                    M3Text(text = labels[index])
+                }
+            }
+        }
+        M3Text(
+            text = summary,
+            style = M3MaterialTheme.typography.bodySmall,
+            color = M3MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 // ── 带图标的布尔开关 ─────────────────────────────────────────────────────────

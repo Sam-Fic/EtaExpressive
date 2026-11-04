@@ -130,6 +130,24 @@ internal object AgentDangerousConfirmationGate {
     /** 兼容旧签名：按一次性授权消费。 */
     fun consume(signature: String): Boolean = consume(signature, AgentConfirmationScope.ONCE)
 
+    /**
+     * 只消费**一次性**授权；「本会话允许」不算数也不被消耗。
+     *
+     * 严格审查档用：中风险操作在严格档下必须逐次确认，既不能复用、也不该顺手
+     * 清掉用户此前在标准档下拿到的会话授权（用户调回标准档时它应继续有效）。
+     */
+    fun consumeOnceOnly(signature: String): Boolean {
+        val grant = grants[signature] ?: return false
+        if (System.currentTimeMillis() > grant.expiresAt) {
+            grants.remove(signature, grant)
+            return false
+        }
+        if (grant.scope != AgentConfirmationScope.ONCE) return false
+        grants.remove(signature, grant)
+        if (pending.get()?.signature == signature) pending.set(null)
+        return true
+    }
+
     /** 清理过期授权，避免长会话里积累。 */
     fun pruneExpired(now: Long = System.currentTimeMillis()) {
         grants.entries.removeIf { it.value.expiresAt < now }

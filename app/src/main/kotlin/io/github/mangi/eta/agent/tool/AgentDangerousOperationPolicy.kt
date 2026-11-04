@@ -3,49 +3,66 @@ package io.github.mangi.eta.agent.tool
 import io.github.mangi.eta.config.Prefs
 
 /**
- * 危险操作的逐次确认。
- *
- * 此前只有两种状态：整类能力开着，模型就直接执行；或者整类关掉。像重启设备、卸载应用、
- * 清空数据、删除用户、递归删除文件这类**不可逆**操作，中间没有「问问我再做」这一档。
+ * 工具调用审查模式（对齐 ZCode 的权限模式光谱，映射到 Eta 的风险阶梯）。
+ * 字符串值与 [io.github.mangi.eta.config.Prefs] 的 Keys 常量一一对应。
+ */
+internal enum class AgentToolReviewMode {
+    /** 只读：非低风险调用直接拒绝，不询问（对齐 ZCode plan）。 */
+    READONLY,
+
+    /** 严格：中风险也逐次确认，不享受「本会话允许一次」。 */
+    STRICT,
+
+    /** 标准（默认）：中风险本会话内确认一次，高/致命每次确认（原开关开启的行为）。 */
+    STANDARD,
+
+    /** 自动：中风险免确认直接执行；高/致命仍确认（对齐 ZCode yolo 的打折版——手机上有 Root，致命操作的确认是底线）。 */
+    AUTO,
+    ;
+
+    companion object {
+        fun from(prefsValue: String): AgentToolReviewMode = when (prefsValue) {
+            "readonly" -> READONLY
+            "strict" -> STRICT
+            "auto" -> AUTO
+            else -> STANDARD
+        }
+    }
+}
+
+/**
+ * 工具调用的审查与确认。
  *
  * 风险判定集中在 [AgentRiskPolicy]（工具/动作映射表）与 [AgentShellCommandRisk]（命令启发式），
- * 本对象只负责把它接到确认闸门上：
- * - 中风险：本会话内同一个调用确认一次（受设置总开关控制，关闭时不打扰）；
- * - 高风险：每次都要确认，且不受总开关影响；
- * - 致命：强制确认、只允许「本次允许」，同样不受总开关影响。
+ * 本对象负责按**审查模式**（[AgentToolReviewMode]，设置项实时读取，改完立即生效）把它接到确认闸门上：
+ * - 只读：非低风险直接拒绝（回 [READ_ONLY_CODE]），不提供 ask_user 授权路径；
+ * - 严格：中风险逐次确认（不消费会话授权），高/致命每次确认；
+ * - 标准（默认）：中风险本会话内确认一次，高/致命每次确认；
+ * - 自动：中风险直接执行；高/致命**仍然确认**——用户切到自动档免掉的是「什么都问」，
+ *   不是「可以不问就删库/重启/卸载」。
  *
- * 确认交互由**模型自己用 ask_user 问**，所以复用已有的
- * [ToolExecutionDecision.Reject]：命中危险清单时，拒绝本次调用并回
- * [CONFIRM_CODE]，错误文案明确要求模型「先用 ask_user 取得同意、再重发同一个调用」。
- * 用户同意后的一次性授权由 [AgentDangerousConfirmationGate] 记录，
- * 重发同一调用时消费它放行；换参数/换工具则仍需重新确认。
- *
- * 覆盖范围是**可能不可逆或涉及凭据的操作**：纯读类工具（列表、查询、截图）仍然直接执行，
- * 只有 `read_sms_code`、`wifi_credentials` 这类凭据读取被当作中风险例外。
+ * 确认交互由**模型自己用 ask_user 问**，复用 [ToolExecutionDecision.Reject]：
+ * 命中确认条件时拒绝本次调用并回 [CONFIRM_CODE]，文案要求模型「先用 ask_user 取得同意、
+ * 再重发同一个调用」。一次性/会话授权由 [AgentDangerousConfirmationGate] 记录。
  */
 internal object AgentDangerousOperationPolicy {
     const val CONFIRM_CODE = "USER_CONFIRMATION_REQUIRED"
+    const val READ_ONLY_CODE = "READ_ONLY_REVIEW_MODE"
 
     /** 判定一次调用是否危险（兼容旧调用方，语义等价于「需要确认」）。 */
     fun isDangerous(toolName: String, argumentsJson: String): Boolean =
         AgentRiskPolicy.assess(toolName, argumentsJson).requiresConfirmation
 
     /**
-     * 需要用户确认时返回拒绝决策；否则返回 null（交回调用方继续原有的准入检查）。
-     *
-     * [confirmationEnabled]（设置里的总开关）只控制**中风险**是否询问：
-     * 高风险与致命操作即使开关关闭也照样确认——用户关掉的是「什么都问」，
-     * 不是「可以不问就删库/重启/卸载」。低风险永远不打扰。
-     *
-     * 已获同意的同一个调用（工具名 + 参数完全一致）直接放行：一次性授权消费掉，
-     * 本会话授权按粒度保留；否则登记待确认并拒绝，让模型去问用户。
+     * 按当前审查模式返回拒绝决策；放行时返回 null（交回调用方继续原有的准入检查）。
+     * 低风险与纯读类动作在任何档位都不打扰（只读档同样放行低风险）。
      */
     fun decision(
         toolName: String,
         argumentsJson: String,
-        confirmationEnabled: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_CONFIRM_DANGEROUS_TOOLS),
+        mode: AgentToolReviewMode = AgentToolReviewMode.from(Prefs.toolReviewMode()),
     ): ToolExecutionDecision.Reject? =
-        decide(toolName, argumentsJson, AgentRiskPolicy.assess(toolName, argumentsJson), confirmationEnabled)
+        decide(toolName, argumentsJson, AgentRiskPolicy.assess(toolName, argumentsJson), mode)
 
     /**
      * 配方调用的判定：配方里的 Root shell 步骤也要过一遍命令启发式，
@@ -55,35 +72,62 @@ internal object AgentDangerousOperationPolicy {
         toolName: String,
         argumentsJson: String,
         shellCommands: List<String>,
-        confirmationEnabled: Boolean = Prefs.isEnabled(Prefs.Keys.AGENT_CONFIRM_DANGEROUS_TOOLS),
+        mode: AgentToolReviewMode = AgentToolReviewMode.from(Prefs.toolReviewMode()),
     ): ToolExecutionDecision.Reject? =
         decide(
             toolName,
             argumentsJson,
             AgentRiskPolicy.assessRecipe(toolName, argumentsJson, shellCommands),
-            confirmationEnabled,
+            mode,
         )
 
     private fun decide(
         toolName: String,
         argumentsJson: String,
         assessment: AgentRiskAssessment,
-        confirmationEnabled: Boolean,
+        mode: AgentToolReviewMode,
     ): ToolExecutionDecision.Reject? {
+        // 只读档：非低风险一律拒绝且不询问——它表达的是「这次只让我查」，不是「多问几次」。
+        if (mode == AgentToolReviewMode.READONLY && assessment.level != AgentRiskLevel.LOW) {
+            return ToolExecutionDecision.Reject(
+                code = READ_ONLY_CODE,
+                message = readOnlyMessage(toolName, assessment),
+            )
+        }
         if (!assessment.requiresConfirmation) return null
-        // 总开关只决定「中风险要不要问」；高风险与致命操作不可撤销，始终询问。
-        if (!confirmationEnabled && assessment.level == AgentRiskLevel.MEDIUM) return null
+        // 自动档只免掉中风险；高风险与致命操作不可撤销，任何档位都始终确认。
+        if (mode == AgentToolReviewMode.AUTO && assessment.level == AgentRiskLevel.MEDIUM) return null
+        // 严格档：中风险逐次确认——不认「本会话允许」，也不把既有的会话授权顺手消费掉。
+        val strictOnce = mode == AgentToolReviewMode.STRICT && assessment.level == AgentRiskLevel.MEDIUM
         val signature = AgentDangerousConfirmationGate.signature(toolName, argumentsJson)
-        if (AgentDangerousConfirmationGate.consume(signature, assessment.scope)) {
+        val granted = if (strictOnce) {
+            AgentDangerousConfirmationGate.consumeOnceOnly(signature)
+        } else {
+            AgentDangerousConfirmationGate.consume(signature, assessment.scope)
+        }
+        if (granted) {
             AgentDangerousConfirmationGate.pruneExpired()
             return null
         }
-        AgentDangerousConfirmationGate.expectConfirmation(signature, assessment)
+        // 严格档的中风险按一次性授权走：待确认槽与文案都不能提供「本会话允许」选项。
+        val effective = if (strictOnce) assessment.copy(scopeOverride = AgentConfirmationScope.ONCE) else assessment
+        AgentDangerousConfirmationGate.expectConfirmation(signature, effective)
         AgentDangerousConfirmationGate.pruneExpired()
         return ToolExecutionDecision.Reject(
             code = CONFIRM_CODE,
-            message = confirmationMessage(toolName, assessment),
+            message = confirmationMessage(toolName, effective),
         )
+    }
+
+    /**
+     * 只读档的拒绝文案。与确认文案的关键差异：不提供 ask_user 授权路径——
+     * 只读表达的是「这次别做」，不是「问过我就可以做」。
+     */
+    private fun readOnlyMessage(toolName: String, assessment: AgentRiskAssessment): String {
+        val consequences = assessment.reasons.joinToString("；").ifBlank { "该操作可能影响系统状态" }
+        return "当前处于只读审查模式：「$toolName」不是只读操作（$consequences），已直接拦下，**未做任何改动**。" +
+            "此模式下不会发起确认，也不要用 ask_user 请求授权、不要重试或换其它工具变相执行。" +
+            "如实告知用户：需要执行该操作时，请在设置里把工具调用审查模式从「只读」切换到其它档位。"
     }
 
     /** 兼容旧调用方：不带风险明细的通用文案。 */
