@@ -132,34 +132,34 @@ class AgentDangerousOperationPolicyTest {
     @Test fun resendingWithoutAskingIsStillRejected() {
         val args = """{"action":"reboot"}"""
         // 第一次被拒。
-        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
         // 没有问用户就重发：仍然被拒，不能靠重试蒙过去。
-        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
     }
 
     @Test fun userApprovalLetsTheSameCallThroughExactlyOnce() {
         val args = """{"action":"reboot"}"""
-        AgentDangerousOperationPolicy.decision("power_control", args, true)
+        AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD)
 
         // 用户点了同意选项。
         assertTrue(AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID))
 
         // 重发同一个调用：放行。
-        assertNull(AgentDangerousOperationPolicy.decision("power_control", args, true))
+        assertNull(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD))
         // 授权只消费一次：再执行一次又要重新确认。
-        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
     }
 
     @Test fun approvalDoesNotTransferToDifferentArgumentsOrTools() {
-        AgentDangerousOperationPolicy.decision("manage_app", """{"action":"uninstall","package_name":"com.a"}""", true)
+        AgentDangerousOperationPolicy.decision("manage_app", """{"action":"uninstall","package_name":"com.a"}""", AgentToolReviewMode.STANDARD)
         AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID)
 
         // 换一个应用卸载：同意过 A 不代表同意 B。
         assertTrue(AgentDangerousOperationPolicy.decision(
-            "manage_app", """{"action":"uninstall","package_name":"com.b"}""", true,
+            "manage_app", """{"action":"uninstall","package_name":"com.b"}""", AgentToolReviewMode.STANDARD,
         ) is ToolExecutionDecision.Reject)
         // 换一个工具：同样不继承授权。
-        assertTrue(AgentDangerousOperationPolicy.decision("power_control", """{"action":"reboot"}""", true)
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", """{"action":"reboot"}""", AgentToolReviewMode.STANDARD)
             is ToolExecutionDecision.Reject)
     }
 
@@ -171,10 +171,10 @@ class AgentDangerousOperationPolicyTest {
             "delegate" to null,
         ).forEach { (kind, optionId) ->
             AgentDangerousConfirmationGate.clear()
-            AgentDangerousOperationPolicy.decision("power_control", args, true)
+            AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD)
             assertFalse("$kind 不构成同意", AgentDangerousConfirmationGate.onUserAnswered(kind, optionId))
             assertTrue("$kind 之后仍应要求确认",
-                AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+                AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
         }
     }
 
@@ -196,18 +196,18 @@ class AgentDangerousOperationPolicyTest {
 
     @Test fun staleApprovalExpires() {
         val args = """{"action":"reboot"}"""
-        AgentDangerousOperationPolicy.decision("power_control", args, true)
+        AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD)
         AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID)
         // 模拟授权过期：清理后重发必须重新确认。
         AgentDangerousConfirmationGate.pruneExpired(now = System.currentTimeMillis() + AgentDangerousConfirmationGate.TTL_MS + 1)
-        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
     }
 
     // ── 确认粒度：本次允许 / 本会话允许 ────────────────────────────────────────
 
     @Test fun mediumRiskCanBeAllowedForTheWholeSession() {
         val args = """{"action":"set","timezone":"Asia/Shanghai"}"""
-        assertTrue(AgentDangerousOperationPolicy.decision("set_timezone", args, true) is ToolExecutionDecision.Reject)
+        assertTrue(AgentDangerousOperationPolicy.decision("set_timezone", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
         assertEquals(
             AgentConfirmationScope.SESSION,
             AgentDangerousConfirmationGate.onUserAnsweredScoped(
@@ -215,19 +215,19 @@ class AgentDangerousOperationPolicyTest {
             ),
         )
         // 本会话授权可重复使用，不消费。
-        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, true))
-        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, true))
+        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, AgentToolReviewMode.STANDARD))
+        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, AgentToolReviewMode.STANDARD))
         // 换参数仍然要重新确认。
         assertTrue(
             AgentDangerousOperationPolicy.decision(
-                "set_timezone", """{"action":"set","timezone":"UTC"}""", true,
+                "set_timezone", """{"action":"set","timezone":"UTC"}""", AgentToolReviewMode.STANDARD,
             ) is ToolExecutionDecision.Reject,
         )
     }
 
     @Test fun fatalRiskNeverGrantsSessionScope() {
         val args = """{"action":"reboot"}"""
-        AgentDangerousOperationPolicy.decision("power_control", args, true)
+        AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD)
         // 即使模型给了「本会话允许」选项，致命操作也只授权一次。
         assertEquals(
             AgentConfirmationScope.ONCE,
@@ -235,19 +235,19 @@ class AgentDangerousOperationPolicyTest {
                 "option", AgentDangerousConfirmationGate.CONFIRM_SESSION_OPTION_ID,
             ),
         )
-        assertNull(AgentDangerousOperationPolicy.decision("power_control", args, true))
-        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        assertNull(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD))
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
     }
 
     @Test fun cancelOptionNeverGrants() {
         val args = """{"action":"reboot"}"""
-        AgentDangerousOperationPolicy.decision("power_control", args, true)
+        AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD)
         assertNull(
             AgentDangerousConfirmationGate.onUserAnsweredScoped(
                 "option", AgentDangerousConfirmationGate.CANCEL_OPTION_ID,
             ),
         )
-        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, true) is ToolExecutionDecision.Reject)
+        assertTrue(AgentDangerousOperationPolicy.decision("power_control", args, AgentToolReviewMode.STANDARD) is ToolExecutionDecision.Reject)
     }
 
     @Test fun shellToolsAreAssessedBeforeExecution() {
@@ -287,11 +287,10 @@ class AgentDangerousOperationPolicyTest {
         )
         assertTrue(
             AgentDangerousOperationPolicy.decisionForRecipe(
-                "recipe_clean", """{"path":"/storage"}""", listOf("rm -rf /sdcard/Download"), true,
+                "recipe_clean", """{"path":"/storage"}""", listOf("rm -rf /sdcard/Download"), AgentToolReviewMode.STANDARD,
             ) is ToolExecutionDecision.Reject,
         )
     }
-}
 
     // ── 审查模式四档（对齐 ZCode 权限模式光谱） ────────────────────────────────
 
@@ -376,3 +375,4 @@ class AgentDangerousOperationPolicyTest {
             ) as ToolExecutionDecision.Reject).code,
         )
     }
+}
