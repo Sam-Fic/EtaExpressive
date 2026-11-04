@@ -1006,7 +1006,7 @@ internal fun AgentConversationMessages(
             timelineRows.forEachIndexed { index, row ->
                 if (row is AgentTimelineRow.WorkSummary || row is AgentTimelineRow.WorkStep) {
                     val prev = timelineRows.getOrNull(index - 1) as? AgentTimelineRow.Message
-                    put(row.key, prev?.message is UserMessageUi)
+                    put(row.key, prev?.message?.isRenderedAsUserBubble() == true)
                 }
             }
         }

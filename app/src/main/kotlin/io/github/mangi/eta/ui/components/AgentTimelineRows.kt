@@ -391,13 +391,21 @@ internal fun List<AgentTimelineRow>.lazyUserMessageIndices(): List<Int> = mapInd
 }
 
 /**
+ * 真正按用户气泡渲染的 user 轮。派发回报虽然身份仍是 [UserMessageUi]（模型输入/历史对齐要用），
+ * 但展示层画成工具卡，不参与气泡分组（否则相邻气泡会跟卡片拼在一组里）。
+ */
+internal fun AgentChatMessageUi.isRenderedAsUserBubble(): Boolean =
+    this is UserMessageUi &&
+        !io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.isConsoleReceipt(content)
+
+/**
  * 渲染层连续 User 气泡分组：两个相邻 User 气泡之间没有任何行（工作过程 / 正文 / 其它消息）即同组。
  *
  * 组边界只由相邻行决定：流式内容到达只会改变「自身→下一条」一侧，组不随内容跳变。
  */
 internal fun List<AgentTimelineRow>.userBubblePosition(index: Int): UserBubblePosition {
     fun isUserBubble(row: AgentTimelineRow?): Boolean =
-        (row as? AgentTimelineRow.Message)?.message is UserMessageUi
+        (row as? AgentTimelineRow.Message)?.message?.isRenderedAsUserBubble() == true
     val stickyUp = index > 0 && isUserBubble(getOrNull(index - 1))
     val stickyDown = index < lastIndex && isUserBubble(getOrNull(index + 1))
     return when {

@@ -482,9 +482,9 @@ internal fun ChatMessageItem(
         is UserMessageUi -> if (
             io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.isConsoleReceipt(message.content)
         ) {
-            // 派发汇报的文本只是模型输入，展示由 task_dispatch 卡片承载；
-            // 正常路径已在 AgentVisibleMessagesCache 隐藏，这里兜底不画任何气泡。
-            Unit
+            // 派发回报：身份仍是 UserMessageUi（模型输入/历史/编辑边界不变），
+            // 但不用用户气泡，改用工具卡同一套视觉语言呈现。
+            DispatchReceiptCard(message = message, modifier = modifier)
         } else UserMessageBubble(
             message = message,
             actionsEnabled = messageActionsEnabled,
@@ -3629,6 +3629,93 @@ private fun ToolStatusIndicator(status: ToolActivityStatusUi) {
     }
 }
 
+/**
+ * 派发回报的只读卡片。
+ *
+ * 消息身份仍是 [UserMessageUi]：它承载的是「子会话产出回传给主智能体」的 user 轮，
+ * 换新类型会破坏模型输入、历史对齐与编辑/分支的轮边界判定；只在渲染层换成工具卡。
+ *
+ * 与 `task_dispatch` 卡片的分工：
+ * - 派发卡只保留子会话身份（标题）、状态与「打开会话」跳转；
+ * - 完整汇报正文（最终答复或失败原因）只在这里展示一次，避免同一条内容显示两遍。
+ *
+ * 卡片本身没有操作区（不可编辑/分支），因此不会退化成用户气泡。
+ */
+@Composable
+private fun DispatchReceiptCard(
+    message: UserMessageUi,
+    modifier: Modifier = Modifier,
+) {
+    val text = message.content.trimStart()
+        .removePrefix(io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.CONSOLE_TEXT_PREFIX)
+    val headline = text.lineSequence().firstOrNull().orEmpty().trim()
+    // toConsoleText 的固定结构是「首行结论 + 汇报正文 + 『完整记录见会话…』+ 来源声明」。
+    // 卡片只展示汇报正文：末两行是模板尾巴（跳转已由 task_dispatch 卡承担），按行位置去掉，
+    // 不另做字符串判定。结构缺失（历史数据被裁剪）时原样保留，不丢正文。
+    val bodyLines = text.lineSequence().drop(1).toList()
+    val reportBody = (if (bodyLines.size >= 2) bodyLines.dropLast(2) else bodyLines)
+        .joinToString("\n").trim()
+    // 长文本默认收起：只露首行；展开后限高滚动，不撑爆消息流。
+    var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
+    val failed = headline.contains("失败") || headline.contains("已停止")
+    AgentWorkSegmentedBubble(
+        leading = {
+            // 与工具行同款裸 Icon（默认 24dp 几何）：常态 onSurfaceVariant，失败用官方 error。
+            Icon(
+                imageVector = ToolPresentation.icon(
+                    io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME,
+                ),
+                contentDescription = null,
+                tint = if (failed) MaterialTheme.colorScheme.error else etaOnSurfaceVariant(),
+            )
+        },
+        title = "派发回报",
+        modifier = modifier,
+        // 失败原因（最多 200 字）拼在首行里，收起态截断到一行，不靠展开才看得见结论。
+        supporting = headline.takeIf { it.isNotBlank() }?.let {
+            if (it.length > 60) it.take(60) + "…" else it
+        },
+        supportingColor = if (failed) MaterialTheme.colorScheme.error else null,
+        titleMaxLines = 1,
+        trailingStatus = {
+            ToolStatusIndicator(
+                if (failed) ToolActivityStatusUi.Failed else ToolActivityStatusUi.Success,
+            )
+        },
+        expanded = expanded,
+        onToggle = if (reportBody.isNotBlank()) {
+            { expanded = !expanded }
+        } else {
+            null
+        },
+        details = if (reportBody.isNotBlank()) {
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "汇报正文",
+                        style = chatQuaternaryStyle(),
+                        color = etaOnSurfaceVariant(),
+                    )
+                    val scrollState = rememberScrollState()
+                    HapticSelectionContainer {
+                        Text(
+                            text = reportBody,
+                            style = chatExpandedBodyStyle(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = ToolDetailMaxHeight)
+                                .verticalScrollEdgeFade(scrollState)
+                                .verticalScroll(scrollState),
+                        )
+                    }
+                }
+            }
+        } else {
+            null
+        },
+    )
+}
+
 @Composable
 private fun ToolActivityInline(
     message: ToolActivityMessageUi,
@@ -3664,14 +3751,15 @@ private fun ToolActivityInline(
     }
     // 展开区至少要有一样真东西可看：命令、参数、结果、工具读到的图片，或浏览器入口。
     // 全都为空的行保持不可展开（箭头一并隐藏），不做「点开只有一句话」的空交互。
+    // 派发卡的身份信封（resultDetail）不算「可看内容」，只有能跳转时才可展开。
     val hasDetails = !message.command.isNullOrBlank() ||
-        !message.resultSummary.isNullOrBlank() ||
+        (dispatchMeta == null && !message.resultSummary.isNullOrBlank()) ||
         !message.argumentsDetail.isNullOrBlank() ||
-        !message.resultDetail.isNullOrBlank() ||
+        (dispatchMeta == null && !message.resultDetail.isNullOrBlank()) ||
         message.mediaPreviews.isNotEmpty() ||
         message.detailsWithheld ||
         showBrowserShortcut ||
-        dispatchMeta != null
+        dispatchMeta?.conversationId?.isNotBlank() == true
     val browserSubtitle = browserSnapshot?.let { snapshot ->
         when {
             snapshot.isLoading ->
@@ -3687,24 +3775,17 @@ private fun ToolActivityInline(
     val imageCountLabel = message.imageCount.takeIf { it > 0 }?.let { count ->
         pluralStringResource(R.plurals.overlay_images_read, count, count)
     }
-    // 失败原因直接显示在折叠行，不必展开卡片；剥离去重「失败」前缀与日志用的 code= 尾巴
-    val failureSubtitle = if (message.status == ToolActivityStatusUi.Failed) {
+    // 失败原因直接显示在折叠行，不必展开卡片；剥离去重「失败」前缀与日志用的 code= 尾巴。
+    // 派发卡除外：正文只在「派发回报」回执卡里出现一次，避免同一段原因显示两遍。
+    val failureSubtitle = if (
+        message.status == ToolActivityStatusUi.Failed && dispatchMeta == null
+    ) {
         val failedLabel = stringResource(R.string.trace_failed)
         message.resultSummary
             ?.lineSequence()?.firstOrNull()
             ?.removePrefix("$failedLabel · ")
             ?.substringBefore(" · code=")
             ?.takeIf { it.isNotBlank() && it != failedLabel }
-    } else {
-        null
-    }
-    // 派发卡的折叠行副标题：终态后用汇报首行做预览（失败原因仍走 failureSubtitle）。
-    val dispatchPreview = if (
-        dispatchMeta != null && message.status != ToolActivityStatusUi.Failed
-    ) {
-        message.resultSummary
-            ?.lineSequence()?.firstOrNull()
-            ?.take(120)?.takeIf { it.isNotBlank() }
     } else {
         null
     }
@@ -3766,21 +3847,9 @@ private fun ToolActivityInline(
                             ToolMediaStrip(sources = message.mediaPreviews)
                         }
                         if (dispatchMeta != null) {
-                            // 派发汇报：正文是子会话的最终答复（失败时是失败原因），
-                            // resultDetail 只是身份信封，不当作 JSON 展示。
-                            // 子会话仍在跑时没有正文，此时不画空的「结果」标题。
-                            message.resultSummary?.takeIf { it.isNotBlank() }?.let { report ->
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(
-                                        text = stringResource(R.string.ui_result_0a2c91),
-                                        style = chatQuaternaryStyle(),
-                                        color = etaOnSurfaceVariant(),
-                                    )
-                                    HapticSelectionContainer {
-                                        Text(text = report, style = chatExpandedBodyStyle())
-                                    }
-                                }
-                            }
+                            // 派发卡只负责「派发记录」定位：子会话身份、状态与跳转。
+                            // 完整汇报正文（最终答复 / 失败原因）由紧随其后的「派发回报」
+                            // 回执卡独占展示，这里再画一遍就等于同一条内容显示两次。
                             if (dispatchMeta.conversationId.isNotBlank()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -3881,10 +3950,14 @@ private fun ToolActivityInline(
         },
         title = title,
         titleColor = if (message.status == ToolActivityStatusUi.Running) etaPrimary() else null,
+        // 折叠态标题只占一行：语义核心（动作名）在最前，长参数由 formatter 截断，
+        // 行尾状态与展开箭头固定不被挤掉。
+        titleMaxLines = 1,
         modifier = modifier.let { completedContentDrawLayer(it, toolRowSettled) },
-        // 副标题优先级：失败原因 > 派发汇报预览 > 浏览器实时状态 > 图片张数；
+        // 副标题优先级：失败原因 > 浏览器实时状态 > 图片张数；
+        // 派发卡不再复述汇报正文（正文只落在「派发回报」回执卡上），
         // 失败原因用官方 error 角色着色。
-        supporting = failureSubtitle ?: dispatchPreview ?: browserSubtitle ?: imageCountLabel,
+        supporting = failureSubtitle ?: browserSubtitle ?: imageCountLabel,
         supportingColor = failureSubtitle?.let { MaterialTheme.colorScheme.error },
         trailingStatus = { ToolStatusIndicator(message.status) },
         expanded = isExpanded,

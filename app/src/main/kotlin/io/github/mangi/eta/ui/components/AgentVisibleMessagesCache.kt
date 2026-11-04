@@ -1,11 +1,9 @@
 package io.github.mangi.eta.ui.components
 
-import io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier
 import io.github.mangi.eta.ui.app.AgentConversationRevisionReducer
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentIncrementalList
 import io.github.mangi.eta.ui.model.AgentMessageUi
-import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.incrementalSnapshot
 
 /** Preserve the existing edit/blank filtering policy without rescanning a live payload-only update. */
@@ -49,8 +47,5 @@ internal class AgentVisibleMessagesCache {
     }
 
     private fun hidden(message: AgentChatMessageUi): Boolean =
-        message is AgentMessageUi && message.content.isBlank() ||
-            // 派发汇报的文本只作模型输入（steer 补充轮同此），展示由 task_dispatch 卡片承载；
-            // 隐藏它，避免回执伪装成用户自己的发言。
-            message is UserMessageUi && AgentDispatchNotifier.isConsoleReceipt(message.content)
+        message is AgentMessageUi && message.content.isBlank()
 }

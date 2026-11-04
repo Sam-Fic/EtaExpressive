@@ -10,15 +10,17 @@ import org.json.JSONObject
  *
  * Runtime 侧（协调器）只发布；UI 侧（AgentAppState）订阅后先把结果写进调度台的
  * `task_dispatch` 工具卡（同一张卡从「执行中」更新到终态，一个子任务一张，互不覆盖），
- * 再用自己的既有路径把汇报注入调度台：调度台在跑 → steer 插话；空闲 → 发起一轮。
- * 汇报文本仍带固定前缀，但只作为模型输入与历史对齐的载体，展示层按前缀隐藏
- * （见 [CONSOLE_TEXT_PREFIX]），不会伪装成用户自己的气泡。
+ * 再用自己的既有路径把汇报注入调度台：调度台在跑 → steer 插话；空闲 → 发起一轮；
+ * 暂停/用户停止 → 只落卡片与「派发回报」回执卡，等用户恢复或再次发言再并入模型输入。
+ *
+ * 汇报文本带固定前缀，既是模型输入，也是展示层识别「派发回报」卡片的唯一依据
+ * （见 [CONSOLE_TEXT_PREFIX]）；渲染成工具卡样式，不会伪装成用户自己的气泡。
  *
  * replay 兜底 Activity 重建窗口；消费端按 dispatchId 去重保证「恰一次」语义。
  */
 internal object AgentDispatchNotifier {
 
-    /** 回执固定前缀；展示层据此识别「这是模型输入而不是用户发言」，整条隐藏。 */
+    /** 回执固定前缀；展示层据此把这条 user 轮识别并渲染成「派发回报」工具卡（唯一判定出处）。 */
     const val CONSOLE_TEXT_PREFIX = "【派发回报】"
 
     fun isConsoleReceipt(text: String): Boolean = text.trimStart().startsWith(CONSOLE_TEXT_PREFIX)

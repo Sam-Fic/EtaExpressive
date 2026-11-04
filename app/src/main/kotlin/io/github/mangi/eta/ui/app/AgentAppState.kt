@@ -520,6 +520,20 @@ internal class AgentAppState(
      */
     private val pendingDispatchTitles = mutableMapOf<String, String>()
 
+    /**
+     * 调度台暂停/停止期间到达的子任务汇报。此时只落卡片、不碰模型输入
+     * （不新起一轮、不 steer）；等用户恢复或下次主动发言时，由
+     * [drainPendingConsoleReceipts] / [takePendingConsoleReceiptsForSteer] 并入那一轮。
+     * pending 只活在本进程：进程重建后旧汇报仍可在卡片的终态里看到。
+     */
+    private val pendingConsoleReceipts = mutableListOf<String>()
+
+    /**
+     * 调度台被用户显式停止后，回报只更新卡片，不再自动拉起新一轮——否则「停止」形同虚设。
+     * 用户再次在调度台发言或恢复运行时解除。
+     */
+    private var consoleDispatchAutoRunBlocked = false
+
     /** 派生会话标记（调度台所建或接续中）；内存投影，真相在 conversations 两列。 */
     private var conversationDispatchMarks by mutableStateOf(setOf<String>())
 
@@ -933,7 +947,7 @@ internal class AgentAppState(
             materializeDispatchConversation(notice.conversationId, notice.title) {
                 refreshRuntimeResults()
             }
-            deliverDispatchNotice(notice.toConsoleText())
+            deliverDispatchNotice(notice)
         }
     }
 
@@ -1122,29 +1136,132 @@ internal class AgentAppState(
 
     /**
      * 结算回报注入调度台：在跑→steer 插话；空闲→发起一轮（现有 run 模型下「主智能体不停止」
-     * 靠完成即触发新一轮实现）。汇报文本只作模型输入，展示由 `task_dispatch` 卡片承载，
-     * 因此暂停/未知状态不再排队，避免把回报伪造成用户待发消息。
+     * 靠完成即触发新一轮实现）。
+     *
+     * 暂停 / 用户显式停止期间**绝不自动起轮**，否则「停止」形同虚设：只把终态写进
+     * `task_dispatch` 卡、追加一条「派发回报」回执卡，并把文本积压到
+     * [pendingConsoleReceipts]，等用户恢复（[continuePausedGeneration] → steer）或下次
+     * 主动发言（[drainPendingConsoleReceipts] → 并入那一轮 history）时再让模型读到。
      */
-    private fun deliverDispatchNotice(text: String) {
+    private fun deliverDispatchNotice(
+        notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.Notice,
+    ) {
         val consoleId = dispatchConsoleId() ?: return
         val state = conversationState(consoleId) ?: return
+        if (!state.conversationContentLoaded) return
+        val text = notice.toConsoleText()
+        // 用户停止（含 run 已自然结束、随后又按了停止的窗口）或暂停：只落卡片与回执。
+        if (consoleDispatchAutoRunBlocked || state.isPaused) {
+            appendConsoleReceipt(consoleId, notice.dispatchId, text)
+            enqueuePendingConsoleReceipt(text)
+            return
+        }
         val activeRunId = state.activeRunId
         when {
-            activeRunId != null && state.isStreaming && !state.isPaused -> {
+            activeRunId != null && state.isStreaming -> {
+                // 不在这里手写回执卡：steer 成功后 runtime 会发 supplement 事件，
+                // UI 侧按前缀把它渲染成「派发回报」卡，手写会显示成两张。
                 runCatching {
                     AgentRuntimeClient(appContext, AndroidAgentLogger).steerRun(activeRunId, text)
                 }
             }
-            activeRunId == null && !state.isStreaming && !state.isPaused ->
+            activeRunId == null && !state.isStreaming ->
                 dispatchNoticeAsConsoleTurn(consoleId, state, text)
-            else -> Unit
+            else -> {
+                // 停止过渡窗口（已请求停止、尚未拿到终态）：同样不拉起新一轮。
+                appendConsoleReceipt(consoleId, notice.dispatchId, text)
+                enqueuePendingConsoleReceipt(text)
+            }
+        }
+    }
+
+    /** 暂停/停止期间积压一条回报文本；上限与 notifier 的 replay 深度同量级，防无限增长。 */
+    private fun enqueuePendingConsoleReceipt(text: String) {
+        if (pendingConsoleReceipts.size >= 32) pendingConsoleReceipts.removeAt(0)
+        pendingConsoleReceipts.add(text)
+    }
+
+    /**
+     * 「派发回报」回执卡：身份仍是 [UserMessageUi]（模型输入、历史对齐与编辑/分支的轮边界
+     * 都依赖 user 轮），展示层按 `CONSOLE_TEXT_PREFIX` 识别后画成工具卡（DispatchReceiptCard），
+     * 不套用户气泡、不给操作区。id 用 dispatchId 派生，replay / 重启不会重复追加。
+     */
+    private fun appendConsoleReceipt(
+        consoleId: String,
+        dispatchId: String,
+        text: String,
+    ) {
+        val state = conversationState(consoleId) ?: return
+        if (!state.conversationContentLoaded) return
+        val id = "dispatch-receipt-$dispatchId"
+        if (state.messages.any { it.id == id }) return
+        updateConversation(
+            consoleId,
+            state.copy(messages = state.messages + UserMessageUi(id = id, content = text)),
+        )
+        persistConversations()
+    }
+
+    /**
+     * 用户重新在调度台发言：把积压回报并入这一轮的 history（因此会持久化在历史里），
+     * 并解除停止后的自动起轮封锁。非调度台会话返回空。
+     */
+    private fun drainPendingConsoleReceipts(
+        conversationId: String?,
+    ): List<AgentModelClient.ConversationMessage> {
+        if (conversationId == null || !isDispatchConsoleConversation(conversationId)) return emptyList()
+        consoleDispatchAutoRunBlocked = false
+        if (pendingConsoleReceipts.isEmpty()) return emptyList()
+        val receipts = pendingConsoleReceipts.toList()
+        pendingConsoleReceipts.clear()
+        return receipts.map { AgentModelClient.buildUserHistoryMessage(it, emptyList()) }
+    }
+
+    /**
+     * 用户恢复（resume）时把积压回报 steer 进当前 run：恢复是显式动作，不算「偷偷拉起」。
+     *
+     * 暂停期间已经手动落过硬回执卡；steer 成功后 runtime 的 supplement 事件会再落一张同文卡片，
+     * 所以这里先把手动卡摘掉，由 supplement 那张接管，避免同一段汇报显示两遍。
+     * 返回合并文本；非调度台或没有积压时为 null。
+     */
+    private fun takePendingConsoleReceiptsForSteer(conversationId: String?): String? {
+        if (conversationId == null || !isDispatchConsoleConversation(conversationId)) return null
+        consoleDispatchAutoRunBlocked = false
+        if (pendingConsoleReceipts.isEmpty()) return null
+        val pendingText = pendingConsoleReceipts.joinToString("\n\n")
+        val pendingSet = pendingConsoleReceipts.toSet()
+        pendingConsoleReceipts.clear()
+        val state = conversationState(conversationId)
+        if (state != null) {
+            val staleIds = state.messages.filterIsInstance<UserMessageUi>()
+                .filter { it.id.startsWith("dispatch-receipt-") && it.content in pendingSet }
+                .mapTo(mutableSetOf()) { it.id }
+            if (staleIds.isNotEmpty()) {
+                updateConversation(
+                    conversationId,
+                    state.copy(messages = state.messages.filterNot { it.id in staleIds }),
+                )
+                persistConversations()
+            }
+        }
+        return pendingText
+    }
+
+    /**
+     * 调度台被显式停止：回报只更新卡片，不再自动起轮，直到用户再次发言或恢复。
+     * 只对调度台生效，普通会话「主智能体停止后也不该被回报拉起」没有对应场景。
+     */
+    private fun blockConsoleDispatchAutoRun() {
+        if (selectedConversationId?.let(::isDispatchConsoleConversation) == true) {
+            consoleDispatchAutoRunBlocked = true
         }
     }
 
     /**
-     * 回执仍以 [UserMessageUi] 承载一轮：模型输入、历史对齐（AgentConversationRevisionReducer）
-     * 与编辑/分支语义都依赖 user 轮，换新类型会破坏边界判定。展示层按前缀隐藏
-     * （见 AgentVisibleMessagesCache），用户看到的只是 `task_dispatch` 工具卡与调度台的复述。
+     * 回执以 [UserMessageUi] 承载一轮：模型输入、历史对齐（AgentConversationRevisionReducer）
+     * 与编辑/分支语义都依赖 user 轮，换新类型会破坏边界判定。展示层按
+     * [io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.CONSOLE_TEXT_PREFIX] 识别后
+     * 画成「派发回报」工具卡（不套用户气泡），因此用户能看见这条回执，但不会误以为是自己的发言。
      */
     private fun dispatchNoticeAsConsoleTurn(
         consoleId: String,
@@ -1160,7 +1277,9 @@ internal class AgentAppState(
             runId = runId,
             prompt = text,
             images = emptyList(),
-            history = state.history,
+            // 暂停期积压的回报可能还没被读过（暂停结束、用户既没恢复也没发言就又有一单结算）：
+            // 既然是合法的自动起轮，就一并并入 history，避免模型漏读上一段汇报。
+            history = state.history + drainPendingConsoleReceipts(consoleId),
             userHistoryMessage = userHistoryMessage,
             messages = messages,
             state = state,
@@ -1319,6 +1438,9 @@ internal class AgentAppState(
     }
 
     fun stopMainReply(target: StopRequest): Boolean {
+        // 用户显式按了停止：即使此刻 run 刚好自然结束（没有可停的 runId），也要封锁
+        // 调度台的「回报自动起轮」，否则下一个子任务完成就会把它偷偷拉起来。
+        blockConsoleDispatchAutoRun()
         if (!stopSelectionMatches(target, checkChildren = false)) return false
         val runId = target.selection.runId ?: return false
         contextBudgetBlockedRuns.remove(runId)
@@ -1328,6 +1450,7 @@ internal class AgentAppState(
     }
 
     fun stopEntireTask(target: StopRequest): Boolean {
+        blockConsoleDispatchAutoRun()
         if (!stopSelectionMatches(target, checkChildren = true)) return false
         val selection = target.selection
         selection.groupTarget?.let { if (!AgentChildTaskGroups.stop(it)) return false }
@@ -3956,13 +4079,18 @@ internal class AgentAppState(
         } else {
             homeState.messages.take(editBoundary.userMessageIndex) + userMessage
         }
+        val imageDims = if (persistedImages.size == uiImages.size) uiImages else emptyList()
         val userHistoryMessage = AgentModelClient.buildUserHistoryMessage(
             text = runtimePrompt,
-            persistedImages = persistedImages.map { reference ->
+            persistedImages = persistedImages.mapIndexed { index, reference ->
+                val ui = imageDims.getOrNull(index)
                 AgentConversationCodec.PersistedImage(
                     path = reference.absolutePath,
                     mimeType = mimeTypeForFileName(reference.displayName),
                     displayName = reference.displayName,
+                    // 带上原图宽高，下一轮预算才能按统一视觉公式估算，而不是按字节兜底。
+                    width = ui?.widthPx,
+                    height = ui?.heightPx,
                 )
             },
         )
@@ -3992,7 +4120,9 @@ internal class AgentAppState(
             runId = runId,
             prompt = runtimePrompt,
             images = modelImages,
-            history = history,
+            // 调度台停止/暂停期间积压的派发回报：并进用户这一轮的 history（会随本轮持久化），
+            // 让模型在用户主动发言时读到它并向用户报告，而不是靠自动拉起。
+            history = history + drainPendingConsoleReceipts(conversationId),
             userHistoryMessage = userHistoryMessage,
             messages = messages,
             state = if (preserveDraft) {
@@ -4424,11 +4554,31 @@ internal class AgentAppState(
                     parsed.references + extra,
                     parsed.conversations,
                 )
-                val persisted = extra.ifEmpty { parsed.references }.map { reference ->
+                // 重生成回填的 PendingImageUi 只有预览 dataUrl，没有宽高；在 IO 线程只读解码原图边界，
+                // 让重新持久化的历史仍带上真实尺寸，后续轮预算不再退化成按字节兜底。
+                val stagedDims = if (extra.size == images.size) {
+                    images.map { image ->
+                        val w = image.widthPx
+                        val h = image.heightPx
+                        if (w != null && h != null && w > 0 && h > 0) {
+                            w to h
+                        } else if (image.isVideo) {
+                            null
+                        } else {
+                            AgentImageCodec.boundsOfReference(appContext, image.uri)
+                        }
+                    }
+                } else {
+                    emptyList()
+                }
+                val persisted = extra.ifEmpty { parsed.references }.mapIndexed { index, reference ->
+                    val dims = stagedDims.getOrNull(index)
                     AgentConversationCodec.PersistedImage(
                         path = reference.absolutePath,
                         mimeType = mimeTypeForFileName(reference.displayName),
                         displayName = reference.displayName,
+                        width = dims?.first,
+                        height = dims?.second,
                     )
                 }
                 withContext(Dispatchers.Main) {
@@ -5570,12 +5720,23 @@ internal class AgentAppState(
                     return@launch
                 }
                 val preview = AgentImageCodec.previewFromReference(appContext, image) ?: image
+                // 预算估算用原图尺寸（不是 1024 预览）；fromReference 通常已带边界，
+                // data URL 等缺失时再只读解码一次边界。
+                val srcWidth = image.width
+                val srcHeight = image.height
+                val bounds = if (srcWidth != null && srcHeight != null && srcWidth > 0 && srcHeight > 0) {
+                    srcWidth to srcHeight
+                } else {
+                    AgentImageCodec.boundsOfReference(appContext, image.reference)
+                }
                 val pending = PendingImageUi(
                     id = "img-${UUID.randomUUID()}",
                     // 后续发送使用首次读取后的稳定引用，不再依赖 ROM Photo Picker URI 的授权生命周期。
                     uri = image.reference,
                     dataUrl = preview.reference,
                     mimeType = image.mimeType,
+                    widthPx = bounds?.first,
+                    heightPx = bounds?.second,
                 )
                 withContext(Dispatchers.Main) {
                     updateCurrentConversation(homeState.copy(pendingImages = homeState.pendingImages + pending))
@@ -5627,6 +5788,8 @@ internal class AgentAppState(
                     isVideo = true,
                     durationMs = attachment.durationMs.takeIf { it > 0L },
                     byteSize = attachment.bytes,
+                    widthPx = attachment.width?.takeIf { it > 0 },
+                    heightPx = attachment.height?.takeIf { it > 0 },
                 )
                 withContext(Dispatchers.Main) {
                     updateCurrentConversation(homeState.copy(pendingImages = homeState.pendingImages + pending))
@@ -5870,6 +6033,7 @@ internal class AgentAppState(
         }
 
     fun stopCurrentRun() {
+        blockConsoleDispatchAutoRun()
         val runId = activeRunIdForSelectedConversation() ?: return
         stopRun(runId)
     }
@@ -6139,8 +6303,13 @@ internal class AgentAppState(
         }
         val runId = activeRunIdForSelectedConversation() ?: return
         contextBudgetBlockedRuns[runId]?.let { contextBudgetPrompt = it; return }
+        // 调度台暂停期间积压的派发回报：恢复是显式动作，可以把它们并入当前 run（steer），
+        // 让模型在这一轮里读到并向用户报告；不另起一轮。
+        val pendingReceipts = takePendingConsoleReceiptsForSteer(selectedConversationId)
         scope.launch(Dispatchers.IO) {
-            AgentRuntimeClient(appContext, AndroidAgentLogger).resumeRun(runId)
+            val client = AgentRuntimeClient(appContext, AndroidAgentLogger)
+            client.resumeRun(runId)
+            pendingReceipts?.let { runCatching { client.steerRun(runId, it) } }
         }
         updateCurrentConversation(homeState.copy(isPaused = false))
     }
@@ -6247,8 +6416,16 @@ internal class AgentAppState(
             }
             val steerText = AgentFileReferencePromptCodec.format(prompt, fileReferences + references, pendingMentions.toMentionedConversations())
                 .ifBlank { appContext.getString(R.string.appst_steer_attachment_fallback) }
-            val sent = AgentRuntimeClient(appContext, AndroidAgentLogger)
-                .steerRun(runId, steerText, requestId, imagesJson)
+            val client = AgentRuntimeClient(appContext, AndroidAgentLogger)
+            val sent = client.steerRun(runId, steerText, requestId, imagesJson)
+            if (sent) {
+                // 暂停中的调度台：这次插话被接受后，再把积压的派发回报并入当前 run，
+                // 避免发送失败时白白丢掉积压（也避免为它单开一轮）。
+                val pending = withContext(Dispatchers.Main.immediate) {
+                    if (homeState.isPaused) takePendingConsoleReceiptsForSteer(conversationId) else null
+                }
+                pending?.let { runCatching { client.steerRun(runId, it) } }
+            }
             withContext(Dispatchers.Main) {
                 if (!sent) {
                     Toast.makeText(appContext, appContext.getString(R.string.appst_steer_not_delivered), Toast.LENGTH_LONG).show()
