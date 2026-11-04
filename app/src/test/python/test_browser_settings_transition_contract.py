@@ -11,7 +11,7 @@ class BrowserSettingsTransitionContractTest(unittest.TestCase):
 
     def test_settings_page_animates_like_a_pushed_page(self):
         # 设置页与浏览器共用同一个 BrowserTabPool，不能拆成独立路由；
-        # 页内覆盖层必须补齐与 NavHost 一致的入栈/出栈动画。
+        # 页内覆盖层必须补齐与 miuix NavDisplay 路由转场一致的入栈/出栈动画。
         self.assertIn('AnimatedVisibility(', self.sheet)
         self.assertIn('visible = showSettings', self.sheet)
         for required in ('slideInHorizontally', 'slideOutHorizontally', 'fadeIn', 'fadeOut',

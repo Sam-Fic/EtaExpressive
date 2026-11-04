@@ -84,7 +84,7 @@ internal fun ComposeContentTestRule.setSubAgentContent(
 /**
  * 预设列表 → 详情的测试宿主，对应生产环境的两条独立路由。
  *
- * 生产用 NavHost 完成入栈/出栈；测试不引入整套导航图，但仍分别组合两个 screen，
+ * 生产用 miuix `NavDisplay` 完成入栈/出栈；测试不引入整套导航容器，但仍分别组合两个 screen，
  * 并由 Activity 的 BackHandler 模拟系统返回，保证「详情有自己的屏幕与生命周期」这一
  * 契约不会退回到列表页内部的状态切换。
  */

@@ -14,8 +14,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
  * Whether this Home/Chat route is the current destination.
- * NavHost keeps covered entries composed for the back stack; those entries must
- * not apply streaming message updates, or they share the frame with Settings.
+ * miuix NavDisplay keeps the covered entry (1 层覆盖) composed for the back stack; those
+ * entries must not apply streaming message updates, or they share the frame with Settings.
  * Default true so standalone previews and the voice panel keep live content.
  */
 val LocalChatUiActive = staticCompositionLocalOf { true }

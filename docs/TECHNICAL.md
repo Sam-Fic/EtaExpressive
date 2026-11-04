@@ -128,7 +128,7 @@ Linux 环境页按当前环境、环境配置、文件与目录、扩展工具�
 
 配置链路如下：
 
-根导航使用 AndroidX 类型安全 `NavHost` 与可保存路由栈；预测性返回开关通过 `ApplicationInfo` 的系统开关应用，并无转场重建主 Activity。首页会话列表保持在聊天舞台下层，通过双锚点横向拖动状态控制显露与收起；手势沿用 Compose 的方向仲裁和子组件优先级，不抢占消息滚动、横向代码块、附件栏或文本选择。设置页与标准二级页面共用自适应 Scaffold：手机显示可折叠大标题，宽屏改用小标题并将内容限制在居中的最大宽度内。界面缩放覆盖主 App 的 Compose Density，但宽屏判定保留缩放前 Density，避免缩放触发错误的手机/宽屏布局切换；系统助手浮层不应用界面缩放。
+根导航使用 miuix `NavDisplay` + `NavBackStack`（`SnapshotStateList<NavKey>`，路由经 kotlinx-serialization 多态序列化持久化）；预测性返回开关通过 `ApplicationInfo` 的系统开关应用，页面转场由 `NavDisplay` 自身驱动，并无转场重建主 Activity。首页会话列表保持在聊天舞台下层，通过双锚点横向拖动状态控制显露与收起；手势沿用 Compose 的方向仲裁和子组件优先级，不抢占消息滚动、横向代码块、附件栏或文本选择。设置页与标准二级页面共用自适应 Scaffold：手机显示可折叠大标题，宽屏改用小标题并将内容限制在居中的最大宽度内。界面缩放覆盖主 App 的 Compose Density，但宽屏判定保留缩放前 Density，避免缩放触发错误的手机/宽屏布局切换；系统助手浮层不应用界面缩放。
 
 外观配置保存在现有 `eta_settings` DataStore。主题根统一解析跟随系统、浅色、深色、Monet 色彩风格、强调色与纯黑背景，并同步系统栏和 Markdown 的 Material 颜色桥接。顶栏不启用毛玻璃，使用与页面背景同色的渐变板承接滚入内容；聊天输入区同样回退为主题纯色表面。页面滚动使用官方 Compose 的越界回弹与边界触感反馈，横屏安全区由 display cutout 与导航栏 Insets 共同约束。
 

@@ -80,7 +80,7 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
  * KernelSU 式分段列表；新增入口换成右下角 Small Extended FAB，随列表滚动收起为纯图标。
  *
  * 详情是同级的独立导航目标（[io.github.mangi.eta.ui.navigation.AppRoute.SubAgentPresetDetail]），
- * 不在本页内部切换——这样入栈/出栈由 NavHost 统一转场，返回手势也能走预测性返回。
+ * 不在本页内部切换——这样入栈/出栈由 miuix `NavDisplay` 统一转场，返回手势也能走预测性返回。
  *
  * 页面同时承载「本会话」区块：应用了哪个预设组、自动委派开关与会话级代理行都经
  * [conversationEditor]（App 级，owner=当前会话/草稿）及其应用绑定副本编辑，与预设

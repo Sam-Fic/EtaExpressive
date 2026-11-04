@@ -80,7 +80,7 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
 /**
  * 子代理预设组详情：组内子代理列表。
  *
- * 这是独立的导航目标，而不是列表页内部的 `selectedId` 分支：入栈/出栈交给 NavHost，
+ * 这是独立的导航目标，而不是列表页内部的 `selectedId` 分支：入栈/出栈交给 miuix `NavDisplay`，
  * 因此拥有和 MCP 详情、模型供应商详情一致的滑入淡出转场与预测性返回。
  */
 @Composable

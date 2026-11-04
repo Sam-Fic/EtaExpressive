@@ -6,7 +6,6 @@ ksp = "2.3.9"
 libxposedApi = "102.0.0"
 libxposedService = "102.0.0"
 materialIcons = "1.7.8"
-androidx-navigation = "2.10.2"
 androidx-navigationevent = "1.1.2"
 androidx-lifecycle = "2.11.0"
 activityCompose = "1.13.0"
@@ -39,7 +38,6 @@ androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchm
 libxposed-api = { group = "io.github.libxposed", name = "api", version.ref = "libxposedApi" }
 libxposed-service = { group = "io.github.libxposed", name = "service", version.ref = "libxposedService" }
 material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIcons" }
-androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "androidx-navigation" }
 androidx-navigationevent = { group = "androidx.navigationevent", name = "navigationevent-compose", version.ref = "androidx-navigationevent" }
 miuix-nav = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android", version.ref = "miuix" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }

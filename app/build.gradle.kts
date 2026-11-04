@@ -182,10 +182,9 @@ dependencies {
     // Hook 侧用 XposedInterface.getRemotePreferences 读取当前进程持有的配置缓存。
     implementation(libs.libxposed.service)
     implementation(libs.material.icons.extended)
-    // 官方类型安全导航（NavHost / NavController）
-    implementation(libs.androidx.navigation.compose)
+    // 返回手势与预测性返回（NavigationBackHandler / NavigationEventInfo）
     implementation(libs.androidx.navigationevent)
-    // miuix 导航容器（NavDisplay / NavBackStack）：阶段 0 只接入依赖，尚未接线。
+    // 导航容器：miuix NavDisplay + NavBackStack；转场曲线与系统屏幕圆角由 NavDisplayEffects 提供。
     implementation(libs.miuix.nav)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

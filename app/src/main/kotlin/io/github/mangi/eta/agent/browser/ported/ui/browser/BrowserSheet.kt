@@ -299,7 +299,7 @@ fun BrowserPage(
     var showSettings by remember { mutableStateOf(false) }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // 设置子页与浏览器共用同一个 BrowserTabPool，不能拆成独立路由（重新 acquire 会重置标签）；
-    // 在页内按 NavHost 的几何补上入栈/出栈：设置页侧滑，底层浏览器做四分之一屏视差。
+    // 在页内按 miuix `NavDisplay` 路由转场的几何补上入栈/出栈：设置页侧滑，底层浏览器做四分之一屏视差。
     // 页级位移统一取 M3E Spatial（轻微过冲），淡化取 Effects（临界阻尼、无过冲）；
     // 视差进度与滑入同用一条 Spatial，两层才同步。
     val settingsSlideSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()

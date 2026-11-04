@@ -233,7 +233,7 @@ private fun AboutHero(versionName: String) {
 }
 
 /**
- * 关于页「参考与致谢」子页（独立路由，复用 NavHost 的入栈/出栈转场）。
+ * 关于页「参考与致谢」子页（独立路由，复用 miuix `NavDisplay` 的入栈/出栈转场）。
  *
  * 条目行与 About 主页同款：EtaClickableRow 直接放在 [EtaSegmentedColumn] 里，
  * `surfaceBright` 底板与首末外圆角由分段列提供；说明与链接各占一行，

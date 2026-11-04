@@ -742,7 +742,7 @@ private fun ChatImagePreviewDialog(
  * scale/alpha 更直接，也不会因缩略图滚出屏幕而丢失匹配目标。
  *
  * 返回键：正文里的 BackHandler 接管第一次返回，触发与按钮相同的收起动画。
- * 预测式返回预览不适用于同窗口浮层（不是 NavHost 目的地），系统手势会直接走到返回回调。
+ * 预测式返回预览不适用于同窗口浮层（不是 miuix `NavDisplay` 的路由目的地），系统手势会直接走到返回回调。
  */
 @Composable
 private fun ChatImagePreviewOverlay(

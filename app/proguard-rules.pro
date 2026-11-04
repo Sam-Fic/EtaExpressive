@@ -88,11 +88,15 @@
     public static void main(java.lang.String[]);
 }
 
-# ── Navigation Compose 类型安全路由 ───────────────────────────────────────────
-# 路由类与路由参数类型（如枚举 NewProviderType）由 Navigation 在运行时按
-# 全限定名反射解析；R8 混淆改名后会抛
-# "Cannot find class with name <fqcn>"（启动即闪退）。保留整个路由包的类名。
+# ── 导航路由类型（miuix NavDisplay） ─────────────────────────────────────────
+# 路由类必须保留全限定名：AgentNavigator.matchRouteType 用 KClass.qualifiedName 做
+# 模式串匹配（无参路由全等、带参路由 `序列名/` 前缀），混淆改名后匹配会静默失效；
+# 同时路由由 kotlinx-serialization 多态序列化，反序列化按类名解析。
 -keep class io.github.mangi.eta.ui.navigation.** { *; }
+
+# miuix 导航运行时：导航容器直接持有可序列化路由与转场实现状态，aar 未附带
+# consumer 规则，只靠调用点可达在 R8 下太脆，整包保留（体积代价可忽略）。
+-keep class top.yukonga.miuix.kmp.nav.** { *; }
 
 # ── 端侧设备动作模型 ─────────────────────────────────────────────────────────
 # 工具函数名/注解由 LiteRT-LM 在运行时通过 kotlin-reflect 读取（KClasses.getFunctions），

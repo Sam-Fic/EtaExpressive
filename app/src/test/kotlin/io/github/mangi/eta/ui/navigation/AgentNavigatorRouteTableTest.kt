@@ -37,6 +37,6 @@ class AgentNavigatorRouteTableTest {
         }
         assertTrue(parameterized != null)
 
-        assertTrue(routePatternOf(AppRoute.Home) { "androidx.navigation.NavGraph" } == null)
+        assertTrue(routePatternOf(AppRoute.Home) { "not.a.Route" } == null)
     }
 }

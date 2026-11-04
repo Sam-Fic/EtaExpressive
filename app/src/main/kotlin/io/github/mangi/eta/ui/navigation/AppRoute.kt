@@ -55,7 +55,7 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data object About : AppRoute
 
-    /** 关于页「参考与致谢」子页；静态列表没有不可序列化状态，独立路由才能复用 NavHost 的入栈/出栈转场。 */
+    /** 关于页「参考与致谢」子页；静态列表没有不可序列化状态，独立路由才能复用 miuix `NavDisplay` 的入栈/出栈转场。 */
     @Serializable
     data object AboutCredits : AppRoute
 
@@ -71,7 +71,7 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data object VoiceSettings : AppRoute
 
-    /** 「我的声音」内的豆包音色子页；独立路由才能复用 NavHost 的入栈/出栈转场。 */
+    /** 「我的声音」内的豆包音色子页；独立路由才能复用 miuix `NavDisplay` 的入栈/出栈转场。 */
     @Serializable
     data object DoubaoVoices : AppRoute
 
@@ -230,7 +230,7 @@ sealed interface AppRoute : NavKey {
 
     /**
      * 远程服务器编辑子页：[serverId] 为 null 是新建，否则编辑既有配置。
-     * 独立路由才能复用 NavHost 的入栈/出栈转场——编辑器内容（表单 + 协议 +
+     * 独立路由才能复用 miuix `NavDisplay` 的入栈/出栈转场——编辑器内容（表单 + 协议 +
      * 诊断）已塞不进一个弹窗。
      */
     @Serializable
