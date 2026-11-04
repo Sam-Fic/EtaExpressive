@@ -28,9 +28,10 @@ import kotlinx.coroutines.withContext
  * - **后端**：按用户偏好（[InferenceBackend]）构建文本/视觉/音频三路后端；AUTO 依次尝试
  *   GPU → NPU → CPU，显式选择先试所选、失败回退 CPU。生效后端见 [activeBackend]，
  *   发生过回退见 [activeBackendFellBack]。
- * - **索引模式**：低耗档（[IndexMode.POWER_SAVER]）经 [IndexModeProfile.backendChainOverride]
- *   强制 `Backend.CPU(threadCount = 1)`（不抢 GPU、不发热），全力档（[IndexMode.PERFORMANCE]）
- *   完全沿用后端偏好链；模式变化后旧引擎作废，下次调用按新档重建。
+ * - **索引模式只管后台索引**：低耗档（[IndexMode.POWER_SAVER]）的 CPU 单线程与后端覆盖
+ *   仅在 [MediaIndexer.isRunning] 时生效（不抢 GPU、不发热）；交互检索（GUI 与 AI 工具）
+ *   始终按用户后端偏好链构建引擎。索引起止使生效档案变化，引擎随之重建（每轮至多两次）。
+ * - **预热**：[warmUp] 只初始化不推理，供检索页进入时提前消化冷启动开销。
  */
 internal object EtaEmbeddingEngine {
     /** Document Indexing 前缀：所有入库媒体/文本。 */
@@ -39,8 +40,11 @@ internal object EtaEmbeddingEngine {
     /** Search Query 前缀：用户搜索词与 AI 工具的 query。 */
     const val QUERY_PREFIX = "task: search query | text: "
 
-    /** 空闲超过该时长后释放引擎，避免长期占用数百 MB 内存。 */
-    private const val IDLE_RELEASE_MS = 5 * 60 * 1_000L
+    /**
+     * 空闲超过该时长后释放引擎，避免长期占用数百 MB 内存。窗口给足一次浏览会话的
+     * 连续检索：隔几分钟搜一次不再付引擎重建的秒级冷启动。
+     */
+    private const val IDLE_RELEASE_MS = 15 * 60 * 1_000L
 
     private const val TAG = "EtaEmbeddingEngine"
 
@@ -48,7 +52,7 @@ internal object EtaEmbeddingEngine {
     private var engine: EmbeddingEngine? = null
     private var engineModelPath: String? = null
     private var enginePreference: InferenceBackend? = null
-    private var engineMode: IndexMode? = null
+    private var engineProfile: IndexModeProfile? = null
     private var lastUsedAtMs: Long = 0L
 
     @Volatile
@@ -124,6 +128,17 @@ internal object EtaEmbeddingEngine {
     /** 显式释放引擎（如内存告急或切换模型时）。 */
     suspend fun release() = mutex.withLock { closeEngineLocked() }
 
+    /**
+     * 预热：只做引擎初始化不做推理，供检索页进入时提前消化冷启动的秒级开销。
+     * 模型未就绪返回 false（与首次检索时的报错同源，不额外抛出）；生效后端等状态
+     * 随初始化就绪，设置页展示不变。
+     */
+    suspend fun warmUp(context: Context): Boolean = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            runCatching { ensureLoadedLocked(context) }.isSuccess
+        }
+    }
+
     private suspend fun compute(
         context: Context,
         contents: List<InputData>,
@@ -145,10 +160,19 @@ internal object EtaEmbeddingEngine {
         val path = requireNotNull(EmbeddingModelStore.modelFile(context)) {
             "嵌入模型尚未下载或校验未通过，请先在「媒体搜索」设置页下载模型"
         }
-        // 后端偏好或索引模式变化后旧引擎作废：下次按新偏好/新档位重建。
+        // 后端偏好或生效档案变化后旧引擎作废：下次按新偏好/新档案重建。
         val preference = EmbeddingModelStore.backend(context)
+        // 低耗档的资源收敛（CPU 单线程、后端覆盖）只作用于后台索引管线：MediaIndexer
+        // 运行中按档位档案构建引擎；交互检索（GUI 与 AI 工具）按用户偏好链构建，仅在
+        // 索引进行中时被动共用低耗引擎（避免来回重建抖动）。抽取与精排预算不受影响，
+        // 两侧始终按档取值。
         val mode = EmbeddingModelStore.indexMode(context)
-        if (current != null && engineModelPath == path.absolutePath && enginePreference == preference && engineMode == mode) {
+        val profile = if (MediaIndexer.isRunning()) {
+            IndexModeProfile.forMode(mode)
+        } else {
+            IndexModeProfile.forMode(mode).asInteractive()
+        }
+        if (current != null && engineModelPath == path.absolutePath && enginePreference == preference && engineProfile == profile) {
             if (SystemClock.elapsedRealtime() - lastUsedAtMs < IDLE_RELEASE_MS) return current
             closeEngineLocked()
         } else if (current != null) {
@@ -156,8 +180,7 @@ internal object EtaEmbeddingEngine {
         }
         val cacheDir = context.applicationContext.cacheDir.absolutePath
         // 按偏好链依次尝试：任一初始化失败回退下一个候选；全部失败抛最后一次异常。
-        // 低耗档经 profile.backendChainOverride 强制 CPU 单线程，其余档位走用户偏好链。
-        val profile = IndexModeProfile.forMode(mode)
+        // 后台索引的低耗档案经 profile.backendChainOverride 强制 CPU，交互检索走用户偏好链。
         val chain = EmbeddingBackendPolicy.chain(preference, profile.backendChainOverride)
         var lastFailure: Throwable? = null
         for (kind in chain) {
@@ -174,7 +197,7 @@ internal object EtaEmbeddingEngine {
                 engine = created
                 engineModelPath = path.absolutePath
                 enginePreference = preference
-                engineMode = mode
+                engineProfile = profile
                 activeBackendKind = kind
                 backendFellBack = kind != chain.first()
                 lastUsedAtMs = SystemClock.elapsedRealtime()
@@ -205,7 +228,7 @@ internal object EtaEmbeddingEngine {
         engine = null
         engineModelPath = null
         enginePreference = null
-        engineMode = null
+        engineProfile = null
         activeBackendKind = null
         backendFellBack = false
     }
@@ -283,10 +306,17 @@ internal object Float16VectorCodec {
     @SuppressLint("HalfFloat")
     fun decode(bytes: ByteArray): FloatArray {
         require(bytes.size % 2 == 0) { "Float16 向量字节数必须为偶数" }
-        return FloatArray(bytes.size / 2) { index ->
-            val low = bytes[index * 2].toInt() and 0xff
-            val high = bytes[index * 2 + 1].toInt() and 0xff
-            Half.toFloat((low or (high shl 8)).toShort())
-        }
+        return FloatArray(bytes.size / 2) { index -> decodeElement(bytes, index) }
+    }
+
+    /**
+     * 解码单个 Float16 元素（[decode] 的逐元素形态）：供暴力检索复用同一块输出缓冲、
+     * 逐行解码后就地点积，免掉逐行分配（万级候选一次检索省下几十 MB 临时对象的 GC 压力）。
+     */
+    @SuppressLint("HalfFloat")
+    fun decodeElement(bytes: ByteArray, index: Int): Float {
+        val low = bytes[index * 2].toInt() and 0xff
+        val high = bytes[index * 2 + 1].toInt() and 0xff
+        return Half.toFloat((low or (high shl 8)).toShort())
     }
 }

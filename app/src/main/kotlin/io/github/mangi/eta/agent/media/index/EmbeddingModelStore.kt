@@ -40,8 +40,11 @@ internal object EmbeddingModelStore {
     const val DEFAULT_DIM = 768
     private val ALLOWED_DIMS = setOf(768, 512, 256)
 
-    /** 检索页匹配度阈值默认值：较强匹配。用户拖过滑杆后落盘，永远以用户值为准。 */
-    private const val DEFAULT_SEARCH_MIN_SCORE = 0.7f
+    /**
+     * 检索页匹配度阈值默认值：较强匹配（检索时下推给 search 的 minScore，不是展示层过滤）。
+     * 用户拖过滑杆后落盘，永远以用户值为准；检索页滑杆初值与本值共用，保证默认停在对应档位。
+     */
+    internal const val DEFAULT_SEARCH_MIN_SCORE = 0.75f
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutable = MutableStateFlow(State())

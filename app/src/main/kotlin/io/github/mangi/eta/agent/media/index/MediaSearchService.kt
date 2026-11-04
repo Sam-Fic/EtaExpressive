@@ -21,9 +21,14 @@ import java.util.concurrent.atomic.AtomicLong
  * 可接受；规模超过 [ANN_SWITCH_THRESHOLD] 后提示并由后续版本换 ANN（HNSW/sqlite-vec）实现，
  * 对外接口保持不变。
  *
- * 缓存分两级、共用一个失效信号：向量切片行缓存（免全表重读 BLOB）与检索结果缓存
- * （同词重复搜索秒回，含精排时刻）。命中前提都是索引代数一致——media_index 表任何写入
- * 经 Room InvalidationTracker 使代数 +1，两级缓存随之整体失效，新增/删除文件不会吃到旧结果。
+ * 缓存分三级、共用一个失效信号：向量切片行缓存（免全表重读 BLOB）、检索结果缓存
+ * （同词重复搜索秒回）与视频时刻缓存（精排时刻跨阈值/跨重检复用，免重复抽帧嵌入）。
+ * 命中前提都是索引代数一致——media_index 表任何写入经 Room InvalidationTracker 使
+ * 代数 +1，三级缓存随之整体失效，新增/删除文件不会吃到旧结果。
+ *
+ * 视频时刻精排有两条路径：AI 工具走 [search] 内联阻塞精排（refineMoments 默认 true）；
+ * GUI 以 refineMoments=false 先取结果立即渲染，再经 [refineTopMoments] 逐条异步补时刻
+ * （每条完成即回调，结果行原位更新），两条路径共用同一份时刻缓存。
  *
  * 匹配度阈值是检索时参数：结果集 = 所有 ≥ 阈值的命中，不设数量上限（GUI 传
  * [UNLIMITED_RESULTS]，阈值是唯一的筛选条件）；[queryEmbeddings] 缓存让换阈值重检
@@ -41,6 +46,12 @@ internal object MediaSearchService {
 
     /** 检索结果缓存容量：条目只含字符串与标量，16 条足够覆盖反复搜索的高频词。 */
     private const val RESULT_CACHE_SIZE = 16
+
+    /** 视频时刻缓存容量：键值只含字符串与 Long，64 条覆盖高频词 × 精排条数的组合。 */
+    private const val MOMENT_CACHE_SIZE = 64
+
+    /** 流式分片大小：命中行构建按片经 [search] 的 onPartialHits 回调，首屏不等全量构建。 */
+    private const val PARTIAL_CHUNK_SIZE = 60
 
     /** 查询向量缓存容量：8 条 × 768 维 Float ≈ 24KB，覆盖阈值滑杆反复重检的同一关键词。 */
     private const val QUERY_EMBEDDING_CACHE_SIZE = 8
@@ -72,11 +83,13 @@ internal object MediaSearchService {
             db.invalidationTracker.addObserver(object : InvalidationTracker.Observer("media_index") {
                 override fun onInvalidated(invalidatedTables: Set<String>) {
                     indexGeneration.incrementAndGet()
+                    momentCache.evictAll()
                 }
             })
             // 数据库实例变了：旧 rowSlice 属于另一个库（generation 不跨库推进），
             // 必须直接作废，否则换库后的首次检索会命中带着旧数据与旧代数的缓存。
             rowSlice = null
+            momentCache.evictAll()
             hookedDatabase = db
         }
     }
@@ -145,6 +158,55 @@ internal object MediaSearchService {
      * 跳过模型推理只做内存点积（万级条目约数十毫秒），滑杆调档近乎即时。
      */
     private val queryEmbeddings = LruCache<QueryEmbeddingKey, FloatArray>(QUERY_EMBEDDING_CACHE_SIZE)
+
+    /**
+     * 视频时刻缓存键：时刻只依赖（查询词, 条目, 模型/维度, 档位帧预算），与索引代数无关，
+     * 但索引任何变动都会使 [momentCache] 整体失效（[hookInvalidation] 里 evictAll）。
+     */
+    private data class MomentKey(
+        val query: String,
+        val sourceKey: String,
+        val modelId: String,
+        val dim: Int,
+        val indexMode: IndexMode,
+    )
+
+    /**
+     * 视频时刻缓存：二段精排的命中时刻（毫秒）按键复用——同词重检、换阈值重检、结果缓存
+     * 回填都从这里直出，不再重复抽帧嵌入；[refineTopMoments] 每算出一条就写入，GUI 的
+     * 异步精排因此在中断后重入也只补缺口。
+     */
+    private val momentCache = LruCache<MomentKey, Long>(MOMENT_CACHE_SIZE)
+
+    /** 查询向量（带 [queryEmbeddings] 缓存）：同词重检跳过模型推理，只做内存点积。 */
+    private suspend fun queryVector(context: Context, query: String, modelId: String, dim: Int): FloatArray {
+        val key = QueryEmbeddingKey(query.trim(), modelId, dim)
+        return queryEmbeddings.get(key)
+            ?: EtaEmbeddingEngine.embedQuery(context, query.trim(), dim).also { queryEmbeddings.put(key, it) }
+    }
+
+    /** 单条命中回填缓存时刻：非视频或已有时刻原样返回；缓存未命中返回原条目。 */
+    private fun backfillMoment(hit: Hit, key: MomentKey): Hit =
+        if (hit.kind != MediaKind.VIDEO || hit.frameTimeMs != null) {
+            hit
+        } else {
+            momentCache.get(key)?.let { hit.copy(frameTimeMs = it) } ?: hit
+        }
+
+    /** 结果级时刻回填：结果缓存里的旧条目也可能漏着晚到的精排时刻，命中返回前统一补一遍。 */
+    private fun backfillMoments(
+        result: SearchResult,
+        modelId: String,
+        dim: Int,
+        indexMode: IndexMode,
+    ): SearchResult {
+        if (result.hits.none { it.kind == MediaKind.VIDEO && it.frameTimeMs == null }) return result
+        return result.copy(
+            hits = result.hits.map { hit ->
+                backfillMoment(hit, MomentKey(result.query, hit.sourceKey, modelId, dim, indexMode))
+            },
+        )
+    }
 
     /**
      * 检索结果一行；[contentUri] / [path] 可直接被 read_image、终端文件工具链式使用。
@@ -221,6 +283,14 @@ internal object MediaSearchService {
      * 入库是「每视频一行平均向量」，命中视频后可选做二段时刻精排（[refineMoments]）：
      * 重新抽帧逐帧比对，把最高分帧的时刻回填到 [Hit.frameTimeMs]。
      * 精排条数与重抽帧预算按 [IndexModeProfile] 取值（全力档 top-5 / 低耗档 top-3）。
+     * GUI 检索传 [refineMoments] = false 跳过内联精排（结果先渲染），再走 [refineTopMoments]
+     * 异步补时刻；内联精排只服务 AI 工具。
+     *
+     * [onPartialHits] 非空时（GUI）命中行按 [PARTIAL_CHUNK_SIZE] 分片构建、逐片回调：
+     * hitOf 对 content:// 行逐条 resolvePath（跨进程查询），低阈值万级命中时串行全量构建
+     * 是首屏的隐性大头，分片让最高分的首屏先出现、其余分片继续流入。回调是挂起点，
+     * 随调用方取消停在下一片；回调为空（AI 工具）时一次性构建，行为与旧版完全一致。
+     * 两条路径的最终返回值都是完整结果，检索结果缓存与工具契约不变。
      *
      * 同一 (关键词, 模型, 过滤条件) 的重复搜索在索引代数一致的前提下直接命中
      * [resultCache]，连精排时刻一起原样返回，不再重跑嵌入与检索；查询向量本身另有
@@ -238,6 +308,7 @@ internal object MediaSearchService {
         limit: Int = 10,
         minScore: Float = 0f,
         refineMoments: Boolean = true,
+        onPartialHits: (suspend (List<Hit>) -> Unit)? = null,
     ): SearchResult = withContext(Dispatchers.IO) {
         val app = context.applicationContext
         require(query.isNotBlank()) { "query 不能为空" }
@@ -259,31 +330,48 @@ internal object MediaSearchService {
         // 代数在嵌入前取快照：期间若索引写入提交，代数 +1，本轮结果带着旧代数入缓存，
         // 下次检索代数不一致自动重检（宁可多跑一次，绝不返回旧结果）。
         val generation = indexGeneration.get()
-        resultCache.get(key)?.takeIf { it.generation == generation }?.let { return@withContext it.result }
-        val embeddingKey = QueryEmbeddingKey(query.trim(), model.id, dim)
-        val queryVector = queryEmbeddings.get(embeddingKey)
-            ?: EtaEmbeddingEngine.embedQuery(app, query, dim).also { queryEmbeddings.put(embeddingKey, it) }
+        resultCache.get(key)?.takeIf { it.generation == generation }?.let { entry ->
+            // 缓存命中也补一次时刻：异步精排可能晚于上轮结果入缓存完成，时刻缓存命中直出。
+            val backfilled = backfillMoments(entry.result, model.id, dim, indexMode)
+            if (backfilled != entry.result) resultCache.put(key, ResultCacheEntry(generation, backfilled))
+            return@withContext backfilled
+        }
+        val vector = queryVector(app, query, model.id, dim)
         val rows = rowsForSearch(db, db.mediaIndexDao(), model.id, dim, generation)
-        val ranked = rank(queryVector, rows, kinds, limit)
+        val ranked = rank(vector, rows, kinds, limit)
         // 阈值过滤放在 hitOf 之前：低于阈值的候选不构建 Hit（免 resolvePath 跨进程查询），
         // 也不占精排预算；不限量检索时这里是万级候选与秒级耗时的分界。
         val matched = applyMinScore(ranked, { it.second }, minScore)
         // 二段精排预算按索引模式取值：全力档 top-5，低耗档 top-3（逐帧嵌入较贵）。
+        // 时刻缓存已命中的视频不占预算（无需重抽帧）；GUI 检索传 refineMoments=false，
+        // 精排改走 [refineTopMoments] 异步补齐，本函数的内联精排只服务 AI 工具。
         val profile = IndexModeProfile.forMode(indexMode)
         var refined = 0
-        val hits = matched.map { (row, score) -> hitOf(app, row, score) }
-            .map { hit ->
-                val shouldRefine = refineMoments &&
-                    hit.kind == MediaKind.VIDEO &&
-                    model.modalities.vision &&
-                    refined < profile.refineTopK
-                if (shouldRefine) {
-                    refined++
-                    refineMoment(app, queryVector, dim, hit, profile.videoFrames) ?: hit
-                } else {
-                    hit
+        // 命中行分片构建：hitOf 对 content:// 行逐条 resolvePath（跨进程查询），万级命中时
+        // 串行全量构建是首屏的隐性大头。按 [PARTIAL_CHUNK_SIZE] 分片、逐片经 [onPartialHits]
+        // 回调（挂起点，取消检索即停在下一片）；回调为空时与一次性构建行为完全一致。
+        // 时刻缓存命中的视频不占精排预算（无需重抽帧）；GUI 检索传 refineMoments=false，
+        // 精排改走 [refineTopMoments] 异步补齐，这里的内联精排只服务 AI 工具。
+        val hits = mutableListOf<Hit>()
+        matched.chunked(PARTIAL_CHUNK_SIZE).forEach { chunk ->
+            val built = chunk.map { (row, score) ->
+                val momentKey = MomentKey(query.trim(), row.sourceKey, model.id, dim, indexMode)
+                val hit = backfillMoment(hitOf(app, row, score), momentKey)
+                when {
+                    hit.frameTimeMs != null -> hit
+                    refineMoments &&
+                        hit.kind == MediaKind.VIDEO &&
+                        model.modalities.vision &&
+                        refined < profile.refineTopK -> {
+                        refined++
+                        refineMoment(app, vector, dim, hit, profile.videoFrames, momentKey) ?: hit
+                    }
+                    else -> hit
                 }
             }
+            hits += built
+            onPartialHits?.invoke(built)
+        }
         val result = SearchResult(
             query = query.trim(),
             hits = hits,
@@ -297,8 +385,47 @@ internal object MediaSearchService {
     }
 
     /**
+     * GUI 异步精排：对结果里尚无时刻的前 [IndexModeProfile.refineTopK] 个视频命中做二段
+     * 精排，每条完成即调 [onRefined]（在调用方协程上下文回调，GUI 据此按 sourceKey 原位
+     * 更新结果行）。与 [search]（refineMoments=false）配套：结果先渲染、时刻后补齐，
+     * 搜索主流程不再被逐帧嵌入阻塞。时刻缓存命中时 [search] 已直接带回时刻，本函数对
+     * 已带时刻的命中跳过，不会重复抽帧；引擎不可用/抽取失败静默跳过该条。
+     * 取消安全：调用方协程取消即停止，已完成的条目已回填。
+     */
+    suspend fun refineTopMoments(
+        context: Context,
+        query: String,
+        hits: List<Hit>,
+        onRefined: (Hit) -> Unit,
+    ) {
+        val app = context.applicationContext
+        if (hits.none { it.kind == MediaKind.VIDEO && it.frameTimeMs == null }) return
+        val model = EmbeddingModelStore.state.value.model
+        if (!model.modalities.vision) return
+        val dim = EmbeddingModelStore.vectorDim(app)
+        val indexMode = EmbeddingModelStore.indexMode(app)
+        val profile = IndexModeProfile.forMode(indexMode)
+        val vector = queryVector(app, query, model.id, dim)
+        var refined = 0
+        for (hit in hits) {
+            if (refined >= profile.refineTopK) break
+            if (hit.kind != MediaKind.VIDEO || hit.frameTimeMs != null) continue
+            refined++
+            val updated = refineMoment(
+                context = app,
+                queryVector = vector,
+                dim = dim,
+                hit = hit,
+                maxFrames = profile.videoFrames,
+                momentKey = MomentKey(query.trim(), hit.sourceKey, model.id, dim, indexMode),
+            )
+            if (updated != null) onRefined(updated)
+        }
+    }
+
+    /**
      * 二段精排：对视频命中重新抽帧（含时刻戳，最多 [maxFrames] 帧，按索引模式取值）逐帧嵌入，
-     * 取与查询点积最大帧的时刻。只精排结果里前 [IndexModeProfile.refineTopK] 个视频命中；
+     * 取与查询点积最大帧的时刻。算出即写 [momentCache]（同词重检/换阈值重检直出）；
      * 引擎不可用/抽取失败一律静默跳过（[Hit.frameTimeMs] 保持 null），不影响其余结果。
      */
     private suspend fun refineMoment(
@@ -307,6 +434,7 @@ internal object MediaSearchService {
         dim: Int,
         hit: Hit,
         maxFrames: Int,
+        momentKey: MomentKey,
     ): Hit? {
         return runCatching {
             val candidate = MediaSourceScanner.Candidate(
@@ -322,12 +450,19 @@ internal object MediaSearchService {
                 width = hit.width,
                 height = hit.height,
             )
-            val frames = MediaExtraction.videoFrames(context, candidate, maxFrames)
+            // 抽帧是阻塞的 MediaMetadataRetriever 操作：包进 IO，保证 GUI 直调本路径
+            // （refineTopMoments 不切上下文）时也不占主线程。
+            val frames = withContext(Dispatchers.IO) {
+                MediaExtraction.videoFrames(context, candidate, maxFrames)
+            }
             if (frames.isEmpty()) return@runCatching null
             val scored = frames.map { frame ->
                 frame.timeMs to EtaEmbeddingEngine.embedImage(context, frame.bytes, dim)
             }
-            bestMoment(queryVector, scored)?.let { timeMs -> hit.copy(frameTimeMs = timeMs) }
+            bestMoment(queryVector, scored)?.let { timeMs ->
+                momentCache.put(momentKey, timeMs)
+                hit.copy(frameTimeMs = timeMs)
+            }
         }.getOrNull()
     }
 
@@ -453,6 +588,8 @@ internal interface VectorIndex {
 
 /**
  * 暴力点积实现：全量解码 Float16 后逐条点积排序，万级条目在手机上可接受。
+ * 解码复用同一块缓冲（[Float16VectorCodec.decodeElement] 逐元素写入后就地点积），
+ * 不为每行分配 FloatArray——万级候选一次检索省下几十 MB 临时对象的 GC 压力。
  * 规模超过 [MediaSearchService.ANN_SWITCH_THRESHOLD] 后仍可用，仅提示后续切换 ANN。
  * 数量上限由调用方自负（AI 工具层 1..50；GUI 传 [MediaSearchService.UNLIMITED_RESULTS]
  * 由阈值定界），本实现只保证非负下界。
@@ -465,13 +602,15 @@ internal object BruteForceVectorIndex : VectorIndex {
         limit: Int,
     ): List<Pair<MediaIndexEntity, Float>> {
         val effectiveLimit = limit.coerceAtLeast(1)
+        // 解码输出缓冲：向量维度即查询维度，长度不符（坏行/异维行）直接跳过。
+        val scratch = FloatArray(query.size)
         return rows.asSequence()
             .filter { row -> kinds.isEmpty() || MediaKind.from(row.kind) in kinds }
             .mapNotNull { row ->
-                val vector = runCatching { Float16VectorCodec.decode(row.vector) }.getOrNull()
-                    ?: return@mapNotNull null
-                if (vector.size != query.size) return@mapNotNull null
-                row to MediaSearchService.dot(query, vector)
+                val bytes = row.vector
+                if (bytes.size != scratch.size * 2) return@mapNotNull null
+                for (i in scratch.indices) scratch[i] = Float16VectorCodec.decodeElement(bytes, i)
+                row to MediaSearchService.dot(query, scratch)
             }
             .sortedByDescending { it.second }
             .take(effectiveLimit)

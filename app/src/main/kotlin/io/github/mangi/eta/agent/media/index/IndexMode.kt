@@ -8,7 +8,8 @@ import io.github.mangi.eta.R
  * - [PERFORMANCE] 全力索引：保持既有行为（GPU 优先后端、批提交 32、无节流、抽取预算满配、
  *   视频命中精排 top-5），最快把索引建完。
  * - [POWER_SAVER] 低耗后台：CPU 单线程 + 条目间节流 + 抽取预算减配 + 精排放宽，
- *   可长时间挂在后台慢慢跑完，不抢 GPU、不发热。
+ *   可长时间挂在后台慢慢跑完，不抢 GPU、不发热（CPU 收敛仅作用于后台索引管线，
+ *   交互检索按用户后端偏好链构建引擎，见 [IndexModeProfile.asInteractive]）。
  *
  * 档位参数集中在 [IndexModeProfile]（纯函数），切换档位即时落库、下一轮索引起生效。
  */
@@ -58,6 +59,12 @@ internal data class IndexModeProfile(
     /** 后端尝试链覆盖：非空时取代用户后端偏好（低耗档强制 [InferenceBackend.CPU]）；null 按偏好链走。 */
     val backendChainOverride: List<InferenceBackend>?,
 ) {
+    /**
+     * 交互检索视图：低耗档的 CPU 单线程与后端覆盖只属于后台索引管线（引擎在
+     * MediaIndexer 运行中才取原档案，见 [EtaEmbeddingEngine]），交互侧按用户后端
+     * 偏好构建引擎；抽取与精排预算仍按档取值，不受本视图影响。
+     */
+    fun asInteractive(): IndexModeProfile = copy(backendChainOverride = null, cpuThreads = 0)
     companion object {
         /** 全力档批提交条目数（与旧版 MediaIndexer.BATCH_SIZE 一致）。 */
         const val PERFORMANCE_BATCH_SIZE = 32
