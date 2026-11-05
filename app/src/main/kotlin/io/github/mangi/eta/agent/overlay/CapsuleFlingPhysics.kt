@@ -28,26 +28,28 @@ internal object CapsuleFlingPhysics {
     /** 抬手前超过 60ms 没有新采样即视为停顿：按 0 速度原位吸附，不甩出。 */
     const val VelocityStallMillis = 60L
 
-    /** 低于 260px/s（约 92dp/s @2.8125）的抬手算轻放：不滑行，只做越界回弹。 */
-    const val MinFlingVelocityPxPerSec = 260f
+    /** 低于 400px/s（约 142dp/s @2.8125）的抬手算轻放：不滑行，只做越界回弹。 */
+    const val MinFlingVelocityPxPerSec = 400f
 
     /**
-     * 自由滑行投影时长：projected = 起点 + v × 0.24s。
-     * 比系统 OverScroller 的摩擦曲线更短，甩出距离对速度敏感但不会滑太久。
+     * 自由滑行投影时长：projected = 起点 + v × 0.14s。
+     * 0.24s 时轻拖 800px/s 也能滑出近 200px，实机表现为“轻轻一拖就被甩很远”；
+     * 0.14s 把同速度的滑行距离砍掉约 42%，中速只滑一小段、真甩才够到边缘。
      */
-    const val GlideSeconds = 0.24f
+    const val GlideSeconds = 0.14f
 
     /**
-     * 飞行段弹簧：dampingRatio 0.70（欠阻尼但接近临界），stiffness 520。
-     * ω≈22.8rad/s，约 0.25s 收尾；负责把松手初速度连续吃掉，只留几 % 过冲，
-     * 大过冲留给边界回弹段，避免“目标在屏外飞得太远、黑屏时间过长”。
+     * 飞行段弹簧：dampingRatio 0.90（接近临界，几乎不产生额外过冲），stiffness 520。
+     * ω≈22.8rad/s，约 0.25s 收尾；速度只决定目标距离，不再叠加 14% 过冲行程，
+     * 实机手感是“甩出去后沉下去、没有第二段滑行”，越界全靠目标落点本身。
      */
-    const val FlightDampingRatio = 0.70f
+    const val FlightDampingRatio = 0.90f
     const val FlightStiffness = 520f
 
     /**
-     * 边界回弹段弹簧：dampingRatio 0.50（明显欠阻尼，约 16% 过冲），stiffness 520。
-     * 从屏外/越界位置拉回最近边缘内侧，过冲表现为贴边处的一次“拐”回弹。
+     * 边界回弹段弹簧保持 dampingRatio 0.50（明显欠阻尼，约 16% 过冲），stiffness 520。
+     * 从屏外/越界位置拉回最近边缘内侧，过冲表现为贴边处的一次“拐”回弹；
+     * 这里不跟着调沉——用户认可贴边这一下，调沉会把“拐”抹平。
      */
     const val EdgeDampingRatio = 0.50f
     const val EdgeStiffness = 520f
