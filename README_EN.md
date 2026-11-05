@@ -153,11 +153,16 @@ These implementation notes are currently in Chinese:
 
 - [Eta](https://github.com/Mangi-11/Eta): the upstream project this fork is based on.
 - [y2485871697/Eta](https://github.com/y2485871697/Eta): reference fork; many UI improvements and useful features come from this branch.
+- [Number444/Eta](https://github.com/Number444/Eta): reference fork and the source of the Xiaomi Super Island support: the official miui.focus param_v2 protocol, the dual-channel island-expansion mechanism (first-post-only expansion, 8-second auto-dismiss), and its on-device measurement notes.
+- [liyunkkk/Eta](https://github.com/liyunkkk/Eta): reference fork and the source of the Dynamic-Island thought stream: streaming thinking/output previews, semantic tool labels, and the notification chronometer.
+- [NatumRagnag/Eta](https://github.com/NatumRagnag/Eta): reference fork and the source of the Xiaomi host bridges: the HyperOS 4 UIAgent tool bridge, the internal ToolsBridge, and the vision / external-agent services.
 - [Pi Coding Agent](https://github.com/earendil-works/pi): the main reference for the agent runtime, including the agent loop, tool calling, steering, and transcript state management.
 - [dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype): DeepSeek's open-source proactive agent prototype. The source of the session-dispatch concept: a main session that only routes and assesses, the ticket/mandate/admission pipeline, and behavioral laws of structured questions and honest reporting.
 - [TaiJi](https://github.com/zhushanwen321/tai-ji): an AI agent desktop workspace. The reference for the dispatch console's session form and mechanics: the tool-allowlisted dispatch mode, self-contained briefs, notify-once completion claims, and the anti-injection discipline.
 - [OmniBot](https://github.com/omnimind-ai/OmniBot): a reference project for AI agents on Android.
+- [opencode](https://github.com/sst/opencode): terminal AI coding agent. The protocol reference for the remote OpenCode integration; the v2 wire protocol was verified against its serve implementation (v2.2.5).
 - [libxposed API](https://github.com/libxposed/api): the modern Xposed API.
+- [miuix](https://github.com/compose-miuix-ui/miuix): the Compose UI framework used by this app — the component and interaction base of the settings and management pages.
 - [Zafiro](https://github.com/niki914/zafiro): the user chat-bubble style reference. Its bubble design is very close to the Google Material Design 3 Expressive example bubbles, so it was adapted into this project.
 - [Material Design 3 Expressive](https://m3.material.io): the official Google Material Design 3 Expressive site; the app's UI language and visual style reference its examples and guidelines.
 - [KernelSU](https://github.com/tiann/KernelSU): the design reference for this app's Appearance & Theme sub-settings page.

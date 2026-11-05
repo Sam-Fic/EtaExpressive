@@ -254,6 +254,21 @@ internal fun AboutCreditsScreen(onBack: () -> Unit) {
             url = "https://github.com/y2485871697/Eta",
         ),
         CreditEntry(
+            name = "Number444/Eta",
+            summary = stringResource(R.string.credits_entry_number444),
+            url = "https://github.com/Number444/Eta",
+        ),
+        CreditEntry(
+            name = "liyunkkk/Eta",
+            summary = stringResource(R.string.credits_entry_liyunkkk),
+            url = "https://github.com/liyunkkk/Eta",
+        ),
+        CreditEntry(
+            name = "NatumRagnag/Eta",
+            summary = stringResource(R.string.credits_entry_natumragnag),
+            url = "https://github.com/NatumRagnag/Eta",
+        ),
+        CreditEntry(
             name = "earendil-works/pi",
             summary = stringResource(R.string.credits_entry_pi),
             url = "https://github.com/earendil-works/pi",
@@ -274,9 +289,19 @@ internal fun AboutCreditsScreen(onBack: () -> Unit) {
             url = "https://github.com/omnimind-ai/OmniBot",
         ),
         CreditEntry(
+            name = "sst/opencode",
+            summary = stringResource(R.string.credits_entry_opencode),
+            url = "https://github.com/sst/opencode",
+        ),
+        CreditEntry(
             name = "libxposed/api",
             summary = stringResource(R.string.credits_entry_libxposed),
             url = "https://github.com/libxposed/api",
+        ),
+        CreditEntry(
+            name = "compose-miuix-ui/miuix",
+            summary = stringResource(R.string.credits_entry_miuix),
+            url = "https://github.com/compose-miuix-ui/miuix",
         ),
         CreditEntry(
             name = "niki914/zafiro",

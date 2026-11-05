@@ -4,11 +4,16 @@
     <string name="credits_section_summary">Acknowledgements from the README</string>
     <string name="credits_entry_eta_upstream">The upstream project this fork is based on.</string>
     <string name="credits_entry_y248">Reference repository: many practical features come from this branch.</string>
+    <string name="credits_entry_number444">Reference fork and the source of the Xiaomi Super Island support: the official miui.focus param_v2 protocol, the dual-channel island-expansion mechanism (first-post-only expansion, 8-second auto-dismiss), and its on-device measurement notes.</string>
+    <string name="credits_entry_liyunkkk">Reference fork and the source of the Dynamic-Island thought stream: streaming thinking/output previews, semantic tool labels, and the notification chronometer.</string>
+    <string name="credits_entry_natumragnag">Reference fork and the source of the Xiaomi host bridges: the HyperOS 4 UIAgent tool bridge, the internal ToolsBridge, and the vision / external-agent services.</string>
     <string name="credits_entry_pi">Core reference for the agent runtime, including the agent loop, tool calling, steering, and transcript state management.</string>
     <string name="credits_entry_dsh">DeepSeek\'s open-source proactive agent prototype. The source of the session-dispatch concept: a main session that only routes and assesses, the ticket/mandate/admission pipeline, and behavioral laws of structured questions and honest reporting.</string>
     <string name="credits_entry_taiji">An AI agent desktop workspace. The reference for the dispatch console\'s session form and mechanics: the tool-allowlisted dispatch mode, self-contained briefs, notify-once completion claims, and the anti-injection discipline.</string>
     <string name="credits_entry_omnibot">Reference project for Android AI agents.</string>
+    <string name="credits_entry_opencode">Terminal AI coding agent. The protocol reference for the remote OpenCode integration; the v2 wire protocol was verified against its serve implementation (v2.2.5).</string>
     <string name="credits_entry_libxposed">Modern Xposed API.</string>
+    <string name="credits_entry_miuix">The Compose UI framework used by this app — the component and interaction base of the settings and management pages.</string>
     <string name="credits_entry_zafiro">Style reference for the user chat bubbles. Its bubble design closely resembles the sample bubbles in Google Material Design 3 Expressive, so it was adopted and adapted for this project.</string>
     <string name="credits_entry_m3">The official Google Material Design 3 Expressive site. This app\'s design language and visual style reference its examples and specifications.</string>
     <string name="credits_entry_kernelsu">Design reference for the app\'s Appearance &amp; theme settings sub-pages.</string>
