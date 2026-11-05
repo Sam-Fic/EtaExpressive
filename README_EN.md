@@ -24,19 +24,19 @@ Requires **Android 14 or later on ARM64 (arm64-v8a)**. The APK ships ARM64 nativ
 
 ## See it in action
 
-| GUI Agent | Breeno with your own model |
+| GUI Agent | Using your own model via Breeno |
 | :---: | :---: |
-| <img src="docs/Screenshots/demo_gui_agent.gif" width="320" alt="EtaExpressive GUI Agent in action"> | <img src="docs/Screenshots/demo_tools.gif" width="320" alt="Starting an EtaExpressive task through Breeno"> |
+| ![EtaExpressive GUI Agent in action](docs/Screenshots/demo_gui_agent.gif) | ![Starting an EtaExpressive task through Breeno](docs/Screenshots/demo_tools.gif) |
 
-More screenshots: chat, system tools, and settings
+More screenshots: chat, device tools, and settings
 
-| Chat | Commands through Breeno | Direct system API calls |
+| Chat | Calling subagents | Direct system API calls |
 | :---: | :---: | :---: |
-| ![Chat](docs/Screenshots/chat_home.jpg) | ![Commands through Breeno](docs/Screenshots/chat_breeno_analysis.jpg) | ![Direct system API calls](docs/Screenshots/chat_device_direct.jpg) |
+| ![Chat](docs/Screenshots/chat_home.jpg) | ![Calling subagents](docs/Screenshots/call_subagents.jpg) | ![Direct system API calls](docs/Screenshots/chat_device_direct.jpg) |
 
-| Settings | Tools | Skills |
+| Using the decision model | Tool capabilities | Skills |
 | :---: | :---: | :---: |
-| ![Settings](docs/Screenshots/settings.jpg) | ![Tools](docs/Screenshots/tools.jpg) | ![Skills](docs/Screenshots/skills.jpg) |
+| ![Using the decision model](docs/Screenshots/decision_model.jpg) | ![Tool capabilities](docs/Screenshots/tools.jpg) | ![Skills](docs/Screenshots/skills.jpg) |
 
 
 ## Core capabilities
@@ -152,12 +152,12 @@ These implementation notes are currently in Chinese:
 ## References and acknowledgements
 
 - [Eta](https://github.com/Mangi-11/Eta): the upstream project this fork is based on.
+- [y2485871697/Eta](https://github.com/y2485871697/Eta): reference fork; many UI improvements and useful features come from this branch.
 - [Pi Coding Agent](https://github.com/earendil-works/pi): the main reference for the agent runtime, including the agent loop, tool calling, steering, and transcript state management.
 - [dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype): DeepSeek's open-source proactive agent prototype. The source of the session-dispatch concept: a main session that only routes and assesses, the ticket/mandate/admission pipeline, and behavioral laws of structured questions and honest reporting.
 - [TaiJi](https://github.com/zhushanwen321/tai-ji): an AI agent desktop workspace. The reference for the dispatch console's session form and mechanics: the tool-allowlisted dispatch mode, self-contained briefs, notify-once completion claims, and the anti-injection discipline.
 - [OmniBot](https://github.com/omnimind-ai/OmniBot): a reference project for AI agents on Android.
 - [libxposed API](https://github.com/libxposed/api): the modern Xposed API.
-- [y2485871697/Eta](https://github.com/y2485871697/Eta): reference fork; many UI improvements and useful features come from this branch.
 - [Zafiro](https://github.com/niki914/zafiro): the user chat-bubble style reference. Its bubble design is very close to the Google Material Design 3 Expressive example bubbles, so it was adapted into this project.
 - [Material Design 3 Expressive](https://m3.material.io): the official Google Material Design 3 Expressive site; the app's UI language and visual style reference its examples and guidelines.
 - [KernelSU](https://github.com/tiann/KernelSU): the design reference for this app's Appearance & Theme sub-settings page.

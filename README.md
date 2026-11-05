@@ -26,17 +26,17 @@ EtaExpressive 不只是聊天框。把你自己的模型接到手机上：它可
 
 | GUI Agent | 作为系统语音助手使用 |
 | :-------: | :-----------: |
-| <img src="docs/Screenshots/demo_gui_agent.gif" width="320" alt="EtaExpressive GUI Agent 执行演示"> | <img src="docs/Screenshots/demo_tools.gif" width="320" alt="从小布助手入口发起 EtaExpressive 任务"> |
+| ![EtaExpressive GUI Agent 执行演示](docs/Screenshots/demo_gui_agent.gif) | ![从小布助手入口发起 EtaExpressive 任务](docs/Screenshots/demo_tools.gif) |
 
 更多界面：聊天、设备工具与设置
 
 |                  聊天首页                  |                        调用子代理                        |                       系统 API 调用                       |
 | :-----------------------------------------: | :------------------------------------------------------------: | :-------------------------------------------------------: |
-| <img src="docs/Screenshots/chat_home.jpg" width="320" alt="聊天首页"> | <img src="docs/Screenshots/call_subagents.jpg" width="320" alt=" 调用子代理"> | <img src="docs/Screenshots/chat_device_direct.jpg" width="320" alt="系统 API 调用"> |
+| ![聊天首页](docs/Screenshots/chat_home.jpg) | ![调用子代理](docs/Screenshots/call_subagents.jpg) | ![系统 API 调用](docs/Screenshots/chat_device_direct.jpg) |
 
 |                  使用 decision 模型                  |                自建工具能力                |                 Skills                 |
 | :------------------------------------: | :-------------------------------------: | :------------------------------------: |
-| <img src="docs/Screenshots/decision_model.jpg" width="320" alt="设置"> | <img src="docs/Screenshots/tools.jpg" width="320" alt="工具能力"> | <img src="docs/Screenshots/skills.jpg" width="320" alt="Skills"> |
+| ![设置](docs/Screenshots/decision_model.jpg) | ![工具能力](docs/Screenshots/tools.jpg) | ![Skills](docs/Screenshots/skills.jpg) |
 
 
 ## 核心能力
