@@ -604,7 +604,7 @@ internal fun AgentOverlayCapsule(
                                             sharedContentState = rememberSharedContentState(
                                                 key = VirtualDisplayPreviewSharedKey,
                                             ),
-                                            animatedVisibilityScope = this,
+                                            animatedVisibilityScope = this@AnimatedVisibility,
                                             enter = EnterTransition.None,
                                             exit = ExitTransition.None,
                                             boundsTransform = { _, _ ->
