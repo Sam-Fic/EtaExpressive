@@ -24,19 +24,15 @@ import android.view.WindowManager
 import android.view.WindowInsets
 import android.widget.OverScroller
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.platform.ComposeView
+import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
+import io.github.mangi.eta.ui.app.AgentAppTheme
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -2195,26 +2191,25 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         resultCardParams = lp
     }
 
-    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     private fun createOverlayComposeView(content: @Composable () -> Unit): ComposeView =
         ComposeView(overlayContext()).apply {
             setViewTreeLifecycleOwner(this@AgentRuntimeService)
             setViewTreeSavedStateRegistryOwner(this@AgentRuntimeService)
             setContent {
-                val isDark = isNightMode()
-                val m3Colors = if (isDark) darkColorScheme() else lightColorScheme()
-                // 与主程序（AgentAppTheme）保持同一套动效方案：官方组件与浮层自绘动画
-                // 都从 expressive 的 spatial / effects 弹簧取规格。颜色仍用这套明暗色板。
-                MaterialTheme(
-                    colorScheme = m3Colors,
-                    motionScheme = MotionScheme.expressive(),
+                // 与主程序（MainActivity → AgentAppTheme）共用同一份外观来源：强调色 / 配色风格 /
+                // 深浅模式 / 纯黑 / 动态取色都由 AppearanceSettingsRepository 决定。浮窗常驻，
+                // 必须订阅 DataStore 的实时变更，不能只在建窗时读一次。
+                // 首帧等设置流第一次发射（通常一个帧内到），避免先闪一帧默认浅色再跳变。
+                val appearance = AppearanceSettingsRepository.settingsFlow()
+                    .collectAsState(initial = null)
+                    .value
+                val current = appearance ?: return@setContent
+                AgentAppTheme(
+                    appearance = current,
+                    // 浮窗尺寸由宿主按 dp→px 计算，不能被界面缩放放大后裁切。
+                    applyInterfaceScale = false,
                 ) {
-                    CompositionLocalProvider(
-                        // Material3 的 Icon/Text 默认取 LocalContentColor，需在此补上。
-                        LocalContentColor provides m3Colors.onSurface,
-                    ) {
-                        content()
-                    }
+                    content()
                 }
             }
         }
@@ -2501,11 +2496,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             packageManager.getPackagesForUid(uid)
         }.getOrNull().orEmpty()
         return packages.any { it in ModuleConfig.AGENT_RUNTIME_ENTRY_PACKAGES }
-    }
-
-    private fun isNightMode(): Boolean {
-        val mode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        return mode == Configuration.UI_MODE_NIGHT_YES
     }
 
     private fun currentRuntimePermissions(): AgentRuntimePolicy.Permissions =
