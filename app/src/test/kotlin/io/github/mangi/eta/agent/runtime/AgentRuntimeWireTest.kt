@@ -790,4 +790,64 @@ class AgentRuntimeWireTest {
         }
     }
 
+    @Test
+    fun entryToolCallAndResultBundlesRoundTripWithoutImages() {
+        val call = AgentRuntimeWire.EntryToolCall(
+            callId = "entry-1",
+            name = "read_memory",
+            argumentsJson = """{"keywords":"地址"}""",
+        )
+        val roundTrippedCall = AgentRuntimeWire.entryToolCallFromBundle(
+            AgentRuntimeWire.entryToolCallToBundle(call)
+        )
+        assertEquals(call, roundTrippedCall)
+
+        val result = AgentModelClient.ToolResult(
+            content = """{"ok":true,"items":[]}""",
+            sensitive = true,
+        )
+        val (callId, roundTrippedResult) = AgentRuntimeWire.entryToolResultFromBundle(
+            AgentRuntimeWire.entryToolResultToBundle(call.callId, result)
+        )
+        assertEquals(call.callId, callId)
+        assertEquals(result, roundTrippedResult)
+    }
+
+    @Test
+    fun hostCapabilitiesAndHostMessagesRoundTrip() {
+        val request = AgentRuntimeWire.RunRequest(
+            runId = "host-run",
+            prompt = "打开同声传译",
+            config = AgentModelClient.ModelConfig(
+                baseUrl = "https://example.invalid/v1",
+                apiKey = "test-key",
+                model = "test-model",
+                systemPrompt = "",
+            ),
+            images = emptyList(),
+            hostCapabilities = setOf(
+                AgentHostCapabilities.AIASST_VISION_APP_FUNCTIONS,
+                AgentHostCapabilities.EXTERNAL_AGENT,
+            ),
+        )
+        val decoded = AgentRuntimeWire.incomingRunRequestFromBundle(
+            AgentRuntimeWire.toBundle(request, emptyList(), emptyHistoryDescriptor()),
+        ).request
+        assertEquals(request.hostCapabilities, decoded.hostCapabilities)
+
+        val call = AgentHostCall("call-1", "xiaomi_external_agent", "{\"action\":\"probe\"}")
+        assertEquals(call, AgentRuntimeWire.hostCallFromBundle(AgentRuntimeWire.hostCallToBundle(call)))
+        val event = AgentHostEvent("call-1", "text_delta", "session-1", "你好")
+        assertEquals(event, AgentRuntimeWire.hostEventFromBundle(AgentRuntimeWire.hostEventToBundle(event)))
+        val result = AgentHostResult(
+            callId = "call-1",
+            ok = false,
+            payload = "{}",
+            errorCode = "TEST",
+            errorMessage = "failed",
+            retryable = true,
+        )
+        assertEquals(result, AgentRuntimeWire.hostResultFromBundle(AgentRuntimeWire.hostResultToBundle(result)))
+    }
+
 }

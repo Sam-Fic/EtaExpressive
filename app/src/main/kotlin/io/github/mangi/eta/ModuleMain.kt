@@ -109,6 +109,8 @@ class ModuleMain : XposedModule() {
                             module = this,
                             rootLogger = logger,
                             classLoader = param.classLoader,
+                            // ToolsBridge 宿主只在主小爱进程 prepare；:core 只装对话 hook。
+                            enableToolsBridge = currentProcessName == ModuleConfig.XIAOAI_PACKAGE,
                         )
                     )
                 }

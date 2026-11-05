@@ -21,10 +21,10 @@
 #-renamesourcefileattribute SourceFile
 
 # libxposed 通过 META-INF/xposed/java_init.list 中的类名字符串加载模块入口；
-# 允许入口类混淆时，需要同步改写 java_init.list，避免 release 裁剪后模块失效。
+# 固定入口类名并保留公开无参构造，避免 Release 入口被改到默认包后失去合规性。
 -dontwarn io.github.libxposed.annotation.**
 -adaptresourcefilecontents META-INF/xposed/java_init.list
--keep,allowoptimization,allowobfuscation class io.github.mangi.eta.ModuleMain {
+-keep,allowoptimization class io.github.mangi.eta.ModuleMain {
     public <init>();
 }
 

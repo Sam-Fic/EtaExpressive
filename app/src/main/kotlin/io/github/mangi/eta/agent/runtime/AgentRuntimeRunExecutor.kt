@@ -1,6 +1,7 @@
 package io.github.mangi.eta.agent.runtime
 
 import android.content.Context
+import android.os.Messenger
 import io.github.mangi.eta.agent.question.AgentQuestionCodec
 import io.github.mangi.eta.agent.question.AgentQuestionCoordinator
 import io.github.mangi.eta.R
@@ -15,6 +16,10 @@ import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
 import io.github.mangi.eta.agent.model.AgentDispatchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
+import io.github.mangi.eta.agent.model.XiaomiHostToolCatalog
+import io.github.mangi.eta.agent.model.XiaomiUiAgentToolCatalog
+import io.github.mangi.eta.agent.xiaomi.XiaomiToolsBridgeProtocol
+import io.github.mangi.eta.agent.xiaomi.XiaomiToolsBridgeRemoteExecutor
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityKeeper
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.model.AgentModelExecutionException
@@ -52,11 +57,16 @@ import java.util.concurrent.atomic.AtomicReference
 /** Blocking execution of one parent. A child group is a separate owner, not a controller binding. */
 internal class AgentRuntimeRunExecutor(
     context: Context,
+    private val entryToolTarget: Messenger? = null,
     private val currentPermissions: () -> AgentRuntimePolicy.Permissions,
     private val snapshotRequest: (AgentRuntimeWire.RunRequest) -> AgentRuntimeWire.RunRequest,
     private val guiControl: GuiControlCoordinator,
     private val onAcceptedEvent: (AgentEvent, EntrySurfaceGuard?) -> Unit,
     private val persistArtifacts: (AgentRuntimeWire.RunRequest, AgentRuntimeWire.RunResult, List<AgentEvent>) -> Unit,
+    private val xiaomiToolsBridgeInvoker: ((
+        XiaomiToolsBridgeProtocol.CallRequest,
+    ) -> XiaomiToolsBridgeProtocol.CallResult)? = null,
+    private val hostToolExecutor: AgentHostToolExecutor? = null,
 ) {
     data class Outcome(
         val result: AgentRuntimeWire.RunResult,
@@ -104,6 +114,18 @@ internal class AgentRuntimeRunExecutor(
             assistantTools, AssistantToolSwitches.PERSONAL, request.config.personalTools)
         val allowScreen = AssistantToolSwitches.allows(
             assistantTools, AssistantToolSwitches.SCREEN, request.config.screenTools)
+        // 小米入口工具：只有带 replyTo 反向通道且入口探测到工具的 run 才参与下发与路由。
+        // 三档风险映射对齐 AgentDeviceToolCatalog：direct/action=设备工具，read=个人数据。
+        val enabledEntryTools = if (entryToolTarget == null) {
+            emptySet()
+        } else {
+            XiaomiUiAgentToolCatalog.enabledToolNames(
+                availableTools = request.entryTools,
+                directTools = allowDevice && request.config.deviceTools,
+                sensitiveReadTools = allowPersonal && request.config.personalTools,
+                sensitiveActionTools = allowDevice && request.config.deviceTools,
+            )
+        }
         // Parent-only prompt policy, frozen for this run rather than re-read between rounds.
         val interactiveModeEnabled = InteractiveModePreference.read()
         var response: AgentModelClient.ModelResponse.Text? = null
@@ -155,6 +177,32 @@ internal class AgentRuntimeRunExecutor(
                     McpRunSnapshot.EMPTY
                 }
             }
+            val xiaomiToolsBridgeCatalog = if (xiaomiToolsBridgeInvoker == null) {
+                XiaomiToolsBridgeProtocol.Catalog.EMPTY
+            } else {
+                XiaomiToolsBridgeProtocol.catalogFromJson(
+                    request.xiaomiToolsBridgeCatalogJson,
+                )
+            }
+            val xiaomiToolsBridgeExecutor = xiaomiToolsBridgeInvoker
+                ?.takeUnless { xiaomiToolsBridgeCatalog.definitions.isEmpty() }
+                ?.let { invokeRemote ->
+                    XiaomiToolsBridgeRemoteExecutor(
+                        catalog = xiaomiToolsBridgeCatalog,
+                        sessionId = request.runId,
+                        riskEnabled = { risk ->
+                            when (risk) {
+                                XiaomiToolsBridgeProtocol.Risk.DIRECT ->
+                                    allowDevice && request.config.deviceTools && currentPermissions().deviceTools
+                                XiaomiToolsBridgeProtocol.Risk.SENSITIVE_READ ->
+                                    allowPersonal && request.config.personalTools && currentPermissions().personalTools
+                                XiaomiToolsBridgeProtocol.Risk.SENSITIVE_ACTION ->
+                                    allowDevice && request.config.deviceTools && currentPermissions().deviceTools
+                            }
+                        },
+                        invokeRemote = invokeRemote,
+                    )
+                }
             val runSurface = session.taskSurfaceMode
             // 副屏工具只在明确选择后台后暴露；ASK 首轮由执行位置弹窗决定后续轮次。
             val runVirtualDisplay = {
@@ -256,10 +304,45 @@ internal class AgentRuntimeRunExecutor(
             )
             localTools = executor
             unownedSkillRoot = null
+            val entryExecutor = entryToolTarget
+                ?.takeIf { enabledEntryTools.isNotEmpty() }
+                ?.let { target ->
+                    AgentRuntimeEntryToolExecutor(
+                        target = target,
+                        allowedTools = enabledEntryTools,
+                        directToolsEnabled = {
+                            allowDevice && request.config.deviceTools && currentPermissions().deviceTools
+                        },
+                        sensitiveReadToolsEnabled = {
+                            allowPersonal && request.config.personalTools && currentPermissions().personalTools
+                        },
+                        sensitiveActionToolsEnabled = {
+                            allowDevice && request.config.deviceTools && currentPermissions().deviceTools
+                        },
+                        logger = AndroidAgentLogger,
+                        beforeToolExecution = { toolName ->
+                            // 小米工具同样可能拉起前台界面：先让入口浮层收起再放行。
+                            if (AgentOverlayVisibilityPolicy.requiresEntrySurfaceDismissal(toolName) &&
+                                entrySurfaceGuard?.dismissOnce() == false
+                            ) {
+                                ToolExecutionDecision.Reject(
+                                    code = "ENTRY_SURFACE_NOT_READY",
+                                    message = "入口窗口尚未确认关闭；本次工具未执行，请勿在当前任务中重复调用",
+                                )
+                            } else {
+                                ToolExecutionDecision.Allow
+                            }
+                        },
+                    )
+                }
             val routingExecutor = RoutingToolExecutor(local = executor, mcp = McpToolExecutor(mcpSnapshot))
             val ownership = AgentChildToolOwnership { routingExecutor.close() }
             toolsOwner = ownership
-            toolsBinding = runController.register { ownership.release() }
+            toolsBinding = runController.register {
+                entryExecutor?.close()
+                xiaomiToolsBridgeExecutor?.close()
+                ownership.release()
+            }
             timing.preparationFinished(skillContext.installedSkills.size)
 
             // Retain all exact-selection candidates, including explicit unavailable reasons.
@@ -388,6 +471,20 @@ internal class AgentRuntimeRunExecutor(
             } else if (subAgentToolsAllowed) {
                 ExistingChildTaskTools.appendTo(mcpTools)
             }
+            // 小米三桥的工具 schema：能力集随请求注入，目录按开关与风险分组收敛；
+            // 实际执行路由在下方委托链，授权复查在各执行器内部。
+            XiaomiUiAgentToolCatalog.appendTo(mcpTools, enabledEntryTools)
+            xiaomiToolsBridgeCatalog.visibleDefinitions(
+                directTools = allowDevice && request.config.deviceTools,
+                sensitiveReadTools = allowPersonal && request.config.personalTools,
+                sensitiveActionTools = allowDevice && request.config.deviceTools,
+            ).forEach { definition -> mcpTools.put(definition.asModelTool()) }
+            XiaomiHostToolCatalog.appendTo(
+                tools = mcpTools,
+                capabilities = request.hostCapabilities,
+                directTools = allowDevice && request.config.deviceTools,
+                sensitiveActionTools = allowDevice && request.config.deviceTools,
+            )
             val questionCoordinator = AgentQuestionCoordinator(runController) { event ->
                 acceptEvent(session, event, archivedEvents, entrySurfaceGuard, checkpointRecorder)
             }
@@ -485,6 +582,12 @@ internal class AgentRuntimeRunExecutor(
                             ).toString(),
                         )
                     }
+                } else if (call.name in enabledEntryTools && entryExecutor != null) {
+                    entryExecutor.execute(call)
+                } else if (xiaomiToolsBridgeExecutor != null && call.name in xiaomiToolsBridgeExecutor.toolNames) {
+                    xiaomiToolsBridgeExecutor.execute(call)
+                } else if (hostToolExecutor != null && call.name in hostToolExecutor.toolNames) {
+                    hostToolExecutor.execute(call)
                 } else routingExecutor.execute(call)
             }
             val compactPolicy = runBlocking { AgentCompressionPolicy.resolve(request.config) }

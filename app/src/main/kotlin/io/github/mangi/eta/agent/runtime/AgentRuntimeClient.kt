@@ -12,14 +12,29 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import io.github.mangi.eta.agent.model.AgentModelClient
+import io.github.mangi.eta.agent.xiaomi.XiaomiToolsBridgeEndpoint
+import io.github.mangi.eta.agent.xiaomi.XiaomiToolsBridgeProtocol
 import io.github.mangi.eta.core.AgentLogger
 import io.github.mangi.eta.core.safeLogType
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import org.json.JSONObject
 
 /** Entry-side IPC client; no model execution or tool ownership here. */
-internal class AgentRuntimeClient(private val context: Context, private val logger: AgentLogger) {
+internal class AgentRuntimeClient(
+    private val context: Context,
+    private val logger: AgentLogger,
+    /** 入口进程代执行器：小米 UIAgent 工具只在本进程可用。 */
+    private val entryToolExecutor: AgentModelClient.ToolExecutor? = null,
+    /** 超级小爱 ToolsBridge 宿主端点：白名单工具在入口进程内执行。 */
+    private val xiaomiToolsBridgeEndpoint: XiaomiToolsBridgeEndpoint? = null,
+    /** 注入宿主桥：仅宿主 UID 可用的翻译与 External Agent 能力。 */
+    private val hostBridge: AgentHostBridge? = null,
+) {
     sealed interface AttachOutcome {
         data class Completed(val result: AgentRuntimeWire.RunResult) : AttachOutcome
         data object NotActive : AttachOutcome
@@ -48,15 +63,50 @@ internal class AgentRuntimeClient(private val context: Context, private val logg
         val resultRef = AtomicReference<AgentRuntimeWire.RunResult?>()
         val preparedImagesRef = AtomicReference<AgentRuntimeImageTransfer.PreparedImages?>()
         val preparedHistoryRef = AtomicReference<AgentRuntimeHistoryTransfer.PreparedHistory?>()
+        // 入口未装代执行器时不声明 entryTools；hostCapabilities 由宿主桥探测结果并集而成。
+        val effectiveRequest = request.copy(
+            entryTools = if (entryToolExecutor == null) emptyList() else request.entryTools,
+            hostCapabilities = request.hostCapabilities + hostBridge?.capabilities.orEmpty(),
+        )
+        val entryToolPool = if (effectiveRequest.entryTools.isNotEmpty()) {
+            Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "agent-entry-tools").apply { isDaemon = true }
+            }
+        } else {
+            null
+        }
+        val serviceMessengerRef = AtomicReference<Messenger?>()
+        val hostExecutor = hostBridge?.let {
+            Executors.newCachedThreadPool { runnable ->
+                Thread(runnable, "agent-host-bridge").apply { isDaemon = true }
+            }
+        }
         val clientMessenger = Messenger(ClientHandler(onEvent,
             onResult = { result -> resultRef.set(result); resultLatch.countDown() },
             onRequestIngested = {
                 preparedImagesRef.getAndSet(null)?.close()
                 preparedHistoryRef.getAndSet(null)?.close()
-            }).also { it.diagnosticRunId = request.runId })
-        val lease = AgentRuntimeConnection.acquire(context, logger)
-            ?: return AgentRuntimeWire.RunResult("", false, "", "Agent Runtime 服务绑定失败")
+            },
+            entryToolExecutor = entryToolExecutor,
+            entryToolPool = entryToolPool,
+            logger = logger,
+            xiaomiToolsBridgeEndpoint = xiaomiToolsBridgeEndpoint,
+            onHostCall = { data ->
+                executeHostCall(
+                    data = data,
+                    serviceMessenger = serviceMessengerRef.get(),
+                    executor = hostExecutor,
+                )
+            },
+        ).also { it.diagnosticRunId = request.runId })
+        val lease = AgentRuntimeConnection.acquire(context, logger) ?: run {
+            entryToolPool?.shutdownNow()
+            hostExecutor?.shutdownNow()
+            runCatching { hostBridge?.close() }
+            return AgentRuntimeWire.RunResult("", false, "", "Agent Runtime 服务绑定失败")
+        }
         val serviceMessenger = lease.messenger
+        serviceMessengerRef.set(serviceMessenger)
         val deathRecipient = IBinder.DeathRecipient {
             if (resultRef.get() == null) {
                 resultRef.set(AgentRuntimeWire.RunResult("", false, "", "Agent Runtime 服务连接已断开"))
@@ -67,11 +117,11 @@ internal class AgentRuntimeClient(private val context: Context, private val logg
             lease.binder.linkToDeath(deathRecipient, 0)
             val msg = Message.obtain(null, AgentRuntimeWire.MSG_START_RUN)
             msg.replyTo = clientMessenger
-            val preparedImages = AgentRuntimeImageTransfer.prepare(context, request.images)
+            val preparedImages = AgentRuntimeImageTransfer.prepare(context, effectiveRequest.images)
             preparedImagesRef.set(preparedImages)
-            val preparedHistory = AgentRuntimeHistoryTransfer.prepare(context, request.history)
+            val preparedHistory = AgentRuntimeHistoryTransfer.prepare(context, effectiveRequest.history)
             preparedHistoryRef.set(preparedHistory)
-            msg.data = AgentRuntimeWire.toBundle(request, preparedImages.images, preparedHistory.descriptor)
+            msg.data = AgentRuntimeWire.toBundle(effectiveRequest, preparedImages.images, preparedHistory.descriptor)
             serviceMessenger.send(msg)
             if (isStopRequested()) {
                 sendRequestedStop(serviceMessenger, request.runId, mainStopReason())
@@ -98,8 +148,109 @@ internal class AgentRuntimeClient(private val context: Context, private val logg
         } finally {
             preparedImagesRef.getAndSet(null)?.close()
             preparedHistoryRef.getAndSet(null)?.close()
+            entryToolPool?.shutdownNow()
+            serviceMessengerRef.set(null)
+            hostExecutor?.shutdownNow()
+            runCatching { hostBridge?.close() }
             runCatching { lease.binder.unlinkToDeath(deathRecipient, 0) }
             lease.close()
+        }
+    }
+
+    private fun executeHostCall(
+        data: android.os.Bundle,
+        serviceMessenger: Messenger?,
+        executor: ExecutorService?,
+    ) {
+        val bridge = hostBridge
+        if (bridge == null || executor == null || serviceMessenger == null) {
+            val callId = runCatching { AgentRuntimeWire.hostCallFromBundle(data).callId }.getOrDefault("")
+            AgentRuntimeWire.closeHostAttachments(data)
+            sendHostResult(
+                serviceMessenger,
+                AgentHostResult(
+                    callId = callId,
+                    ok = false,
+                    payload = "{}",
+                    errorCode = "HOST_CAPABILITY_UNAVAILABLE",
+                    errorMessage = "入口进程未提供宿主能力",
+                ),
+            )
+            return
+        }
+        val call = runCatching { AgentRuntimeWire.hostCallFromBundle(data) }
+            .getOrElse { throwable ->
+                AgentRuntimeWire.closeHostAttachments(data)
+                sendHostResult(
+                    serviceMessenger,
+                    AgentHostResult(
+                        callId = "",
+                        ok = false,
+                        payload = "{}",
+                        errorCode = "INVALID_HOST_CALL",
+                        errorMessage = throwable.message ?: "宿主调用格式无效",
+                    ),
+                )
+                return
+            }
+        runCatching {
+            executor.execute {
+                val result = runCatching {
+                    bridge.execute(call) { event -> sendHostEvent(serviceMessenger, event) }
+                }.getOrElse { throwable ->
+                    AgentHostResult(
+                        callId = call.callId,
+                        ok = false,
+                        payload = "{}",
+                        errorCode = "HOST_EXECUTION_FAILED",
+                        errorMessage = throwable.message ?: throwable.safeLogType(),
+                    )
+                }
+                call.attachments.forEach { attachment ->
+                    runCatching { attachment.fileDescriptor?.close() }
+                }
+                sendHostResult(serviceMessenger, result)
+            }
+        }.onFailure { throwable ->
+            call.attachments.forEach { attachment ->
+                runCatching { attachment.fileDescriptor?.close() }
+            }
+            sendHostResult(
+                serviceMessenger,
+                AgentHostResult(
+                    callId = call.callId,
+                    ok = false,
+                    payload = JSONObject().toString(),
+                    errorCode = "HOST_EXECUTOR_REJECTED",
+                    errorMessage = throwable.message ?: "宿主执行队列不可用",
+                ),
+            )
+        }
+    }
+
+    private fun sendHostEvent(serviceMessenger: Messenger, event: AgentHostEvent) {
+        runCatching {
+            val message = Message.obtain(null, AgentRuntimeWire.MSG_HOST_EVENT)
+            message.data = AgentRuntimeWire.hostEventToBundle(event)
+            serviceMessenger.send(message)
+        }.onFailure { throwable ->
+            logger.warn("Agent host event delivery failed: type=${throwable.safeLogType()}")
+        }
+    }
+
+    private fun sendHostResult(serviceMessenger: Messenger?, result: AgentHostResult) {
+        if (serviceMessenger == null) {
+            result.attachments.forEach { attachment -> runCatching { attachment.fileDescriptor?.close() } }
+            return
+        }
+        try {
+            val message = Message.obtain(null, AgentRuntimeWire.MSG_HOST_RESULT)
+            message.data = AgentRuntimeWire.hostResultToBundle(result)
+            serviceMessenger.send(message)
+        } catch (throwable: Throwable) {
+            logger.warn("Agent host result delivery failed: type=${throwable.safeLogType()}")
+        } finally {
+            result.attachments.forEach { attachment -> runCatching { attachment.fileDescriptor?.close() } }
         }
     }
 
@@ -392,7 +543,12 @@ internal class AgentRuntimeClient(private val context: Context, private val logg
     }
     private class ClientHandler(private val onEvent: (AgentEvent) -> Unit,
         private val onResult: (AgentRuntimeWire.RunResult) -> Unit,
-        private val onRequestIngested: () -> Unit) : Handler(Looper.getMainLooper()) {
+        private val onRequestIngested: () -> Unit,
+        private val entryToolExecutor: AgentModelClient.ToolExecutor?,
+        private val entryToolPool: ExecutorService?,
+        private val logger: AgentLogger,
+        private val xiaomiToolsBridgeEndpoint: XiaomiToolsBridgeEndpoint?,
+        private val onHostCall: (android.os.Bundle) -> Unit) : Handler(Looper.getMainLooper()) {
         var diagnosticRunId: String? = null
         override fun handleMessage(msg: Message) {
             when (msg.what) {
@@ -422,8 +578,131 @@ internal class AgentRuntimeClient(private val context: Context, private val logg
                     onResult(result)
                 }
                 AgentRuntimeWire.MSG_REQUEST_INGESTED -> onRequestIngested()
+                AgentRuntimeWire.MSG_ENTRY_TOOL_REQUEST -> executeEntryTool(msg)
+                AgentRuntimeWire.MSG_XIAOMI_TOOLS_BRIDGE_CALL -> handleXiaomiToolsBridgeCall(msg)
+                AgentRuntimeWire.MSG_HOST_CALL -> onHostCall(msg.data ?: return)
             }
         }
+
+        private fun executeEntryTool(message: Message) {
+            val replyTo = message.replyTo ?: return
+            val call = runCatching {
+                AgentRuntimeWire.entryToolCallFromBundle(message.data ?: error("缺少入口工具消息体"))
+            }.getOrElse { throwable ->
+                logger.warn("Entry tool request rejected: type=${throwable.safeLogType()}")
+                sendEntryToolResult(
+                    replyTo = replyTo,
+                    callId = "invalid",
+                    result = errorResult("INVALID_ENTRY_TOOL_REQUEST", "入口工具请求格式无效"),
+                )
+                return
+            }
+            val executor = entryToolExecutor
+            val pool = entryToolPool
+            if (executor == null || pool == null) {
+                sendEntryToolResult(
+                    replyTo,
+                    call.callId,
+                    errorResult("ENTRY_TOOL_NOT_AVAILABLE", "当前入口没有工具执行器"),
+                )
+                return
+            }
+            try {
+                pool.execute {
+                    val result = runCatching {
+                        executor.execute(
+                            AgentModelClient.ToolCall(
+                                id = call.callId,
+                                name = call.name,
+                                argumentsJson = call.argumentsJson,
+                            )
+                        )
+                    }.getOrElse { throwable ->
+                        logger.warn("Entry tool execution failed: type=${throwable.safeLogType()}")
+                        errorResult(
+                            "ENTRY_TOOL_EXECUTION_ERROR",
+                            "入口工具执行失败（${throwable.safeLogType()}）",
+                        )
+                    }
+                    sendEntryToolResult(replyTo, call.callId, result)
+                }
+            } catch (_: RejectedExecutionException) {
+                sendEntryToolResult(
+                    replyTo,
+                    call.callId,
+                    errorResult("ENTRY_TOOL_CANCELLED", "入口工具执行队列已关闭"),
+                )
+            }
+        }
+
+        private fun sendEntryToolResult(
+            replyTo: Messenger,
+            callId: String,
+            result: AgentModelClient.ToolResult,
+        ) {
+            runCatching {
+                val response = Message.obtain(null, AgentRuntimeWire.MSG_ENTRY_TOOL_RESULT)
+                response.data = AgentRuntimeWire.entryToolResultToBundle(callId, result)
+                replyTo.send(response)
+            }.onFailure { throwable ->
+                logger.warn("Entry tool result delivery failed: type=${throwable.safeLogType()}")
+            }
+        }
+
+        private fun handleXiaomiToolsBridgeCall(message: Message) {
+            val data = message.data ?: Bundle.EMPTY
+            val request = XiaomiToolsBridgeProtocol.callRequestFromBundle(data)
+            val resultTarget = message.replyTo
+            if (request == null) {
+                sendXiaomiToolsBridgeResult(
+                    resultTarget,
+                    XiaomiToolsBridgeProtocol.CallResult(
+                        callId = XiaomiToolsBridgeProtocol.callIdFromBundle(data),
+                        status = XiaomiToolsBridgeProtocol.Status.INVALID_REQUEST,
+                        error = "ToolsBridge 请求格式无效",
+                    ),
+                )
+                return
+            }
+            val endpoint = xiaomiToolsBridgeEndpoint
+            if (endpoint == null) {
+                sendXiaomiToolsBridgeResult(
+                    resultTarget,
+                    XiaomiToolsBridgeProtocol.CallResult(
+                        callId = request.callId,
+                        status = XiaomiToolsBridgeProtocol.Status.UNAVAILABLE,
+                        error = "当前入口没有超级小爱 ToolsBridge",
+                    ),
+                )
+                return
+            }
+            endpoint.execute(request) { result ->
+                sendXiaomiToolsBridgeResult(resultTarget, result)
+            }
+        }
+
+        private fun sendXiaomiToolsBridgeResult(
+            target: Messenger?,
+            result: XiaomiToolsBridgeProtocol.CallResult,
+        ) {
+            runCatching {
+                val response = Message.obtain(
+                    null,
+                    AgentRuntimeWire.MSG_XIAOMI_TOOLS_BRIDGE_RESULT,
+                )
+                response.data = XiaomiToolsBridgeProtocol.callResultBundle(result)
+                target?.send(response)
+            }
+        }
+
+        private fun errorResult(code: String, message: String): AgentModelClient.ToolResult =
+            AgentModelClient.ToolResult(
+                content = JSONObject()
+                    .put("ok", false)
+                    .put("code", code)
+                    .put("message", message)
+                    .toString(),
+            )
     }
     private class DrainHandler(private val onResults: (List<AgentRuntimeWire.CompletedRun>) -> Unit) : Handler(Looper.getMainLooper()) {
         override fun handleMessage(msg: Message) {

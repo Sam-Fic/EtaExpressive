@@ -9,13 +9,6 @@ import org.junit.Test
 
 class XiaoAiHookStateTest {
     @Test
-    fun versionGateOnlyAcceptsTheAnalyzedApk() {
-        assertTrue(XiaoAiTakeoverPolicy.isSupportedVersion(507013032L))
-        assertFalse(XiaoAiTakeoverPolicy.isSupportedVersion(507013031L))
-        assertFalse(XiaoAiTakeoverPolicy.isSupportedVersion(-1L))
-    }
-
-    @Test
     fun outboundMatchUsesTheEventTypeBecauseXiaoAiRegeneratesTheEventId() {
         assertTrue(XiaoAiTakeoverPolicy.matchesOutboundEvent("Nlp.Request"))
         assertFalse(XiaoAiTakeoverPolicy.matchesOutboundEvent("SpeechRecognizer.Recognize"))

@@ -13,9 +13,6 @@ internal object XiaoAiTakeoverPolicy {
         val prompt: String,
     )
 
-    fun isSupportedVersion(versionCode: Long): Boolean =
-        versionCode == XiaoAiHooks.SUPPORTED_VERSION_CODE
-
     fun matchesOutboundEvent(fullName: String): Boolean =
         fullName == "Nlp.Request"
 

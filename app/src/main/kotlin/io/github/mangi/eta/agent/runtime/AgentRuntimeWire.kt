@@ -111,6 +111,27 @@ internal object AgentRuntimeWire {
     /** Cancel every run whose UI handoff still belongs to one conversation. */
     const val MSG_CANCEL_CONVERSATION = 25
 
+    /** service -> client：请求入口进程代执行一个已声明的工具。 */
+    const val MSG_ENTRY_TOOL_REQUEST = 26
+
+    /** client -> 单次回调 Messenger：返回入口工具结果。 */
+    const val MSG_ENTRY_TOOL_RESULT = 27
+
+    /** service -> XiaoAi client：请求在超级小爱进程内执行一项白名单 ToolsBridge 工具。 */
+    const val MSG_XIAOMI_TOOLS_BRIDGE_CALL = 28
+
+    /** XiaoAi client -> service：返回一项 ToolsBridge 工具的终态结果。 */
+    const val MSG_XIAOMI_TOOLS_BRIDGE_RESULT = 29
+
+    /** service -> injected host：执行一个仅宿主 UID 可用的工具调用。 */
+    const val MSG_HOST_CALL = 30
+
+    /** injected host -> service：宿主工具的流式事件。 */
+    const val MSG_HOST_EVENT = 31
+
+    /** injected host -> service：宿主工具的唯一终态。 */
+    const val MSG_HOST_RESULT = 32
+
     data class QuestionAnswerSubmission(
         val conversationId: String,
         val runId: String,
@@ -253,12 +274,33 @@ internal object AgentRuntimeWire {
     private const val KEY_HANDOFF_PAYLOAD = "handoff_payload"
     private const val KEY_HANDOFF_DISMISS_ENTRY_SURFACE_ON_FOREGROUND_OPERATION =
         "handoff_dismiss_entry_surface_on_foreground_operation"
+    private const val KEY_XIAOMI_TOOLS_BRIDGE_CATALOG_JSON =
+        "xiaomi_tools_bridge_catalog_json"
     private const val LEGACY_BREENO_HANDOFF_SOURCE = "breeno"
     private const val KEY_HISTORY_ALREADY_COMPACTED = "history_already_compacted"
     private const val KEY_CALIBRATED_INPUT_TOKENS = "calibrated_input_tokens"
     private const val KEY_ALLOW_UNMEASURED_CONTEXT_SEND = "allow_unmeasured_context_send"
+    private const val KEY_ENTRY_TOOLS = "entry_tools"
     private const val KEY_CREATED_AT = "created_at"
     private const val KEY_RESULTS = "results"
+    private const val KEY_ENTRY_TOOL_CALL_ID = "entry_tool_call_id"
+    private const val KEY_ENTRY_TOOL_NAME = "entry_tool_name"
+    private const val KEY_ENTRY_TOOL_ARGUMENTS = "entry_tool_arguments"
+    private const val KEY_ENTRY_TOOL_RESULT = "entry_tool_result"
+    private const val KEY_ENTRY_TOOL_SENSITIVE = "entry_tool_sensitive"
+    private const val KEY_HOST_CAPABILITIES = "host_capabilities"
+    private const val KEY_CALL_ID = "call_id"
+    private const val KEY_TOOL_NAME = "tool_name"
+    private const val KEY_ARGUMENTS_JSON = "arguments_json"
+    private const val KEY_ATTACHMENTS = "attachments"
+    private const val KEY_NAME = "name"
+    private const val KEY_URI = "uri"
+    private const val KEY_FILE_DESCRIPTOR = "file_descriptor"
+    private const val KEY_SESSION_ID = "session_id"
+    private const val KEY_PAYLOAD = "payload"
+    private const val KEY_ERROR_CODE = "error_code"
+    private const val KEY_ERROR_MESSAGE = "error_message"
+    private const val KEY_RETRYABLE = "retryable"
     private const val KEY_VIRTUAL_DELIVERY_COMPLETED = "virtual_delivery_completed"
     private const val MAX_RESULT_CONTENT_CHARS = 64_000
     private const val MAX_RESULT_REASONING_CHARS = 32_000
@@ -266,6 +308,13 @@ internal object AgentRuntimeWire {
     private const val MAX_DRAIN_REASONING_CHARS = 4_000
     private const val TRUNCATED_SUFFIX = "\n\n[跨进程结果过长，已截断]"
     private const val MAX_START_REQUEST_PARCEL_BYTES = 768 * 1024
+    private const val MAX_ENTRY_TOOLS = 32
+    private const val MAX_ENTRY_TOOL_NAME_CHARS = 80
+    private const val MAX_ENTRY_TOOL_CALL_ID_CHARS = 128
+    private const val MAX_ENTRY_TOOL_ARGUMENT_BYTES = 64 * 1024
+    private const val MAX_ENTRY_TOOL_RESULT_BYTES = 128 * 1024
+    private const val MAX_XIAOMI_TOOLS_BRIDGE_CATALOG_CHARS = 256_000
+    private const val MAX_HOST_PAYLOAD_CHARS = 256_000
 
     data class RunRequest(
         val runId: String,
@@ -286,6 +335,15 @@ internal object AgentRuntimeWire {
         val calibratedInputTokens: Int? = null,
         /** Caller permission for an unknown context, not a trusted usage receipt or seed. */
         val allowUnmeasuredContextSend: Boolean = false,
+        /**
+         * 入口进程探测到的小米 UIAgent 工具名；只在带 replyTo 回信通道的 run 里生效，
+         * Runtime 侧据此决定是否把工具 schema 下发给模型。
+         */
+        val entryTools: List<String> = emptyList(),
+        /** 超级小爱 ToolsBridge 白名单能力目录（协议 v1 JSON）；空 = 该入口未提供。 */
+        val xiaomiToolsBridgeCatalogJson: String = "",
+        /** 注入宿主（小爱进程内桥）声明的能力集；空 = 无宿主能力。 */
+        val hostCapabilities: Set<String> = emptySet(),
     ) {
         val effectiveTurnId: String get() = turnId.ifBlank { runId }
         // 旧入口沿用会话 handoff；无持久会话的入口以首个 run 为会话起点。
@@ -296,6 +354,13 @@ internal object AgentRuntimeWire {
                     ?.takeIf { it.isNotBlank() } ?: runId
             }
     }
+
+    /** 一次入口工具回调的跨进程载荷。 */
+    data class EntryToolCall(
+        val callId: String,
+        val name: String,
+        val argumentsJson: String,
+    )
 
     /**
      * 单张图片在 IPC 层的表示。远程 URL 可直接放入 Bundle，本地或内联图片只传只读文件描述符。
@@ -440,6 +505,30 @@ internal object AgentRuntimeWire {
         putBoolean(KEY_HISTORY_ALREADY_COMPACTED, request.historyAlreadyCompacted)
         request.calibratedInputTokens?.takeIf { it > 0 }?.let { putInt(KEY_CALIBRATED_INPUT_TOKENS, it) }
         putBoolean(KEY_ALLOW_UNMEASURED_CONTEXT_SEND, request.allowUnmeasuredContextSend)
+        putStringArrayList(
+            KEY_ENTRY_TOOLS,
+            ArrayList(
+                request.entryTools
+                    .asSequence()
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .filter { it.length <= MAX_ENTRY_TOOL_NAME_CHARS }
+                    .distinct()
+                    .take(MAX_ENTRY_TOOLS)
+                    .toList()
+            ),
+        )
+        if (request.xiaomiToolsBridgeCatalogJson.isNotBlank()) {
+            require(
+                request.xiaomiToolsBridgeCatalogJson.length <=
+                    MAX_XIAOMI_TOOLS_BRIDGE_CATALOG_CHARS,
+            ) { "超级小爱 ToolsBridge 能力目录过大" }
+            putString(
+                KEY_XIAOMI_TOOLS_BRIDGE_CATALOG_JSON,
+                request.xiaomiToolsBridgeCatalogJson,
+            )
+        }
+        putStringArrayList(KEY_HOST_CAPABILITIES, ArrayList(request.hostCapabilities.sorted()))
         request.handoff?.let { putBundle(KEY_HANDOFF, toBundle(it)) }
         putParcelable(KEY_HISTORY_FD, historyDescriptor)
         putParcelableArrayList(
@@ -588,7 +677,94 @@ internal object AgentRuntimeWire {
             },
             calibratedInputTokens = bundle.optionalInt(KEY_CALIBRATED_INPUT_TOKENS)?.takeIf { it > 0 },
             allowUnmeasuredContextSend = bundle.getBoolean(KEY_ALLOW_UNMEASURED_CONTEXT_SEND, false),
+            entryTools = bundle.getStringArrayList(KEY_ENTRY_TOOLS)
+                .orEmpty()
+                .asSequence()
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .filter { it.length <= MAX_ENTRY_TOOL_NAME_CHARS }
+                .distinct()
+                .take(MAX_ENTRY_TOOLS)
+                .toList(),
+            xiaomiToolsBridgeCatalogJson = validatedXiaomiToolsBridgeCatalog(
+                bundle.getString(KEY_XIAOMI_TOOLS_BRIDGE_CATALOG_JSON),
+            ),
+            hostCapabilities = bundle.getStringArrayList(KEY_HOST_CAPABILITIES).orEmpty().toSet(),
         )
+
+    fun entryToolCallToBundle(call: EntryToolCall): Bundle {
+        require(call.callId.isNotBlank() && call.callId.length <= MAX_ENTRY_TOOL_CALL_ID_CHARS) {
+            "入口工具调用 ID 无效"
+        }
+        require(call.name.isNotBlank() && call.name.length <= MAX_ENTRY_TOOL_NAME_CHARS) {
+            "入口工具名称无效"
+        }
+        require(call.argumentsJson.toByteArray(Charsets.UTF_8).size <= MAX_ENTRY_TOOL_ARGUMENT_BYTES) {
+            "入口工具参数过大"
+        }
+        return Bundle().apply {
+            putString(KEY_ENTRY_TOOL_CALL_ID, call.callId)
+            putString(KEY_ENTRY_TOOL_NAME, call.name)
+            putString(KEY_ENTRY_TOOL_ARGUMENTS, call.argumentsJson)
+        }
+    }
+
+    fun entryToolCallFromBundle(bundle: Bundle): EntryToolCall {
+        val call = EntryToolCall(
+            callId = bundle.getString(KEY_ENTRY_TOOL_CALL_ID).orEmpty(),
+            name = bundle.getString(KEY_ENTRY_TOOL_NAME).orEmpty(),
+            argumentsJson = bundle.getString(KEY_ENTRY_TOOL_ARGUMENTS).orEmpty().ifBlank { "{}" },
+        )
+        require(call.callId.isNotBlank() && call.callId.length <= MAX_ENTRY_TOOL_CALL_ID_CHARS) {
+            "入口工具调用 ID 无效"
+        }
+        require(call.name.isNotBlank() && call.name.length <= MAX_ENTRY_TOOL_NAME_CHARS) {
+            "入口工具名称无效"
+        }
+        require(call.argumentsJson.toByteArray(Charsets.UTF_8).size <= MAX_ENTRY_TOOL_ARGUMENT_BYTES) {
+            "入口工具参数过大"
+        }
+        return call
+    }
+
+    fun entryToolResultToBundle(
+        callId: String,
+        result: AgentModelClient.ToolResult,
+    ): Bundle {
+        val bounded = if (
+            result.content.toByteArray(Charsets.UTF_8).size <= MAX_ENTRY_TOOL_RESULT_BYTES
+        ) {
+            result
+        } else {
+            AgentModelClient.ToolResult(
+                content = "{\"ok\":false,\"code\":\"ENTRY_TOOL_RESULT_TOO_LARGE\"," +
+                    "\"message\":\"入口工具结果超过 128 KiB，已拒绝跨进程传输\"}",
+                sensitive = result.sensitive,
+            )
+        }
+        return Bundle().apply {
+            putString(KEY_ENTRY_TOOL_CALL_ID, callId.take(MAX_ENTRY_TOOL_CALL_ID_CHARS))
+            putString(KEY_ENTRY_TOOL_RESULT, bounded.content)
+            putBoolean(KEY_ENTRY_TOOL_SENSITIVE, bounded.sensitive)
+        }
+    }
+
+    fun entryToolResultFromBundle(
+        bundle: Bundle,
+    ): Pair<String, AgentModelClient.ToolResult> {
+        val callId = bundle.getString(KEY_ENTRY_TOOL_CALL_ID).orEmpty()
+        require(callId.isNotBlank() && callId.length <= MAX_ENTRY_TOOL_CALL_ID_CHARS) {
+            "入口工具结果 ID 无效"
+        }
+        val content = bundle.getString(KEY_ENTRY_TOOL_RESULT).orEmpty()
+        require(content.toByteArray(Charsets.UTF_8).size <= MAX_ENTRY_TOOL_RESULT_BYTES) {
+            "入口工具结果过大"
+        }
+        return callId to AgentModelClient.ToolResult(
+            content = content,
+            sensitive = bundle.getBoolean(KEY_ENTRY_TOOL_SENSITIVE, false),
+        )
+    }
 
     fun toBundle(handoff: EntryHandoff): Bundle = Bundle().apply {
         putString(KEY_HANDOFF_ID, handoff.id)
@@ -754,6 +930,89 @@ internal object AgentRuntimeWire {
 
     fun runIdFromBundle(bundle: Bundle): String =
         bundle.getString(KEY_RUN_ID).orEmpty()
+
+    fun hostCallToBundle(call: AgentHostCall): Bundle = Bundle().apply {
+        putString(KEY_CALL_ID, call.callId)
+        putString(KEY_TOOL_NAME, call.toolName)
+        putString(KEY_ARGUMENTS_JSON, call.argumentsJson)
+        putParcelableArrayList(KEY_ATTACHMENTS, ArrayList(call.attachments.map(::hostAttachmentToBundle)))
+    }
+
+    fun hostCallFromBundle(bundle: Bundle): AgentHostCall = AgentHostCall(
+        callId = bundle.getString(KEY_CALL_ID).orEmpty(),
+        toolName = bundle.getString(KEY_TOOL_NAME).orEmpty(),
+        argumentsJson = bundle.getString(KEY_ARGUMENTS_JSON).orEmpty(),
+        attachments = hostAttachmentsFromBundle(bundle),
+    )
+
+    fun hostEventToBundle(event: AgentHostEvent): Bundle = Bundle().apply {
+        putString(KEY_CALL_ID, event.callId)
+        putString(KEY_TYPE, event.type)
+        putString(KEY_SESSION_ID, event.sessionId)
+        putString(KEY_PAYLOAD, event.payload.boundedText(MAX_HOST_PAYLOAD_CHARS))
+    }
+
+    fun hostEventFromBundle(bundle: Bundle): AgentHostEvent = AgentHostEvent(
+        callId = bundle.getString(KEY_CALL_ID).orEmpty(),
+        type = bundle.getString(KEY_TYPE).orEmpty(),
+        sessionId = bundle.getString(KEY_SESSION_ID).orEmpty(),
+        payload = bundle.getString(KEY_PAYLOAD).orEmpty(),
+    )
+
+    fun hostResultToBundle(result: AgentHostResult): Bundle = Bundle().apply {
+        putString(KEY_CALL_ID, result.callId)
+        putBoolean(KEY_OK, result.ok)
+        putString(KEY_PAYLOAD, result.payload.boundedText(MAX_HOST_PAYLOAD_CHARS))
+        putString(KEY_ERROR_CODE, result.errorCode)
+        putString(KEY_ERROR_MESSAGE, result.errorMessage?.boundedText(MAX_DRAIN_CONTENT_CHARS))
+        putBoolean(KEY_RETRYABLE, result.retryable)
+        putParcelableArrayList(
+            KEY_ATTACHMENTS,
+            ArrayList(result.attachments.map(::hostAttachmentToBundle)),
+        )
+    }
+
+    fun hostResultFromBundle(bundle: Bundle): AgentHostResult = AgentHostResult(
+        callId = bundle.getString(KEY_CALL_ID).orEmpty(),
+        ok = bundle.getBoolean(KEY_OK),
+        payload = bundle.getString(KEY_PAYLOAD).orEmpty(),
+        errorCode = bundle.getString(KEY_ERROR_CODE),
+        errorMessage = bundle.getString(KEY_ERROR_MESSAGE),
+        retryable = bundle.getBoolean(KEY_RETRYABLE),
+        attachments = hostAttachmentsFromBundle(bundle),
+    )
+
+    fun closeHostAttachments(bundle: Bundle?) {
+        runCatching {
+            bundle?.getParcelableArrayList(KEY_ATTACHMENTS, Bundle::class.java).orEmpty()
+                .forEach { attachment ->
+                    attachment.getParcelable(
+                        KEY_FILE_DESCRIPTOR,
+                        ParcelFileDescriptor::class.java,
+                    )?.close()
+                }
+        }
+    }
+
+    private fun hostAttachmentToBundle(attachment: AgentHostAttachment): Bundle = Bundle().apply {
+        putString(KEY_NAME, attachment.name)
+        putString(KEY_MIME_TYPE, attachment.mimeType)
+        putString(KEY_URI, attachment.uri)
+        attachment.fileDescriptor?.let { putParcelable(KEY_FILE_DESCRIPTOR, it) }
+    }
+
+    private fun hostAttachmentsFromBundle(bundle: Bundle): List<AgentHostAttachment> =
+        bundle.getParcelableArrayList(KEY_ATTACHMENTS, Bundle::class.java).orEmpty().map { item ->
+            AgentHostAttachment(
+                name = item.getString(KEY_NAME).orEmpty(),
+                mimeType = item.getString(KEY_MIME_TYPE).orEmpty(),
+                uri = item.getString(KEY_URI),
+                fileDescriptor = item.getParcelable(
+                    KEY_FILE_DESCRIPTOR,
+                    ParcelFileDescriptor::class.java,
+                ),
+            )
+        }
 
     private fun String.boundedText(maxChars: Int): String =
         if (length <= maxChars) this else take((maxChars - TRUNCATED_SUFFIX.length).coerceAtLeast(0)) + TRUNCATED_SUFFIX
@@ -1264,4 +1523,12 @@ internal object AgentRuntimeWire {
 
     private fun Bundle.optionalInt(key: String): Int? =
         if (containsKey(key)) getInt(key) else null
+
+    private fun validatedXiaomiToolsBridgeCatalog(raw: String?): String {
+        val value = raw.orEmpty()
+        require(value.length <= MAX_XIAOMI_TOOLS_BRIDGE_CATALOG_CHARS) {
+            "超级小爱 ToolsBridge 能力目录过大"
+        }
+        return value
+    }
 }

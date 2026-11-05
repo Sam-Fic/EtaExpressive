@@ -68,6 +68,7 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayVisibilityPolicy
 import io.github.mangi.eta.agent.overlay.CapsuleFlingPlan
 import io.github.mangi.eta.agent.overlay.applyControlledEvent
 import io.github.mangi.eta.agent.overlay.applyEvent
+import io.github.mangi.eta.agent.xiaomi.XiaomiToolsBridgeProtocol
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
@@ -107,6 +108,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceMessenger = Messenger(IncomingHandler())
+
+    /** 反向 Messenger 调用器：Runtime 进程把 ToolsBridge 工具调用送回入口进程。 */
+    private val xiaomiToolsBridgeRemoteCaller =
+        XiaomiToolsBridgeRemoteCaller(serviceMessenger)
+
+    /**
+     * 本地多 run 并发扩展：宿主代理按 runId 登记。fork 单槽在并发 run 下会互踩，
+     * 这里每个带宿主能力的 run 各持一份，事件按 callId 由持有者消费。
+     */
+    private val hostProxies = ConcurrentHashMap<String, AgentRuntimeHostProxy>()
 
     /** 外部入口连点时的请求解码池；过去每个 IPC 请求都直接建线程，线程数没有上限。 */
     private val requestExecutor = AgentRequestExecutor()
@@ -435,6 +446,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             }
         })
         failPendingStarts("Agent Runtime 服务已停止")
+        xiaomiToolsBridgeRemoteCaller.close()
+        hostProxies.values.forEach { proxy -> runCatching { proxy.close() } }
+        hostProxies.clear()
         overlaySession = null
         mainHandler.removeCallbacksAndMessages(null)
         AgentOverlayClearance.detach(clearanceHost)
@@ -469,6 +483,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             if (!isMessageSenderAllowed(msg)) {
                 if (msg.what == AgentRuntimeWire.MSG_START_RUN) {
                     AgentRuntimeWire.closeImageDescriptors(msg.data)
+                } else if (msg.what == AgentRuntimeWire.MSG_HOST_RESULT) {
+                    AgentRuntimeWire.closeHostAttachments(msg.data)
                 }
                 return
             }
@@ -568,6 +584,36 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
                 AgentRuntimeWire.MSG_DRAIN_RESULTS -> {
                     sendDrainedResults(msg.replyTo)
+                }
+
+                AgentRuntimeWire.MSG_XIAOMI_TOOLS_BRIDGE_RESULT -> {
+                    val result = msg.data?.let(XiaomiToolsBridgeProtocol::callResultFromBundle)
+                    if (result != null) xiaomiToolsBridgeRemoteCaller.accept(result)
+                }
+
+                AgentRuntimeWire.MSG_HOST_EVENT -> {
+                    val event = runCatching {
+                        AgentRuntimeWire.hostEventFromBundle(msg.data ?: return)
+                    }.getOrNull() ?: return
+                    hostProxies.values.forEach { proxy -> proxy.onEvent(event) }
+                }
+
+                AgentRuntimeWire.MSG_HOST_RESULT -> {
+                    val data = msg.data ?: return
+                    val result = runCatching {
+                        AgentRuntimeWire.hostResultFromBundle(data)
+                    }.getOrElse {
+                        AgentRuntimeWire.closeHostAttachments(data)
+                        return
+                    }
+                    val owner = hostProxies.values.firstOrNull { proxy -> proxy.isTracking(result.callId) }
+                    if (owner != null) {
+                        owner.onResult(result)
+                    } else {
+                        result.attachments.forEach { attachment ->
+                            runCatching { attachment.fileDescriptor?.close() }
+                        }
+                    }
                 }
 
                 AgentRuntimeWire.MSG_QUERY_ACTIVE_RUN -> {
@@ -911,6 +957,28 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             supplementsByRunId[request.runId] = extras
         }
 
+        // 无回信通道的调用方无法承接入口工具反向调用：剥掉 entryTools 声明。
+        val executableRequest = if (replyTo == null && request.entryTools.isNotEmpty()) {
+            request.copy(entryTools = emptyList())
+        } else {
+            request
+        }
+        // 宿主代理按 run 登记；同 runId 的替换请求先关旧代理，避免跨 run 泄漏。
+        hostProxies.remove(request.runId)?.close()
+        val hostProxy = if (replyTo != null && request.hostCapabilities.isNotEmpty()) {
+            AgentRuntimeHostProxy(
+                context = this,
+                hostMessenger = replyTo,
+                capabilities = request.hostCapabilities,
+                directTools = request.config.deviceTools,
+                sensitiveActionTools = request.config.deviceTools,
+                logger = AndroidAgentLogger,
+            )
+        } else {
+            null
+        }
+        hostProxy?.let { hostProxies[request.runId] = it }
+
         try {
             run.prepared(request)
             thread(name = "agent-runtime") {
@@ -926,7 +994,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     return@thread
                 }
                 try {
-                    executeRun(session, request)
+                    executeRun(session, executableRequest, replyTo, hostProxy)
                 } finally {
                     // run 结束即撤销状态栏胶囊，避免残留的状态投送。
                     AgentExecutionService.updateRunStatus(this@AgentRuntimeService, null)
@@ -955,9 +1023,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private fun executeRun(
         session: AgentRuntimeSession,
         request: AgentRuntimeWire.RunRequest,
+        entryMessenger: Messenger?,
+        hostProxy: AgentRuntimeHostProxy?,
     ) {
         val outcome = AgentRuntimeRunExecutor(
             context = this,
+            entryToolTarget = entryMessenger,
             currentPermissions = ::currentRuntimePermissions,
             snapshotRequest = { it.withActiveSupplements() },
             guiControl = guiControl,
@@ -965,7 +1036,13 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 handleAcceptedRunEvent(session, event, entrySurfaceGuard)
             },
             persistArtifacts = ::persistRunArtifacts,
+            xiaomiToolsBridgeInvoker = entryMessenger?.let { target ->
+                { call -> xiaomiToolsBridgeRemoteCaller.call(target, call) }
+            },
+            hostToolExecutor = hostProxy,
         ).execute(session, request)
+        if (hostProxy != null) hostProxies.remove(request.runId, hostProxy)
+        hostProxy?.close()
         if (!outcome.shouldUpdateHost) return
         postTerminalOverlay(
             session = session,

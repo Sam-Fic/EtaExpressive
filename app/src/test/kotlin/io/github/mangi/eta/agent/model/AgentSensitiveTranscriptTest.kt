@@ -18,6 +18,9 @@ class AgentSensitiveTranscriptTest {
         assertTrue(AgentSensitiveToolPolicy.isSensitive("get_health_summary"))
         assertTrue(AgentSensitiveToolPolicy.isSensitive("search_personal_orders"))
         assertTrue(AgentSensitiveToolPolicy.isSensitive("mcp_server_search_deadbeef"))
+        assertTrue(AgentSensitiveToolPolicy.isSensitive("xiaomi_external_agent"))
+        assertTrue(AgentSensitiveToolPolicy.isSensitive("controlApp"))
+        assertTrue(AgentSensitiveToolPolicy.isSensitive("read_memory"))
     }
 
     @Test

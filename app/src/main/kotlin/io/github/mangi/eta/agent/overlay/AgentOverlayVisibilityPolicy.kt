@@ -118,6 +118,16 @@ internal object AgentOverlayVisibilityPolicy {
         "set_device_state",
         "manage_app",
         "screen_action",
+        // 小米 UIAgent/宿主：拉起 App、相机、媒体播放、屏幕上下文或系统翻译浮窗。
+        "controlapp",
+        "favorite",
+        "take_photo_recognize",
+        "play_media_tool",
+        "get_screen_context",
+        "xiaomi_open_ai_subtitles",
+        "xiaomi_open_conversation_translation",
+        "xiaomi_open_simultaneous_interpretation",
+        "xiaomi_open_text_translation",
     )
 
     private val foregroundOperationTools = setOf(
@@ -142,5 +152,8 @@ internal object AgentOverlayVisibilityPolicy {
             "connect_wifi",
             "ime_control",
             "set_timezone",
+            // 小米：预填拨号盘与 External Agent 会话都要先收起入口浮层。
+            "xiaomi_dial_phone",
+            "xiaomi_external_agent",
         )
 }

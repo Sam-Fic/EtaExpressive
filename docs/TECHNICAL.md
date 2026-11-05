@@ -43,7 +43,8 @@ Manifest 注册 `VoiceInteractionService`、独立进程的 `VoiceInteractionSes
 
 ## system_server
 
-- **电源键接管**：Hook `PhoneWindowManagerExtImpl$OplusSpeechHandler.handleMessage()` 处理系统分发给小布的唤醒消息（`what == 0x3F3`）。目标为小布时直接执行原方法；目标为 Gemini 或 Eta 时才拦截并分发到对应入口。
+- **ColorOS 电源键接管**：Hook `PhoneWindowManagerExtImpl$OplusSpeechHandler.handleMessage()` 处理系统分发给小布的唤醒消息（`what == 0x3F3`）。目标为小布时直接执行原方法；目标为 Gemini 或 Eta 时才拦截并分发到对应入口。
+- **HyperOS 电源键接管**：Hook `com.miui.server.input.util.ShortCutActionsUtils.triggerFunction`（4/5 参双签名）匹配 `launch_voice_assistant` 与电源键来源，并 Hook 最终写死小爱的 `launchVoiceAssistant(String,Bundle)` 出口，覆盖 ROM 的直接或优化调用路径。选择 Eta/Gemini 后优先显示活动的标准数字助理会话，再走目标包 `ACTION_ASSIST` Activity 兜底；两条路径都失败时返回未触发，不回退超级小爱。1 秒去重窗口防双路径重复触发，接管成功后补发原生震感。
 - **兼容配置**：三态目标写入字符串键；键不存在或值非法时读取旧 `POWER_KEY_TAKEOVER` 布尔协议，`true` 继续表示 Gemini，`false` 表示小布。新安装默认保持小布，旧用户不会因新增 Eta 被改写目标。
 - **数字助理配置修复**：独立自动设置开关开启后，开机、解锁、切用户及启动失败恢复时，通过 `AssistantManager` 异步校正当前 Gemini/Eta 目标的 `android.app.role.ASSISTANT` 与 secure settings。小布模式和开关关闭时不写系统配置；校验缓存及异步回调同时核对用户与目标，旧目标任务不会继续覆盖新选择。
 - **唤起逻辑优化**：Gemini 恢复原有 `VoiceInteractionManagerService`、`ACTION_ASSIST`、`ACTION_VOICE_COMMAND` 顺序；Eta 优先使用活动 `voiceinteraction` 会话，再在已经配置为默认助理时尝试同包 `ACTION_ASSIST` 桥。所有路径失败后立即执行小布原逻辑，不阻塞系统回调。
@@ -89,7 +90,7 @@ ColorOS 系统记忆存在 `com.oplus.aimemory` 的 `ai_memory` 数据库中。E
 
 ## 超级小爱
 
-超级小爱入口当前锁定包名 `com.miui.voiceassist`、版本 `7.13.32.0016`（versionCode `507013032`），并且只在主进程与 `:core` 进程保留模块生命周期。版本不匹配或无法读取版本时不安装业务 Hook。
+超级小爱入口锁定包名 `com.miui.voiceassist`，只在主进程与 `:core` 进程保留模块生命周期。对话接管链（`z10.a`/`y00.r0`/`kh0.s0` 等混淆目标）按 7.13.32 签名静态分析编写，在小爱 8.x 上这些 hook 会因类缺失逐个降级为原生；随入口附带的三条系统桥（UIAgent、ToolsBridge、宿主桥）全部自带能力探测，探测失败只收敛各自工具集，不影响宿主应用。
 
 适配器在 `OperationManager.setQueryInfo(String, String, JSONObject)` 原方法执行前暂存对话 ID、查询文本和可选的 `extra_image_file_id`，同时从 `z10.a.processed(Instruction)` 记录终态 `SpeechRecognizer.RecognizeResult`。`y00.r0.C0(Event): boolean` 收到 `Nlp.Request` 时，小爱已经通过 `APIUtils.buildEvent` 生成了新的 Event ID，因此适配器按查询文本关联输入上下文，不能要求它与 `setQueryInfo` 的对话 ID 相等。只有配置、前缀、图片引用和后台队列全部通过检查后才认领请求并返回发送成功；否则只调用一次原方法，让超级小爱继续原生处理。
 
@@ -99,7 +100,17 @@ ColorOS 系统记忆存在 `com.oplus.aimemory` 的 `ai_memory` 数据库中。E
 
 结果使用超级小爱的 `FlowTemplateToastCard` 在主线程流式更新，完成后通过其原生 TTS 入口朗读。卡片、取消、结果恢复和 Runtime handoff 都绑定已认领的对话 ID 与独立的 `xiaoai` source；不会全局屏蔽小爱的卡片、RN 数据或 TTS，也不共享小布适配器的状态。
 
-该版本已通过小米真机验证。系统或 App 大版本更新后，仍需重新确认目标签名与完整链路。
+该对话链已通过小米真机验证。系统或 App 大版本更新后，仍需重新确认目标签名与完整链路。
+
+## 超级小爱系统桥（小爱 8.x / HyperOS 4）
+
+随入口进程附带三条只读探测、自降级的系统能力桥，参考 NatumRagnag/Eta 的实现移植：
+
+- **UIAgent 工具桥**：绑定 `UIAgentServiceForOSBot`（action `com.aios.osbot.action.APP_TOOL_PROVIDER`，权限 `BIND_APP_TOOL`），AIDL 裸 Parcel 传输 JSON-RPC `tools/call`。能力探测读取目标 APK 的 `app_tools.json` 并按服务类名+白名单过滤；15 个 provider 工具中 14 个暴露给模型，按敏感读/敏感操作分级授权，参数上限 64 KiB。工具调用经 Runtime 反向 Messenger（`MSG_ENTRY_TOOL_REQUEST/RESULT`）回入口进程执行，单次超时 6 分钟。
+- **内部 ToolsBridge**：在小爱进程内反射其 `ToolRegistry`（候选类含 8.0.17.3013 的 `jp0.f`），把 19 个内置工具类白名单映射为 `xiaomi_*` 模型工具；拨号别名只预填 `ACTION_DIAL` 不外呼。协议 v1（目录 ≤24 项/256 KiB，调用 32 KiB，结果 64 KiB），Runtime 侧敏感操作同参数指纹去重，禁止模型自动重试重复发短信等动作。
+- **宿主桥**：经 Android 15+ 平台 AppFunction 框架调用 `com.xiaomi.aiasst.vision` 的翻译四件套（AI 字幕/对话翻译/同传/文本翻译悬浮窗）；`IExternalAgentService`（`com.aios.osbot.action.EXTERNAL_AGENT`）提供 probe/open_session/submit/close_session 完整会话接口，附件经只读 FD 跨进程（单个 10 MiB、合计 64 MiB），事件流经 `MSG_HOST_EVENT` 缓冲回流（≤512 条/256 KiB）。
+
+三条桥的能力探测都只作用于自身工具集：服务或类不存在时目录为空，模型看不到对应工具，宿主应用零感知。
 
 ## Google App
 

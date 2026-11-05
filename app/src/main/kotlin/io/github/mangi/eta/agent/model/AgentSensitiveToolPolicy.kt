@@ -125,5 +125,17 @@ internal object AgentSensitiveToolPolicy {
         // 自进化：模型自己写的配方及其执行结果，可能包含系统状态与用户数据。
         "eta_author_tool",
         "eta_list_recipes",
+        // 小米 UIAgent：个人记忆、图片与屏幕上下文属个人数据；其余按敏感调用标记。
+        "controlApp",
+        "favorite",
+        "write_memory",
+        "read_memory",
+        "image_to_text",
+        "trans_text",
+        "take_photo_recognize",
+        "trans_image",
+        "get_screen_context",
+        // 超级小爱 External Agent 完整会话可驱动敏感系统能力。
+        "xiaomi_external_agent",
     )
 }
