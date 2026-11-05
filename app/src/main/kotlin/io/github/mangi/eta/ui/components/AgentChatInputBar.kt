@@ -157,7 +157,9 @@ import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
+import io.github.mangi.eta.ui.adaptive.EtaStatus
 import io.github.mangi.eta.ui.adaptive.EtaType
+import io.github.mangi.eta.ui.adaptive.foregroundColor
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
@@ -454,7 +456,7 @@ internal fun AgentChatInputBar(
             M3Text(
                 text = stringResource(R.string.context_window_send_blocked),
                 style = etaTextStyle(EtaType.Secondary),
-                color = StatusError,
+                color = EtaStatus.Failed.foregroundColor(),
                 modifier = Modifier.padding(start = 8.dp, bottom = 8.dp),
             )
         }
@@ -1346,7 +1348,7 @@ internal fun VoiceModeStatusPanel(
                 },
                 contentDescription = null,
                 modifier = Modifier.size(EtaDimens.DenseIconSize),
-                tint = if (state.error == null) MaterialTheme.colorScheme.primary else StatusError,
+                tint = if (state.error == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             )
             M3Text(
                 text = phase,

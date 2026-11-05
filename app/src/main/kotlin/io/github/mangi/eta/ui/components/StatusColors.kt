@@ -1,63 +1,30 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
+import io.github.mangi.eta.ui.adaptive.EtaStatus
+import io.github.mangi.eta.ui.adaptive.foregroundColor
 import io.github.mangi.eta.ui.model.PermissionStatusUi
 import io.github.mangi.eta.ui.model.RunStatusUi
 
 /**
- * 语义状态色。
+ * 业务状态模型（[RunStatusUi] / [PermissionStatusUi]）到 L1 状态令牌与文案的映射。
  *
- * 全部取官方 `colorScheme` 角色（M3 没有 success/warning 专用角色：
- * 成功＝`primary`、进行中＝`primary`、注意＝`tertiary`、失败＝`error`、空闲＝`onSurfaceVariant`），
- * 不再写死色值。
+ * 颜色一律经 [EtaStatus.foregroundColor] 取得——Success 是固定的绿色成功令牌而非
+ * 动态 primary（动态色会随壁纸漂移，承担不了「成功/在线」语义，见 EtaStatus KDoc），
+ * Warning → `tertiary`。本文件不再自持任何 状态→角色 映射；唯一出处是
+ * ui/adaptive/EtaStatus.kt，改语义去那里。
  */
 @Composable
-private fun statusSuccessColor(): Color = MaterialTheme.colorScheme.primary
+fun RunStatusUi.color() = toEtaStatus().foregroundColor()
 
-@Composable
-private fun statusWarningColor(): Color = MaterialTheme.colorScheme.tertiary
-
-@Composable
-private fun statusErrorColor(): Color = MaterialTheme.colorScheme.error
-
-@Composable
-private fun statusRunningColor(): Color = MaterialTheme.colorScheme.primary
-
-@Composable
-private fun statusIdleColor(): Color = MaterialTheme.colorScheme.onSurfaceVariant
-
-/** 成功态前景色（官方 primary）。 */
-internal val StatusSuccess: Color
-    @Composable get() = statusSuccessColor()
-
-/** 注意态前景色（官方 tertiary）。 */
-internal val StatusWarning: Color
-    @Composable get() = statusWarningColor()
-
-/** 失败态前景色（官方 error）。 */
-internal val StatusError: Color
-    @Composable get() = statusErrorColor()
-
-/** 进行中前景色（官方 primary）。 */
-internal val StatusRunning: Color
-    @Composable get() = statusRunningColor()
-
-/** 空闲态前景色（官方 onSurfaceVariant）。 */
-internal val StatusIdle: Color
-    @Composable get() = statusIdleColor()
-
-// ── RunStatusUi 映射 ──────────────────────────────────────────────────
-
-@Composable
-fun RunStatusUi.color(): Color = when (this) {
-    RunStatusUi.Running -> statusRunningColor()
-    RunStatusUi.Success -> statusSuccessColor()
-    RunStatusUi.Failed -> statusErrorColor()
-    RunStatusUi.Cancelled -> statusIdleColor()
+/** 业务运行状态 → L1 语义档位。 */
+fun RunStatusUi.toEtaStatus(): EtaStatus = when (this) {
+    RunStatusUi.Running -> EtaStatus.Running
+    RunStatusUi.Success -> EtaStatus.Success
+    RunStatusUi.Failed -> EtaStatus.Failed
+    RunStatusUi.Cancelled -> EtaStatus.Unknown
 }
 
 @Composable
@@ -68,14 +35,15 @@ fun RunStatusUi.label(): String = stringResource(when (this) {
     RunStatusUi.Cancelled -> R.string.status_cancelled
 })
 
-// ── PermissionStatusUi 映射 ───────────────────────────────────────────
-
 @Composable
-fun PermissionStatusUi.color(): Color = when (this) {
-    PermissionStatusUi.Available -> statusSuccessColor()
-    PermissionStatusUi.Warning -> statusWarningColor()
-    PermissionStatusUi.Missing -> statusErrorColor()
-    PermissionStatusUi.Disabled -> statusIdleColor()
+fun PermissionStatusUi.color() = toEtaStatus().foregroundColor()
+
+/** 业务权限状态 → L1 语义档位。 */
+fun PermissionStatusUi.toEtaStatus(): EtaStatus = when (this) {
+    PermissionStatusUi.Available -> EtaStatus.Success
+    PermissionStatusUi.Warning -> EtaStatus.Warning
+    PermissionStatusUi.Missing -> EtaStatus.Failed
+    PermissionStatusUi.Disabled -> EtaStatus.Unknown
 }
 
 @Composable

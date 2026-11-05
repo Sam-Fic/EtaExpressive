@@ -2644,6 +2644,7 @@
   <string name="appst_subagent_config_unrestored">Conversation config not restored yet</string>
   <string name="appst_subagent_config_read_failed">Failed to read or save the conversation config; your original config was kept. Retry in Sub-agent settings</string>
   <string name="appst_subagent_retry_restore">Retry restoring the original draft config in Sub-agent settings first</string>
+  <string name="appst_archive_resume_busy">Stop the current generation before restoring the archive</string>
   <string name="appst_compact_subtask_ended">The sub-task already ended, so the compaction request was closed out; its result is kept. The main agent will not be restarted or compacted</string>
   <string name="appst_model_unavailable_send">The model bound to this conversation is not ready or no longer available. Choose a model before sending</string>
   <string name="appst_memory_read_failed">Failed to read memory</string>

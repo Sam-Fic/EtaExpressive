@@ -41,9 +41,9 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
+import io.github.mangi.eta.ui.adaptive.EtaStatus
+import io.github.mangi.eta.ui.adaptive.foregroundColor
 import io.github.mangi.eta.ui.components.EtaTextButton
-import io.github.mangi.eta.ui.components.StatusError
-import io.github.mangi.eta.ui.components.StatusSuccess
 
 @Composable
 internal fun WebToolsSettingsScreen(onBack: () -> Unit) {
@@ -178,7 +178,7 @@ internal fun WebToolsSettingsScreen(onBack: () -> Unit) {
                     Text(
                         text = message,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (store.messageIsError) StatusError else StatusSuccess,
+                        color = (if (store.messageIsError) EtaStatus.Failed else EtaStatus.Success).foregroundColor(),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )

@@ -2283,6 +2283,7 @@
   <string name="appst_subagent_config_unrestored">会话配置尚未恢复</string>
   <string name="appst_subagent_config_read_failed">会话配置保存或读取失败；原配置已保留，请在子代理设置中重试</string>
   <string name="appst_subagent_retry_restore">请先在子代理设置中重试恢复原草稿配置</string>
+  <string name="appst_archive_resume_busy">请先停止当前生成再恢复归档</string>
   <string name="appst_compact_subtask_ended">子任务已结束，压缩请求已收束；结果保留，不会重启任务或压缩主代理</string>
   <string name="appst_model_unavailable_send">会话绑定的模型尚未就绪或已不可用，请明确选择模型后再发送</string>
   <string name="appst_memory_read_failed">读取记忆失败</string>

@@ -11,13 +11,15 @@ import androidx.compose.ui.graphics.luminance
  * Material 3 Expressive 的 colorScheme 没有 success / running 语义角色，各处自行
  * `when` 映射就会漂移（ChatMessageItem 的工具状态、AgentStatusCard 的运行状态本已
  * 各写一套）。到官方角色的映射规则只此一处：Running → `primary`，Success → 固定的
- * 绿色成功令牌（见 [etaConnectedColor]），Failed → `error`，Unknown → `onSurfaceVariant`。
+ * 绿色成功令牌（见 [etaConnectedColor]），Warning → `tertiary`，Failed → `error`，
+ * Unknown → `onSurfaceVariant`。
  *
  * 强调度的降档（alpha）属于排版选择，不属于语义，留给调用方自行处理。
  */
 enum class EtaStatus {
     Running,
     Success,
+    Warning,
     Failed,
     Unknown,
 }
@@ -43,6 +45,7 @@ fun etaConnectedColor(): Color {
 fun EtaStatus.foregroundColor(): Color = when (this) {
     EtaStatus.Running -> MaterialTheme.colorScheme.primary
     EtaStatus.Success -> etaConnectedColor()
+    EtaStatus.Warning -> MaterialTheme.colorScheme.tertiary
     EtaStatus.Failed -> MaterialTheme.colorScheme.error
     EtaStatus.Unknown -> MaterialTheme.colorScheme.onSurfaceVariant
 }

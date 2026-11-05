@@ -724,7 +724,7 @@ internal class AgentAppState(
                 }
                 ?: return@launch
             if (console.isStreaming || console.activeRunId != null) {
-                Toast.makeText(appContext, "请先停止当前生成再恢复归档", Toast.LENGTH_SHORT).show()
+                Toast.makeText(appContext, appContext.getString(R.string.appst_archive_resume_busy), Toast.LENGTH_SHORT).show()
                 return@launch
             }
             val seqTag = snapshotSeq.toString()

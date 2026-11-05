@@ -18,7 +18,7 @@
 
 - 组件层一律引用官方 `MaterialTheme.colorScheme` 角色（`ui/adaptive` 的 `etaPrimary()` / `etaOnSurfaceVariant()` 等）。
 - 颜色字面量只允许出现在「颜色的定义处」：主题工厂强调色种子（`EtaColorSchemeFactory`）、外观设置色板（`AppearanceSettingsScreen`）、移植主题（`agent/browser/ported/ui/theme`）、浮窗固定色（`AgentOverlayContent`）、Markdown 默认样式、GPT 速度档色板。清单由架构测试 R1 钉死。
-- M3E 没有 success 语义角色：状态 → 角色的映射只此一处（`EtaStatus.foregroundColor()`）：Running/Success → `primary`，Failed → `error`，Unknown → `onSurfaceVariant`。强调度的降档（alpha）不属于语义，留给调用方。
+- M3E 没有 success 语义角色：状态 → 角色的映射只此一处（`EtaStatus.foregroundColor()`）：Running → `primary`，Success → 固定绿色成功令牌（`etaConnectedColor()`，动态 primary 会随壁纸漂移、承担不了成功语义），Warning → `tertiary`，Failed → `error`，Unknown → `onSurfaceVariant`。`RunStatusUi`/`PermissionStatusUi` 的 `color()`（StatusColors.kt）是业务模型到这套令牌的薄映射，不再自持颜色。强调度的降档（alpha）不属于语义，留给调用方。
 
 ## Loading 选型表
 
@@ -54,6 +54,10 @@
 5. **R5 Tooltip 单源**：`TooltipBox` / `PlainTooltip` / `RichTooltip` / `rememberTooltipState` 只能在 `ui/adaptive/EtaTooltips.kt` 调用；业务页面用 `EtaTooltip` / `EtaTooltipIconButton`，规则见 [accessibility-tooltips.md](accessibility-tooltips.md)。
 
 白名单 = 存量债务钉死：把文件加进白名单需要 review，逐个迁移后删行。
+
+## 组件取证
+
+L0「官方组件与令牌」的执法前提是**取证**：组件家族、形状、尺寸、间距、API 签名与参数默认值一律以官方证据（sources jar 的令牌与内置组合槽、AAR javap）为准，不从记忆或猜测定；**何时必须取证、三层取证顺序、结论元数据要求、反面清单与已核证速查**见 [m3-component-verification.md](m3-component-verification.md)，结论写进调用处 KDoc。
 
 ## 后续方向
 
