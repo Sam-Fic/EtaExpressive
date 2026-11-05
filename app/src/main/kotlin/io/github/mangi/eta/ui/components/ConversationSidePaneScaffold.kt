@@ -1430,12 +1430,13 @@ private fun Material3ConversationRow(
                     modifier = Modifier.fillMaxWidth(),
                     leadingContent = if (conversation.isDispatchConsole) {
                         // 调度台是系统级条目：行首用专属图标区分，不靠标题匹配。
-                        // 常驻在主色下，与派生会话的 AccountTree 标记同一尺寸与配色档位。
+                        // 颜色跟随行内容色（LocalContentColor）：未选中为常规内容色，选中行
+                        // 背景是 tertiaryContainer，图标自动取 onTertiaryContainer，不再出现
+                        // primary 画在容器色上的角色错配（浅色/深色/纯黑下都保持可读）。
                         ({
                             Icon(
                                 imageVector = Icons.Rounded.Hub,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp),
                             )
                         })
@@ -1444,7 +1445,6 @@ private fun Material3ConversationRow(
                         Icon(
                             imageVector = Icons.Rounded.AccountTree,
                             contentDescription = stringResource(R.string.conversation_dispatch_managed),
-                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp),
                         )
                     }) else null,
