@@ -9,7 +9,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
@@ -37,7 +36,9 @@ import io.github.mangi.eta.agent.tool.ToolRecipePaths
 import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -52,9 +53,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 
@@ -541,10 +540,8 @@ private fun BackupNoticeRow(
 /**
  * 备份/导入入口行。
  *
- * 走官方分段行 [EtaSegmentedRow]（自带涟漪与语义），加载态用官方 M3E
- * [LoadingIndicator]（morph 变形，尺寸收敛进图标槽）。
+ * 走官方分段行 [EtaSegmentedRow]（自带涟漪与语义），加载态经 [EtaLoadingSlot] 统一封装。
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun BackupActionRow(
     title: String,
@@ -560,9 +557,9 @@ private fun BackupActionRow(
         enabled = enabled,
         leadingContent = {
             if (loading) {
-                LoadingIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = MaterialTheme.colorScheme.primary,
+                EtaLoadingSlot(
+                    progress = null,
+                    size = EtaDimens.RowLeadingLoadingSize,
                 )
             } else {
                 Icon(

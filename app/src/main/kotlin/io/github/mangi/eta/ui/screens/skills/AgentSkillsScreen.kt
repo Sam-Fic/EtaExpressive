@@ -4,7 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -20,8 +19,11 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
+import io.github.mangi.eta.ui.adaptive.rememberEtaLoadingShown
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -36,7 +38,6 @@ import androidx.compose.material3.Button as M3Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 
@@ -236,6 +237,7 @@ fun AgentSkillsScreen(
  *
  * 走官方分段行 [EtaSegmentedRow]（自带涟漪与语义），加载态用官方 M3E
  * [LoadingIndicator]（morph 变形，尺寸收敛进图标槽）。
+ * 加载态经 [EtaLoadingSlot] 统一封装。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -252,10 +254,11 @@ private fun SkillActionRow(
         modifier = Modifier.fillMaxWidth(),
         enabled = enabled,
         leadingContent = {
-            if (iconLoading) {
-                LoadingIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = MaterialTheme.colorScheme.primary,
+            // 技能行的加载态常一闪而过：门控 120ms 后再显示，显示后至少保留 400ms。
+            if (rememberEtaLoadingShown(iconLoading)) {
+                EtaLoadingSlot(
+                    progress = null,
+                    size = EtaDimens.RowLeadingLoadingSize,
                 )
             } else {
                 Icon(imageVector = icon, contentDescription = null)

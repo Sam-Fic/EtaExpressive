@@ -55,7 +55,10 @@ import io.github.mangi.eta.data.repository.formatTokenCount
 import io.github.mangi.eta.data.repository.heatmapAlpha
 import io.github.mangi.eta.data.repository.heatmapQuartiles
 import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingGate
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -75,7 +78,6 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -117,14 +119,20 @@ internal fun UsageStatsScreen(onBack: () -> Unit) {
         }
         if (stats.isLoading) {
             item(key = "loading") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 48.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // C 类块级加载：M3E morph 动画，与文件/工作区页空态一致。
-                    ContainedMorphLoadingIndicator()
+                // 统计首载通常几十毫秒：门控 120ms 后再显示，避免整页闪一下。
+                EtaLoadingGate(visible = true) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        EtaLoadingSlot(
+                            progress = null,
+                            contained = true,
+                            size = EtaDimens.BlockLoadingSize,
+                        )
+                    }
                 }
             }
         } else if (selectedTab == UsageStatsTab.Models) {

@@ -54,6 +54,8 @@ import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -380,6 +382,12 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                         item {
                                             EtaClickableRow(title = if (busy) stringResource(R.string.dv_querying) else stringResource(R.string.dv_mode_import),
                                                 showChevron = false, enabled = !busy && !importBusy && slotId.matches(Regex("S_[A-Za-z0-9_-]+")),
+                                                // 导入既有音色是网络往返：无分母走不定型；不可中断，故不给取消。
+                                                leading = if (busy) {
+                                                    { EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize) }
+                                                } else {
+                                                    null
+                                                },
                                                 onClick = {
                                                     busy = true
                                                     scope.launch {
@@ -432,6 +440,12 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                     item {
                                         EtaClickableRow(title = if (busy) stringResource(R.string.dv_submitting) else stringResource(R.string.dv_upload_create),
                                             showChevron = false, enabled = consent && !busy,
+                                            // 上传音频并提交训练：无分母走不定型；不可中断，故不给取消。
+                                            leading = if (busy) {
+                                                { EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize) }
+                                            } else {
+                                                null
+                                            },
                                             onClick = {
                                                 busy = true
                                                 val trainingKey = config.cloneKey
@@ -647,6 +661,12 @@ private fun VoiceSlotSync(apiKey: String, onBusy: (Boolean) -> Unit, onResult: (
         item {
             EtaClickableRow(title = if (projectLoading) stringResource(R.string.dv_loading_projects) else if (projectsLoaded) stringResource(R.string.dv_refresh_projects) else stringResource(R.string.dv_load_projects),
                 showChevron = false, enabled = !working && ak.isNotBlank() && sk.isNotBlank(),
+                // 拉取项目列表是网络往返：无分母走不定型；不可中断，故不给取消。
+                leading = if (projectLoading) {
+                    { EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize) }
+                } else {
+                    null
+                },
                 onClick = {
                     projectLoading = true; onBusy(true); projectError = ""
                     val accessKey = ak.trim(); val secretKey = sk.trim()

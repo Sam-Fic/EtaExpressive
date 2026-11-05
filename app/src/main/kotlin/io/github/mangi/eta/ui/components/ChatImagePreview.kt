@@ -83,7 +83,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -92,6 +91,8 @@ import io.github.mangi.eta.agent.terminal.LinuxGuestPathResolver
 import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaLoadingGate
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -114,7 +115,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -130,21 +130,6 @@ private fun previewMediaShape(): Shape = MaterialTheme.shapes.medium
 /** 失败提示文字：走主页统一字阶的 Secondary 档。 */
 @Composable
 private fun previewBodyStyle(): TextStyle = etaTextStyle(EtaType.Secondary)
-
-/**
- * 图片加载指示：官方 M3E `LoadingIndicator`（morph 变形），尺寸收敛进传入槽位。
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun PreviewProgressIndicator(
-    size: Dp,
-    modifier: Modifier = Modifier,
-) {
-    LoadingIndicator(
-        modifier = modifier.size(size),
-        color = MaterialTheme.colorScheme.primary,
-    )
-}
 
 private const val MIN_ZOOM = 1f
 private const val MAX_ZOOM = 5f
@@ -415,7 +400,13 @@ private fun ChatRemoteClickableImage(
             },
             contentAlignment = Alignment.Center,
         ) {
-            PreviewProgressIndicator(size = 18.dp)
+            // 预览解码常 50ms 内完成：门控后再显示，避免占位闪动。
+            EtaLoadingGate(visible = true) {
+                EtaLoadingSlot(
+                    progress = null,
+                    size = EtaDimens.InlineLoadingSize,
+                )
+            }
         }
     }
 }

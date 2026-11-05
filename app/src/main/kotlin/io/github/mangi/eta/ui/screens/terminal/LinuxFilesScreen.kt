@@ -47,7 +47,10 @@ import io.github.mangi.eta.agent.terminal.ShellProcessSupervisor
 import io.github.mangi.eta.agent.terminal.terminalEnvironment
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingGate
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -55,7 +58,6 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
-import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import java.io.File
@@ -423,7 +425,14 @@ private fun LazyListScope.materialLinuxFileItems(
                                         .padding(vertical = 16.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    ContainedMorphLoadingIndicator()
+                                    // 文件读取通常几十毫秒：门控 120ms 后再显示，避免闪一下。
+                                    EtaLoadingGate(visible = true) {
+                                        EtaLoadingSlot(
+                                            progress = null,
+                                            contained = true,
+                                            size = EtaDimens.BlockLoadingSize,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -496,13 +505,20 @@ private fun LazyListScope.materialLinuxFileItems(
                 }
                 currentEntries == null -> item(key = "m3-list-loading") {
                     EtaSegmentedItemContainer {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 32.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            ContainedMorphLoadingIndicator()
+                        // 目录首载通常几十毫秒：门控 120ms 后再显示。
+                        EtaLoadingGate(visible = true) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                EtaLoadingSlot(
+                                    progress = null,
+                                    contained = true,
+                                    size = EtaDimens.BlockLoadingSize,
+                                )
+                            }
                         }
                     }
                 }

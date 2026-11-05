@@ -38,6 +38,7 @@ internal class MediaIndexService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var foregroundActive = false
     private var publishedText: String? = null
+    private var publishedPercent: Int = -1
 
     /** 本轮启动时锁定的索引档位；通知摘要展示用，进行中切档不改变本轮行为。 */
     private var mode: IndexMode = IndexMode.DEFAULT
@@ -149,9 +150,21 @@ internal class MediaIndexService : Service() {
 
     private fun refreshNotification() {
         val text = statusText()
-        if (text == publishedText) return
+        val percent = progressPercent()
+        if (text == publishedText && percent == publishedPercent) return
         publishedText = text
+        publishedPercent = percent
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
+    }
+
+    /** 通知进度百分比：已处理 / 总数；总量未就绪时为 -1（通知不画进度条）。 */
+    private fun progressPercent(): Int {
+        val progress = MediaIndexer.state.value
+        return if (progress.total > 0) {
+            (progress.processed.toFloat() / progress.total * 100).toInt().coerceIn(0, 100)
+        } else {
+            -1
+        }
     }
 
     private fun notification(): Notification {
@@ -163,7 +176,8 @@ internal class MediaIndexService : Service() {
             this, 1, Intent(this, MediaIndexService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return Notification.Builder(this, CHANNEL)
+        val percent = progressPercent()
+        val builder = Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.media_index_notification_title))
             .setContentText(statusText())
@@ -171,7 +185,11 @@ internal class MediaIndexService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(Notification.Action.Builder(null, getString(R.string.media_index_stop), stop).build())
-            .build()
+        // 与 AppUpdateService 口径一致：有百分比时画系统 determinate 进度，0% 不画避免空条。
+        if (percent > 0) {
+            builder.setProgress(100, percent, false)
+        }
+        return builder.build()
     }
 
     /**

@@ -205,6 +205,7 @@ internal fun LinuxEnvironmentScreen(
     var progress by remember { mutableStateOf<AlpineInstallProgress?>(null) }
     var debianProgress by remember { mutableStateOf<DebianInstallProgress?>(null) }
     var profileProgressSummary by remember { mutableStateOf<String?>(null) }
+    var profileProgressFraction by remember { mutableStateOf<Float?>(null) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
     var profileReady by remember(selectedDistribution, backend) {
         mutableStateOf(emptyMap<InstallTarget, Boolean>())
@@ -271,6 +272,7 @@ internal fun LinuxEnvironmentScreen(
                 progress = null
                 debianProgress = null
                 profileProgressSummary = null
+                profileProgressFraction = null
                 apkAnalysisProgress = null
                 busyTarget = null
                 installRunning.set(false)
@@ -343,6 +345,7 @@ internal fun LinuxEnvironmentScreen(
             apkAnalysisReady = apkReady
             progress = null
             debianProgress = null
+            profileProgressFraction = null
             busyTarget = null
         }
     }
@@ -387,6 +390,14 @@ internal fun LinuxEnvironmentScreen(
                 InstallTarget.APK_ANALYSIS -> apkAnalysisProgress?.summary(context)
                 else -> profileProgressSummary
             }
+            val activeProgressFraction = when (busyTarget) {
+                InstallTarget.BASE, InstallTarget.TOOLS -> when (selectedDistribution) {
+                    LinuxDistribution.ALPINE -> progress?.fraction()
+                    LinuxDistribution.DEBIAN -> debianProgress?.fraction()
+                }
+                InstallTarget.APK_ANALYSIS -> apkAnalysisProgress?.fraction()
+                else -> profileProgressFraction
+            }
             LinuxEnvironmentStatusCard(
                 distribution = selectedDistribution.displayName(),
                 version = version,
@@ -410,6 +421,7 @@ internal fun LinuxEnvironmentScreen(
                 },
                 // requiresRoot 是同步事实（capabilities + backend），root 丢失的呈现不依赖读盘。
                 busy = (!statusesLoaded && !requiresRoot) || busyTarget != null || kimiWebLaunching,
+                progress = activeProgressFraction,
                 message = resultMessage,
                 actionText = when {
                     requiresRoot -> stringResource(R.string.capability_enhancements)
@@ -547,11 +559,13 @@ internal fun LinuxEnvironmentScreen(
                                                                 context,
                                                                 profileTitle,
                                                             )
+                                                            profileProgressFraction = update.fraction()
                                                         }
                                                     }
                                                     val ready = withContext(Dispatchers.IO) { profileInstaller.isReady() }
                                                     profileReady = profileReady + (profileUi.target to ready)
                                                     profileProgressSummary = null
+                                                    profileProgressFraction = null
                                                     busyTarget = null
                                                     resultMessage = result.toMessage(context, profileTitle)
                                                 }
@@ -668,6 +682,35 @@ internal fun LinuxEnvironmentScreen(
 }
 
 private fun Long.toReadableSize(context: Context): String = Formatter.formatShortFileSize(context, this)
+
+private fun AlpineInstallProgress.fraction(): Float? =
+    if (stage == AlpineInstallStage.DOWNLOADING && totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        null
+    }
+
+private fun DebianInstallProgress.fraction(): Float? =
+    if (stage == DebianInstallStage.DOWNLOADING && totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        null
+    }
+
+private fun PackageProfileInstallProgress.fraction(): Float? =
+    if (stage == PackageProfileInstallStage.DOWNLOADING && totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        null
+    }
+
+private fun ApkAnalysisInstallProgress.fraction(): Float? =
+    if (stage == ApkAnalysisInstallStage.DOWNLOADING && totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        null
+    }
+
 
 private fun AlpineInstallProgress.summary(context: Context): String {
     val stageName = stage.displayName(context)

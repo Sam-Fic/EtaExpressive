@@ -26,7 +26,9 @@ import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
 import io.github.mangi.eta.ui.adaptive.EtaText
@@ -149,6 +151,12 @@ internal fun MimoVoicesScreen(onBack: () -> Unit) {
                 EtaClickableRow(
                     title = stringResource(R.string.pv_save_reference),
                     summary = if (busy) stringResource(R.string.pv_saving) else stringResource(R.string.pv_save_hint),
+                    // 上传参考音频是网络往返：无分母走不定型；请求不可中断，故不给取消。
+                    leading = if (busy) {
+                        { EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize) }
+                    } else {
+                        null
+                    },
                     enabled = ready && !busy && uri != null && name.isNotBlank() && provider != null,
                     onClick = { importVoice() },
                 )

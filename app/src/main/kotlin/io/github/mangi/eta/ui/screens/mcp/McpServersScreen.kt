@@ -3,6 +3,7 @@ package io.github.mangi.eta.ui.screens.mcp
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -47,8 +49,10 @@ import io.github.mangi.eta.data.model.McpToolDefinition
 import io.github.mangi.eta.data.repository.McpServerRepository
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaPageSurface
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
@@ -271,6 +275,20 @@ private fun McpAddServerPage(
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 )
+                // 连接测试是网络往返：无分母走不定型，按钮与表单同步锁住（底层不可中断，不给假取消）。
+                if (working) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
+                    ) {
+                        EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize)
+                        M3Text(
+                            text = stringResource(R.string.mcp_connecting),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 error?.let {
                     M3Text(
                         text = it,

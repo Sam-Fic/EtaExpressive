@@ -45,7 +45,9 @@ import io.github.mangi.eta.systemizer.SystemizerInstallResult
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
@@ -358,12 +360,21 @@ internal fun SystemTakeoverSettingsScreen(
                 row {
                     EtaClickableRow(
                         title = stringResource(R.string.ui_convert_google_apps_to_system_apps_0f6d89),
+                        // 系统化安装跑 root shell：无进度分母走不定型；底层安装不可中断，取消保持禁用。
                         leading = {
-                            PreferenceIcon(
-                                icon = Icons.Rounded.Inventory,
-                            )
+                            if (installingSystemizer) {
+                                EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize)
+                            } else {
+                                PreferenceIcon(
+                                    icon = Icons.Rounded.Inventory,
+                                )
+                            }
                         },
-                        summary = if (capabilities.root.isGranted) null else stringResource(R.string.capability_root_required),
+                        summary = when {
+                            installingSystemizer -> stringResource(R.string.status_processing)
+                            !capabilities.root.isGranted -> stringResource(R.string.capability_root_required)
+                            else -> null
+                        },
                         enabled = !installingSystemizer,
                         holdDownState = showSystemizerDialog,
                         onClick = {

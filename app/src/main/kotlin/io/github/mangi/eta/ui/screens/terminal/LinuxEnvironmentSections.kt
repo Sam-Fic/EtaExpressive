@@ -19,7 +19,9 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.terminal.LinuxDistribution
 import io.github.mangi.eta.agent.terminal.LinuxExecutionBackend
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -44,6 +46,7 @@ internal fun LinuxEnvironmentStatusCard(
     backend: String,
     summary: String,
     busy: Boolean,
+    progress: Float?,
     message: String?,
     actionText: String?,
     actionEnabled: Boolean,
@@ -64,6 +67,7 @@ internal fun LinuxEnvironmentStatusCard(
                     backend = backend,
                     summary = summary,
                     busy = busy,
+                    progress = progress,
                     message = message,
                     actionText = actionText,
                     actionEnabled = actionEnabled,
@@ -83,6 +87,7 @@ private fun LinuxEnvironmentStatusBody(
     backend: String,
     summary: String,
     busy: Boolean,
+    progress: Float?,
     message: String?,
     actionText: String?,
     actionEnabled: Boolean,
@@ -111,7 +116,12 @@ private fun LinuxEnvironmentStatusBody(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (busy) TerminalBusyIndicator(size = 20.dp)
+            if (busy) {
+                EtaLoadingSlot(
+                    progress = progress,
+                    size = EtaDimens.DenseIconSize,
+                )
+            }
             EtaText(
                 text = summary,
                 style = EtaTextStyle.Body,

@@ -57,6 +57,8 @@ class DesignSystemRulesTest {
             "app/src/main/kotlin/io/github/mangi/eta/agent/overlay/AgentOverlayContent.kt",
             "app/src/main/kotlin/io/github/mangi/eta/ui/AppearanceSettingsScreen.kt",
             "app/src/main/kotlin/io/github/mangi/eta/ui/app/EtaColorSchemeFactory.kt",
+            // success 语义色：动态配色没有稳定 success 角色，深浅两档色值与对比度在此固定。
+            "app/src/main/kotlin/io/github/mangi/eta/ui/adaptive/EtaStatus.kt",
             "app/src/main/kotlin/io/github/mangi/eta/ui/components/ThinkingSpeedAnimation.kt",
             "app/src/main/kotlin/io/github/mangi/eta/ui/markdown/MarkdownInline.kt",
         )
@@ -109,16 +111,58 @@ class DesignSystemRulesTest {
     }
 
     /**
-     * R4：禁止裸默认尺寸的进度指示器。`CircularProgressIndicator()` 默认 40dp，
-     * 直接放进行内小槽会顶爆图标位（浏览器预览曾经的 bug 形状）——行内小槽用
-     * LoadingIndicator，确定进度环必须显式传尺寸。
+     * R4：进度/加载指示器必须走封装。业务文件禁止直接实例化
+     * `CircularProgressIndicator` / `LinearProgressIndicator` / wavy 变体 /
+     * `LoadingIndicator` / `ContainedMorphLoadingIndicator`——一律通过
+     * `ui/adaptive/EtaLoading.kt` 的 `EtaLoadingSlot` / `EtaProgressBar`，
+     * 调用点只传 `progress: Float?`（null 不定型、非 null 确定型）。
+     *
+     * 白名单 = 封装自身、`ui/components` 里存量「状态标记」/同心圆、
+     * browser 移植层与 Doubao 三步 stepper；这些按普查结论明确不迁。
      */
     @Test
-    fun `no bare default-size progress indicators`() {
-        val hits = violations(Regex("""\b(Circular|Linear)ProgressIndicator\(\s*\)"""))
+    fun `progress and loading indicators go through EtaLoading wrappers`() {
+        val wrapper = "app/src/main/kotlin/io/github/mangi/eta/ui/adaptive/EtaLoading.kt"
+        val legacy = setOf(
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/ContainedMorphLoadingIndicator.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/AgentChatBody.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/AgentChatComposerM3.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/AgentChatInputBar.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/AgentStatusCard.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/ChatImagePreview.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/ChatMessageItem.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/ConversationSidePaneScaffold.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/components/SpeechPlaybackButton.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/screens/terminal/ConsoleScreen.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/screens/terminal/SharedFoldersScreen.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/screens/virtualdisplay/VirtualDisplaySections.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/screens/virtualdisplay/VirtualDisplayStage.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/screens/browser/AgentBrowserScreen.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/screens/search/MediaSearchScreen.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/ContextCompressionDialogs.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/ContextCompressionSettingsScreen.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/DoubaoVoiceSettings.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/ui/OfflineSpeechPackColumn.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/agent/overlay/AgentOverlayCapsule.kt",
+            "app/src/main/kotlin/io/github/mangi/eta/agent/voice/EtaVoicePanel.kt",
+        )
+        val hits = violations(
+            Regex(
+                """\b(ContainedMorphLoadingIndicator|ContainedLoadingIndicator|""" +
+                    """CircularProgressIndicator|LinearProgressIndicator|""" +
+                    """CircularWavyProgressIndicator|LinearWavyProgressIndicator|LoadingIndicator)\s*\(""",
+            ),
+            allowed = { path ->
+                val clean = path.removePrefix("/")
+                clean == wrapper ||
+                    clean in legacy ||
+                    clean.startsWith("app/src/main/kotlin/io/github/mangi/eta/agent/browser/ported/")
+            },
+        )
         assertTrue(
-            "禁止不带参数的裸进度指示器（默认 40dp）：行内小槽用 LoadingIndicator(size)，" +
-                "确定进度环显式传 modifier.size —— 详见 docs/design-system.md：\n" +
+            "禁止在业务文件直接实例化进度/加载指示器：请改用 EtaLoadingSlot / EtaProgressBar，" +
+                "调用点只传 progress: Float?（null 不定型、非 null 确定型）；" +
+                "确属明确不迁的存量请在白名单登记。详见 docs/design-system.md：\n" +
                 hits.joinToString("\n"),
             hits.isEmpty(),
         )

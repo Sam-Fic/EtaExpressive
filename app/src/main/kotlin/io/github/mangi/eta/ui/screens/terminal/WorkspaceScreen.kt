@@ -51,8 +51,11 @@ import io.github.mangi.eta.data.repository.LinuxEnvironmentSettingsRepository
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
+import io.github.mangi.eta.ui.adaptive.rememberEtaLoadingShown
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -64,7 +67,6 @@ import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.app.WorkspaceEntry
 import io.github.mangi.eta.ui.app.WorkspaceFileStore
 import io.github.mangi.eta.ui.app.guestWorkspacePath
-import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
 import io.github.mangi.eta.ui.components.ListEmptyState
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -476,16 +478,24 @@ private fun LazyListScope.materialWorkspaceItems(
             if (entries.isEmpty()) {
                 item(key = "m3-empty") {
                     EtaSegmentedItemContainer {
-                        if (listing || busy) {
+                        // 本地目录首载通常几十毫秒：门控 120ms 后再显示，显示后至少保留 400ms；
+                        // 收尾时先保留指示器、不立刻切到空态，避免视觉重叠。
+                        val loading = listing || busy
+                        val showLoading = rememberEtaLoadingShown(loading)
+                        if (showLoading) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 32.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                ContainedMorphLoadingIndicator()
+                                EtaLoadingSlot(
+                                    progress = null,
+                                    contained = true,
+                                    size = EtaDimens.BlockLoadingSize,
+                                )
                             }
-                        } else {
+                        } else if (!loading) {
                             ListEmptyState(
                                 title = stringResource(R.string.capability_workspace_empty),
                                 summary = stringResource(R.string.capability_workspace_empty_summary),

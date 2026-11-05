@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -20,7 +21,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.ProviderAuthModes
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
@@ -81,11 +84,27 @@ internal fun ProviderAccountControls(
         style = EtaTextStyle.Body,
         modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, top = 12.dp),
     )
-    EtaText(
-        text = summary,
-        style = EtaTextStyle.Secondary,
-        modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, top = 4.dp, bottom = 8.dp),
-    )
+    // 登录 / 保存 / 同步 / 断开是长网络操作：无分母，用不定型加载指示器，不画假进度。
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(
+            start = EtaGroupHorizontalPadding,
+            end = EtaGroupHorizontalPadding,
+            top = 4.dp,
+            bottom = 8.dp,
+        ),
+    ) {
+        if (state.isBusy) {
+            EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize)
+        }
+        EtaText(
+            text = summary,
+            style = EtaTextStyle.Secondary,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = if (state.isBusy) EtaDimens.TrailingElementGap else 0.dp, top = 4.dp, bottom = 4.dp),
+        )
+    }
     Column(modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = 12.dp)) {
         prompt?.userCode?.let { userCode ->
             SelectionContainer {

@@ -51,6 +51,15 @@ object EtaDimens {
     /** 状态标记图标（工具行、朗读按钮等 16dp 状态槽）。 */
     val StatusIconSize = 16.dp
 
+    /** 行内加载槽（预览占位、压缩行、共享文件夹行等 18dp）。 */
+    val InlineLoadingSize = 18.dp
+
+    /** 行首动作槽里的加载指示器（备份 / 技能等 24dp 行首动作位）。 */
+    val RowLeadingLoadingSize = 24.dp
+
+    /** 块级加载容器的默认 morph 尺寸（28dp，与 `ContainedMorphLoadingIndicator` 默认值同源）。 */
+    val BlockLoadingSize = 28.dp
+
     /** 会话行运行状态圆点（会话列表「运行中 / 已完成」标记）。 */
     val StatusDotSize = 6.dp
 

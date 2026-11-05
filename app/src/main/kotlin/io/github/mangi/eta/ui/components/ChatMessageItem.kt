@@ -190,6 +190,8 @@ import io.github.mangi.eta.ui.adaptive.EtaConnectedIconAction
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.foregroundColor
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaLoadingGate
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.adaptive.rememberCopyToClipboard
 import io.github.mangi.eta.agent.browser.AgentBrowserSession
@@ -4290,10 +4292,13 @@ private fun ToolMediaThumbnail(
                 contentScale = ContentScale.Crop,
             )
         } else {
-            LoadingIndicator(
-                modifier = Modifier.size(16.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // 本地图片解码常几十毫秒即完成：门控 120ms 后再显示，避免闪一下。
+            EtaLoadingGate(visible = true) {
+                EtaLoadingSlot(
+                    progress = null,
+                    size = EtaDimens.StatusIconSize,
+                )
+            }
         }
     }
 }
