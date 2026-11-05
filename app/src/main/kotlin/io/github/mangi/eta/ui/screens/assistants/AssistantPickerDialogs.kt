@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.AssistantProfile
+import io.github.mangi.eta.data.model.AssistantPrompt
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.adaptive.EtaAlphas
@@ -205,6 +206,8 @@ internal fun AssistantDeleteConfirmPanel(
     onConfirm: () -> Unit,
 ) {
     val view = LocalView.current
+    // 数据层已硬拦内置助手；确认按钮再兜一道，避免任何调用点绕过行内菜单直达本面板。
+    val deletable = canDelete && !AssistantPrompt.isBuiltIn(profile.id)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -226,12 +229,12 @@ internal fun AssistantDeleteConfirmPanel(
                 M3Text(stringResource(R.string.action_cancel))
             }
             TextButton(
-                enabled = canDelete,
+                enabled = deletable,
                 onClick = { TouchHaptics.click(view); onConfirm() },
             ) {
                 M3Text(
                     text = stringResource(R.string.action_delete),
-                    color = if (canDelete) {
+                    color = if (deletable) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = EtaAlphas.DisabledContent)
@@ -309,6 +312,9 @@ internal fun AssistantRow(
     modifier: Modifier = Modifier,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    // 内置助手是系统身份：只藏掉删除项，复制/编辑/选中照旧可用（与调度台会话「不显示删除入口」同款）。
+    val builtIn = AssistantPrompt.isBuiltIn(profile.id)
+    val actionCount = if (builtIn) 2 else 3
     EtaSegmentedRow(
         selected = selected,
         choiceRow = true,
@@ -354,7 +360,7 @@ internal fun AssistantRow(
                                         contentDescription = null,
                                     )
                                 },
-                                shape = EtaMenuItemShape(index = 0, count = 3),
+                                shape = EtaMenuItemShape(index = 0, count = actionCount),
                                 onClick = {
                                     menuExpanded = false
                                     onCopy()
@@ -368,32 +374,34 @@ internal fun AssistantRow(
                                         contentDescription = null,
                                     )
                                 },
-                                shape = EtaMenuItemShape(index = 1, count = 3),
+                                shape = EtaMenuItemShape(index = 1, count = actionCount),
                                 onClick = {
                                     menuExpanded = false
                                     onEdit()
                                 },
                             )
-                            DropdownMenuItem(
-                                text = {
-                                    M3Text(
-                                        text = stringResource(R.string.action_delete),
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Delete,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error,
-                                    )
-                                },
-                                shape = EtaMenuItemShape(index = 2, count = 3),
-                                onClick = {
-                                    menuExpanded = false
-                                    onDelete()
-                                },
-                            )
+                            if (!builtIn) {
+                                DropdownMenuItem(
+                                    text = {
+                                        M3Text(
+                                            text = stringResource(R.string.action_delete),
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Delete,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    },
+                                    shape = EtaMenuItemShape(index = 2, count = actionCount),
+                                    onClick = {
+                                        menuExpanded = false
+                                        onDelete()
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -418,7 +426,7 @@ internal fun AssistantDeleteDialog(
             EtaDialogActions(
                 confirmText = stringResource(R.string.action_delete),
                 destructive = true,
-                confirmEnabled = canDelete,
+                confirmEnabled = canDelete && !AssistantPrompt.isBuiltIn(profile.id),
                 onCancel = onDismiss,
                 onConfirm = onConfirm,
             )

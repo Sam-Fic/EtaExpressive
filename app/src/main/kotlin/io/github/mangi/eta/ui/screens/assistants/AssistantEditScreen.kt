@@ -32,6 +32,7 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.skill.SkillIndexEntry
 import io.github.mangi.eta.agent.skill.SkillRuntime
+import io.github.mangi.eta.data.model.AssistantPrompt
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.AgentMemoryStore
 import io.github.mangi.eta.data.repository.AssistantRepository
@@ -69,6 +70,8 @@ internal fun AssistantEditScreen(
         return
     }
     var name by remember(assistantId) { mutableStateOf(original.name) }
+    // 调度台身份按固定 id 辨识：名称是辨识的一部分，本页只对它藏掉名称输入，其余编辑能力照旧。
+    val renameLocked = original.id == AssistantPrompt.DISPATCHER_ID
     var prompt by remember(assistantId) { mutableStateOf(original.prompt) }
     var avatarFileName by remember(assistantId) { mutableStateOf(original.avatarFileName) }
     var memoryEnabled by remember(assistantId) { mutableStateOf(original.memoryEnabled) }
@@ -219,18 +222,20 @@ internal fun AssistantEditScreen(
                 }
             }
         }
-        item(key = "identity") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
-                title = stringResource(R.string.assistant_identity),
-            ) {
-                item(surface = false) {
-                    // KernelSU 式无边框输入行，直接作为分段行（与其它设置二级页一致）。
-                    AssistantField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = stringResource(R.string.assistant_name),
-                    )
+        if (!renameLocked) {
+            item(key = "identity") {
+                EtaSegmentedColumn(
+                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
+                    title = stringResource(R.string.assistant_identity),
+                ) {
+                    item(surface = false) {
+                        // KernelSU 式无边框输入行，直接作为分段行（与其它设置二级页一致）。
+                        AssistantField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = stringResource(R.string.assistant_name),
+                        )
+                    }
                 }
             }
         }

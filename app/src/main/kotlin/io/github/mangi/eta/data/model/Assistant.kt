@@ -64,6 +64,11 @@ internal object AssistantPrompt {
     const val DISPATCHER_ID = "builtin-dispatcher"
     const val DISPATCHER_NAME = "调度台"
 
+    /** 内置助手的固定 id：不可删除（删除闸见 AssistantRepository.delete）。 */
+    val BUILT_IN_IDS: Set<String> = setOf(DEFAULT_ID, DISPATCHER_ID)
+
+    fun isBuiltIn(id: String): Boolean = id in BUILT_IN_IDS
+
     val DISPATCHER_PROMPT: String = """
         你在「调度台」工作：你是调度者，不是执行者。
         - 需要动手的活（读屏幕、跑命令、写文件、操作应用、长输出检索）一律用 task_dispatch 派发给工作会话，不要自己执行。一句话能答、无需动手的，直接答。

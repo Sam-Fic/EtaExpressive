@@ -59,7 +59,7 @@ internal object AssistantRepository {
         directory().mkdirs()
         avatarsDirectory().mkdirs()
         val active = withIndexLock {
-            val snapshot = seedDispatcher(migrateDefaultPrompt(readIndex() ?: seedDefault()))
+            val snapshot = seedDispatcher(seedDefaultAssistant(migrateDefaultPrompt(readIndex() ?: seedDefault())))
             publish(snapshot)
             snapshot.activeId
         }
@@ -164,8 +164,10 @@ internal object AssistantRepository {
     fun update(profile: AssistantProfile): AssistantProfile {
         val (updated, publishVisible) = withIndexLock {
             ensureReady()
-            require(profiles.value.any { it.id == profile.id }) { "助手不存在" }
+            val existing = requireNotNull(profiles.value.firstOrNull { it.id == profile.id }) { "助手不存在" }
             val next = profile.copy(name = profile.name.trim().ifBlank { AssistantPrompt.DEFAULT_NAME })
+            // 写入前硬拦：调度台只认固定 id 与固定名称，其余字段（提示词/记忆/技能/工具/头像）照常更新。
+            require(existing.id != AssistantPrompt.DISPATCHER_ID || next.name == existing.name) { "调度台不能重命名" }
             val snapshot = Snapshot(
                 activeId = activeId.value,
                 profiles = profiles.value.map { if (it.id == next.id) next else it },
@@ -184,7 +186,7 @@ internal object AssistantRepository {
     fun delete(id: String) {
         val nextActive = withIndexLock {
             ensureReady()
-            require(id != io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID) { "内置调度台不能删除" }
+            require(!AssistantPrompt.isBuiltIn(id)) { "内置助手不能删除" }
             val remaining = profiles.value.filterNot { it.id == id }
             require(remaining.isNotEmpty()) { "必须保留至少一个助手" }
             val next = if (activeId.value == id) remaining.first().id else activeId.value
@@ -315,6 +317,19 @@ internal object AssistantRepository {
         avatarFile(current.avatarFileName)?.delete()
         current.avatarFileName?.let(::invalidateAvatarBitmaps)
         return update(current.copy(avatarFileName = null))
+    }
+
+    /**
+     * 内置默认助手：缺失即补种（老档案升级 / 曾把它删掉也生效）；已在则原样不动，
+     * 绝不覆盖用户改过的名称、提示词或其它字段。种子复用 [defaultProfile]，与全新安装一致。
+     */
+    private fun seedDefaultAssistant(snapshot: Snapshot): Snapshot {
+        if (snapshot.profiles.any { it.id == AssistantPrompt.DEFAULT_ID }) {
+            return snapshot
+        }
+        val next = Snapshot(snapshot.activeId, snapshot.profiles + defaultProfile(System.currentTimeMillis()))
+        writeIndex(next)
+        return next
     }
 
     /** 内置调度台：缺失即补种（老档案升级也生效）；删除闸见 [delete]。 */
