@@ -303,6 +303,10 @@ internal fun AgentOverlayCapsule(
     // 逐帧缩水回路的防线（见 2026-11 修复记录），宽度因此永远 ≥ 状态目标。
     var reportedSize by remember { mutableStateOf(IntSize.Zero) }
     var measuredSize by remember { mutableStateOf(IntSize.Zero) }
+    // 甩出（含越界回弹）进行中：窗口尺寸收拢必须等物理落定后再做。
+    // 收拢是一次 updateViewLayout + surface 缓冲重分配；若落在飞行/回弹中途，
+    // 会与位置逐帧下发叠在同一帧序列里，实机表现为“缩成球那一下抖/顿”。
+    var flingRunning by remember { mutableStateOf(false) }
     fun reportContentSize(widthPx: Int, heightPx: Int) {
         val next = IntSize(widthPx, heightPx)
         if (next == reportedSize) return
@@ -318,7 +322,10 @@ internal fun AgentOverlayCapsule(
             reportContentSize(target.width, target.height)
         }
     }
-    LaunchedEffect(stateTargetWidth, stateTargetHeight, density) {
+    LaunchedEffect(stateTargetWidth, stateTargetHeight, density, flingRunning) {
+        // 甩出期间冻结“晚缩”：窗口保持松手前尺寸（content 在里面照常 morph），
+        // 落定后再收拢。早涨那一支不受影响（飞行中不会有目标变大）。
+        if (flingRunning) return@LaunchedEffect
         snapshotFlow { measuredSize }.collectLatest { measured ->
             if (measured == IntSize.Zero) return@collectLatest
             val target = IntSize(
@@ -514,15 +521,21 @@ internal fun AgentOverlayCapsule(
                                                         if (plan != null) {
                                                             val view = overlayView
                                                             flingSession.center = plan.center
+                                                            flingRunning = true
                                                             flingSession.job = scope.launch {
-                                                                runCapsuleFling(
-                                                                    plan = plan,
-                                                                    viewport = { capsuleViewport(view) },
-                                                                    onStep = { position ->
-                                                                        flingSession.center = position
-                                                                        onFlingStep(position.x, position.y)
-                                                                    },
-                                                                )
+                                                                try {
+                                                                    runCapsuleFling(
+                                                                        plan = plan,
+                                                                        viewport = { capsuleViewport(view) },
+                                                                        onStep = { position ->
+                                                                            flingSession.center = position
+                                                                            onFlingStep(position.x, position.y)
+                                                                        },
+                                                                    )
+                                                                } finally {
+                                                                    // 被打断（按下/旋转）也走这里：解冻收拢，让窗口按当前尺寸收敛。
+                                                                    flingRunning = false
+                                                                }
                                                                 onFlingFinish(
                                                                     flingSession.center.x,
                                                                     flingSession.center.y,
