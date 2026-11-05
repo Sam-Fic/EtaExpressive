@@ -684,7 +684,9 @@
   <string name="update_channel">應用更新</string>
   <string name="update_downloading_title">正在下載 %1$s</string>
   <string name="update_downloading_progress">%1$s / %2$s</string>
+  <string name="update_downloading_percent">已下載 %1$d%%</string>
   <string name="update_stop_download">停止</string>
+  <string name="update_continue_download">繼續下載</string>
   <string name="update_download_complete">下載完成</string>
   <string name="update_click_to_install">點擊以安裝</string>
   <string name="ui_click_to_reinstall_dc60de">點選重新安裝</string>
@@ -3039,12 +3041,14 @@
   <string name="media_model_text_only_summary">記憶體佔用更低。不支援圖像/音訊檢索</string>
   <string name="media_model_status">狀態</string>
   <string name="media_model_checking">正在校驗本機檔案…</string>
-  <string name="media_model_downloading">下載中… %1$s / %2$s</string>
+  <string name="media_model_downloading">下載中… %1$s / %2$s（%3$d%%）</string>
+  <string name="media_model_partial_summary">已暫停於 %1$d%% · %2$s / %3$s</string>
   <string name="media_model_ready">已下載並通過 SHA-256 校驗</string>
   <string name="media_model_error">下載或校驗失敗</string>
   <string name="media_model_not_downloaded">未下載</string>
   <string name="media_model_download">下載模型</string>
   <string name="media_model_cancel_download">取消下載</string>
+  <string name="media_model_continue_download">繼續下載</string>
   <string name="media_model_storage">儲存佔用</string>
   <string name="media_dim_title">向量維度</string>
   <string name="media_dim_summary">維度越低越省儲存、精度越低。修改後需重建索引</string>
@@ -3146,7 +3150,8 @@
   <string name="mobile_actions_status_checking">正在校驗…</string>
   <string name="mobile_actions_status_ready">已下載並通過校驗</string>
   <string name="mobile_actions_status_missing">尚未下載</string>
-  <string name="mobile_actions_status_downloading">正在下載 %1$s / %2$s</string>
+  <string name="mobile_actions_status_downloading">正在下載 %1$s / %2$s（%3$d%%）</string>
+  <string name="mobile_actions_partial_summary">已暫停於 %1$d%% · %2$s / %3$s</string>
   <string name="mobile_actions_error_network">下載失敗，請檢查網路後重試</string>
   <string name="mobile_actions_error_auth">Hugging Face 拒絕了請求。請填寫權杖，或改用 ModelScope</string>
   <string name="mobile_actions_error_checksum">檔案校驗不通過</string>
