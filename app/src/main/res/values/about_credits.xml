@@ -13,7 +13,7 @@
     <string name="credits_entry_omnibot">Reference project for Android AI agents.</string>
     <string name="credits_entry_opencode">Terminal AI coding agent. The protocol reference for the remote OpenCode integration; the v2 wire protocol was verified against its serve implementation (v2.2.5).</string>
     <string name="credits_entry_libxposed">Modern Xposed API.</string>
-    <string name="credits_entry_miuix">The Compose UI framework used by this app — the component and interaction base of the settings and management pages.</string>
+    <string name="credits_entry_miuix">Navigation-only page-transition library: the NavDisplay container provides stack transitions and system display-corner adaptation; the UI components themselves are Material Design 3 Expressive, not miuix widgets.</string>
     <string name="credits_entry_zafiro">Style reference for the user chat bubbles. Its bubble design closely resembles the sample bubbles in Google Material Design 3 Expressive, so it was adopted and adapted for this project.</string>
     <string name="credits_entry_m3">The official Google Material Design 3 Expressive site. This app\'s design language and visual style reference its examples and specifications.</string>
     <string name="credits_entry_kernelsu">Design reference for the app\'s Appearance &amp; theme settings sub-pages.</string>

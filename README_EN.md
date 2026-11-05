@@ -162,7 +162,7 @@ These implementation notes are currently in Chinese:
 - [OmniBot](https://github.com/omnimind-ai/OmniBot): a reference project for AI agents on Android.
 - [opencode](https://github.com/sst/opencode): terminal AI coding agent. The protocol reference for the remote OpenCode integration; the v2 wire protocol was verified against its serve implementation (v2.2.5).
 - [libxposed API](https://github.com/libxposed/api): the modern Xposed API.
-- [miuix](https://github.com/compose-miuix-ui/miuix): the Compose UI framework used by this app — the component and interaction base of the settings and management pages.
+- [miuix](https://github.com/compose-miuix-ui/miuix): navigation-only page-transition library — the NavDisplay container provides stack transitions and system display-corner adaptation; the UI components themselves are Material Design 3 Expressive, not miuix widgets.
 - [Zafiro](https://github.com/niki914/zafiro): the user chat-bubble style reference. Its bubble design is very close to the Google Material Design 3 Expressive example bubbles, so it was adapted into this project.
 - [Material Design 3 Expressive](https://m3.material.io): the official Google Material Design 3 Expressive site; the app's UI language and visual style reference its examples and guidelines.
 - [KernelSU](https://github.com/tiann/KernelSU): the design reference for this app's Appearance & Theme sub-settings page.

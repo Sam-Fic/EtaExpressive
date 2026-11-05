@@ -206,7 +206,7 @@ Eta 先从现有 Android 上的模型、上下文与工具做起。真正落地�
 - [OmniBot](https://github.com/omnimind-ai/OmniBot)：Android AI Agent 方向的参考项目。
 - [opencode](https://github.com/sst/opencode)：终端 AI coding agent。远程 OpenCode 接入的协议参考，第二协议 wire 核证自其 serve 实现（v2.2.5）。
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API。
-- [miuix](https://github.com/compose-miuix-ui/miuix)：本项目使用的 Compose UI 框架，设置与管理页面的组件与交互基座。
+- [miuix](https://github.com/compose-miuix-ui/miuix)：页面切换转场专用库——NavDisplay 导航容器提供栈式转场动画与系统屏幕圆角适配；界面组件本体为 Material Design 3 Expressive，不使用 miuix 组件。
 - [Zafiro](https://github.com/niki914/zafiro)：用户对话气泡的样式参考。其气泡设计与 Google Material Design 3 Expressive 的示例气泡高度相似，因此采用并适配到本项目。
 - [Material Design 3 Expressive](https://m3.material.io)：Google Material Design 3 Expressive 官方站点，本程序的界面设计语言与视觉风格均参考自其中的示例与规范。
 - [KernelSU](https://github.com/tiann/KernelSU)：本应用“外观与主题”子设置页面的设计参考。
