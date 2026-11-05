@@ -2046,10 +2046,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     private fun capsuleLayoutParams(): WindowManager.LayoutParams {
+        // NO_LIMITS 是甩出物理的前提：没有它，WMS 会在每次 updateViewLayout 把窗口 frame
+        // 钳回显示范围内，Compose 侧算出的屏外落点（capsuleFlingLanding 允许越界 ±cap）
+        // 会被系统逐帧拽回屏幕边缘——「甩出屏幕再飞回来」根本出不去。静止位置不依赖本
+        // flag：resolveCapsulePlacement / AgentOrbPlacement.clamp 始终把停靠点钳在界内，
+        // 本 flag 只放行飞行途中的瞬态越界。
         var flags = WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         if (capsuleSupplementFocusable.value) {
             flags = flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
         }

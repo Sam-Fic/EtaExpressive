@@ -123,6 +123,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.etaConnectedGroupColors
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -210,10 +211,11 @@ internal fun AgentOverlayCapsule(
     // 因此这里统一收口到官方规格，只保留脉冲/进度这类自有节奏。
     val motionScheme = MaterialTheme.motionScheme
 
-    // 展开的四层（宽度 / 圆角 / 展开进度 / 正文高度）共用同一条定长时间轴：
-    // 彼此同时起步、同时收尾，不会出现「宽度先胀开、正文随后才浮出」的串联观感。
+    // 展开的所有布局轴（宽度 / 展开进度 / 正文高度 / 微缩镜宽度 / 正文三态容器高度 /
+    // 暂停钮宽度）共用同一条 320ms 定长时间轴：彼此同时起步、同时收尾，不会出现
+    // 「宽度先胀开、正文随后才浮出」的串联观感，也不会有一条弹簧在主轴收尾后继续跑。
     // 逐层套 Expressive spatial 弹簧会各自带过冲长尾，叠起来就是慢动作
-    // （取值与原因见 EtaMotion.CapsuleExpandDurationMillis）。
+    // （取值与原因见 EtaMotion.CapsuleExpandDurationMillis / docs/capsule-expand-motion.md）。
     val expandMillis = EtaMotion.CapsuleExpandDurationMillis
     val expandDpSpec = tween<Dp>(expandMillis, easing = FastOutSlowInEasing)
     val expandSizeSpec = tween<IntSize>(expandMillis, easing = FastOutSlowInEasing)
@@ -319,7 +321,13 @@ internal fun AgentOverlayCapsule(
             with(density) { stateTargetHeight.roundToPx() },
         )
         if (target.width > reportedSize.width || target.height > reportedSize.height) {
-            reportContentSize(target.width, target.height)
+            // 涨即贴，并预先多留一个容差：分析目标是整值取整，实测是逐节点取整后求和
+            // （56dp/8dp/328dp/40dp 各自取整），恒比目标大 1~3px。留出余量，卡片底缘
+            // 就不会被窗口裁掉 1~3px，也就不需要落定后再补一次迟到的涨窗。
+            reportContentSize(
+                maxOf(target.width, reportedSize.width) + CapsuleReportGrowTolerancePx,
+                maxOf(target.height, reportedSize.height) + CapsuleReportGrowTolerancePx,
+            )
         }
     }
     LaunchedEffect(stateTargetWidth, stateTargetHeight, density, flingRunning) {
@@ -343,10 +351,19 @@ internal fun AgentOverlayCapsule(
                 return@collectLatest
             }
             delay(EtaMotion.CapsuleWindowSettleQuietMillis)
-            reportContentSize(
-                maxOf(measured.width, target.width),
-                maxOf(measured.height, target.height),
-            )
+            val settledWidth = maxOf(measured.width, target.width)
+            val settledHeight = maxOf(measured.height, target.height)
+            // 收尾只有一个来源：主轴（320ms）结束后这里才落窗口尺寸，且只处理
+            // 「状态目标」级别的差量。逐节点 dp→px 取整让分析目标与实测恒差几个 px
+            // （56dp=158px、328dp=923px、40dp=113px 各自取整后求和无法精确复现），
+            // 这次 ~+150ms 的 updateViewLayout 会落在主轴刚收尾之后，实机就是末尾那下抽搐。
+            // 容差内的差量一律不动窗（宁可留 1~3px 透明余量，也不在末段再排一次 surface）。
+            if (abs(settledWidth - reportedSize.width) <= CapsuleReportGrowTolerancePx &&
+                abs(settledHeight - reportedSize.height) <= CapsuleReportGrowTolerancePx
+            ) {
+                return@collectLatest
+            }
+            reportContentSize(settledWidth, settledHeight)
         }
     }
     // 外轮廓圆角恒取官方 extraLarge 28dp，不随展开涨缩：收起 56dp 单行即全圆角胶囊，
@@ -378,7 +395,10 @@ internal fun AgentOverlayCapsule(
 
     val bodySpatial = motionScheme.defaultSpatialSpec<Float>()
     val bodyFastSpatial = motionScheme.fastSpatialSpec<Float>()
-    val bodySizeSpatial = motionScheme.defaultSpatialSpec<IntSize>()
+    // 正文三态（补充输入 / 舞台 / 控制）切换时，容器尺寸也走主轴 320ms 定长：
+    // 用 defaultSpatial（ζ0.8/380，实收 ~440ms + 1.5% 过冲）会让「容器长高」比主轴多跑
+    // 120ms，而按钮组正好落在被这段多余生长揭开的最底部——展开瞬间舞台若刚激活，
+    // 就复现「舞台段正常、按钮段慢放 + 末尾抽搐」。尺寸轴统一到 expandSizeSpec。
     val bodyOrigin = TransformOrigin(0.5f, 0f)
 
     // 头部拖动与光球同一套物理手势流：窗口被 WindowManager 移动时 raw 坐标依旧稳定，
@@ -597,12 +617,17 @@ internal fun AgentOverlayCapsule(
                             }
                             AnimatedVisibility(
                                 visible = lensVisible,
+                                // 微缩镜容器宽度也是「共享元素的目标矩形」：它必须和
+                                // sharedBounds 的 320ms tween 同一时刻收尾。走 official
+                                // spatial 弹簧时（defaultSpatial ζ0.8/380 实收 ~440ms、
+                                // fastSpatial ζ0.6/800 实收 ~400ms 且 9.5% 过冲）会在
+                                // morph 交接之后继续变宽/越零被夹，收起的末尾就抽一下。
                                 enter = fadeIn(motionScheme.defaultEffectsSpec()) + expandHorizontally(
-                                    animationSpec = motionScheme.defaultSpatialSpec(),
+                                    animationSpec = expandSizeSpec,
                                     expandFrom = Alignment.End,
                                 ),
                                 exit = fadeOut(motionScheme.fastEffectsSpec()) + shrinkHorizontally(
-                                    animationSpec = motionScheme.fastSpatialSpec(),
+                                    animationSpec = expandSizeSpec,
                                     shrinkTowards = Alignment.End,
                                 ),
                             ) {
@@ -661,7 +686,7 @@ internal fun AgentOverlayCapsule(
                                             transformOrigin = bodyOrigin,
                                             animationSpec = bodyFastSpatial,
                                         )
-                                        (enter togetherWith exit) using SizeTransform(clip = false) { _, _ -> bodySizeSpatial }
+                                        (enter togetherWith exit) using SizeTransform(clip = false) { _, _ -> expandSizeSpec }
                                     },
                                     label = "capsule_body",
                                 ) { mode ->
@@ -750,6 +775,11 @@ private fun CapsuleActions(
     onStop: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    // 与胶囊主轴同一条 320ms 时间轴（不新建时长体系）：本组内部的尺寸轴都用它收尾。
+    val actionSizeSpec = tween<IntSize>(
+        EtaMotion.CapsuleExpandDurationMillis,
+        easing = FastOutSlowInEasing,
+    )
     // 共享的 interaction source 同时喂给 animateWidth 与按钮本身：按压时
     // 按钮组测量逻辑据此把本钮加宽、邻居等量压缩。
     val supplementSource = remember { MutableInteractionSource() }
@@ -802,8 +832,12 @@ private fun CapsuleActions(
                 AnimatedContent(
                     targetState = phase,
                     transitionSpec = {
+                        // 暂停/继续图标切换时中间钮的宽度也是布局轴：默认 SizeTransform 用的是
+                        // Compose 通用弹簧（~350ms+），会在主轴 320ms 之后继续改宽度、并让整组
+                        // 重新居中——这正是「按钮段末尾还在动」的另一条时长来源。并到主轴。
                         (fadeIn(actionMotionScheme.fastEffectsSpec()) togetherWith
-                            fadeOut(actionMotionScheme.fastEffectsSpec())) using SizeTransform(clip = false)
+                            fadeOut(actionMotionScheme.fastEffectsSpec())) using
+                            SizeTransform(clip = false) { _, _ -> actionSizeSpec }
                     },
                     modifier = Modifier.animateWidth(phaseSource),
                     label = "capsule_phase_action",
@@ -1386,10 +1420,10 @@ private fun StageActionToggle(
 private val CapsuleInnerCorner = 28.dp
 
 /**
- * 测量值超出已上报窗口多少才算「不可预测的长高」（px）：过滤微小的 spring 过冲
- * 与取整抖动，避免静止态反复改窗。真实换行一步 ~39px，远大于此容差，不会被吞。
- * 大幅 spring 过冲（bodyMode 切换 ~5%，约 18px）仍会穿透并多一次「跟涨+落定回落」，
- * 仅发生在补充框开关这条次要路径，窗口尺寸差 ~11px、两次更新，可接受。
+ * 测量值超出已上报窗口多少才算「不可预测的长高」（px）：过滤取整抖动与逐帧采样差，
+ * 避免静止态反复改窗。真实换行一步 ~39px，远大于此容差，不会被吞。
+ * 尺寸轴已全部并到 320ms 定长 tween（无过冲），此容差只作数值保护，
+ * 同时兼作「落定不上报」的判定阈值（见落定分支的差量判断）。
  */
 private const val CapsuleReportGrowTolerancePx = 6
 
