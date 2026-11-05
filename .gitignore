@@ -56,9 +56,6 @@ google-services.json
 /.workbuddy/
 /.zcode/
 
-# AI 助手约定文档（本地维护，不入库）
-/AGENTS.md
-
 # Python bytecode caches and test caches
 __pycache__/
 *.py[cod]
