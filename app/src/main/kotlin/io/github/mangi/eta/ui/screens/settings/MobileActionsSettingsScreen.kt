@@ -20,7 +20,9 @@ import io.github.mangi.eta.agent.mobileactions.MobileActionsModelStore
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
@@ -29,7 +31,9 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.navigation.AppRoute
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 端侧设备动作模型设置页：模型选择、双源下载、令牌、推理后端与试用入口。
@@ -50,6 +54,11 @@ internal fun MobileActionsSettingsScreen(
     var tokenDialog by remember { mutableStateOf(false) }
     var deleteDialog by remember { mutableStateOf(false) }
     var tokenDraft by remember { mutableStateOf("") }
+    // 有 `.part` 说明上次取消/中断过：入口文案改成「继续下载」，点击后会从断点续传。
+    var partialBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(state.downloading, state.ready, state.source.id) {
+        partialBytes = withContext(Dispatchers.IO) { MobileActionsModelStore.partialBytes(context) }
+    }
 
     val sources = MobileActionsModelCatalog.sources
     val sourceLabels = sources.map { sourceLabel(it.id) }
@@ -118,19 +127,30 @@ internal fun MobileActionsSettingsScreen(
                     EtaClickableRow(
                         // 下载 / 取消合并为一行：标题随状态切换，状态与体积作为副标题。
                         title = stringResource(
-                            if (state.downloading) {
-                                R.string.mobile_actions_cancel_download
-                            } else {
-                                R.string.mobile_actions_download
+                            when {
+                                state.downloading -> R.string.mobile_actions_cancel_download
+                                partialBytes > 0L && !state.ready -> R.string.mobile_actions_continue_download
+                                else -> R.string.mobile_actions_download
                             },
                         ),
-                        summary = modelStatusSummary(state),
+                        summary = modelStatusSummary(state, partialBytes),
                         onClick = {
                             if (state.downloading) {
                                 MobileActionsModelStore.cancelDownload()
                             } else {
                                 MobileActionsModelStore.download(context)
                             }
+                        },
+                        // 下载有分母时走确定型；校验等无分母阶段仍为不定型。
+                        leading = if (state.checking || state.downloading) {
+                            {
+                                EtaLoadingSlot(
+                                    progress = state.downloadFraction(),
+                                    size = EtaDimens.DenseIconSize,
+                                )
+                            }
+                        } else {
+                            null
                         },
                         showChevron = false,
                         enabled = state.downloading || (!state.checking && !state.ready),
@@ -265,9 +285,17 @@ private fun sourceLabel(id: MobileActionsModelCatalog.SourceId): String = when (
     MobileActionsModelCatalog.SourceId.HUGGING_FACE -> stringResource(R.string.mobile_actions_source_huggingface)
 }
 
-/** 下载行的副标题：状态 + 体积 / 进度 / 失败原因。 */
+/** 下载进度：已下载 / 总字节；不在下载或总字节未知时为 null，走不定型。 */
+private fun MobileActionsModelStore.State.downloadFraction(): Float? =
+    if (downloading && totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        null
+    }
+
+/** 下载行的副标题：状态 + 体积 / 进度 / 断点 / 失败原因。 */
 @Composable
-private fun modelStatusSummary(state: MobileActionsModelStore.State): String {
+private fun modelStatusSummary(state: MobileActionsModelStore.State, partialBytes: Long = 0L): String {
     val total = MobileActionsModelStore.formatBytes(state.totalBytes)
     val failure = state.failure?.let { message ->
         stringResource(
@@ -285,9 +313,20 @@ private fun modelStatusSummary(state: MobileActionsModelStore.State): String {
             R.string.mobile_actions_status_downloading,
             MobileActionsModelStore.formatBytes(state.downloadedBytes),
             total,
+            percentOf(state.downloadedBytes, state.totalBytes),
         )
         state.ready -> stringResource(R.string.mobile_actions_status_ready)
         failure != null -> failure
+        // 取消/中断留下的 `.part`：副标题给出断点位置，入口标题同时变成「继续下载」。
+        partialBytes > 0L -> stringResource(
+            R.string.mobile_actions_partial_summary,
+            percentOf(partialBytes, state.totalBytes),
+            MobileActionsModelStore.formatBytes(partialBytes),
+            total,
+        )
         else -> "${stringResource(R.string.mobile_actions_status_missing)} · $total"
     }
 }
+
+private fun percentOf(bytes: Long, total: Long): Int =
+    if (total <= 0L) 0 else ((bytes * 100L) / total).coerceIn(0L, 100L).toInt()

@@ -2,9 +2,9 @@ package io.github.mangi.eta.agent.media.index
 
 import android.app.ActivityManager
 import android.content.Context
+import io.github.mangi.eta.agent.model.AgentHttpClient
+import io.github.mangi.eta.core.ResumableDownload
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URI
 import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +21,8 @@ import kotlinx.coroutines.withContext
  * Embedding 模型的按需下载与校验，存放于 App 私有 no-backup 目录，不入 APK。
  *
  * 与 [io.github.mangi.eta.agent.voice.offline.OfflineSpeechPack] 同一套约定：
- * `<modelId>/<revision>` 分目录、逐文件字节数 + SHA-256 全量校验、`.part` 落盘后原子改名。
+ * `<modelId>/<revision>` 分目录、逐文件字节数 + SHA-256 全量校验；`.part` 与元数据落在
+ * 缓存目录，校验通过后才原子改名。
  */
 internal object EmbeddingModelStore {
     data class State(
@@ -145,6 +146,20 @@ internal object EmbeddingModelStore {
         download?.cancel()
     }
 
+    /** 当前模型已存在的 `.part` 字节数；>0 时入口文案应显示「继续下载」。 */
+    fun partialBytes(context: Context): Long {
+        val app = context.applicationContext
+        val snapshot = mutable.value
+        val dir = directory(app, snapshot.model)
+        return snapshot.model.assets.sumOf { asset ->
+            val target = File(dir, asset.name)
+            ResumableDownload.partialBytes(
+                ResumableDownload.partFile(app.cacheDir, target),
+                snapshot.source.baseUrl + asset.name,
+            )
+        }
+    }
+
     fun download(context: Context) {
         val snapshot = mutable.value
         if (snapshot.checking || snapshot.downloading || snapshot.ready) return
@@ -161,42 +176,23 @@ internal object EmbeddingModelStore {
                         ensureActive()
                         val target = File(dir, asset.name)
                         if (!valid(target, asset)) {
-                            val partial = File(dir, asset.name + ".part")
-                            val connection = URI(source.baseUrl + asset.name).toURL()
-                                .openConnection() as HttpURLConnection
-                            connection.connectTimeout = 15_000
-                            connection.readTimeout = 30_000
-                            connection.setRequestProperty("Accept-Encoding", "identity")
-                            try {
-                                check(connection.responseCode == 200) { "Embedding model download HTTP failure" }
-                                check(connection.url.protocol == "https") { "Insecure model redirect" }
-                                var received = 0L
-                                var lastProgress = 0L
-                                connection.inputStream.use { input ->
-                                    partial.outputStream().use { output ->
-                                        val buffer = ByteArray(64 * 1024)
-                                        while (true) {
-                                            ensureActive()
-                                            val count = input.read(buffer)
-                                            if (count < 0) break
-                                            received += count
-                                            check(received <= asset.bytes) { "Model file exceeds manifest size" }
-                                            output.write(buffer, 0, count)
-                                            if (received - lastProgress >= 256 * 1024) {
-                                                lastProgress = received
-                                                withContext(Dispatchers.Main) {
-                                                    mutable.value = mutable.value.copy(downloadedBytes = done + received)
-                                                }
-                                            }
-                                        }
+                            // `.part` 放缓存目录；取消/中断保留，下次同 URL 用 Range 续传。
+                            val part = ResumableDownload.partFile(app.cacheDir, target)
+                            ResumableDownload.download(
+                                client = AgentHttpClient.client,
+                                url = source.baseUrl + asset.name,
+                                part = part,
+                                expectedBytes = asset.bytes,
+                                onProgress = { received, _ ->
+                                    withContext(Dispatchers.Main) {
+                                        mutable.value = mutable.value.copy(downloadedBytes = done + received)
                                     }
-                                }
-                                check(valid(partial, asset)) { "Model checksum mismatch" }
-                                ensureActive()
-                                check(partial.renameTo(target)) { "Cannot commit verified model" }
-                            } finally {
-                                connection.disconnect()
-                                partial.delete()
+                                },
+                            )
+                            check(valid(part, asset)) { "Model checksum mismatch" }
+                            ensureActive()
+                            check(ResumableDownload.commit(part, target)) {
+                                "Cannot commit verified model"
                             }
                         }
                         done += asset.bytes

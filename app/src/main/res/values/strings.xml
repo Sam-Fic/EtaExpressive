@@ -566,6 +566,8 @@
   <string name="update_latest">You\'re on the latest version</string>
   <string name="update_check_failed">Couldn\'t check for updates</string>
   <string name="update_downloading">Downloading…</string>
+  <string name="update_downloading_percent">%1$d%% downloaded</string>
+  <string name="update_continue_download">Continue</string>
   <string name="update_download_failed">Couldn\'t download the update</string>
   <string name="update_install_permission">Allow installing unknown apps to update</string>
   <string name="update_background_download">Download in background</string>
@@ -3073,11 +3075,13 @@
   <string name="media_model_text_only_summary">Lower memory. Image and audio retrieval are unavailable</string>
   <string name="media_model_status">Status</string>
   <string name="media_model_checking">Checking local files…</string>
-  <string name="media_model_downloading">Downloading… %1$s / %2$s</string>
+  <string name="media_model_downloading">Downloading… %1$s / %2$s (%3$d%%)</string>
   <string name="media_model_ready">Downloaded and SHA-256 verified</string>
   <string name="media_model_error">Download or verification failed</string>
   <string name="media_model_not_downloaded">Not downloaded</string>
+  <string name="media_model_partial_summary">Paused at %1$d%% · %2$s / %3$s</string>
   <string name="media_model_download">Download model</string>
+  <string name="media_model_continue_download">Continue download</string>
   <string name="media_model_cancel_download">Cancel download</string>
   <string name="media_model_storage">Storage used</string>
   <string name="media_dim_title">Vector dimensions</string>
@@ -3173,6 +3177,7 @@
   <string name="mobile_actions_token_dialog_hint">Accept the Gemma license on the model page, then paste a token from huggingface.co/settings/tokens. ModelScope needs no token</string>
   <string name="mobile_actions_token_field">Access token</string>
   <string name="mobile_actions_download">Download model</string>
+  <string name="mobile_actions_continue_download">Continue download</string>
   <string name="mobile_actions_cancel_download">Cancel download</string>
   <string name="mobile_actions_delete">Delete model</string>
   <string name="mobile_actions_delete_summary">Frees %1$s</string>
@@ -3180,7 +3185,8 @@
   <string name="mobile_actions_status_checking">Verifying…</string>
   <string name="mobile_actions_status_ready">Downloaded and verified</string>
   <string name="mobile_actions_status_missing">Not downloaded</string>
-  <string name="mobile_actions_status_downloading">Downloading %1$s / %2$s</string>
+  <string name="mobile_actions_partial_summary">Paused at %1$d%% · %2$s / %3$s</string>
+  <string name="mobile_actions_status_downloading">Downloading %1$s / %2$s (%3$d%%)</string>
   <string name="mobile_actions_error_network">Download failed. Check the connection and try again</string>
   <string name="mobile_actions_error_auth">Hugging Face rejected the request. Add a token or switch to ModelScope</string>
   <string name="mobile_actions_error_checksum">The file did not match the expected checksum</string>

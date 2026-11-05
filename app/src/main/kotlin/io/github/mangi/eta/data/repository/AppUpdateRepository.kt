@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.github.mangi.eta.agent.model.AgentHttpClient
+import io.github.mangi.eta.core.ResumableDownload
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.model.AppUpdateOffer
 import io.github.mangi.eta.data.model.AppVersion
@@ -113,46 +114,44 @@ internal object AppUpdateRepository {
     ): File = withContext(Dispatchers.IO) {
         val url = offer.apkUrl?.takeIf { it.startsWith("http") }
             ?: error("没有可下载的安装包")
+        val destination = apkDestination(context, offer)
+        destination.parentFile?.mkdirs()
+        // `.part` 与目标同目录：取消/进程被杀都保留，下次同一 URL 才续传；校验通过才改名。
+        val part = File(destination.path + ".part")
+        val resumed = ResumableDownload.download(
+            client = AgentHttpClient.client,
+            url = url,
+            part = part,
+            maxBytes = MAX_APK_BYTES,
+            headers = mapOf("Accept" to "application/octet-stream"),
+            onProgress = { bytesRead, totalBytes -> onProgress?.invoke(bytesRead, totalBytes ?: 0L) },
+        )
+        if (!part.isFile || part.length() <= 0L) error("下载失败")
+        if (!ResumableDownload.commit(part, destination)) error("无法写入安装包")
+        if (resumed) {
+            // 续传后的完整文件仍要过大小校验；AppUpdateService/系统安装器后续还会校验签名。
+            if (destination.length() > MAX_APK_BYTES) {
+                destination.delete()
+                error("安装包过大")
+            }
+        }
+        destination
+    }
+
+    /** 已经存在的可续传字节数；对话框据此把按钮文案换成「继续下载」。 */
+    fun partialDownloadBytes(context: Context, offer: AppUpdateOffer): Long {
+        val url = offer.apkUrl?.takeIf { it.startsWith("http") } ?: return 0L
+        val destination = apkDestination(context, offer)
+        return ResumableDownload.partialBytes(File(destination.path + ".part"), url)
+    }
+
+    private fun apkDestination(context: Context, offer: AppUpdateOffer): File {
         val name = offer.apkName
             ?.substringAfterLast('/')
             ?.takeIf { it.endsWith(".apk", ignoreCase = true) }
             ?: "eta-${offer.normalizedVersion.ifBlank { "update" }}.apk"
         val dir = File(context.applicationContext.cacheDir, "updates").apply { mkdirs() }
-        val destination = File(dir, name)
-        val request = Request.Builder()
-            .url(url)
-            .header("Accept", "application/octet-stream")
-            .get()
-            .build()
-        try {
-            AgentHttpClient.client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    error("下载失败 HTTP ${response.code}")
-                }
-                val declared = response.body.contentLength()
-                if (declared > MAX_APK_BYTES) error("安装包过大")
-                destination.outputStream().use { output ->
-                    response.body.byteStream().use { input ->
-                        val buffer = ByteArray(16 * 1024)
-                        var total = 0L
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            total += read
-                            if (total > MAX_APK_BYTES) error("安装包过大")
-                            output.write(buffer, 0, read)
-                            onProgress?.invoke(total, declared)
-                        }
-                    }
-                }
-            }
-            if (!destination.isFile || destination.length() <= 0L) error("下载失败")
-            destination
-        } catch (failure: Throwable) {
-            // 半截 APK 不能留在缓存目录：下次下载会误命中损坏文件。
-            destination.delete()
-            throw failure
-        }
+        return File(dir, name)
     }
 
     fun canInstallPackages(context: Context): Boolean =

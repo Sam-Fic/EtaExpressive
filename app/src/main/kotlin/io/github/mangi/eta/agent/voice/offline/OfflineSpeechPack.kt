@@ -1,9 +1,9 @@
 package io.github.mangi.eta.agent.voice.offline
 
 import android.content.Context
+import io.github.mangi.eta.agent.model.AgentHttpClient
+import io.github.mangi.eta.core.ResumableDownload
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URI
 import java.security.MessageDigest
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -121,42 +121,23 @@ internal object OfflineSpeechPack {
                         ensureActive()
                         val target = File(dir, asset.name)
                         if (!valid(target, asset)) {
-                            val partial = File(dir, asset.name + ".part")
-                            val connection = URI(asset.url ?: (source.baseUrl + asset.name)).toURL()
-                                .openConnection() as HttpURLConnection
-                            connection.connectTimeout = 15_000
-                            connection.readTimeout = 15_000
-                            connection.setRequestProperty("Accept-Encoding", "identity")
-                            try {
-                                check(connection.responseCode == 200) { "Model download HTTP failure" }
-                                check(connection.url.protocol == "https") { "Insecure model redirect" }
-                                var received = 0L
-                                var lastProgress = 0L
-                                connection.inputStream.use { input ->
-                                    partial.outputStream().use { output ->
-                                        val buffer = ByteArray(64 * 1024)
-                                        while (true) {
-                                            ensureActive()
-                                            val count = input.read(buffer)
-                                            if (count < 0) break
-                                            received += count
-                                            check(received <= asset.bytes) { "Model file exceeds manifest size" }
-                                            output.write(buffer, 0, count)
-                                            if (received - lastProgress >= 256 * 1024) {
-                                                lastProgress = received
-                                                withContext(Dispatchers.Main) {
-                                                    mutable.value = mutable.value.copy(downloadedBytes = done + received)
-                                                }
-                                            }
-                                        }
+                            // `.part` 放缓存目录；取消/中断保留，下次同 URL 用 Range 续传。
+                            val part = ResumableDownload.partFile(app.cacheDir, target)
+                            ResumableDownload.download(
+                                client = AgentHttpClient.client,
+                                url = asset.url ?: (source.baseUrl + asset.name),
+                                part = part,
+                                expectedBytes = asset.bytes,
+                                onProgress = { received, _ ->
+                                    withContext(Dispatchers.Main) {
+                                        mutable.value = mutable.value.copy(downloadedBytes = done + received)
                                     }
-                                }
-                                check(valid(partial, asset)) { "Model checksum mismatch" }
-                                ensureActive()
-                                check(partial.renameTo(target)) { "Cannot commit verified model" }
-                            } finally {
-                                connection.disconnect()
-                                partial.delete()
+                                },
+                            )
+                            check(valid(part, asset)) { "Model checksum mismatch" }
+                            ensureActive()
+                            check(ResumableDownload.commit(part, target)) {
+                                "Cannot commit verified model"
                             }
                         }
                         done += asset.bytes

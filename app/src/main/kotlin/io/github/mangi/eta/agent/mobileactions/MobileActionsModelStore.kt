@@ -1,9 +1,9 @@
 package io.github.mangi.eta.agent.mobileactions
 
 import android.content.Context
+import io.github.mangi.eta.agent.model.AgentHttpClient
+import io.github.mangi.eta.core.ResumableDownload
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URI
 import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -148,13 +148,30 @@ internal object MobileActionsModelStore {
         download?.cancel()
     }
 
-    /** 删除已下载的模型文件；保留来源/后端/令牌偏好。 */
+    /** 当前源已存在的 `.part` 字节数；>0 时入口文案应显示「继续下载」。 */
+    fun partialBytes(context: Context): Long {
+        val app = context.applicationContext
+        val asset = MobileActionsModelCatalog.asset
+        val target = File(directory(app), asset.name)
+        return ResumableDownload.partialBytes(
+            ResumableDownload.partFile(app.cacheDir, target),
+            mutable.value.source.baseUrl + asset.name,
+        )
+    }
+
+    /** 删除已下载的模型文件与断点；保留来源/后端/令牌偏好。 */
     fun delete(context: Context) {
         download?.cancel()
         download = null
         val app = context.applicationContext
+        val asset = MobileActionsModelCatalog.asset
         scope.launch {
-            withContext(Dispatchers.IO) { directory(app).deleteRecursively() }
+            withContext(Dispatchers.IO) {
+                // 显式删除是唯一会清掉 `.part` 的入口；取消下载不删。
+                val target = File(directory(app), asset.name)
+                ResumableDownload.discard(ResumableDownload.partFile(app.cacheDir, target))
+                directory(app).deleteRecursively()
+            }
             mutable.value = mutable.value.copy(
                 checking = false,
                 ready = false,
@@ -182,50 +199,29 @@ internal object MobileActionsModelStore {
                         target.delete()
                         // 先做空间检查：289 MB 的半截文件比下载失败更糟。
                         if (dir.usableSpace < asset.bytes) throw MissingSpace()
-                        val partial = File(dir, asset.name + ".part")
-                        val connection = URI(source.baseUrl + asset.name).toURL()
-                            .openConnection() as HttpURLConnection
-                        connection.connectTimeout = 15_000
-                        connection.readTimeout = 30_000
-                        connection.setRequestProperty("Accept-Encoding", "identity")
-                        if (source.requiresToken && token.isNotEmpty()) {
-                            connection.setRequestProperty("Authorization", "Bearer $token")
+                        // `.part` 放缓存目录；取消/中断保留，下次同 URL 用 Range 续传。
+                        val part = ResumableDownload.partFile(app.cacheDir, target)
+                        val headers = buildMap {
+                            if (source.requiresToken && token.isNotEmpty()) {
+                                put("Authorization", "Bearer $token")
+                            }
                         }
-                        try {
-                            val code = connection.responseCode
-                            if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
-                                throw MissingAuth()
-                            }
-                            check(code == 200) { "Model download HTTP $code" }
-                            check(connection.url.protocol == "https") { "Insecure model redirect" }
-                            var received = 0L
-                            var lastProgress = 0L
-                            connection.inputStream.use { input ->
-                                partial.outputStream().use { output ->
-                                    val buffer = ByteArray(64 * 1024)
-                                    while (true) {
-                                        ensureActive()
-                                        val count = input.read(buffer)
-                                        if (count < 0) break
-                                        received += count
-                                        check(received <= asset.bytes) { "Model file exceeds manifest size" }
-                                        output.write(buffer, 0, count)
-                                        if (received - lastProgress >= 256 * 1024) {
-                                            lastProgress = received
-                                            withContext(Dispatchers.Main) {
-                                                mutable.value = mutable.value.copy(downloadedBytes = received)
-                                            }
-                                        }
-                                    }
+                        ResumableDownload.download(
+                            client = AgentHttpClient.client,
+                            url = source.baseUrl + asset.name,
+                            part = part,
+                            expectedBytes = asset.bytes,
+                            headers = headers,
+                            onProgress = { received, _ ->
+                                withContext(Dispatchers.Main) {
+                                    mutable.value = mutable.value.copy(downloadedBytes = received)
                                 }
-                            }
-                            check(received == asset.bytes) { "Model file truncated" }
-                            if (!fullValid(partial, asset)) throw ChecksumMismatch()
-                            ensureActive()
-                            check(partial.renameTo(target)) { "Cannot commit verified model" }
-                        } finally {
-                            connection.disconnect()
-                            partial.delete()
+                            },
+                        )
+                        if (!fullValid(part, asset)) throw ChecksumMismatch()
+                        ensureActive()
+                        check(ResumableDownload.commit(part, target)) {
+                            "Cannot commit verified model"
                         }
                     }
                     withContext(Dispatchers.Main) {
@@ -238,8 +234,10 @@ internal object MobileActionsModelStore {
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (auth: MissingAuth) {
-                mutable.value = mutable.value.copy(failure = Failure.AUTH)
+            } catch (auth: ResumableDownload.HttpFailure) {
+                mutable.value = mutable.value.copy(
+                    failure = if (auth.code == 401 || auth.code == 403) Failure.AUTH else Failure.NETWORK,
+                )
             } catch (space: MissingSpace) {
                 mutable.value = mutable.value.copy(failure = Failure.NO_SPACE)
             } catch (checksum: ChecksumMismatch) {
@@ -252,7 +250,6 @@ internal object MobileActionsModelStore {
         }
     }
 
-    private class MissingAuth : Exception()
     private class MissingSpace : Exception()
     private class ChecksumMismatch : Exception()
 

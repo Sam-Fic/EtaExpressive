@@ -1,18 +1,23 @@
 package io.github.mangi.eta.ui.components
 
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,10 +33,15 @@ import io.github.mangi.eta.data.model.AppUpdateOffer
 import io.github.mangi.eta.data.repository.AppUpdateRepository
 import io.github.mangi.eta.data.repository.AppUpdateService
 import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
+import io.github.mangi.eta.ui.adaptive.EtaProgressBar
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -46,8 +56,18 @@ internal fun AppUpdateDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var downloading by remember(offer.versionName) { mutableStateOf(false) }
+    // 前台下载的真实进度：有总字节时走确定型，无总字节（服务端未给 Content-Length）退回不定型。
+    var downloadProgress by remember(offer.versionName) { mutableStateOf<Float?>(null) }
+    var downloadJob by remember(offer.versionName) { mutableStateOf<Job?>(null) }
     var backgroundStarted by remember(offer.versionName) { mutableStateOf(false) }
     val busy = downloading || backgroundStarted
+    // 有 `.part` 说明上次取消/中断过：按钮文案改成「继续下载」，进度自然从已下载字节起算。
+    var resumedBytes by remember(offer.versionName) { mutableStateOf(0L) }
+    LaunchedEffect(offer.versionName, downloading) {
+        resumedBytes = withContext(Dispatchers.IO) {
+            AppUpdateRepository.partialDownloadBytes(context, offer)
+        }
+    }
     val summary = stringResource(
         R.string.update_available_summary,
         offer.versionName,
@@ -94,6 +114,11 @@ internal fun AppUpdateDialog(
                 }
                 TextButton(
                     onClick = {
+                        // 下载中：这一个按钮变为「停止下载」，与后台服务的通知动作保持一致。
+                        if (downloading) {
+                            downloadJob?.cancel()
+                            return@TextButton
+                        }
                         if (busy) return@TextButton
                         if (offer.apkUrl.isNullOrBlank()) {
                             AppUpdateRepository.openReleasePage(context, offer)
@@ -110,34 +135,54 @@ internal fun AppUpdateDialog(
                             return@TextButton
                         }
                         downloading = true
-                        scope.launch {
-                            val result = runCatching {
-                                val file = AppUpdateRepository.downloadApk(context, offer)
+                        downloadProgress = null
+                        downloadJob = scope.launch {
+                            try {
+                                var lastEmitAt = 0L
+                                val file = AppUpdateRepository.downloadApk(
+                                    context = context,
+                                    offer = offer,
+                                    onProgress = { bytesRead, totalBytes ->
+                                        // onProgress 在 IO 线程回调：按 100ms 节流后再切回主线程写状态。
+                                        val now = SystemClock.uptimeMillis()
+                                        if (now - lastEmitAt >= 100L) {
+                                            lastEmitAt = now
+                                            val fraction = if (totalBytes > 0L) {
+                                                (bytesRead.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                                            } else {
+                                                null
+                                            }
+                                            scope.launch { downloadProgress = fraction }
+                                        }
+                                    },
+                                )
                                 withContext(Dispatchers.Main) {
                                     AppUpdateRepository.installApk(context, file)
                                 }
-                            }
-                            downloading = false
-                            result.exceptionOrNull()?.let { failure ->
-                                if (failure is CancellationException) throw failure
+                                onDismiss()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (failure: Throwable) {
                                 Toast.makeText(
                                     context,
                                     failure.message?.takeIf { it.isNotBlank() }
                                         ?: context.getString(R.string.update_download_failed),
                                     Toast.LENGTH_LONG,
                                 ).show()
-                                return@launch
+                            } finally {
+                                downloading = false
+                                downloadProgress = null
+                                downloadJob = null
                             }
-                            onDismiss()
                         }
                     },
-                    enabled = !busy,
+                    enabled = downloading || !busy,
                 ) {
                     Text(
-                        text = if (downloading) {
-                            stringResource(R.string.update_downloading)
-                        } else {
-                            stringResource(R.string.update_now)
+                        text = when {
+                            downloading -> stringResource(R.string.update_stop_download)
+                            resumedBytes > 0L -> stringResource(R.string.update_continue_download)
+                            else -> stringResource(R.string.update_now)
                         },
                     )
                 }
@@ -161,6 +206,34 @@ internal fun AppUpdateDialog(
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            // 前台下载：有总字节走 wavy 确定型，无总字节走 LoadingIndicator 不定型。
+            if (downloading) {
+                val fraction = downloadProgress
+                if (fraction != null) {
+                    Column(modifier = Modifier.padding(bottom = 12.dp)) {
+                        EtaProgressBar(progress = fraction)
+                        EtaText(
+                            text = stringResource(
+                                R.string.update_downloading_percent,
+                                (fraction * 100f).roundToInt(),
+                            ),
+                            style = EtaTextStyle.Secondary,
+                        )
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    ) {
+                        EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize)
+                        Spacer(modifier = Modifier.width(EtaDimens.TrailingElementGap))
+                        EtaText(
+                            text = stringResource(R.string.update_downloading),
+                            style = EtaTextStyle.Secondary,
+                        )
+                    }
+                }
+            }
             if (offer.notes.isNotBlank()) {
                 EtaText(
                     text = offer.notes,

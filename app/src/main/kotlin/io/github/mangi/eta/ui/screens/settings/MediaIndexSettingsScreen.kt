@@ -45,7 +45,9 @@ import io.github.mangi.eta.data.db.MediaSourceEntity
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -322,6 +324,11 @@ internal fun MediaIndexSettingsScreen(
     val hasIndex = indexedCount > 0 || lastIndexedAt != null
     val modelReady = modelState.ready
     val downloading = modelState.downloading
+    // 有 `.part` 说明上次取消/中断过：入口文案改成「继续下载」，点击后会从断点续传。
+    var partialModelBytes by remember { mutableStateOf(0L) }
+    LaunchedEffect(modelState.downloading, modelState.ready, modelState.model.id, modelState.source.id) {
+        partialModelBytes = withContext(Dispatchers.IO) { EmbeddingModelStore.partialBytes(context) }
+    }
     // 局部副本：委托属性无法做智能转换（Kotlin 不允许对 by 委托的属性 smart cast）。
     val backend = activeBackend
 
@@ -407,19 +414,30 @@ internal fun MediaIndexSettingsScreen(
                     // 下载 / 取消合并为一行：标题随状态切换，模型状态 + 体积作为副标题。
                     EtaClickableRow(
                         title = stringResource(
-                            if (downloading) {
-                                R.string.media_model_cancel_download
-                            } else {
-                                R.string.media_model_download
+                            when {
+                                downloading -> R.string.media_model_cancel_download
+                                partialModelBytes > 0L && !modelState.ready -> R.string.media_model_continue_download
+                                else -> R.string.media_model_download
                             },
                         ),
-                        summary = modelStatusSummary(modelState),
+                        summary = modelStatusSummary(modelState, partialModelBytes),
                         onClick = {
                             if (downloading) {
                                 EmbeddingModelStore.cancelDownload()
                             } else {
                                 EmbeddingModelStore.download(context)
                             }
+                        },
+                        // 模型校验 / 下载有分母时走确定型，无分母（校验、准备）仍为不定型。
+                        leading = if (modelState.checking || modelState.downloading) {
+                            {
+                                EtaLoadingSlot(
+                                    progress = modelState.downloadFraction(),
+                                    size = EtaDimens.DenseIconSize,
+                                )
+                            }
+                        } else {
+                            null
                         },
                         showChevron = false,
                         enabled = downloading || (!modelState.checking && !modelState.ready),
@@ -708,6 +726,17 @@ internal fun MediaIndexSettingsScreen(
                             }
                         },
                         onClick = { startIndex() },
+                        // 索引有真实分母（已处理 / 总数）时走确定型，扫描计数阶段仍为不定型。
+                        leading = if (progress.running) {
+                            {
+                                EtaLoadingSlot(
+                                    progress = progress.fraction(),
+                                    size = EtaDimens.DenseIconSize,
+                                )
+                            }
+                        } else {
+                            null
+                        },
                         showChevron = false,
                         enabled = confirmed && modelReady && !progress.running,
                     )
@@ -823,21 +852,34 @@ private fun modelSummary(model: EmbeddingModelCatalog.Model): String = when (mod
  * 状态卡删掉后，模型是否就绪的信息并入这一行，不再单列一块只读区域。
  */
 @Composable
-private fun modelStatusSummary(state: EmbeddingModelStore.State): String {
+private fun modelStatusSummary(state: EmbeddingModelStore.State, partialBytes: Long = 0L): String {
+    val total = formatBytes(state.totalBytes)
     val status = when {
         state.checking -> stringResource(R.string.media_model_checking)
         state.downloading -> stringResource(
             R.string.media_model_downloading,
             formatBytes(state.downloadedBytes),
-            formatBytes(state.totalBytes),
+            total,
+            percentOf(state.downloadedBytes, state.totalBytes),
         )
         state.ready -> stringResource(R.string.media_model_ready)
         state.error -> stringResource(R.string.media_model_error)
+        // 取消/中断留下的 `.part`：副标题给出断点位置，入口标题同时变成「继续下载」。
+        partialBytes > 0L -> stringResource(
+            R.string.media_model_partial_summary,
+            percentOf(partialBytes, state.totalBytes),
+            formatBytes(partialBytes),
+            total,
+        )
         else -> stringResource(R.string.media_model_not_downloaded)
     }
-    // 下载中的状态里已经带了进度数字，不再重复体积。
-    return if (state.downloading) status else "$status · ${formatBytes(state.totalBytes)}"
+    // 下载中/有断点的状态里已经带了进度数字，不再重复体积。
+    val showsProgress = state.downloading || (partialBytes > 0L && !state.ready)
+    return if (showsProgress) status else "$status · $total"
 }
+
+private fun percentOf(bytes: Long, total: Long): Int =
+    if (total <= 0L) 0 else ((bytes * 100L) / total).coerceIn(0L, 100L).toInt()
 
 /**
  * 推理后端行的副标题：默认说明 + 回退提示。
@@ -905,6 +947,18 @@ private fun sourceSummary(
     }
     return if (note.isEmpty()) estimateText else "$estimateText · $note"
 }
+
+/** 索引进度：已处理 / 总数；两者未就绪（扫描计数阶段）时为 null，保持不定型。 */
+private fun MediaIndexer.Progress.fraction(): Float? =
+    if (total > 0) (processed.toFloat() / total.toFloat()).coerceIn(0f, 1f) else null
+
+/** 模型下载进度：已下载 / 总字节；不在下载或总字节未知时为 null，走不定型。 */
+private fun EmbeddingModelStore.State.downloadFraction(): Float? =
+    if (downloading && totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        null
+    }
 
 private fun progressSummary(context: Context, progress: MediaIndexer.Progress): String {
     val phase = when (progress.phase) {
