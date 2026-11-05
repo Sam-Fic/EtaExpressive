@@ -561,7 +561,6 @@ internal fun SettingsScreen(
                 row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
                     ToolReviewModeRow(
                         title = stringResource(R.string.settings_tool_review_mode),
-                        summary = stringResource(R.string.settings_tool_review_mode_summary),
                     )
                 }
 
@@ -570,7 +569,6 @@ internal fun SettingsScreen(
                 row(key = SettingsKeys.TOOL_LOADING_MODE) {
                     ToolLoadingModeRow(
                         title = stringResource(R.string.tools_loading_mode_title),
-                        summary = stringResource(R.string.tools_loading_mode_summary),
                     )
                 }
 
@@ -1097,10 +1095,13 @@ private fun buildToolsCapabilitySummary(context: Context, prefs: SharedPreferenc
  * 不像渐进加载那样等新会话。直接读写 Prefs（与 DecisionModelSettingsScreen 同模式）；
  * 四个档位的语义见 [AgentToolReviewMode]。
  *
+ * 行内摘要只描述当前档位的实际效果（跨档位的高风险提示并入同一句），
+ * 各档位的一句话说明放在菜单项第二行。
+ *
  * 轻触反馈由组件自己触发，不要在 [EtaSegmentedDropdownRow.onItemSelected] 里再写。
  */
 @Composable
-private fun ToolReviewModeRow(title: String, summary: String) {
+private fun ToolReviewModeRow(title: String) {
     var mode by remember { mutableStateOf(Prefs.toolReviewMode()) }
     val options = listOf(
         Prefs.Keys.TOOL_REVIEW_MODE_READONLY,
@@ -1114,12 +1115,26 @@ private fun ToolReviewModeRow(title: String, summary: String) {
         stringResource(R.string.settings_tool_review_mode_standard),
         stringResource(R.string.settings_tool_review_mode_auto),
     )
+    // 当前档位的实际效果：高风险/致命操作的确认规则并进同一句，不单列脚注。
+    val effects = listOf(
+        stringResource(R.string.settings_tool_review_mode_readonly_effect),
+        stringResource(R.string.settings_tool_review_mode_strict_effect),
+        stringResource(R.string.settings_tool_review_mode_standard_effect),
+        stringResource(R.string.settings_tool_review_mode_auto_effect),
+    )
+    val hints = listOf(
+        stringResource(R.string.settings_tool_review_mode_readonly_hint),
+        stringResource(R.string.settings_tool_review_mode_strict_hint),
+        stringResource(R.string.settings_tool_review_mode_standard_hint),
+        stringResource(R.string.settings_tool_review_mode_auto_hint),
+    )
+    val selectedIndex = options.indexOf(mode).coerceAtLeast(0)
     EtaSegmentedDropdownRow(
         title = title,
         // 审查档位是「执行策略」：与同组其余四行共用行首图标槽。
         icon = Icons.Rounded.Security,
         items = labels,
-        selectedIndex = options.indexOf(mode).coerceAtLeast(0),
+        selectedIndex = selectedIndex,
         onItemSelected = { index ->
             options.getOrNull(index)?.let { value ->
                 if (mode != value) {
@@ -1128,7 +1143,8 @@ private fun ToolReviewModeRow(title: String, summary: String) {
                 }
             }
         },
-        summary = summary,
+        summary = effects[selectedIndex],
+        itemSummaries = hints,
     )
 }
 
@@ -1138,11 +1154,12 @@ private fun ToolReviewModeRow(title: String, summary: String) {
  * 档位语义与工具页一致：按工具 = tools_search 命中解锁所属组；按组 = 仅
  * tools_use_group 整组打开；关闭 = 下发完整工具目录。写入 [Prefs.setToolLoadingMode]，
  * 新建会话生效（当前会话由 run 侧的会话锁保持原设置）。
+ *
+ * 行内摘要只描述当前档位及生效时机，各档位的一句话说明放在菜单项第二行。
  */
 @Composable
 private fun ToolLoadingModeRow(
     title: String,
-    summary: String? = null,
 ) {
     var mode by remember { mutableStateOf(Prefs.toolLoadingMode()) }
     val options = listOf(
@@ -1155,12 +1172,23 @@ private fun ToolLoadingModeRow(
         stringResource(R.string.tools_loading_mode_group),
         stringResource(R.string.tools_loading_mode_off),
     )
+    val effects = listOf(
+        stringResource(R.string.tools_loading_mode_search_effect),
+        stringResource(R.string.tools_loading_mode_group_effect),
+        stringResource(R.string.tools_loading_mode_off_effect),
+    )
+    val hints = listOf(
+        stringResource(R.string.tools_loading_mode_search_hint),
+        stringResource(R.string.tools_loading_mode_group_hint),
+        stringResource(R.string.tools_loading_mode_off_hint),
+    )
+    val selectedIndex = options.indexOf(mode).coerceAtLeast(0)
     EtaSegmentedDropdownRow(
         title = title,
         // 渐进加载是「工具目录怎么下发」：与同组其余行共用行首图标槽。
         icon = Icons.Rounded.Layers,
         items = labels,
-        selectedIndex = options.indexOf(mode).coerceAtLeast(0),
+        selectedIndex = selectedIndex,
         onItemSelected = { index ->
             options.getOrNull(index)?.let { value ->
                 if (mode != value) {
@@ -1169,7 +1197,8 @@ private fun ToolLoadingModeRow(
                 }
             }
         },
-        summary = summary,
+        summary = effects[selectedIndex],
+        itemSummaries = hints,
     )
 }
 

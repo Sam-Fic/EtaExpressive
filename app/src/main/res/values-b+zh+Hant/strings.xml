@@ -836,6 +836,12 @@
   <string name="tools_loading_mode_search">按工具</string>
   <string name="tools_loading_mode_group">按組</string>
   <string name="tools_loading_mode_off">關閉</string>
+  <string name="tools_loading_mode_search_effect">按工具搜尋解鎖所屬組，新建會話後生效</string>
+  <string name="tools_loading_mode_group_effect">用 tools_use_group 整組開啟，新建會話後生效</string>
+  <string name="tools_loading_mode_off_effect">傳送完整工具目錄，新建會話後生效</string>
+  <string name="tools_loading_mode_search_hint">搜尋後解鎖所屬組</string>
+  <string name="tools_loading_mode_group_hint">整組一次性開啟</string>
+  <string name="tools_loading_mode_off_hint">傳送完整工具目錄</string>
   <string name="tools_mcp_deferred_title">MCP 工具按需載入</string>
   <string name="tools_mcp_deferred_summary">每個 MCP 伺服器作為一個延遲組按需載入；關閉後所有伺服器的工具 schema 全量常駐</string>
   <string name="tools_per_tool_switch_hint">單獨關掉某個工具後，即使所在分組已啟用也不會下發它</string>
@@ -879,6 +885,14 @@
   <string name="settings_tool_review_mode_strict">嚴格</string>
   <string name="settings_tool_review_mode_standard">標準</string>
   <string name="settings_tool_review_mode_auto">自動</string>
+  <string name="settings_tool_review_mode_readonly_effect">僅允許讀取，其他呼叫會被拒絕</string>
+  <string name="settings_tool_review_mode_strict_effect">中風險逐個確認</string>
+  <string name="settings_tool_review_mode_standard_effect">每個會話確認一次，高風險仍會確認</string>
+  <string name="settings_tool_review_mode_auto_effect">中風險不再詢問，高風險仍會確認</string>
+  <string name="settings_tool_review_mode_readonly_hint">僅允許讀取</string>
+  <string name="settings_tool_review_mode_strict_hint">中風險逐個確認</string>
+  <string name="settings_tool_review_mode_standard_hint">每個會話確認一次</string>
+  <string name="settings_tool_review_mode_auto_hint">中風險不再詢問</string>
   <string name="settings_subagent_tools">子代理委派</string>
   <string name="settings_subagent_tools_summary">允許模型將獨立任務交給已配置的處理程序。每次委派都在另一個模型上執行，並單獨計費</string>
   <string name="settings_screen_tools">螢幕觀察與 GUI 操作</string>

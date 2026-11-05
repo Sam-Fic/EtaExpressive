@@ -199,6 +199,8 @@ fun EtaClickableRow(
  *
  * @param description 行的无障碍描述（TalkBack 播报与测试定位用）；挂在行本体的合并语义节点上，
  *        与 [SubAgentSettingsRow] 等兄弟行的 contentDescription 约定一致。
+ * @param itemSummaries 菜单条目的第二行副标题（与 [items] 一一对应，null 表示该条不显示副标题）。
+ *        走官方 [SelectableDropdownMenuItem.supportingText] 槽，不另造两行菜单。
  *
  * 轻触反馈（展开菜单、选中条目）由本行自己触发，调用方**不要**在 `onItemSelected`
  * 或 `onClick` 里再写 `TouchHaptics.click`。
@@ -215,6 +217,7 @@ fun EtaSegmentedDropdownRow(
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     description: String? = null,
+    itemSummaries: List<String?>? = null,
 ) {
     val view = LocalView.current
     var expanded by remember { mutableStateOf(false) }
@@ -283,6 +286,10 @@ fun EtaSegmentedDropdownRow(
             items.forEachIndexed { index, text ->
                 SelectableDropdownMenuItem(
                     text = { Text(text) },
+                    // 官方支持文本槽：菜单项第二行短说明，未给副标题时保持单行。
+                    supportingText = itemSummaries?.getOrNull(index)?.let { subtitle ->
+                        { Text(text = subtitle) }
+                    },
                     selected = index == safeIndex,
                     onClick = {
                         if (index in items.indices) {

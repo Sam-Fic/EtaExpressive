@@ -725,6 +725,12 @@
   <string name="tools_loading_mode_search">Per tool</string>
   <string name="tools_loading_mode_group">By group</string>
   <string name="tools_loading_mode_off">Off</string>
+  <string name="tools_loading_mode_search_effect">Searching by tool unlocks the owning group; applies to new conversations</string>
+  <string name="tools_loading_mode_group_effect">Groups open whole via tools_use_group; applies to new conversations</string>
+  <string name="tools_loading_mode_off_effect">Send the full tool catalog; applies to new conversations</string>
+  <string name="tools_loading_mode_search_hint">Search, then unlock its group</string>
+  <string name="tools_loading_mode_group_hint">Open the whole group at once</string>
+  <string name="tools_loading_mode_off_hint">Send the full catalog</string>
   <string name="tools_mcp_deferred_title">Load MCP tools on demand</string>
   <string name="tools_mcp_deferred_summary">Each MCP server loads as a deferred group like built-in tools; turn off to always send every server\'s tool schemas</string>
   <string name="tool_ui_ask_user">Ask you a question</string>
@@ -767,6 +773,14 @@
   <string name="settings_tool_review_mode_strict">Strict</string>
   <string name="settings_tool_review_mode_standard">Standard</string>
   <string name="settings_tool_review_mode_auto">Auto</string>
+  <string name="settings_tool_review_mode_readonly_effect">Read-only: every other call is declined</string>
+  <string name="settings_tool_review_mode_strict_effect">Medium-risk calls are confirmed each time</string>
+  <string name="settings_tool_review_mode_standard_effect">Medium-risk calls are confirmed once per conversation; high-risk ones still ask</string>
+  <string name="settings_tool_review_mode_auto_effect">Medium-risk calls no longer ask; high-risk ones still do</string>
+  <string name="settings_tool_review_mode_readonly_hint">Read access only</string>
+  <string name="settings_tool_review_mode_strict_hint">Confirm each medium-risk call</string>
+  <string name="settings_tool_review_mode_standard_hint">Confirm once per conversation</string>
+  <string name="settings_tool_review_mode_auto_hint">No prompts for medium risk</string>
   <string name="settings_subagent_tools">Sub-agent delegation</string>
   <string name="settings_subagent_tools_summary">Let the model hand self-contained tasks to configured workers. Each delegation runs on another model and is billed separately</string>
   <string name="settings_screen_tools">Screen observation and GUI</string>
