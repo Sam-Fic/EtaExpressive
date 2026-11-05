@@ -14,6 +14,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import android.os.Process
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Choreographer
 import android.view.Gravity
@@ -23,6 +24,8 @@ import android.view.WindowManager
 import android.view.WindowInsets
 import android.widget.OverScroller
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +69,7 @@ import io.github.mangi.eta.agent.overlay.AgentOverlayPhase
 import io.github.mangi.eta.agent.overlay.AgentOverlayState
 import io.github.mangi.eta.agent.overlay.AgentOverlayStatus
 import io.github.mangi.eta.agent.overlay.AgentOverlayVisibilityPolicy
+import io.github.mangi.eta.agent.overlay.CapsuleFlingPlan
 import io.github.mangi.eta.agent.overlay.applyControlledEvent
 import io.github.mangi.eta.agent.overlay.applyEvent
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
@@ -166,7 +170,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var capsuleCenterX: Float? = null
     private var capsuleTopY: Float? = null
     private var capsuleDragStart: AgentOrbPosition? = null
-    /** 光球抛掷惯性：与胶囊同一套 OverScroller 物理帧循环（左上坐标、边界硬停）。 */
+    /** 光球抛掷惯性：OverScroller 摩擦曲线 + Choreographer 物理帧（左上坐标、边界硬停）。 */
     private var orbFlingScroller: OverScroller? = null
     private val orbFlingFrame = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -184,33 +188,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     private var capsulePointerCaptured = false
     /** 缩球停靠态：大力甩向横边触发，点球恢复。 */
     private val capsuleMinimized = mutableStateOf(false)
-    /** 抛掷惯性：平台 OverScroller 摩擦曲线（系统滚动同款物理），Choreographer 逐帧推进。
-     *  scroller 以「中心 x + 顶边 y」为坐标系（x 轴与缩球形变共用），允许越界 over 余量后回弹。 */
-    private var capsuleFlingScroller: OverScroller? = null
-    private val capsuleFlingFrame = object : Choreographer.FrameCallback {
-        override fun doFrame(frameTimeNanos: Long) {
-            val scroller = capsuleFlingScroller ?: return
-            if (!scroller.computeScrollOffset()) {
-                capsuleFlingScroller = null
-                return
-            }
-            val bounds = overlayBounds(windowManager ?: return)
-            val width = capsuleParams?.width ?: 0
-            val height = capsuleParams?.height ?: 0
-            // 左上落位 = 中心 − 当前宽/2：缩球形变期间宽度逐帧收窄，窗口绕中心对称收缩；
-            // 形变早期窗口还很宽，按当前尺寸钳制，胶囊先贴边滑行、收窄后再滑进停靠点。
-            val maxLeft = (bounds.right - width).coerceAtLeast(bounds.left).toFloat()
-            val maxTop = (bounds.bottom - height).coerceAtLeast(bounds.top).toFloat()
-            val left = scroller.currX - width / 2f
-            val top = scroller.currY.toFloat()
-            val appliedLeft = left.coerceIn(bounds.left.toFloat(), maxLeft)
-            val appliedTop = top.coerceIn(bounds.top.toFloat(), maxTop)
-            capsuleCenterX = appliedLeft + width / 2f
-            capsuleTopY = appliedTop
-            applyCapsuleWindowPositionAt(appliedLeft, appliedTop)
-            Choreographer.getInstance().postFrameCallback(this)
-        }
-    }
+    /**
+     * 甩出物理进行中：窗口位置由 Compose 的 Animatable 逐帧下发（onFlingStep），
+     * 期间窗口重排只绕 centerX 对称收放，不做边界钳制。
+     */
+    private var capsuleFlingActive = false
+    /**
+     * 甩出落定后的锚定保护截止时刻（uptime）：缩球形变可能比动画更晚收完，
+     * 这段时间内窗口仍绕中心收放，避免宽度还很大时被钳制路径推回去（跳位）。
+     */
+    private var capsuleFlingSettleUntil = 0L
     private val restoreCapsule = Runnable { setCapsuleYielded(false) }
     private val clearanceHost = object : AgentOverlayClearance.Host {
         override fun capsuleTouchBounds(): Rect? {
@@ -402,7 +389,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         // 旋转后物理坐标系（屏幕宽高）失效，进行中的惯性/回弹直接停，位置交给钳制重排。
-        stopCapsuleFling()
+        clearCapsuleFlingState()
         stopOrbFling()
         // 用最后一次上报的内容尺寸按新 metrics 重算留白与 y；尺寸本身等 Compose 重新布局上报。
         applyCapsuleWindowBounds()
@@ -1722,7 +1709,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 onContentSizeChanged = ::updateCapsuleWindowSize,
                 onDragStart = ::beginCapsuleDrag,
                 onDrag = ::handleCapsuleDrag,
-                onDragEnd = ::handleCapsuleDragEnd,
+                onDragEnd = ::prepareCapsuleFling,
+                onFlingStep = ::handleCapsuleFlingStep,
+                onFlingFinish = ::handleCapsuleFlingFinish,
+                onFlingCancel = ::cancelCapsuleFling,
                 minimized = capsuleMinimized.value,
             )
         }
@@ -1739,6 +1729,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     private fun toggleCapsule() {
+        // 点击可能落在「甩出被打断」的越界位置：收回位置所有权，按当前窗口尺寸钳回界内再切换形态。
+        capsulePointerCaptured = false
+        clearCapsuleFlingState()
+        applyCapsuleWindowBounds()
         if (capsuleMinimized.value) {
             // 点球恢复：原地收成球，就在原地展开回收起态胶囊，形变由逐帧窗口贴合无缝承接。
             capsuleMinimized.value = false
@@ -1748,7 +1742,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         val expanded = !capsuleExpanded.value
         capsuleExpanded.value = expanded
-        // 窗口由 Compose 内容逐帧回调贴合（updateCapsuleWindowSize），展开收起不再撑窗/收窗。
+        // 窗口由 Compose 上报状态机「早涨晚缩」贴合（updateCapsuleWindowSize）：
+        // morph 两端各动一次窗，中途内容在窗内动画，不再逐帧 resize。
         if (virtualDisplayActive() && ownerPresence == null) {
             VirtualDisplayController.setStageExpanded(expanded)
         }
@@ -1845,15 +1840,15 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         return dpToPx(heightDp)
     }
 
-    /** Compose 侧上报的胶囊 Surface 当前布局尺寸（动画中逐帧变化）。 */
+    /** Compose 侧上报的胶囊 Surface 当前布局尺寸（仅 morph 两端与自愈时变化）。 */
     private var capsuleContentWidthPx = 0
     private var capsuleContentHeightPx = 0
 
     /**
-     * 胶囊内容尺寸回调：宽度来自 Compose 状态目标值（弹簧逐帧值），高度来自布局测量。
-     * 两者分开上报——宽度绝不能用测量值：窗口对内容的钳制会经「钳制→上报→收窗」
-     * 反馈成逐帧缩水；高度没有状态目标，只能测量，但负值一律丢弃（防 <0 闪退）。
-     * 窗口据此外扩固定留白后逐帧贴合，全程连续无缝。
+     * 胶囊内容尺寸回调：来自 Compose「早涨晚缩」上报状态机——分析目标变大立即贴上，
+     * 变小方向等动画落定（测量值静默期）后上报 max(分析目标, 测量)。被窗口钳制过的
+     * 测量值因此永不回喂，「钳制→上报→收窗」逐帧缩水回路无从触发；负值一律丢弃。
+     * 窗口据此外扩固定留白后贴合，morph 两端各动一次。
      */
     private fun updateCapsuleWindowSize(contentWidthPx: Int, contentHeightPx: Int) {
         if (contentWidthPx != Int.MIN_VALUE) capsuleContentWidthPx = contentWidthPx
@@ -1874,9 +1869,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             CAPSULE_WINDOW_SLACK_PX
         val height = capsuleContentHeightPx + capsulePaddingPx(CAPSULE_PADDING_VERTICAL_DP) +
             CAPSULE_WINDOW_SLACK_PX
-        // 位置归属：拖拽/惯性期间由手势与 scroller 逐帧下发（中心不动、窗口对称收放），
+        // 位置归属：拖拽/甩出期间由手势与物理层逐帧下发（中心不动、窗口对称收放），
         // 静止时才做边界钳制——否则会把越界回弹和橡皮筋钳回边上，打断物理轨迹。
-        val position = if (capsuleFlingScroller != null || capsulePointerCaptured) {
+        // 落定后的保护窗口覆盖缩球形变尾段：窗口还宽着时钳制会把中心推回，产生跳位。
+        val position = if (capsulePointerCaptured || capsuleFlingActive ||
+            SystemClock.uptimeMillis() < capsuleFlingSettleUntil
+        ) {
             val fallbackCx = (overlayBounds(wm).let { it.left + (it.right - it.left) / 2f })
             AgentOrbPosition(
                 (capsuleCenterX ?: fallbackCx) - width / 2f,
@@ -1932,9 +1930,23 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         return clamped
     }
 
+    /** 立即回收甩出状态（Compose 侧动画随重组/销毁自行取消，这里只清窗口位置所有权）。 */
+    private fun clearCapsuleFlingState() {
+        capsuleFlingActive = false
+        capsuleFlingSettleUntil = 0L
+    }
+
+    /** 边界变化导致的甩出作废：清所有权后立刻按新边界重排（不做任何物理位置保留）。 */
+    private fun cancelCapsuleFling() {
+        clearCapsuleFlingState()
+        applyCapsuleWindowBounds()
+    }
+
     private fun beginCapsuleDrag() {
         capsulePointerCaptured = true
-        stopCapsuleFling()
+        // Compose 在 ACTION_DOWN 时已 cancel 甩出动画；这里把窗口位置所有权收回拖拽路径。
+        capsuleFlingActive = false
+        capsuleFlingSettleUntil = 0L
         val lp = capsuleParams ?: return
         val bounds = overlayBounds(windowManager ?: return)
         // 从当前视觉位置（可能是越界回弹途中）起拖，不做钳制避免跳变。
@@ -1945,7 +1957,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
     /**
      * dx/dy 是相对按下点的全量物理位移（同光球）。界内 1:1 跟手；越界段带阻尼
-     * （橡皮筋），可自然拖出屏幕，松手由 springBack 弹回。
+     * （橡皮筋），可自然拖出屏幕，松手交由 Compose 物理层继续甩出/回弹。
      */
     private fun handleCapsuleDrag(dx: Float, dy: Float) {
         val start = capsuleDragStart ?: return
@@ -1968,29 +1980,19 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         applyCapsuleWindowPositionAt(centerX - halfWidth, topY)
     }
 
-    private fun stopCapsuleFling() {
-        capsuleFlingScroller?.forceFinished(true)
-        capsuleFlingScroller = null
-        Choreographer.getInstance().removeFrameCallback(capsuleFlingFrame)
-    }
-
     /**
-     * 抬手：平台 OverScroller 物理收尾——界内且有力就摩擦曲线滑行（允许越界 over 余量后
-     * 回弹到边界内），越界或没力就 springBack 弹回；大力横向甩则先缩球，再以球的尺寸
-     * 滑行越界回弹，停靠在屏幕边缘。
+     * 抬手：宿主先结算「缩球 + 甩出占位」，再把钳过的速度交给 Compose 物理层
+     * （Animatable + 欠阻尼弹簧，见 CapsuleFlingPhysics）。返回 null = 窗口已不在，无需甩出。
      */
-    private fun handleCapsuleDragEnd(velocityX: Float, velocityY: Float) {
+    private fun prepareCapsuleFling(velocityX: Float, velocityY: Float): CapsuleFlingPlan? {
         capsulePointerCaptured = false
-        val wm = windowManager ?: return
-        val lp = capsuleParams ?: return
-        stopCapsuleFling()
-        if (!velocityX.isFinite() || !velocityY.isFinite()) return
+        capsuleFlingActive = false
+        val wm = windowManager ?: return null
+        val lp = capsuleParams ?: return null
         val bounds = overlayBounds(wm)
-        val config = ViewConfiguration.get(overlayContext())
-        val maxVelocity = config.scaledMaximumFlingVelocity.toFloat()
-        val minVelocity = config.scaledMinimumFlingVelocity.toFloat()
-        val flingX = velocityX.coerceIn(-maxVelocity, maxVelocity)
-        val flingY = velocityY.coerceIn(-maxVelocity, maxVelocity)
+        val maxVelocity = ViewConfiguration.get(overlayContext()).scaledMaximumFlingVelocity.toFloat()
+        val flingX = (if (velocityX.isFinite()) velocityX else 0f).coerceIn(-maxVelocity, maxVelocity)
+        val flingY = (if (velocityY.isFinite()) velocityY else 0f).coerceIn(-maxVelocity, maxVelocity)
         // 大力横向甩（速度占系统上限的比例阈值，且横向意图占优）→ 缩球贴边停靠。
         if (!capsuleMinimized.value &&
             abs(flingX) > abs(flingY) &&
@@ -2005,33 +2007,46 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             AgentHapticFeedback.perform(overlayContext(), AgentHapticFeedback.Type.LONG_PRESS)
         }
         // 缩球时按球的目标窗口尺寸规划边界：滑行与形变同时进行，中心滑到边、球也正好收完。
-        val planWidth = if (capsuleMinimized.value) dpToPx(CAPSULE_BALL_WINDOW_WIDTH_DP) else lp.width
-        val planHeight = if (capsuleMinimized.value) dpToPx(CAPSULE_BALL_WINDOW_HEIGHT_DP) else lp.height
-        val minCenterX = bounds.left + planWidth / 2f
-        val maxCenterX = (bounds.right - planWidth / 2f).coerceAtLeast(minCenterX)
-        val minTop = bounds.top.toFloat()
-        val maxTop = (bounds.bottom - planHeight).toFloat().coerceAtLeast(minTop)
-        val startCenterX = capsuleCenterX ?: bounds.left + (bounds.right - bounds.left) / 2f
-        val startTop = capsuleTopY ?: bounds.top.toFloat()
-        val scroller = OverScroller(overlayContext())
-        if (abs(flingX) >= minVelocity || abs(flingY) >= minVelocity) {
-            scroller.fling(
-                startCenterX.roundToInt(), startTop.roundToInt(),
-                flingX.roundToInt(), flingY.roundToInt(),
-                minCenterX.roundToInt(), maxCenterX.roundToInt(),
-                minTop.roundToInt(), maxTop.roundToInt(),
-                dpToPx(CAPSULE_OVERSCROLL_DP), dpToPx(CAPSULE_OVERSCROLL_DP),
-            )
+        val footprint = if (capsuleMinimized.value) {
+            IntSize(dpToPx(CAPSULE_BALL_WINDOW_WIDTH_DP), dpToPx(CAPSULE_BALL_WINDOW_HEIGHT_DP))
         } else {
-            scroller.springBack(
-                startCenterX.roundToInt(), startTop.roundToInt(),
-                minCenterX.roundToInt(), maxCenterX.roundToInt(),
-                minTop.roundToInt(), maxTop.roundToInt(),
-            )
+            IntSize(lp.width, lp.height)
         }
-        if (scroller.isFinished) return
-        capsuleFlingScroller = scroller
-        Choreographer.getInstance().postFrameCallback(capsuleFlingFrame)
+        val startCenterX = capsuleCenterX ?: (bounds.left + (bounds.right - bounds.left) / 2f)
+        val startTop = capsuleTopY ?: bounds.top.toFloat()
+        capsuleFlingActive = true
+        capsuleFlingSettleUntil = 0L
+        return CapsuleFlingPlan(
+            center = Offset(startCenterX, startTop),
+            footprint = footprint,
+            velocity = Offset(flingX, flingY),
+        )
+    }
+
+    /**
+     * 甩出帧：只落位、不钳制（越界与贴边回弹都由 Compose 物理层负责）。
+     * 落位 x 用「中心 − 当前宽/2」，缩球形变期间窗口绕中心对称收窄，不跳位。
+     */
+    private fun handleCapsuleFlingStep(centerX: Float, topY: Float) {
+        val lp = capsuleParams ?: return
+        if (!centerX.isFinite() || !topY.isFinite()) return
+        capsuleCenterX = centerX
+        capsuleTopY = topY
+        capsuleFlingActive = true
+        applyCapsuleWindowPositionAt(centerX - lp.width / 2f, topY)
+    }
+
+    /**
+     * 物理收尾：位置停在贴边落点，动画结束后仍留一小段中心锚定期，
+     * 覆盖缩球形变尾段（窗口还宽时若立刻钳制会把中心推回，产生跳位）。
+     */
+    private fun handleCapsuleFlingFinish(centerX: Float, topY: Float) {
+        if (centerX.isFinite() && topY.isFinite()) {
+            capsuleCenterX = centerX
+            capsuleTopY = topY
+        }
+        capsuleFlingActive = false
+        capsuleFlingSettleUntil = SystemClock.uptimeMillis() + CAPSULE_FLING_SETTLE_GUARD_MS
     }
 
     private fun capsuleLayoutParams(): WindowManager.LayoutParams {
@@ -2101,7 +2116,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     private fun removeCapsuleWindow(animated: Boolean = false) {
-        stopCapsuleFling()
+        clearCapsuleFlingState()
         capsulePointerCaptured = false
         capsuleView?.let { view ->
             if (animated) animateWindowOut(view) else runCatching { windowManager?.removeView(view) }
@@ -2223,7 +2238,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         Choreographer.getInstance().removeFrameCallback(orbFlingFrame)
     }
 
-    /** 光球抛掷惯性：与胶囊同一套 OverScroller 摩擦滑行；气泡跟随由 positionOverlayWindows 承接。 */
+    /** 光球抛掷惯性：OverScroller 摩擦滑行（胶囊已改用 Compose 弹簧，见 CapsuleFlingPhysics）；气泡跟随由 positionOverlayWindows 承接。 */
     private fun handleOrbDragEnd(velocityX: Float, velocityY: Float) {
         val wm = windowManager ?: return
         stopOrbFling()
@@ -2558,13 +2573,13 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private const val RESULT_REVIEW_DELAY_MS = 120_000L
         private const val RESULT_CARD_HEIGHT_RATIO = 0.5f
         private const val MAX_ARCHIVED_USER_IMAGE_PREVIEWS = 4
-        // 胶囊窗口初始尺寸估计（挂窗第一帧用），此后由 Compose 内容逐帧回调贴合
-        // （updateCapsuleWindowSize），展开/收起/舞台互切全程连续无缝。
+        // 胶囊窗口初始尺寸估计（挂窗第一帧用），此后由 Compose「早涨晚缩」上报状态机
+        // 贴合（updateCapsuleWindowSize）：目标变大立即贴上，变小等动画落定收拢。
         // 高度 = 上下留白 12 + 头部 56（TextFieldDefaults.MinHeight）+ 8dp 间距 + 内容 + 8dp 间距。
         private const val CAPSULE_WINDOW_WIDTH_DP = 272
         private const val CAPSULE_MICRO_WINDOW_WIDTH_DP = 290
         // 展开宽 360（Compose 侧还会按屏宽−40 钳制）+ 上下留白 12*2 之外留出的余量；
-        // 首帧估计偏大没关系，逐帧回调会立刻收敛，偏小则会被钳制触发缩水。
+        // 首帧估计偏大没关系，涨即贴上报会立刻收敛；分析目标 ≥ 任何测量值，不会触发钳制缩水。
         private const val CAPSULE_EXPANDED_WINDOW_WIDTH_DP = 368
         private const val CAPSULE_COLLAPSED_HEIGHT_DP = 68
         private const val CAPSULE_CONTROLS_HEIGHT_DP = 132
@@ -2579,8 +2594,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private const val CAPSULE_CLEARANCE_SLOP_DP = 8
         // 拖拽越界段的阻尼系数（橡皮筋）：越界位移按此比例缩放跟手。
         private const val CAPSULE_OVERDRAG_RESISTANCE = 0.35f
-        // 抛掷允许越出屏幕的余量，OverScroller 在此范围内减速并弹回边界内。
-        private const val CAPSULE_OVERSCROLL_DP = 56
+        // 甩出落定后仍绕中心收放的保护时长：覆盖缩球形变尾段（320ms 动画 + 窗口尺寸上报余量）。
+        private const val CAPSULE_FLING_SETTLE_GUARD_MS = 420L
         // 缩球判定：横向速度达到系统 fling 上限的此比例、且横向意图占优时触发。
         private const val CAPSULE_BALL_FLING_FRACTION = 0.45f
         // 缩球后的窗口尺寸：56dp 球 + 外圈留白 24/12（Compose 侧 CapsuleBallDiameter）。

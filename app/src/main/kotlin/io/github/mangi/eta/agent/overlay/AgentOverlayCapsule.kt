@@ -2,9 +2,12 @@ package io.github.mangi.eta.agent.overlay
 
 import android.os.SystemClock
 import android.view.MotionEvent
-import android.view.VelocityTracker
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -54,13 +57,12 @@ import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroup
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +78,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -100,6 +103,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -121,6 +125,7 @@ import io.github.mangi.eta.ui.adaptive.etaConnectedGroupColors
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
 import kotlin.math.hypot
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
@@ -130,7 +135,7 @@ import kotlinx.coroutines.launch
  * 位置固定在状态栏下方居中，不随 Agent 的点击位置移动，避免和目标控件重叠。
  * 状态文字只在语义变化时以上滑淡入切换，流式正文不进入胶囊。
  */
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 internal fun AgentOverlayCapsule(
     state: AgentOverlayState,
@@ -151,13 +156,19 @@ internal fun AgentOverlayCapsule(
     onFullscreenVirtualDisplay: () -> Unit = {},
     onTapVirtualCanvas: (Float, Float, Boolean) -> Unit = { _, _, _ -> },
     onSwipeVirtualCanvas: (Float, Float, Float, Float, Int) -> Unit = { _, _, _, _, _ -> },
-    /** 每次布局上报 Surface 实际尺寸（px）；宿主据此外扩留白、逐帧贴合窗口，展开收起才无缝。 */
+    /** 窗口内容尺寸上报（px）：早涨晚缩——目标变大即贴、变小等动画落定，morph 两端各动一次窗。 */
     onContentSizeChanged: (widthPx: Int, heightPx: Int) -> Unit = { _, _ -> },
-    /** 头部拖动：与光球同一套 [AgentOrbDragGesture]——未过 slop 是点击，过了就是整窗拖动。 */
+    /** 头部拖动：与光球同一套 [AgentOrbDragGesture]——未过 slop 是点击，过了才回调本项并整窗拖动。 */
     onDragStart: () -> Unit = {},
     onDrag: (Float, Float) -> Unit = { _, _ -> },
-    /** 抬手抛掷速度（px/s，VelocityTracker 实测）；仅真拖动过 slop 才回调，供宿主起惯性 fling。 */
-    onDragEnd: (velocityX: Float, velocityY: Float) -> Unit = { _, _ -> },
+    /** 抬手：宿主先落「缩球」决策，再回传甩出计划（占位/起点/钳过的速度）；null = 不甩出。 */
+    onDragEnd: (velocityX: Float, velocityY: Float) -> CapsuleFlingPlan? = { _, _ -> null },
+    /** 甩出逐帧窗口落位（中心 x + 顶边 y，物理坐标）：允许越界，不做钳制。 */
+    onFlingStep: (centerX: Float, topY: Float) -> Unit = { _, _ -> },
+    /** 甩出落定（贴边回弹结束或被打断）：宿主据此收尾并恢复正常钳制路径。 */
+    onFlingFinish: (centerX: Float, topY: Float) -> Unit = { _, _ -> },
+    /** 甩出因边界变化而作废（旋转/inset）：宿主丢弃物理位置并按新边界钳回。 */
+    onFlingCancel: () -> Unit = {},
     /** 缩球态：大力甩向横边后停靠用，内容只剩阶段指示器（运行中即 contained LoadingIndicator）。 */
     minimized: Boolean = false,
 ) {
@@ -247,25 +258,88 @@ internal fun AgentOverlayCapsule(
     val expandedWidth = with(density) {
         (LocalConfiguration.current.screenWidthDp.dp - 40.dp).coerceAtMost(CapsuleExpandedWidth)
     }
+    // 展开体三态互切：舞台 / 控制 / 补充都走同一套交叉过渡，避免舞台与输入框瞬间互换。
+    // 定义在窗口目标之前：窗口高度的分析目标需按三态分别求和。
+    val bodyMode = when {
+        supplementMode -> CapsuleBody.Supplement
+        virtualDisplay.active -> CapsuleBody.Stage
+        else -> CapsuleBody.Controls
+    }
+    // 窗口目标尺寸（非动画的纯状态函数）。宽度四档与形变动画一致；高度按正文三态
+    // 解析求和——头部 56 是固定行（DetailLine 在其内部不占高）：舞台 56+8+328+8+40
+    // = 448，控制 56+8+40+8 = 112，补充 56+8+56+8 = 128（进入补充时必为单行：
+    // supplementText 关闭时已清空，官方 TextField 最小高 56），收起与缩球 56。
+    // 测量值一旦超出分析目标（补充框换行等不可预测长高），由上报状态机按测量值跟涨自愈。
+    val capsuleActionButtonSize = IconButtonDefaults.smallContainerSize()
+    val bodyTargetHeight = when (bodyMode) {
+        CapsuleBody.Stage -> StageCanvasHeight + EtaDimens.SpaceSm + capsuleActionButtonSize.width
+        CapsuleBody.Controls -> capsuleActionButtonSize.width
+        CapsuleBody.Supplement -> TextFieldDefaults.MinHeight
+    }
+    val stateTargetWidth = when {
+        minimized -> CapsuleBallDiameter
+        expanded -> expandedWidth
+        virtualDisplay.active -> CapsuleMicroLensWidth
+        else -> CapsuleDefaultWidth
+    }
+    val stateTargetHeight = when {
+        minimized -> CapsuleBallDiameter
+        expanded -> TextFieldDefaults.MinHeight + EtaDimens.SpaceSm + bodyTargetHeight + EtaDimens.SpaceSm
+        else -> TextFieldDefaults.MinHeight
+    }
     val targetCapsuleWidth by animateDpAsState(
-        targetValue = when {
-            minimized -> CapsuleBallDiameter
-            expanded -> expandedWidth
-            virtualDisplay.active -> CapsuleMicroLensWidth
-            else -> CapsuleDefaultWidth
-        },
+        targetValue = stateTargetWidth,
         animationSpec = expandDpSpec,
         label = "capsule_width",
     )
-    // ── 窗口尺寸上报 ────────────────────────────────────────────────────
-    // 宽度上报【状态目标值】（targetCapsuleWidth 的当前弹簧值，纯状态函数），
-    // 绝不能上报 onGloballyPositioned 的测量宽：那是被窗口钳制后的结果，会构成
-    // 「窗口钳制内容 → 内容上报变窄 → 窗口跟着收窄」的 runaway 反馈（首帧窗口估计
-    // 272dp < 展开目标时整窗逐帧缩水）。高度没有固定的状态目标（正文行数可变），
-    // 仍用测量值，但加非负兜底（历史上出现过高度 < 0 闪退）。
-    LaunchedEffect(targetCapsuleWidth, density) {
-        with(density) {
-            onContentSizeChanged(targetCapsuleWidth.roundToPx(), Int.MIN_VALUE)
+    // ── 窗口尺寸上报：早涨晚缩，morph 全程零逐帧改窗 ────────────────────
+    // 旧方案把动画逐帧值交给窗口（宽=动画值、高=逐帧测量），每帧一次
+    // updateViewLayout，且窗口尺寸逐帧变化引发 surface 缓冲整体重分配，
+    // 320ms 内 ~120 次跨进程调用，掉帧把动画拉成慢动作。现改为 morph 两端各动一次窗：
+    // ① 涨即贴——分析目标变大时立即上报目标，窗口一次涨到位，内容在窗内动画（永不裁切）；
+    // ② 落定收拢——变小方向不动窗口，测量值静默 EtaMotion.CapsuleWindowSettleQuietMillis
+    //    （动画落定判定）后才上报。
+    // 收拢值取 max(分析目标, 测量)：被窗口钳制过的测量值永不回喂，守住「钳制→上报→收窗」
+    // 逐帧缩水回路的防线（见 2026-11 修复记录），宽度因此永远 ≥ 状态目标。
+    var reportedSize by remember { mutableStateOf(IntSize.Zero) }
+    var measuredSize by remember { mutableStateOf(IntSize.Zero) }
+    fun reportContentSize(widthPx: Int, heightPx: Int) {
+        val next = IntSize(widthPx, heightPx)
+        if (next == reportedSize) return
+        reportedSize = next
+        onContentSizeChanged(widthPx, heightPx)
+    }
+    LaunchedEffect(stateTargetWidth, stateTargetHeight, density) {
+        val target = IntSize(
+            with(density) { stateTargetWidth.roundToPx() },
+            with(density) { stateTargetHeight.roundToPx() },
+        )
+        if (target.width > reportedSize.width || target.height > reportedSize.height) {
+            reportContentSize(target.width, target.height)
+        }
+    }
+    LaunchedEffect(stateTargetWidth, stateTargetHeight, density) {
+        snapshotFlow { measuredSize }.collectLatest { measured ->
+            if (measured == IntSize.Zero) return@collectLatest
+            val target = IntSize(
+                with(density) { stateTargetWidth.roundToPx() },
+                with(density) { stateTargetHeight.roundToPx() },
+            )
+            // 测量值长过已上报窗口（超容差，过滤微小过冲与取整抖动）：不可预测的长高，立即跟涨。
+            if (measured.width - reportedSize.width > CapsuleReportGrowTolerancePx ||
+                measured.height - reportedSize.height > CapsuleReportGrowTolerancePx
+            ) {
+                reportContentSize(
+                    maxOf(measured.width, target.width),
+                    maxOf(measured.height, target.height),
+                )
+                return@collectLatest
+            }
+            delay(EtaMotion.CapsuleWindowSettleQuietMillis)
+            reportContentSize(
+                maxOf(measured.width, target.width),
+                maxOf(measured.height, target.height),
+            )
         }
     }
     // 外轮廓圆角恒取官方 extraLarge 28dp，不随展开涨缩：收起 56dp 单行即全圆角胶囊，
@@ -295,12 +369,6 @@ internal fun AgentOverlayCapsule(
         label = "capsule_header_end_padding",
     )
 
-    // 展开体三态互切：舞台 / 控制 / 补充都走同一套交叉过渡，避免舞台与输入框瞬间互换。
-    val bodyMode = when {
-        supplementMode -> CapsuleBody.Supplement
-        virtualDisplay.active -> CapsuleBody.Stage
-        else -> CapsuleBody.Controls
-    }
     val bodySpatial = motionScheme.defaultSpatialSpec<Float>()
     val bodyFastSpatial = motionScheme.fastSpatialSpec<Float>()
     val bodySizeSpatial = motionScheme.defaultSpatialSpec<IntSize>()
@@ -311,13 +379,25 @@ internal fun AgentOverlayCapsule(
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val dragGesture = remember(touchSlop) { AgentOrbDragGesture(touchSlop) }
     val activationKey = remember { AgentOrbActivationKey() }
-    val dragVelocity = remember { VelocityTracker.obtain() }
+    // 尾部窗口拟合取代 VelocityTracker：停顿判定 + 120ms 最小二乘，轻放不会带着历史速度乱飞。
+    val dragSamples = remember { CapsuleDragVelocitySampler() }
+    val flingSession = remember { CapsuleFlingSession() }
+    val overlayView = LocalView.current
+    val overlayConfiguration = LocalConfiguration.current
     var dragging by remember { mutableStateOf(false) }
+    // 旋转/inset 变化会改写可用边界：正在甩出的动画立即作废，位置交还宿主按新边界钳回。
+    LaunchedEffect(overlayConfiguration) {
+        val job = flingSession.job ?: return@LaunchedEffect
+        if (!job.isActive) return@LaunchedEffect
+        job.cancel()
+        flingSession.job = null
+        onFlingCancel()
+    }
     val toggleLabel = stringResource(if (expanded) R.string.overlay_collapse else R.string.overlay_expand)
 
     AnimatedVisibility(
         visible = visible && !virtualDisplay.materializingToMain,
-        // 窗口逐帧贴合本 Surface 的布局尺寸（onGloballyPositioned 回调宿主），
+        // 窗口由上报状态机早涨晚缩贴合（onGloballyPositioned 只喂测量值，见上报段注释），
         // 位移/缩放只走绘制层不参与测量，所以入场/退场走缩放+淡入淡出。
         enter = fadeIn(motionScheme.defaultEffectsSpec()) + scaleIn(
             initialScale = 0.92f,
@@ -348,8 +428,10 @@ internal fun AgentOverlayCapsule(
                         transformOrigin = TransformOrigin(0.5f, 0f)
                     }
                     .onGloballyPositioned { coords ->
+                        // 只喂测量值给上报状态机（早涨晚缩），不直连宿主：
+                        // 逐帧直报会拖累窗口每帧 resize（见上报段注释）。
                         if (coords.size.height >= 0) {
-                            onContentSizeChanged(Int.MIN_VALUE, coords.size.height)
+                            measuredSize = coords.size
                         }
                     },
                 shape = RoundedCornerShape(capsuleCorner),
@@ -360,203 +442,269 @@ internal fun AgentOverlayCapsule(
                 tonalElevation = 3.dp,
                 shadowElevation = 0.dp,
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(TextFieldDefaults.MinHeight)
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = expandDescription
-                                semanticsClick(label = toggleLabel) { onToggleExpanded(); true }
-                            }
-                            .onKeyEvent { event ->
-                                if (event.key == Key.Enter || event.key == Key.NumPadEnter ||
-                                    event.key == Key.DirectionCenter || event.key == Key.Spacebar
-                                ) {
-                                    when (event.type) {
-                                        KeyEventType.KeyDown -> activationKey.down(event.key.hashCode())
-                                        KeyEventType.KeyUp -> if (activationKey.up(event.key.hashCode())) onToggleExpanded()
-                                        else -> Unit
-                                    }
-                                    true
-                                } else false
-                            }
-                            .onFocusChanged { if (!it.isFocused) activationKey.cancel() }
-                            .pointerInteropFilter { event ->
-                                when (event.actionMasked) {
-                                    MotionEvent.ACTION_DOWN -> {
-                                        dragVelocity.clear()
-                                        dragVelocity.addMovement(event)
-                                        dragging = false
-                                        dragGesture.begin(event.getPointerId(0), event.rawX, event.rawY)
-                                        onDragStart()
-                                    }
-                                    MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
-                                        dragVelocity.addMovement(event)
-                                        if (event.pointerCount != 1) {
-                                            dragging = false
-                                            dragGesture.cancel()
-                                        } else {
-                                            dragGesture.move(event.getPointerId(0), event.rawX, event.rawY)?.let {
-                                                dragging = true
-                                                onDrag(it.x, it.y)
+                // 共享元素层：收起态微缩镜（18×32 圆角镜身）与展开态舞台画布（148×328）以同一
+                // key 配对，morph 时由官方 SharedTransition 连续变形，预览不再「瞬移+交叉淡化」。
+                // 窗口早涨晚缩已在 morph 两端把窗口撑到位，共享元素 overlay 有完整的绘制空间。
+                SharedTransitionLayout {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(TextFieldDefaults.MinHeight)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = expandDescription
+                                    semanticsClick(label = toggleLabel) { onToggleExpanded(); true }
+                                }
+                                .onKeyEvent { event ->
+                                    if (event.key == Key.Enter || event.key == Key.NumPadEnter ||
+                                        event.key == Key.DirectionCenter || event.key == Key.Spacebar
+                                    ) {
+                                        when (event.type) {
+                                            KeyEventType.KeyDown -> activationKey.down(event.key.hashCode())
+                                            KeyEventType.KeyUp -> if (activationKey.up(event.key.hashCode())) onToggleExpanded()
+                                            else -> Unit
+                                        }
+                                        true
+                                    } else false
+                                }
+                                .onFocusChanged { if (!it.isFocused) activationKey.cancel() }
+                                .pointerInteropFilter { event ->
+                                    when (event.actionMasked) {
+                                        MotionEvent.ACTION_DOWN -> {
+                                            // 甩出途中再按下：立即收手并把当前落点交还宿主；位置不跳变，
+                                            // 后续若是拖动就由滑块接管，若是点击则由宿主钳回界内。
+                                            flingSession.job?.takeIf { it.isActive }?.let { job ->
+                                                job.cancel()
+                                                flingSession.job = null
+                                                onFlingFinish(flingSession.center.x, flingSession.center.y)
                                             }
-                                            if (event.actionMasked == MotionEvent.ACTION_UP) {
-                                                if (dragGesture.finish(event.getPointerId(0))) {
-                                                    // 点击：不抛掷。
-                                                    dragVelocity.clear()
-                                                    onToggleExpanded()
-                                                } else if (dragging) {
-                                                    // 拖过 slop 的抬手：回传实测速度给宿主起惯性。
-                                                    dragging = false
-                                                    dragVelocity.computeCurrentVelocity(1000)
-                                                    onDragEnd(dragVelocity.xVelocity, dragVelocity.yVelocity)
+                                            dragSamples.reset()
+                                            dragSamples.add(event)
+                                            dragging = false
+                                            dragGesture.begin(event.getPointerId(0), event.rawX, event.rawY)
+                                        }
+                                        MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+                                            if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                                                dragSamples.add(event)
+                                            }
+                                            if (event.pointerCount != 1) {
+                                                dragging = false
+                                                dragSamples.reset()
+                                                dragGesture.cancel()
+                                            } else {
+                                                dragGesture.move(event.getPointerId(0), event.rawX, event.rawY)?.let {
+                                                    // 越过 slop 才移交位置所有权：纯点击不会残留“拖动中”状态。
+                                                    if (!dragging) onDragStart()
+                                                    dragging = true
+                                                    onDrag(it.x, it.y)
+                                                }
+                                                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                                    if (dragGesture.finish(event.getPointerId(0))) {
+                                                        // 点击：不抛掷。
+                                                        dragSamples.reset()
+                                                        onToggleExpanded()
+                                                    } else if (dragging) {
+                                                        // 拖过 slop 的抬手：尾部窗口拟合速度 →
+                                                        // 宿主结算缩球决策与占位，再跑两段真弹簧。
+                                                        dragging = false
+                                                        val velocity = dragSamples.estimate(event.eventTime)
+                                                        dragSamples.reset()
+                                                        val plan = onDragEnd(velocity.x, velocity.y)
+                                                        if (plan != null) {
+                                                            val view = overlayView
+                                                            flingSession.center = plan.center
+                                                            flingSession.job = scope.launch {
+                                                                runCapsuleFling(
+                                                                    plan = plan,
+                                                                    viewport = { capsuleViewport(view) },
+                                                                    onStep = { position ->
+                                                                        flingSession.center = position
+                                                                        onFlingStep(position.x, position.y)
+                                                                    },
+                                                                )
+                                                                onFlingFinish(
+                                                                    flingSession.center.x,
+                                                                    flingSession.center.y,
+                                                                )
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
+                                        MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN,
+                                        MotionEvent.ACTION_POINTER_UP -> {
+                                            dragging = false
+                                            dragSamples.reset()
+                                            dragGesture.cancel()
+                                        }
                                     }
-                                    MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN,
-                                    MotionEvent.ACTION_POINTER_UP -> {
-                                        dragging = false
-                                        dragVelocity.clear()
-                                        dragGesture.cancel()
-                                    }
+                                    true
                                 }
-                                true
-                            }
-                            // 左缘内缩与外轮廓圆角同心：28dp 圆角（主界面输入框大胶囊同款）的
-                            // 弧心在 (R, R)，40dp 指示器（主界面输入框按钮同尺寸）中心要落在
-                            // 弧心上，左内缩 = R − 20dp，恒为 8dp；纵向由 56dp 头部居中自动落位。
-                            .padding(
-                                start = capsuleCorner -
-                                    IconButtonDefaults.smallContainerSize().width / 2,
-                                // 缩球态末端收到 8dp：8 + 40dp 指示器槽 + 8 = 56dp 球径内正中。
-                                end = headerEndPadding,
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        PhaseIndicator(phase = state.phase, accent = accent)
-                        Spacer(Modifier.width(EtaDimens.SpaceSm))
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .graphicsLayer { alpha = headerTextAlpha },
+                                // 左缘内缩与外轮廓圆角同心：28dp 圆角（主界面输入框大胶囊同款）的
+                                // 弧心在 (R, R)，40dp 指示器（主界面输入框按钮同尺寸）中心要落在
+                                // 弧心上，左内缩 = R − 20dp，恒为 8dp；纵向由 56dp 头部居中自动落位。
+                                .padding(
+                                    start = capsuleCorner -
+                                        IconButtonDefaults.smallContainerSize().width / 2,
+                                    // 缩球态末端收到 8dp：8 + 40dp 指示器槽 + 8 = 56dp 球径内正中。
+                                    end = headerEndPadding,
+                                ),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            AnimatedContent(
-                                targetState = statusText,
-                                transitionSpec = {
-                                    (slideInVertically(motionScheme.defaultSpatialSpec()) { it / 2 } +
-                                        fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
-                                        (slideOutVertically(motionScheme.defaultSpatialSpec()) { -it / 2 } +
-                                            fadeOut(motionScheme.fastEffectsSpec())) using
-                                        SizeTransform(clip = false) { _, _ -> snap() }
-                                },
-                                label = "capsule_status",
-                            ) { text ->
-                                Text(
-                                    text = text,
-                                    // 官方类型标尺 labelLarge 档（14sp/500）：状态主行不做手排规格。
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                            PhaseIndicator(phase = state.phase, accent = accent)
+                            Spacer(Modifier.width(EtaDimens.SpaceSm))
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .graphicsLayer { alpha = headerTextAlpha },
+                            ) {
+                                AnimatedContent(
+                                    targetState = statusText,
+                                    transitionSpec = {
+                                        (slideInVertically(motionScheme.defaultSpatialSpec()) { it / 2 } +
+                                            fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
+                                            (slideOutVertically(motionScheme.defaultSpatialSpec()) { -it / 2 } +
+                                                fadeOut(motionScheme.fastEffectsSpec())) using
+                                            SizeTransform(clip = false) { _, _ -> snap() }
+                                    },
+                                    label = "capsule_status",
+                                ) { text ->
+                                    Text(
+                                        text = text,
+                                        // 官方类型标尺 labelLarge 档（14sp/500）：状态主行不做手排规格。
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                DetailLine(detail = state.detailText.takeIf { state.phase == AgentOverlayPhase.RUNNING }.orEmpty())
                             }
-                            DetailLine(detail = state.detailText.takeIf { state.phase == AgentOverlayPhase.RUNNING }.orEmpty())
-                        }
-                        AnimatedVisibility(
-                            visible = lensVisible,
-                            enter = fadeIn(motionScheme.defaultEffectsSpec()) + expandHorizontally(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                expandFrom = Alignment.End,
-                            ),
-                            exit = fadeOut(motionScheme.fastEffectsSpec()) + shrinkHorizontally(
-                                animationSpec = motionScheme.fastSpatialSpec(),
-                                shrinkTowards = Alignment.End,
-                            ),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Spacer(Modifier.width(EtaDimens.SpaceSm))
-                                VirtualDisplayMicroLens(snapshot = virtualDisplay, accent = accent)
+                            AnimatedVisibility(
+                                visible = lensVisible,
+                                enter = fadeIn(motionScheme.defaultEffectsSpec()) + expandHorizontally(
+                                    animationSpec = motionScheme.defaultSpatialSpec(),
+                                    expandFrom = Alignment.End,
+                                ),
+                                exit = fadeOut(motionScheme.fastEffectsSpec()) + shrinkHorizontally(
+                                    animationSpec = motionScheme.fastSpatialSpec(),
+                                    shrinkTowards = Alignment.End,
+                                ),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(Modifier.width(EtaDimens.SpaceSm))
+                                    // 收起端的共享元素：morph 期间 18×32 镜身由官方 SharedTransition
+                                    // 连续长成画布；无配对时（如 VD 单独下线）回退到本处进出场动画。
+                                    VirtualDisplayMicroLens(
+                                        snapshot = virtualDisplay,
+                                        accent = accent,
+                                        modifier = Modifier.sharedBounds(
+                                            sharedContentState = rememberSharedContentState(
+                                                key = VirtualDisplayPreviewSharedKey,
+                                            ),
+                                            animatedVisibilityScope = this,
+                                            enter = EnterTransition.None,
+                                            exit = ExitTransition.None,
+                                            boundsTransform = { _, _ ->
+                                                tween(expandMillis, easing = FastOutSlowInEasing)
+                                            },
+                                        ),
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    AnimatedVisibility(
-                        visible = expanded && !minimized,
-                        enter = expandVertically(
-                            animationSpec = expandSizeSpec,
-                            clip = true,
-                        ) + fadeIn(motionScheme.defaultEffectsSpec()),
-                        exit = shrinkVertically(
-                            // 收起与展开、以及 graphicsLayer 的 expansion 都取同一条 320ms 时间轴，
-                            // 三根动画同相推进，收起时正文不会先于高度收缩上蹿。
-                            animationSpec = expandSizeSpec,
-                            clip = true,
-                        ) + fadeOut(motionScheme.fastEffectsSpec()),
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .padding(EtaDimens.SpaceSm)
-                                .graphicsLayer { translationY = (1f - expansion) * -6.dp.toPx() },
+                        AnimatedVisibility(
+                            visible = expanded && !minimized,
+                            enter = expandVertically(
+                                animationSpec = expandSizeSpec,
+                                clip = true,
+                            ) + fadeIn(motionScheme.defaultEffectsSpec()),
+                            exit = shrinkVertically(
+                                // 收起与展开、以及 graphicsLayer 的 expansion 都取同一条 320ms 时间轴，
+                                // 三根动画同相推进，收起时正文不会先于高度收缩上蹿。
+                                animationSpec = expandSizeSpec,
+                                clip = true,
+                            ) + fadeOut(motionScheme.fastEffectsSpec()),
                         ) {
-                            AnimatedContent(
-                                targetState = bodyMode,
-                                contentAlignment = Alignment.TopCenter,
-                                transitionSpec = {
-                                    val enter = fadeIn(motionScheme.defaultEffectsSpec()) + scaleIn(
-                                        initialScale = 0.94f,
-                                        transformOrigin = bodyOrigin,
-                                        animationSpec = bodySpatial,
-                                    )
-                                    val exit = fadeOut(motionScheme.fastEffectsSpec()) + scaleOut(
-                                        targetScale = 0.94f,
-                                        transformOrigin = bodyOrigin,
-                                        animationSpec = bodyFastSpatial,
-                                    )
-                                    (enter togetherWith exit) using SizeTransform(clip = false) { _, _ -> bodySizeSpatial }
-                                },
-                                label = "capsule_body",
-                            ) { mode ->
-                                when (mode) {
-                                    CapsuleBody.Stage -> Column(modifier = Modifier.fillMaxWidth()) {
-                                        VirtualDisplayStageSection(
-                                            snapshot = virtualDisplay,
-                                            accent = accent,
-                                            isPaused = state.phase == AgentOverlayPhase.PAUSED,
-                                            fullscreenEnabled = !ownerBacked,
-                                            onTakeOver = onTakeOverVirtualDisplay,
-                                            onResumeAuto = onResumeVirtualDisplay,
-                                            onFullscreen = onFullscreenVirtualDisplay,
-                                            onTapCanvas = onTapVirtualCanvas,
-                                            onSwipeCanvas = onSwipeVirtualCanvas,
+                            Column(
+                                modifier = Modifier
+                                    .padding(EtaDimens.SpaceSm)
+                                    .graphicsLayer { translationY = (1f - expansion) * -6.dp.toPx() },
+                            ) {
+                                AnimatedContent(
+                                    targetState = bodyMode,
+                                    contentAlignment = Alignment.TopCenter,
+                                    transitionSpec = {
+                                        val enter = fadeIn(motionScheme.defaultEffectsSpec()) + scaleIn(
+                                            initialScale = 0.94f,
+                                            transformOrigin = bodyOrigin,
+                                            animationSpec = bodySpatial,
                                         )
-                                        Spacer(Modifier.height(EtaDimens.SpaceSm))
-                                        CapsuleActions(
+                                        val exit = fadeOut(motionScheme.fastEffectsSpec()) + scaleOut(
+                                            targetScale = 0.94f,
+                                            transformOrigin = bodyOrigin,
+                                            animationSpec = bodyFastSpatial,
+                                        )
+                                        (enter togetherWith exit) using SizeTransform(clip = false) { _, _ -> bodySizeSpatial }
+                                    },
+                                    label = "capsule_body",
+                                ) { mode ->
+                                    when (mode) {
+                                        CapsuleBody.Stage -> Column(modifier = Modifier.fillMaxWidth()) {
+                                            VirtualDisplayStageSection(
+                                                snapshot = virtualDisplay,
+                                                accent = accent,
+                                                isPaused = state.phase == AgentOverlayPhase.PAUSED,
+                                                fullscreenEnabled = !ownerBacked,
+                                                onTakeOver = onTakeOverVirtualDisplay,
+                                                onResumeAuto = onResumeVirtualDisplay,
+                                                onFullscreen = onFullscreenVirtualDisplay,
+                                                onTapCanvas = onTapVirtualCanvas,
+                                                onSwipeCanvas = onSwipeVirtualCanvas,
+                                                // 展开端的共享元素：scope 必须取外层正文 AnimatedVisibility
+                                                // （this@AnimatedVisibility）——morph 挂在展开/收起这条时间轴上，
+                                                // 取 AnimatedContent 的 scope 会挂到 bodyMode 互切上，morph 失配。
+                                                frameModifier = Modifier.sharedBounds(
+                                                    sharedContentState = rememberSharedContentState(
+                                                        key = VirtualDisplayPreviewSharedKey,
+                                                    ),
+                                                    animatedVisibilityScope = this@AnimatedVisibility,
+                                                    enter = EnterTransition.None,
+                                                    exit = ExitTransition.None,
+                                                    boundsTransform = { _, _ ->
+                                                        tween(expandMillis, easing = FastOutSlowInEasing)
+                                                    },
+                                                ),
+                                            )
+                                            Spacer(Modifier.height(EtaDimens.SpaceSm))
+                                            CapsuleActions(
+                                                phase = state.phase,
+                                                onSupplement = { setSupplementMode(true) },
+                                                onPause = onPause,
+                                                onResume = onResume,
+                                                onStop = onStop,
+                                            )
+                                        }
+                                        CapsuleBody.Controls -> CapsuleActions(
                                             phase = state.phase,
                                             onSupplement = { setSupplementMode(true) },
                                             onPause = onPause,
                                             onResume = onResume,
                                             onStop = onStop,
                                         )
+                                        CapsuleBody.Supplement -> SupplementInput(
+                                            value = supplementText,
+                                            onValueChange = { supplementText = it },
+                                            onCancel = { leaveSupplementMode() },
+                                            onSend = {
+                                                val text = supplementText.trim()
+                                                if (text.isNotBlank()) leaveSupplementMode { onSupplement(text) }
+                                            },
+                                        )
                                     }
-                                    CapsuleBody.Controls -> CapsuleActions(
-                                        phase = state.phase,
-                                        onSupplement = { setSupplementMode(true) },
-                                        onPause = onPause,
-                                        onResume = onResume,
-                                        onStop = onStop,
-                                    )
-                                    CapsuleBody.Supplement -> SupplementInput(
-                                        value = supplementText,
-                                        onValueChange = { supplementText = it },
-                                        onCancel = { leaveSupplementMode() },
-                                        onSend = {
-                                            val text = supplementText.trim()
-                                            if (text.isNotBlank()) leaveSupplementMode { onSupplement(text) }
-                                        },
-                                    )
                                 }
                             }
                         }
@@ -571,14 +719,14 @@ internal fun AgentOverlayCapsule(
 private enum class CapsuleBody { Stage, Controls, Supplement }
 
 /**
- * 补充 / 暂停恢复 / 停止：官方 M3 button group **标准档** `ButtonGroup`——「图标+文字」
- * Small 按钮按官方 `clickableItem` 模板排布，间距取官方 12dp
- * （`ButtonGroupDefaults.HorizontalArrangement.spacing`）。按压原生动效：按钮变宽、
- * 邻居等量压缩（`Modifier.animateWidth`，官方默认 `ExpandedRatio` 0.15）。
- * 展开定宽后三个按钮排得下；但宽度弹簧从收起宽度过渡时会短暂窄于按钮总和，
- * 溢出菜单因此可能被测量与放置（菜单项照官方 `ClickableButtonGroupItem.MenuContent`：
- * 先回调再 `dismiss()`）。常规动作取官方 tertiaryContainer / onTertiaryContainer 档，
- * 停止单独取 error 档。
+ * 补充 / 暂停恢复 / 停止：官方 M3 button group **标准档** `ButtonGroup`——三枚纯 icon
+ * 40dp 圆钮（官方 [FilledTonalIconButton] Small 档）按官方 `clickableItem` 模板排布，
+ * 间距取官方 12dp（`ButtonGroupDefaults.HorizontalArrangement.spacing`）。按压原生
+ * 动效：圆钮被挤宽约束拉成短胶囊、邻居等量压缩（`Modifier.animateWidth`，官方默认
+ * `ExpandedRatio` 0.15）。展开定宽后三枚圆钮排得下；但宽度弹簧从收起宽度过渡时
+ * 会短暂窄于按钮总和，溢出菜单因此可能被测量与放置（菜单项照官方
+ * `ClickableButtonGroupItem.MenuContent`：先回调再 `dismiss()`）。常规动作取官方
+ * tertiaryContainer / onTertiaryContainer 档，停止单独取 error 档。
  */
 @Composable
 private fun CapsuleActions(
@@ -714,6 +862,8 @@ private fun CapsuleActions(
  * 运行中是官方 M3E [ContainedLoadingIndicator]（contained 变体），其余阶段用官方图标；
  * 不自绘旋转弧线。槽位固定为官方 Small 容器（40dp，主界面输入框按钮同尺寸）：
  * 指示器撑满槽位，各阶段图标槽内居中，阶段互切时文字起点不左右挪。
+ * 图标亦不位移：普通交叉淡入，槽位恒 40dp——内容 Box 冻结 AnimatedContent 节点尺寸，
+ * 容器不再随内容 40↔24 做默认尺寸动画（否则 TopStart 锚点会让图标斜向滑移）。
  */
 @Composable
 private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
@@ -725,14 +875,19 @@ private fun PhaseIndicator(phase: AgentOverlayPhase, accent: Color) {
         AnimatedContent(
             targetState = phase,
             transitionSpec = {
-                (fadeIn(glyphMotionScheme.defaultEffectsSpec()) +
-                    scaleIn(initialScale = 0.7f, animationSpec = glyphMotionScheme.defaultSpatialSpec())) togetherWith
-                    (fadeOut(glyphMotionScheme.fastEffectsSpec()) +
-                        scaleOut(targetScale = 0.7f, animationSpec = glyphMotionScheme.fastSpatialSpec()))
+                fadeIn(glyphMotionScheme.defaultEffectsSpec()) togetherWith
+                    fadeOut(glyphMotionScheme.fastEffectsSpec())
             },
             label = "capsule_phase_glyph",
         ) { current ->
-            PhaseGlyph(phase = current, accent = accent)
+            // 固定 40dp 槽位：AnimatedContent 节点尺寸恒定，SizeTransform 无事可做，
+            // 两枚图标钉在槽位中心，切换时只有 alpha 在动。
+            Box(
+                modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                contentAlignment = Alignment.Center,
+            ) {
+                PhaseGlyph(phase = current, accent = accent)
+            }
         }
     }
 }
@@ -802,10 +957,13 @@ private fun DetailLine(detail: String) {
 }
 
 /**
- * 按钮组里的单个动作：官方 [FilledTonalButton] Small 档（默认形状即官方全圆角胶囊）。
- * icon+text 排布照官方 `clickableItem` 内部模板：`ButtonWithIconContentPadding` +
- * `iconSizeFor(MinHeight)` 图标槽 + `IconSpacing` + 单行 `Text` 且 `overflow=Visible`
- * ——这正是按压挤压邻居时文字「可见地」被压缩的原因。容器色由调用方按动作角色给。
+ * 按钮组里的单个动作：官方 [FilledTonalIconButton] Small 档——纯 icon 40dp 圆钮
+ * （[IconButtonDefaults.smallContainerSize]，与补充输入框圆钮同款；alpha29 的
+ * icon button 不自带尺寸，须由调用方按官方 size ladder 给）。label 只进
+ * contentDescription：没有文字容器，语义可及性不能丢。容器色由调用方按动作角色给
+ * （tertiaryContainer / errorContainer）。modifier 顺序有讲究：调用方的按压挤宽
+ * （animateWidth）在最外层、`size` 在内层——挤宽约束才能把圆钮拉成短胶囊；
+ * 反过来 size 在外层就只是外盒变宽、钮面不动。
  */
 @Composable
 private fun CapsuleAction(
@@ -817,28 +975,16 @@ private fun CapsuleAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    FilledTonalButton(
+    FilledTonalIconButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.size(IconButtonDefaults.smallContainerSize()),
         interactionSource = interactionSource,
-        colors = ButtonDefaults.filledTonalButtonColors(
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
             containerColor = containerColor,
             contentColor = contentColor,
         ),
-        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight)),
-        )
-        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-        Text(
-            text = label,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Visible,
-        )
+        Icon(imageVector = icon, contentDescription = label)
     }
 }
 
@@ -956,6 +1102,9 @@ internal fun VirtualDisplayStageSection(
     onSwipeCanvas: (Float, Float, Float, Float, Int) -> Unit,
     modifier: Modifier = Modifier,
     fullscreenEnabled: Boolean = true,
+    /** 直接挂在画布 Surface（画框本体）上：共享元素 morph 必须以画框的边界为准，
+     *  挂到 [modifier]（整段 Column，fillMaxWidth）会把 morph 边界放大成整行宽。 */
+    frameModifier: Modifier = Modifier,
 ) {
     // 内画框取官方 extraLarge 28dp，与外层卡片（恒 28dp，见 capsuleCorner）同族圆角。
     val frameShape = MaterialTheme.shapes.extraLarge
@@ -976,7 +1125,7 @@ internal fun VirtualDisplayStageSection(
     ) {
         // ── 画廊留白内衬画布（官方 extraLarge 28dp，与 8dp 衬底同心） ──────
         Surface(
-            modifier = Modifier
+            modifier = frameModifier
                 .height(StageCanvasHeight)
                 .aspectRatio(snapshot.aspectRatio, matchHeightConstraintsFirst = true)
                 .pointerInput(snapshot.displayId, snapshot.userControlling, isPaused) {
@@ -1222,6 +1371,17 @@ private fun StageActionToggle(
  * 底部两角贴边且其顶缘在直壁段，单一形状无法全角自洽），28dp 是唯一全态自洽的取值。
  */
 private val CapsuleInnerCorner = 28.dp
+
+/**
+ * 测量值超出已上报窗口多少才算「不可预测的长高」（px）：过滤微小的 spring 过冲
+ * 与取整抖动，避免静止态反复改窗。真实换行一步 ~39px，远大于此容差，不会被吞。
+ * 大幅 spring 过冲（bodyMode 切换 ~5%，约 18px）仍会穿透并多一次「跟涨+落定回落」，
+ * 仅发生在补充框开关这条次要路径，窗口尺寸差 ~11px、两次更新，可接受。
+ */
+private const val CapsuleReportGrowTolerancePx = 6
+
+/** 收起态微缩镜与展开态舞台画布的共享元素 key（官方 SharedTransition 配对用）。 */
+private const val VirtualDisplayPreviewSharedKey = "vd_preview"
 
 /**
  * 舞台画布高度 = 舞台窗口 524 − 上下留白 12 − 头部 56（`TextFieldDefaults.MinHeight`）
