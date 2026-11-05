@@ -8791,8 +8791,19 @@ internal class AgentAppState(
     private fun currentBoundModelId(): String =
         modelPickerState.selectedModel?.id.orEmpty()
 
-    private fun currentBoundAssistantId(): String =
-        AssistantRepository.active().id
+    /**
+     * 新会话默认绑定的助手。全局活动助手会被「选中会话」联动改写（[applyConversationAssistant]
+     * 把当前会话助手登记为全局活动），用户用过调度台后全局活动即调度台；若原样继承，手动新建的
+     * 普通会话会带上调度身份——只派发不执行，行为完全不对。因此调度台身份不外溢，回落到默认
+     * 助手（被删时退而取任一非调度台助手）；自定义助手不受影响，照旧继承。
+     */
+    private fun currentBoundAssistantId(): String {
+        val active = AssistantRepository.active().id
+        if (active != io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID) return active
+        return AssistantRepository.profile(io.github.mangi.eta.data.model.AssistantPrompt.DEFAULT_ID)?.id
+            ?: AssistantRepository.profiles.value.firstOrNull { it.id != io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID }?.id
+            ?: active
+    }
 
     private fun resolvedAssistantId(state: AgentChatHomeUiState): String {
         val stored = state.assistantId
