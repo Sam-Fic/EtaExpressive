@@ -8,3 +8,4 @@ Eta — Android Jetpack Compose（Kotlin）+ Material 3 Expressive（material3 1
 - 引入或调用 Material3 / Compose / miuix 组件前，必须确认真实签名、参数名与默认值与本仓依赖版本一致（查 sources jar 或 AAR `javap`），不得凭记忆写参数名；结论写进调用处 KDoc。
 - 设计护栏、行为红线与取证流程见 `docs/RULES.md`，以该文档为准。
 - 代码注释与 KDoc 用中文。
+- **容器型按钮直用必须传官方 `shapes`（M3E 按压 morph）**：TextButton 与聊天输入区豁免，细则见 `docs/RULES.md` §2.5。

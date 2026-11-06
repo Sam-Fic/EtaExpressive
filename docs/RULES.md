@@ -97,6 +97,15 @@ Loading 相关尺寸只能取 `EtaDimens`：`StatusIconSize=16`、`DenseIconSize
 
 调用点只传 `progress: Float?` 一个判据；不得在业务文件各自判断组件。
 
+### 2.5 按压形状 morph
+
+官方 Expressive 按下行为 = 涟漪 + 形状 morph + （ButtonGroup 内）挤宽；plain 重载没有 morph。morph 终值：Button / IconButton 按下 = CornerSmall（8dp 圆角，ButtonSmallTokens / SmallIconButtonTokens.PressedContainerShape）；ToggleButton 按下 = RoundedCornerShape(6dp)（defaultToggleButtonShapes 硬编码）。时长 DefaultEffects ≈170ms。
+
+1. **容器型按钮直用时必须传官方 `shapes`**：Button / FilledTonalButton / OutlinedButton / ElevatedButton → `ButtonDefaults.shapes()`；IconButton 家族 → `IconButtonDefaults.shapes()`；ToggleButton / IconToggleButton → `ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight)`；相连位置 → `ButtonGroupDefaults.connected*ButtonShapes()` 或 `etaConnectedButtonShapes(position)`。
+2. **TextButton 豁免**：无容器，morph 不可见，plain 重载即规范。
+3. **聊天输入区豁免**（用户决定）：composer 全家圆形钮保持全圆不 morph——圆角同心设计依赖全圆形。
+4. 相连 toggle 的选中态形状由 `connected*ButtonShapes()` 的 `checkedShape` 自带，勿自行拼装。
+
 ## 3. 行为红线
 
 ### 3.1 内置助手
