@@ -17,6 +17,17 @@ internal object AppForeground : Application.ActivityLifecycleCallbacks {
     @Volatile
     private var installed = false
 
+    /**
+     * 主屏可见性从无到有 / 从有到无的一次性槽位回调（如执行通知的前台抑制）。
+     * 可能从任意线程触发，消费方自行切线程；只支持一个消费方。
+     */
+    @Volatile
+    var onVisibilityChanged: ((Boolean) -> Unit)? = null
+
+    private fun notifyVisibilityChanged(visibleNow: Boolean) {
+        onVisibilityChanged?.invoke(visibleNow)
+    }
+
     val isForeground: Boolean
         get() = !installed || visible.isNotEmpty()
 
@@ -28,11 +39,15 @@ internal object AppForeground : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityStarted(activity: Activity) {
         val displayId = runCatching { activity.display?.displayId }.getOrNull() ?: Display.DEFAULT_DISPLAY
-        if (displayId == Display.DEFAULT_DISPLAY) visible += System.identityHashCode(activity)
+        if (displayId == Display.DEFAULT_DISPLAY && visible.add(System.identityHashCode(activity)) && visible.size == 1) {
+            notifyVisibilityChanged(true)
+        }
     }
 
     override fun onActivityStopped(activity: Activity) {
-        visible -= System.identityHashCode(activity)
+        if (visible.remove(System.identityHashCode(activity)) && visible.isEmpty()) {
+            notifyVisibilityChanged(false)
+        }
     }
 
     override fun onActivityDestroyed(activity: Activity) {

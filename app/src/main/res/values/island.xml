@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 小米超级岛 / 思维流：运行阶段预览与岛终态（取自 Number444 与 liyunkkk fork 的实测定稿） -->
+    <string name="island_channel_name">Task island</string>
+    <string name="island_phase_preparing_detail">Starting the task…</string>
+    <string name="island_phase_thinking_detail">Reasoning…</string>
+    <string name="island_phase_generating_detail">Generating the reply…</string>
+    <string name="island_phase_tool">Running: %1$s</string>
+    <string name="island_phase_tool_generic">Running a tool…</string>
+    <string name="island_terminal_done">Done</string>
+    <string name="island_terminal_failed">Failed</string>
+    <string name="island_terminal_stopped">Stopped</string>
+    <string name="island_action_view">View</string>
+</resources>

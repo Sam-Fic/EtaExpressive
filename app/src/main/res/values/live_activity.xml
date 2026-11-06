@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_activity_channel">Live activities</string>
+    <string name="live_activity_settings_title">Live activities</string>
+    <string name="live_activity_group_title">Run notifications</string>
+    <string name="live_activity_settings_summary">Run status on the status-bar island and completion banners</string>
+    <string name="live_activity_enable_title">Show run status on the island</string>
+    <string name="live_activity_enable_summary">While a task runs, live progress appears on the status-bar island (ColorOS Fluid Cloud / HyperOS Super Island)</string>
+    <string name="live_completion_enable_title">Completion banners</string>
+    <string name="live_completion_enable_summary">Ring a notification when a task finishes; tap it to jump back to the conversation</string>
+    <string name="live_suppress_enable_title">Hide the running card in app</string>
+    <string name="live_suppress_enable_summary">While Eta is on screen, remove the persistent running notification; it comes back when you leave</string>
+    <string name="live_completion_done">Task completed</string>
+    <string name="live_completion_failed">Task failed</string>
+    <string name="live_completion_stopped">Task stopped</string>
+    <string name="live_pause">Pause</string>
+    <string name="live_resume">Resume</string>
+</resources>

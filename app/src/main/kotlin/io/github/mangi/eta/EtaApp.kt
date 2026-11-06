@@ -81,6 +81,8 @@ class EtaApp : Application(), XposedServiceHelper.OnServiceListener {
         io.github.mangi.eta.agent.voice.offline.OfflineSpeechPrewarm.install(this)
         TerminalRuntime.initialize(this)
         RootAccess.initialize(this)
+        // 小米 pre-16 焦点协议探测预热：首个 run 就能带上岛参数，不等跨进程探测完成。
+        io.github.mangi.eta.agent.live.MiuiIslandFocus.warmUpProbeAsync(this)
         SettingsDataStore.init(this)
         runBlocking(Dispatchers.IO) {
             io.github.mangi.eta.ui.components.StreamDiagnosticControl.initialize(this@EtaApp)

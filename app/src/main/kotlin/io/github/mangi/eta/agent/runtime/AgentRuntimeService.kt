@@ -50,6 +50,8 @@ import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.device.OwnerDisplayPresence
 import io.github.mangi.eta.agent.device.VirtualDisplaySession
+import io.github.mangi.eta.agent.live.AgentCompletionNotifier
+import io.github.mangi.eta.agent.live.AgentRunStreamTracker
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
@@ -118,6 +120,11 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
      * 这里每个带宿主能力的 run 各持一份，事件按 callId 由持有者消费。
      */
     private val hostProxies = ConcurrentHashMap<String, AgentRuntimeHostProxy>()
+
+    /** 思维流：浮层归属 run 的事件折叠成通知卡预览；作用域与 state 投影一致（见 applyControlledEvent）。 */
+    private val streamTracker = AgentRunStreamTracker(this, mainHandler) { snapshot ->
+        AgentExecutionService.updateRunStream(this@AgentRuntimeService, snapshot)
+    }
 
     /** 外部入口连点时的请求解码池；过去每个 IPC 请求都直接建线程，线程数没有上限。 */
     private val requestExecutor = AgentRequestExecutor()
@@ -409,10 +416,22 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_ISLAND_TOGGLE_PAUSE) {
+            toggleIslandPause()
+            if (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive()) stopSelf(startId)
+            return START_NOT_STICKY
+        }
         if (intent?.action != ACTION_KEEP_ALIVE || (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive())) {
             stopSelf(startId)
         }
         return START_NOT_STICKY
+    }
+
+    /** 通知卡上的暂停/继续：目标取浮层归属的 run——卡片状态正是它的投影。 */
+    private fun toggleIslandPause() {
+        val session = overlaySession ?: return
+        val controller = session.controller
+        if (controller.isPaused) controller.resume() else controller.pause()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -985,7 +1004,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 // 外部归档替换时等已取消的前任排空；等待中被取消则直接落终态，不再发模型请求。
                 val drained = runCatching { run.awaitPredecessors() }
                 if (drained.isFailure) {
-                    AgentExecutionService.updateRunStatus(this@AgentRuntimeService, null)
+                    // 多 run 并发：还有其他活动 run 时不撤销状态投送，避免通知闪回空闲、思维流被清。
+                    if (sessions.activeRunIds().none { it != request.runId }) {
+                        AgentExecutionService.updateRunStatus(this@AgentRuntimeService, null)
+                    }
                     AgentChildRunControl.finish(session)
                     AgentExecutionService.release(runLease.id)
                     screenOnBindings.forEach { it.close() }
@@ -996,8 +1018,11 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 try {
                     executeRun(session, executableRequest, replyTo, hostProxy)
                 } finally {
-                    // run 结束即撤销状态栏胶囊，避免残留的状态投送。
-                    AgentExecutionService.updateRunStatus(this@AgentRuntimeService, null)
+                    // run 结束即撤销状态栏胶囊，避免残留的状态投送；多 run 并发时还有其他
+                    // 活动 run 就先不撤，等它们的下一个事件接管（防通知闪回空闲）。
+                    if (sessions.activeRunIds().none { it != request.runId }) {
+                        AgentExecutionService.updateRunStatus(this@AgentRuntimeService, null)
+                    }
                     AgentChildRunControl.finish(session)
                     AgentExecutionService.release(runLease.id)
                     screenOnBindings.forEach { it.close() }
@@ -1016,7 +1041,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             AndroidAgentLogger.error("Agent runtime thread start failed: type=${failure.safeLogType()}")
             runCatching { persistCompletedRun(request, result) }
             session.complete(result) {}
-            postTerminalOverlay(session, result, null)
+            postTerminalOverlay(
+                session, result, null,
+                conversationId = AgentConversationIdentity.fromHandoff(request.handoff, request.runId),
+            )
         }
     }
 
@@ -1048,6 +1076,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             session = session,
             result = outcome.result,
             entrySurfaceGuard = outcome.entrySurfaceGuard,
+            conversationId = AgentConversationIdentity.fromHandoff(request.handoff, request.runId),
             completedContext = outcome.response?.let { completedResponse ->
                 outcome.completedRequest?.let { completedRequest ->
                     CompletedRunContext(
@@ -1097,6 +1126,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 val ownsOverlay = claimOverlay(session, revealsForegroundOperation && entrySurfaceReady)
                 if (ownsOverlay) {
                     state.value = state.value.applyControlledEvent(event, session.controller.isPaused)
+                    streamTracker.onEvent(event)
                 }
                 if (revealsForegroundOperation && entrySurfaceReady && ownsOverlay) {
                     if (orbView == null && capsuleView == null) {
@@ -1135,6 +1165,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         result: AgentRuntimeWire.RunResult,
         entrySurfaceGuard: EntrySurfaceGuard?,
         completedContext: CompletedRunContext? = null,
+        conversationId: String = "",
     ) {
         mainHandler.post {
             // Removal is identity-based: a late callback cannot consume a replacement
@@ -1142,6 +1173,32 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             if (!sessions.remove(session)) return@post
             updateKeepScreenOn()
             synchronized(supplementsLock) { supplementsByRunId.remove(session.runId) }
+            // 完成横幅先于浮层早退分支发布：后台 run / 副屏 run 不进浮层投影，也要能收到终态通知。
+            AgentCompletionNotifier.notifyTerminal(
+                this@AgentRuntimeService,
+                conversationId = conversationId,
+                kind = when {
+                    result.ok -> AgentCompletionNotifier.TerminalKind.COMPLETED
+                    // 与下方浮层终态同口径：错误文案「已停止」即用户主动停止。
+                    result.error == "已停止" -> AgentCompletionNotifier.TerminalKind.STOPPED
+                    else -> AgentCompletionNotifier.TerminalKind.FAILED
+                },
+                summary = (if (result.ok) result.content else result.error.orEmpty()).take(60),
+            )
+            // 岛终态（小米私有）：成功才上岛展开，失败/停止在执行卡安静收尾（Number444 fork 真机定稿）。
+            if (result.ok) {
+                AgentCompletionNotifier.notifyIslandTerminal(
+                    this@AgentRuntimeService,
+                    AgentCompletionNotifier.TerminalKind.COMPLETED,
+                    conversationId = conversationId,
+                    summary = result.content,
+                )
+            }
+            // 思维流随整机 run 收尾一并清空（与 updateRunStatus 的 null 口径一致）。
+            if (sessions.activeRunIds().isEmpty()) {
+                streamTracker.reset()
+                AgentExecutionService.updateRunStream(this@AgentRuntimeService, null)
+            }
             if (
                 !AgentOverlayVisibilityPolicy.allowsOverlay(
                     session.taskSurfaceMode, virtualDisplayActive(),
@@ -2642,6 +2699,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             Thread(runnable, "agent-child-cleanup").apply { isDaemon = true }
         }
         private const val ACTION_KEEP_ALIVE = "io.github.mangi.eta.agent.runtime.KEEP_ALIVE"
+
+        /** 执行通知卡上「暂停/继续」按钮的回跳入口；只切换浮层归属的那个 run。 */
+        const val ACTION_ISLAND_TOGGLE_PAUSE = "io.github.mangi.eta.agent.runtime.ISLAND_TOGGLE_PAUSE"
         private const val HIDE_DELAY_MS = 2_500L
         private const val RESULT_REVIEW_DELAY_MS = 120_000L
         private const val RESULT_CARD_HEIGHT_RATIO = 0.5f

@@ -88,6 +88,10 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data object ErrorReconnectSettings : AppRoute
 
+    /** 实时活动设置：运行状态上岛、完成横幅、前台抑制。 */
+    @Serializable
+    data object LiveActivitySettings : AppRoute
+
     @Serializable
     data object SubAgents : AppRoute
 

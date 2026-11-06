@@ -280,6 +280,12 @@ internal object Prefs {
         const val HAPTIC_REASONING_DONE = "haptic_reasoning_done"
         const val HAPTIC_BACKGROUND = "haptic_background"
         const val HAPTIC_BACKGROUND_REASONING = "haptic_background_reasoning"
+        // 实时活动（灵动岛 / 流体云类通知）分三层：总开关（运行状态上岛）→ 完成横幅 → 前台抑制。
+        // 细分开关的消费方各自尊重总开关：完成横幅见 AgentCompletionNotifier，
+        // 前台抑制见 AgentExecutionService。
+        const val LIVE_ACTIVITY_ENABLE = "live_activity_enable"
+        const val LIVE_ACTIVITY_COMPLETION_BANNER = "live_activity_completion_banner"
+        const val LIVE_ACTIVITY_FOREGROUND_SUPPRESS = "live_activity_foreground_suppress"
         // 回收站留存天数：字符串存储（"7"/"30"/"90"/"never"），与 eta_set_settings 的
         // CHOICE 写入路径共用一个格式；解析统一走 [trashRetentionDays]。
         const val TRASH_RETENTION_DAYS = "trash_retention_days"
@@ -335,6 +341,10 @@ internal object Prefs {
             HAPTIC_REASONING_DONE to true,
             HAPTIC_BACKGROUND to true,
             HAPTIC_BACKGROUND_REASONING to true,
+            LIVE_ACTIVITY_ENABLE to true,
+            LIVE_ACTIVITY_COMPLETION_BANNER to true,
+            // 前台收起常驻运行卡改变了现有视觉基线，默认关。
+            LIVE_ACTIVITY_FOREGROUND_SUPPRESS to false,
         )
 
         /** 由 Eta Runtime 最终裁决、不要求 Xposed 框架在线的开关。 */
@@ -370,6 +380,9 @@ internal object Prefs {
             HAPTIC_REASONING_DONE,
             HAPTIC_BACKGROUND,
             HAPTIC_BACKGROUND_REASONING,
+            LIVE_ACTIVITY_ENABLE,
+            LIVE_ACTIVITY_COMPLETION_BANNER,
+            LIVE_ACTIVITY_FOREGROUND_SUPPRESS,
         )
     }
 

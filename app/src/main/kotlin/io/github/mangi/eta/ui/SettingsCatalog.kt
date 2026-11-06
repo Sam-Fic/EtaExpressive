@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Psychology
@@ -100,6 +101,7 @@ internal object SettingsKeys {
     // 运行环境
     const val LINUX_ENVIRONMENT = "linux_environment"
     const val WORKSPACE = "workspace"
+    const val LIVE_ACTIVITY = "live_activity"
 
     // 系统助手接管
     const val SYSTEM_TAKEOVER = "system_takeover"
@@ -552,6 +554,17 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 icon = Icons.Rounded.Folder,
                 group = groupRuntimeEnvironment,
                 destination = SettingsDestination.Route(AppRoute.Workspace),
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.LIVE_ACTIVITY,
+                title = stringResource(R.string.live_activity_settings_title),
+                summary = stringResource(R.string.live_activity_settings_summary),
+                keywords = "live activity island 灵动岛 流体云 超级岛 实时活动 状态栏 通知 完成横幅",
+                icon = Icons.Rounded.NotificationsActive,
+                group = groupRuntimeEnvironment,
+                destination = SettingsDestination.Route(AppRoute.LiveActivitySettings),
             ),
         )
 

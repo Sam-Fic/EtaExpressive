@@ -49,6 +49,7 @@ import io.github.mangi.eta.ui.navigation.AppRoute
 import io.github.mangi.eta.ui.adaptive.EtaTopBarBackButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -333,7 +334,7 @@ private fun AgentTopBar(
             IconButton(onClick = {
                 TouchHaptics.click(view)
                 onOpenConversationPane()
-            }) {
+            }, shapes = IconButtonDefaults.shapes()) {
                 Icon(
                     imageVector = Icons.Rounded.Menu,
                     contentDescription = stringResource(R.string.action_conversation_history),
@@ -364,7 +365,7 @@ private fun AgentTopBar(
             IconButton(onClick = {
                 TouchHaptics.click(view)
                 onNewConversation()
-            }) {
+            }, shapes = IconButtonDefaults.shapes()) {
                 Icon(
                     imageVector = Icons.Rounded.AddComment,
                     contentDescription = stringResource(R.string.action_new_conversation),
@@ -483,6 +484,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.SubAgentPresetDetail -> stringResource(R.string.settings_subagent_title)
     is AppRoute.TitleModel -> stringResource(R.string.title_model_title)
     is AppRoute.ErrorReconnectSettings -> stringResource(R.string.error_reconnect_title)
+    is AppRoute.LiveActivitySettings -> stringResource(R.string.live_activity_settings_title)
     is AppRoute.TtsSettings -> stringResource(R.string.tts_title)
     is AppRoute.WebToolsSettings -> stringResource(R.string.web_tools_settings_title)
     is AppRoute.VoiceModeSettings -> stringResource(R.string.voice_mode_title)

@@ -57,12 +57,13 @@ import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroup
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -86,6 +87,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -113,6 +115,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
@@ -207,7 +210,7 @@ internal fun AgentOverlayCapsule(
         }
     }
 
-    // 浮窗内容确实持有 Expressive 的 motionScheme（下方 bodySpatial 等已直接用），
+    // 浮窗内容确实持有 Expressive 的 motionScheme（下方各 fadeIn/fadeOut 已直接用），
     // 因此这里统一收口到官方规格，只保留脉冲/进度这类自有节奏。
     val motionScheme = MaterialTheme.motionScheme
 
@@ -215,7 +218,7 @@ internal fun AgentOverlayCapsule(
     // 暂停钮宽度）共用同一条 320ms 定长时间轴：彼此同时起步、同时收尾，不会出现
     // 「宽度先胀开、正文随后才浮出」的串联观感，也不会有一条弹簧在主轴收尾后继续跑。
     // 逐层套 Expressive spatial 弹簧会各自带过冲长尾，叠起来就是慢动作
-    // （取值与原因见 EtaMotion.CapsuleExpandDurationMillis / docs/capsule-expand-motion.md）。
+    // （取值见 EtaMotion.CapsuleExpandDurationMillis）。
     val expandMillis = EtaMotion.CapsuleExpandDurationMillis
     val expandDpSpec = tween<Dp>(expandMillis, easing = FastOutSlowInEasing)
     val expandSizeSpec = tween<IntSize>(expandMillis, easing = FastOutSlowInEasing)
@@ -272,10 +275,11 @@ internal fun AgentOverlayCapsule(
     // = 448，控制 56+8+40+8 = 112，补充 56+8+56+8 = 128（进入补充时必为单行：
     // supplementText 关闭时已清空，官方 TextField 最小高 56），收起与缩球 56。
     // 测量值一旦超出分析目标（补充框换行等不可预测长高），由上报状态机按测量值跟涨自愈。
-    val capsuleActionButtonSize = IconButtonDefaults.smallContainerSize()
+    // 动作行高 = 官方 Small 按钮高（ButtonSmallTokens.ContainerHeight 40dp）。
+    val capsuleActionRowHeight = ButtonDefaults.MinHeight
     val bodyTargetHeight = when (bodyMode) {
-        CapsuleBody.Stage -> StageCanvasHeight + EtaDimens.SpaceSm + capsuleActionButtonSize.width
-        CapsuleBody.Controls -> capsuleActionButtonSize.width
+        CapsuleBody.Stage -> StageCanvasHeight + EtaDimens.SpaceSm + capsuleActionRowHeight
+        CapsuleBody.Controls -> capsuleActionRowHeight
         CapsuleBody.Supplement -> TextFieldDefaults.MinHeight
     }
     val stateTargetWidth = when {
@@ -372,9 +376,9 @@ internal fun AgentOverlayCapsule(
     // 并无 28dp 内圆。同心锚点是 40dp 阶段指示器（圆心落左上弧心，20 + 8 = 28），
     // 收起/展开两态同源；展开体其余角均无贴角内圆（画布/按钮组皆居中），故全态恒 28dp。
     val capsuleCorner = CapsuleInnerCorner
-    // 缩球时正文文字淡出（宽度由弹簧收窄带走），恢复时随宽展开淡回。
-    // 淡出快（尽快让位给宽度收缩）；淡入慢半拍且带延迟——宽度 tween 320ms，
-    // 文字太早浮现会先被窄容器省略截断、再解锁重排，看起来像卡了一下。
+    // 缩球时正文文字淡出（宽度由 tween 收窄带走），恢复时随宽展开淡回。
+    // 淡出 fastEffects ≈110ms（尽快让位给宽度收缩）；淡入 defaultEffects ≈170ms，
+    // 比布局轴 320ms 先收尾（效果层恒短于布局轴，不存在主轴后长尾）。
     val headerTextAlpha by animateFloatAsState(
         targetValue = if (minimized) 0f else 1f,
         animationSpec = if (minimized) motionScheme.fastEffectsSpec() else motionScheme.defaultEffectsSpec(),
@@ -393,8 +397,6 @@ internal fun AgentOverlayCapsule(
         label = "capsule_header_end_padding",
     )
 
-    val bodySpatial = motionScheme.defaultSpatialSpec<Float>()
-    val bodyFastSpatial = motionScheme.fastSpatialSpec<Float>()
     // 正文三态（补充输入 / 舞台 / 控制）切换时，容器尺寸也走主轴 320ms 定长：
     // 用 defaultSpatial（ζ0.8/380，实收 ~440ms + 1.5% 过冲）会让「容器长高」比主轴多跑
     // 120ms，而按钮组正好落在被这段多余生长揭开的最底部——展开瞬间舞台若刚激活，
@@ -596,9 +598,9 @@ internal fun AgentOverlayCapsule(
                                 AnimatedContent(
                                     targetState = statusText,
                                     transitionSpec = {
-                                        (slideInVertically(motionScheme.defaultSpatialSpec()) { it / 2 } +
+                                        (slideInVertically(CapsuleAxisOffsetSpec) { it / 2 } +
                                             fadeIn(motionScheme.defaultEffectsSpec())) togetherWith
-                                            (slideOutVertically(motionScheme.defaultSpatialSpec()) { -it / 2 } +
+                                            (slideOutVertically(CapsuleAxisOffsetSpec) { -it / 2 } +
                                                 fadeOut(motionScheme.fastEffectsSpec())) using
                                             SizeTransform(clip = false) { _, _ -> snap() }
                                     },
@@ -613,8 +615,19 @@ internal fun AgentOverlayCapsule(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                DetailLine(detail = state.detailText.takeIf { state.phase == AgentOverlayPhase.RUNNING }.orEmpty())
+                                // 副行零占位：高度不计入文字列，钉住状态主行的 y（副行在下方生长）。
+                            DetailLine(
+                                detail = state.detailText.takeIf { state.phase == AgentOverlayPhase.RUNNING }.orEmpty(),
+                                modifier = Modifier.layout { measurable, constraints ->
+                                    val placeable = measurable.measure(constraints)
+                                    layout(0, 0) { placeable.placeRelative(0, 0) }
+                                },
+                            )
                             }
+                            // 显式标签 lensMorph：下方 sharedBounds 的 animatedVisibilityScope 必须绑本层
+                            // （微缩镜的进出场轴）。外层还有胶囊总进出场的隐式 `AnimatedVisibility` 标签，
+                            // this@AnimatedVisibility 依赖「最近外层同名标签」规则——中间一旦插入新的
+                            // AnimatedVisibility，引用会静默改绑，morph 挂到错误的可见性轴上。
                             AnimatedVisibility(
                                 visible = lensVisible,
                                 // 微缩镜容器宽度也是「共享元素的目标矩形」：它必须和
@@ -630,7 +643,7 @@ internal fun AgentOverlayCapsule(
                                     animationSpec = expandSizeSpec,
                                     shrinkTowards = Alignment.End,
                                 ),
-                            ) {
+                            ) lensMorph@{
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Spacer(Modifier.width(EtaDimens.SpaceSm))
                                     // 收起端的共享元素：morph 期间 18×32 镜身由官方 SharedTransition
@@ -642,7 +655,7 @@ internal fun AgentOverlayCapsule(
                                             sharedContentState = rememberSharedContentState(
                                                 key = VirtualDisplayPreviewSharedKey,
                                             ),
-                                            animatedVisibilityScope = this@AnimatedVisibility,
+                                            animatedVisibilityScope = this@lensMorph,
                                             enter = EnterTransition.None,
                                             exit = ExitTransition.None,
                                             boundsTransform = { _, _ ->
@@ -654,6 +667,9 @@ internal fun AgentOverlayCapsule(
                             }
                         }
 
+                        // 显式标签 bodyMorph：下方舞台画布的 sharedBounds 必须绑本层（展开/收起轴），
+                        // 取内层 AnimatedContent 的 scope 会挂到 bodyMode 互切上；显式命名同时避开
+                        // 外层总进出场与 627 那层同名隐式标签的歧义。
                         AnimatedVisibility(
                             visible = expanded && !minimized,
                             enter = expandVertically(
@@ -666,7 +682,7 @@ internal fun AgentOverlayCapsule(
                                 animationSpec = expandSizeSpec,
                                 clip = true,
                             ) + fadeOut(motionScheme.fastEffectsSpec()),
-                        ) {
+                        ) bodyMorph@{
                             Column(
                                 modifier = Modifier
                                     .padding(EtaDimens.SpaceSm)
@@ -679,12 +695,12 @@ internal fun AgentOverlayCapsule(
                                         val enter = fadeIn(motionScheme.defaultEffectsSpec()) + scaleIn(
                                             initialScale = 0.94f,
                                             transformOrigin = bodyOrigin,
-                                            animationSpec = bodySpatial,
+                                            animationSpec = CapsuleAxisFloatSpec,
                                         )
                                         val exit = fadeOut(motionScheme.fastEffectsSpec()) + scaleOut(
                                             targetScale = 0.94f,
                                             transformOrigin = bodyOrigin,
-                                            animationSpec = bodyFastSpatial,
+                                            animationSpec = CapsuleAxisFloatSpec,
                                         )
                                         (enter togetherWith exit) using SizeTransform(clip = false) { _, _ -> expandSizeSpec }
                                     },
@@ -703,13 +719,13 @@ internal fun AgentOverlayCapsule(
                                                 onTapCanvas = onTapVirtualCanvas,
                                                 onSwipeCanvas = onSwipeVirtualCanvas,
                                                 // 展开端的共享元素：scope 必须取外层正文 AnimatedVisibility
-                                                // （this@AnimatedVisibility）——morph 挂在展开/收起这条时间轴上，
+                                                // （this@bodyMorph）——morph 挂在展开/收起这条时间轴上，
                                                 // 取 AnimatedContent 的 scope 会挂到 bodyMode 互切上，morph 失配。
                                                 frameModifier = Modifier.sharedBounds(
                                                     sharedContentState = rememberSharedContentState(
                                                         key = VirtualDisplayPreviewSharedKey,
                                                     ),
-                                                    animatedVisibilityScope = this@AnimatedVisibility,
+                                                    animatedVisibilityScope = this@bodyMorph,
                                                     enter = EnterTransition.None,
                                                     exit = ExitTransition.None,
                                                     boundsTransform = { _, _ ->
@@ -758,10 +774,10 @@ private enum class CapsuleBody { Stage, Controls, Supplement }
 
 /**
  * 补充 / 暂停恢复 / 停止：官方 M3 button group **标准档** `ButtonGroup`——三枚纯 icon
- * 40dp 圆钮（官方 [FilledTonalIconButton] Small 档）按官方 `clickableItem` 模板排布，
- * 间距取官方 12dp（`ButtonGroupDefaults.HorizontalArrangement.spacing`）。按压原生
- * 动效：圆钮被挤宽约束拉成短胶囊、邻居等量压缩（`Modifier.animateWidth`，官方默认
- * `ExpandedRatio` 0.15）。展开定宽后三枚圆钮排得下；但宽度弹簧从收起宽度过渡时
+ * 胶囊钮（官方 [FilledTonalButton] Small 档，仅 Icon 内容，58×40dp）按官方
+ * `clickableItem` 模板排布，间距取官方 12dp（`ButtonGroupDefaults.HorizontalArrangement.spacing`）。
+ * 按压原生动效：胶囊被挤宽约束拉宽、邻居等量压缩（`Modifier.animateWidth`，官方默认
+ * `ExpandedRatio` 0.15）。展开定宽后三枚胶囊排得下；但宽度弹簧从收起宽度过渡时
  * 会短暂窄于按钮总和，溢出菜单因此可能被测量与放置（菜单项照官方
  * `ClickableButtonGroupItem.MenuContent`：先回调再 `dismiss()`）。常规动作取官方
  * tertiaryContainer / onTertiaryContainer 档，停止单独取 error 档。
@@ -775,11 +791,8 @@ private fun CapsuleActions(
     onStop: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    // 与胶囊主轴同一条 320ms 时间轴（不新建时长体系）：本组内部的尺寸轴都用它收尾。
-    val actionSizeSpec = tween<IntSize>(
-        EtaMotion.CapsuleExpandDurationMillis,
-        easing = FastOutSlowInEasing,
-    )
+    // 与胶囊主轴同一条 320ms 时间轴（不新建时长体系）：本组内部的尺寸轴都用它收尾
+    // （spec 即文件级 CapsuleAxisSizeSpec，全文件布局/尺寸轴共用同一实例）。
     // 共享的 interaction source 同时喂给 animateWidth 与按钮本身：按压时
     // 按钮组测量逻辑据此把本钮加宽、邻居等量压缩。
     val supplementSource = remember { MutableInteractionSource() }
@@ -837,7 +850,7 @@ private fun CapsuleActions(
                         // 重新居中——这正是「按钮段末尾还在动」的另一条时长来源。并到主轴。
                         (fadeIn(actionMotionScheme.fastEffectsSpec()) togetherWith
                             fadeOut(actionMotionScheme.fastEffectsSpec())) using
-                            SizeTransform(clip = false) { _, _ -> actionSizeSpec }
+                            SizeTransform(clip = false) { _, _ -> CapsuleAxisSizeSpec }
                     },
                     modifier = Modifier.animateWidth(phaseSource),
                     label = "capsule_phase_action",
@@ -974,21 +987,26 @@ private fun PhaseGlyph(phase: AgentOverlayPhase, accent: Color) {
 
 /**
  * 状态副行：单行、从左侧裁掉旧内容，让最新的字始终可见。
- * 流式增量只改文字，不做逐字动画；副行只在有内容时占高——只有一行状态字时
- * 状态行在 56dp 头部里 y 向居中。出现/消失用官方 expand/shrink 顺带淡入淡出，
- * 头部高度恒定（[TextFieldDefaults.MinHeight]），不会带动胶囊整体跳动。
+ * 流式增量只改文字，不做逐字动画；副行只在有内容时占高。出现/消失用官方
+ * expand/shrink（主轴 320ms）顺带淡入淡出，头部高度恒定
+ * （[TextFieldDefaults.MinHeight]），不会带动胶囊整体跳动。
+ *
+ * [modifier] 由调用方传入「零占位」layout：副行高度不计入文字列，在状态行下方
+ * 自然生长——头部 CenterVertically 的整组重新居中因此不再牵动状态主行（否则
+ * 副行出现时状态行会上移 ~8dp）。超大字号下副行可能探出头部底缘，可接受。
  */
 @Composable
-private fun DetailLine(detail: String) {
+private fun DetailLine(detail: String, modifier: Modifier = Modifier) {
     val shown = detail.isNotBlank()
     var lastDetail by remember { mutableStateOf("") }
     if (shown) lastDetail = detail
     AnimatedVisibility(
         visible = shown,
+        modifier = modifier,
         enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) +
-            expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+            expandVertically(CapsuleAxisSizeSpec),
         exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
-            shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()),
+            shrinkVertically(CapsuleAxisSizeSpec),
     ) {
         Text(
             text = lastDetail,
@@ -1004,14 +1022,19 @@ private fun DetailLine(detail: String) {
 }
 
 /**
- * 按钮组里的单个动作：官方 [FilledTonalIconButton] Small 档——纯 icon 40dp 圆钮
- * （[IconButtonDefaults.smallContainerSize]，与补充输入框圆钮同款；alpha29 的
- * icon button 不自带尺寸，须由调用方按官方 size ladder 给）。label 只进
- * contentDescription：没有文字容器，语义可及性不能丢。容器色由调用方按动作角色给
- * （tertiaryContainer / errorContainer）。modifier 顺序有讲究：调用方的按压挤宽
- * （animateWidth）在最外层、`size` 在内层——挤宽约束才能把圆钮拉成短胶囊；
- * 反过来 size 在外层就只是外盒变宽、钮面不动。
+ * 按钮组里的单个动作：官方 [FilledTonalButton] Expressive 档、仅 Icon 内容——按钮组规范
+ * 的组内 item 是 M3 胶囊按钮（`ButtonGroup` 内置槽即 `Button`/`ToggleButton`，
+ * CornerFull 胶囊 + MinHeight 40dp + MinWidth 58dp），纯 icon 也走 Button 家族
+ * 保持胶囊形，而不是圆形 IconButton。Expressive 档自带官方按压形状 morph
+ * （ButtonSmallTokens 令牌：静止 CornerFull ↔ 按下 CornerSmall，DefaultEffects ≈170ms），
+ * 与组内按压挤宽（animateWidth，官方 FAST_SPATIAL）互补成完整的官方按下行为。
+ * 图标尺寸取官方 [ButtonDefaults.iconSizeFor]（Small 档 20dp），label 只进
+ * contentDescription：没有文字容器，语义可及性不能丢。contentPadding 用官方默认
+ * `contentPaddingFor(MinHeight)`（16/16 对称，图标居中）。容器色由调用方按动作
+ * 角色给（tertiaryContainer / errorContainer）。宽度随内容走，调用方的按压挤宽
+ * 经约束直接改胶囊宽度、松手回弹。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun CapsuleAction(
     icon: ImageVector,
@@ -1022,16 +1045,21 @@ private fun CapsuleAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    FilledTonalIconButton(
+    FilledTonalButton(
         onClick = onClick,
-        modifier = modifier.size(IconButtonDefaults.smallContainerSize()),
+        shapes = ButtonDefaults.shapes(),
+        modifier = modifier,
         interactionSource = interactionSource,
-        colors = IconButtonDefaults.filledTonalIconButtonColors(
+        colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = containerColor,
             contentColor = contentColor,
         ),
     ) {
-        Icon(imageVector = icon, contentDescription = label)
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.MinHeight)),
+        )
     }
 }
 
@@ -1329,12 +1357,14 @@ internal fun VirtualDisplayStageSection(
                 )
                 AnimatedVisibility(
                     visible = fullscreenEnabled,
+                    // 与主轴同源：这是相连组行的布局轴（宽度随钮增减），spatial 弹簧
+                    // 实收 400-440ms 会在主轴收尾后继续变宽/过冲顶一下。
                     enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()) + expandHorizontally(
-                        animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        animationSpec = CapsuleAxisSizeSpec,
                         expandFrom = Alignment.End,
                     ),
                     exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) + shrinkHorizontally(
-                        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                        animationSpec = CapsuleAxisSizeSpec,
                         shrinkTowards = Alignment.End,
                     ),
                 ) {
@@ -1370,12 +1400,15 @@ private fun StageActionToggle(
     val colors = etaConnectedGroupColors()
     val content: @Composable RowScope.() -> Unit = {
         // 文案切换（接管 ↔ 继续）时按钮宽度随内容平滑过渡，不瞬间跳宽。
+        // 宽度轴钳到主轴：默认 SizeTransform 是 Compose 通用弹簧（~350ms+），
+        // 会在主轴收尾后继续改宽并让相连组行重新居中（与暂停钮同款问题）。
         val labelMotionScheme = MaterialTheme.motionScheme
         AnimatedContent(
             targetState = label,
             transitionSpec = {
                 (fadeIn(labelMotionScheme.defaultEffectsSpec()) togetherWith
-                    fadeOut(labelMotionScheme.fastEffectsSpec())) using SizeTransform(clip = false)
+                    fadeOut(labelMotionScheme.fastEffectsSpec())) using
+                    SizeTransform(clip = false) { _, _ -> CapsuleAxisSizeSpec }
             },
             contentAlignment = Alignment.Center,
             label = "stage_action_label",
@@ -1426,6 +1459,20 @@ private val CapsuleInnerCorner = 28.dp
  * 同时兼作「落定不上报」的判定阈值（见落定分支的差量判断）。
  */
 private const val CapsuleReportGrowTolerancePx = 6
+
+/**
+ * 胶囊内所有尺寸轴（IntSize：expand/shrink/SizeTransform）共用的主轴 tween，
+ * 与 [EtaMotion.CapsuleExpandDurationMillis] 同源同相——任何一条布局轴都不得
+ * 越过主轴继续跑（expressive spatial 弹簧实收 400-440ms 会在主轴收尾后留下长尾）。
+ */
+private val CapsuleAxisSizeSpec = tween<IntSize>(EtaMotion.CapsuleExpandDurationMillis, easing = FastOutSlowInEasing)
+
+/** 同 [CapsuleAxisSizeSpec]，位移轴（[IntOffset]：slideInVertically/slideOutVertically）版本。 */
+private val CapsuleAxisOffsetSpec =
+    tween<IntOffset>(EtaMotion.CapsuleExpandDurationMillis, easing = FastOutSlowInEasing)
+
+/** 同 [CapsuleAxisSizeSpec]，transform 轴（Float：scaleIn/scaleOut）版本。 */
+private val CapsuleAxisFloatSpec = tween<Float>(EtaMotion.CapsuleExpandDurationMillis, easing = FastOutSlowInEasing)
 
 /** 收起态微缩镜与展开态舞台画布的共享元素 key（官方 SharedTransition 配对用）。 */
 private const val VirtualDisplayPreviewSharedKey = "vd_preview"

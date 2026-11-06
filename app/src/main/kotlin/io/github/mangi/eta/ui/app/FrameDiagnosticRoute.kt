@@ -30,6 +30,7 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     AppRoute.AuxiliaryVision -> FrameDiagnosticPage.AuxiliaryVision
     AppRoute.TitleModel -> FrameDiagnosticPage.TitleModel
     AppRoute.ErrorReconnectSettings -> FrameDiagnosticPage.ErrorReconnectSettings
+    AppRoute.LiveActivitySettings -> FrameDiagnosticPage.Settings
     AppRoute.WebToolsSettings -> FrameDiagnosticPage.Settings
     AppRoute.SubAgents -> FrameDiagnosticPage.SubAgents
     is AppRoute.SubAgentPresetDetail -> FrameDiagnosticPage.SubAgents

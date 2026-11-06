@@ -84,6 +84,7 @@ import io.github.mangi.eta.ui.components.LocalShellTopBarInset
 import io.github.mangi.eta.ui.screens.virtualdisplay.VirtualDisplayScreen
 import io.github.mangi.eta.ui.HapticsSettingsScreen
 import io.github.mangi.eta.ui.ErrorReconnectSettingsScreen
+import io.github.mangi.eta.ui.LiveActivitySettingsScreen
 import io.github.mangi.eta.ui.ContextCompressionSettingsScreen
 import io.github.mangi.eta.ui.DecisionModelSettingsScreen
 import io.github.mangi.eta.ui.SettingsScreen
@@ -159,9 +160,12 @@ import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 @Composable
 fun AgentAppRoot(
     assistantConversationKey: String? = null,
+    /** 完成横幅点击直达的会话 id；路由落地后由 [onLiveTargetConsumed] 复位。 */
+    liveTargetConversationId: String? = null,
     inboundShareUris: List<String> = emptyList(),
     onAssistantConversationOpened: (Boolean) -> Unit = {},
     onInboundShareConsumed: () -> Unit = {},
+    onLiveTargetConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val uiScope = rememberCoroutineScope()
@@ -491,6 +495,15 @@ fun AgentAppRoot(
             navigator.replace(AppRoute.Chat)
         }
         onAssistantConversationOpened(opened)
+    }
+
+    // 完成横幅直达会话：selectConversation 对未知/回收站会话是安全空操作（内部早退）。
+    // replace 而非 push：从通知回来要的是「落在会话里」，回退仍回主页。
+    LaunchedEffect(liveTargetConversationId) {
+        val conversationId = liveTargetConversationId ?: return@LaunchedEffect
+        agentState.selectConversation(conversationId)
+        navigator.replace(AppRoute.Chat)
+        onLiveTargetConsumed()
     }
 
     LaunchedEffect(inboundShareUris) {
@@ -1483,6 +1496,9 @@ fun AgentAppRoot(
             }
             entry<AppRoute.ErrorReconnectSettings> {
                 ErrorReconnectSettingsScreen(onBack = ::popRoute)
+            }
+            entry<AppRoute.LiveActivitySettings> {
+                LiveActivitySettingsScreen(onBack = ::popRoute)
             }
             entry<AppRoute.WebToolsSettings> {
                 WebToolsSettingsScreen(onBack = ::popRoute)

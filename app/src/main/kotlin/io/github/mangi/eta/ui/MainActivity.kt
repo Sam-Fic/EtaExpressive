@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import io.github.mangi.eta.agent.live.AgentCompletionNotifier
 import io.github.mangi.eta.agent.voice.EtaAssistantOverlayService
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.ui.app.AgentAppRoot
@@ -25,6 +26,8 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var assistantConversationKey by mutableStateOf<String?>(null)
+    /** 完成横幅点击直达的会话 id；AgentAppRoot 消费后复位。 */
+    private var liveTargetConversationId by mutableStateOf<String?>(null)
     private var inboundShareUris by mutableStateOf<List<String>>(emptyList())
     private var appliedPredictiveBackEnabled = true
     private var refreshRateWindowResumed = false
@@ -41,6 +44,7 @@ class MainActivity : ComponentActivity() {
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED,
         )
         updateAssistantHandoff(intent)
+        updateLiveTarget(intent)
         consumeShareIntent(intent)
         lifecycleScope.launch {
             val initialAppearance = AppearanceSettingsRepository.settings()
@@ -66,6 +70,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AgentAppRoot(
                         assistantConversationKey = assistantConversationKey,
+                        liveTargetConversationId = liveTargetConversationId,
                         inboundShareUris = inboundShareUris,
                         onAssistantConversationOpened = { opened ->
                             assistantConversationKey = null
@@ -74,6 +79,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onInboundShareConsumed = { inboundShareUris = emptyList() },
+                        onLiveTargetConsumed = { liveTargetConversationId = null },
                     )
                 }
             }
@@ -107,6 +113,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         updateAssistantHandoff(intent)
+        updateLiveTarget(intent)
         consumeShareIntent(intent)
     }
 
@@ -190,6 +197,13 @@ class MainActivity : ComponentActivity() {
         assistantConversationKey = intent.getStringExtra(
             EtaAssistantOverlayService.EXTRA_CONVERSATION_KEY,
         )?.takeIf(String::isNotBlank)
+    }
+
+    /** 完成横幅点击直达：读会话 extra 后立即清除，避免 recreate 时重复触发。 */
+    private fun updateLiveTarget(intent: Intent?) {
+        val conversationId = intent?.getStringExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID) ?: return
+        intent.removeExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID)
+        if (conversationId.isNotBlank()) liveTargetConversationId = conversationId
     }
 
     private fun updateSystemBars(isDark: Boolean) {

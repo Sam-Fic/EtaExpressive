@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_activity_channel">实时活动</string>
+    <string name="live_activity_settings_title">实时活动</string>
+    <string name="live_activity_group_title">运行通知</string>
+    <string name="live_activity_settings_summary">运行状态上岛与任务完成横幅</string>
+    <string name="live_activity_enable_title">运行状态上岛</string>
+    <string name="live_activity_enable_summary">任务运行期间在状态栏岛上实时展示进度（ColorOS 流体云 / 澎湃OS 超级岛）</string>
+    <string name="live_completion_enable_title">任务完成横幅</string>
+    <string name="live_completion_enable_summary">任务结束时响铃提醒，点击直达对应会话</string>
+    <string name="live_suppress_enable_title">前台收起运行卡</string>
+    <string name="live_suppress_enable_summary">Eta 在前台时撤下常驻运行通知，回到后台后恢复</string>
+    <string name="live_completion_done">任务已完成</string>
+    <string name="live_completion_failed">任务失败</string>
+    <string name="live_completion_stopped">任务已停止</string>
+    <string name="live_pause">暂停</string>
+    <string name="live_resume">继续</string>
+</resources>
