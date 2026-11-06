@@ -680,7 +680,7 @@
   <string name="update_downloading">正在下載……</string>
   <string name="update_download_failed">下載更新失敗</string>
   <string name="update_install_permission">請允許安裝未知應用後再更新</string>
-  <string name="update_background_download">后台下載</string>
+  <string name="update_background_download">後台下載</string>
   <string name="update_channel">應用更新</string>
   <string name="update_downloading_title">正在下載 %1$s</string>
   <string name="update_downloading_progress">%1$s / %2$s</string>

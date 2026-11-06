@@ -6,6 +6,7 @@
     <string name="speech_requires_pack">请先下载语音包，再开启</string>
     <string name="speech_download">下载语音包</string>
     <string name="speech_cancel_download">取消下载</string>
+    <string name="speech_continue_download">继续下载</string>
     <string name="speech_pack_ready">语音包已就绪</string>
     <string name="speech_checking">正在校验语音包…</string>
     <string name="speech_download_failed">下载未完成或校验失败，点击重试</string>

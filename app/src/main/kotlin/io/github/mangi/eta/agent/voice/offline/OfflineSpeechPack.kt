@@ -17,6 +17,8 @@ internal object OfflineSpeechPack {
         val enabled: Boolean = false,
         val downloading: Boolean = false,
         val downloadedBytes: Long = 0,
+        /** 取消或失败后留在缓存目录里的 `.part` 字节数；大于 0 表示可以从断点续传。 */
+        val partialBytes: Long = 0,
         val error: Boolean = false,
         val model: SpeechModelCatalog.Model = SpeechModelCatalog.defaultModel,
         val source: SpeechModelCatalog.Source = SpeechModelCatalog.defaultModel.sources.first(),
@@ -35,6 +37,22 @@ internal object OfflineSpeechPack {
     fun directory(context: Context, model: SpeechModelCatalog.Model = mutable.value.model) =
         File(context.noBackupFilesDir, "speech/${model.id}/${model.revision}")
 
+    /**
+     * 已落盘的可续传字节数。`.part` 与 `.meta` 由 [ResumableDownload] 维护，这里只读；
+     * URL 对不上（换源或换版本）时 [ResumableDownload.partialBytes] 返回 0，断点自然作废。
+     */
+    private fun resumableBytes(
+        context: Context,
+        model: SpeechModelCatalog.Model,
+        source: SpeechModelCatalog.Source,
+    ): Long {
+        val dir = directory(context, model)
+        return model.assets.sumOf { asset ->
+            val part = ResumableDownload.partFile(context.cacheDir, File(dir, asset.name))
+            ResumableDownload.partialBytes(part, asset.url ?: (source.baseUrl + asset.name))
+        }
+    }
+
     @Synchronized fun initialize(context: Context) {
         if (initialized) return
         initialized = true
@@ -44,9 +62,19 @@ internal object OfflineSpeechPack {
             val model = withContext(Dispatchers.IO) { initialModel(app, stored.getString("model", null)) }
             val source = model.source(SpeechModelCatalog.SourceId.from(stored.getString("source", null)))
             val ready = withContext(Dispatchers.IO) { verify(directory(app, model), model) }
+            val partial = withContext(Dispatchers.IO) {
+                if (ready) 0L else resumableBytes(app, model, source)
+            }
             val enabled = ready && stored.getBoolean("enabled", false)
             if (!ready) stored.edit().putBoolean("enabled", false).apply()
-            mutable.value = State(checking = false, ready = ready, enabled = enabled, model = model, source = source)
+            mutable.value = State(
+                checking = false,
+                ready = ready,
+                enabled = enabled,
+                model = model,
+                source = source,
+                partialBytes = partial,
+            )
         }
     }
 
@@ -71,6 +99,7 @@ internal object OfflineSpeechPack {
             checking = true,
             downloading = false,
             downloadedBytes = 0,
+            partialBytes = 0,
             error = false,
         )
         initialize(context)
@@ -96,10 +125,19 @@ internal object OfflineSpeechPack {
             val ready = withContext(Dispatchers.IO) { verify(directory(app, model), model) }
             // A newer selection may have landed while hashing; never publish stale readiness.
             if (mutable.value.model.id != model.id || mutable.value.source.id != source.id) return@launch
+            val partial = withContext(Dispatchers.IO) {
+                if (ready) 0L else resumableBytes(app, model, source)
+            }
             // 「已启用」隐含「已就绪」：切到未下载的模型时要同步收回启用标记，与启动校验一致。
             val enabled = ready && prefs(app).getBoolean("enabled", false)
             if (!ready) prefs(app).edit().putBoolean("enabled", false).apply()
-            mutable.value = mutable.value.copy(checking = false, ready = ready, enabled = enabled, error = false)
+            mutable.value = mutable.value.copy(
+                checking = false,
+                ready = ready,
+                enabled = enabled,
+                error = false,
+                partialBytes = partial,
+            )
         }
     }
 
@@ -151,7 +189,13 @@ internal object OfflineSpeechPack {
             } catch (_: Exception) {
                 mutable.value = mutable.value.copy(error = true)
             } finally {
-                mutable.value = mutable.value.copy(downloading = false)
+                // 取消或失败都会保留 `.part`；重新读取断点大小，让下载行显示「继续下载」。
+                // 刷新可能已把模型换掉，此时不把旧模型的断点写回状态。
+                val partial = withContext(NonCancellable + Dispatchers.IO) {
+                    if (mutable.value.model.id != model.id) 0L
+                    else resumableBytes(app, model, source)
+                }
+                mutable.value = mutable.value.copy(downloading = false, partialBytes = partial)
             }
         }
     }

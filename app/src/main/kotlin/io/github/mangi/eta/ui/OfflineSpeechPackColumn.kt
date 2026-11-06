@@ -86,6 +86,8 @@ internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
                         when {
                             state.downloading -> R.string.speech_cancel_download
                             state.ready -> R.string.speech_pack_ready
+                            // 取消/失败保留的 `.part` 已有字节：提示可以接着下，而不是从头再来。
+                            state.partialBytes > 0 -> R.string.speech_continue_download
                             else -> R.string.speech_download
                         },
                     ),
@@ -99,7 +101,13 @@ internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
                     ),
                     enabled = !state.checking && !state.ready,
                     onClick = {
-                        if (state.downloading) OfflineSpeechPack.cancelDownload() else confirmDownload = true
+                        when {
+                            state.downloading -> OfflineSpeechPack.cancelDownload()
+                            // 已有断点时直接续传：`ResumableDownload` 按 `.meta` 里的 URL 与 Range
+                            // 决定从哪个字节继续，不再走首次下载的体积确认。
+                            state.partialBytes > 0 -> OfflineSpeechPack.download(context)
+                            else -> confirmDownload = true
+                        }
                     },
                 )
                 AnimatedVisibility(
