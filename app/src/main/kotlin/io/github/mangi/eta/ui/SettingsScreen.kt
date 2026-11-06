@@ -161,6 +161,9 @@ internal fun SettingsScreen(
     val listState = rememberLazyListState()
     val anchors = remember { SettingsAnchorIndex() }
     var highlightedKey by remember { mutableStateOf<String?>(null) }
+    // 审查档位提升到列表构建层：智能档专属的引擎/超时两行随切换即时显隐
+    // （ToolReviewModeRow 与这里的 if 读写同一份 state）。
+    var toolReviewMode by remember { mutableStateOf(Prefs.toolReviewMode()) }
     LaunchedEffect(focusKey) {
         val key = focusKey ?: return@LaunchedEffect
         try {
@@ -564,22 +567,27 @@ internal fun SettingsScreen(
                 row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
                     ToolReviewModeRow(
                         title = stringResource(R.string.settings_tool_review_mode),
+                        mode = toolReviewMode,
+                        onModeChange = { toolReviewMode = it },
                     )
                 }
 
                 // 智能审查档的两个配置：引擎（LLM / 决策模型）与单次超时。
-                // 只在智能档下有意义，其余档位由协调器自然忽略；放在一起便于对照。
-                row(key = SettingsKeys.TOOL_REVIEW_ENGINE) {
-                    ToolReviewEngineRow(
-                        title = stringResource(R.string.settings_tool_review_engine_title),
-                        summary = stringResource(R.string.settings_tool_review_engine_summary),
-                    )
-                }
+                // 只在智能档下注册这两行；其余档位没有模型裁决，显示出来只会误导。
+                // 读的是提升到页面级的 toolReviewMode state，切换档位即时联动显隐。
+                if (toolReviewMode == Prefs.Keys.TOOL_REVIEW_MODE_SMART) {
+                    row(key = SettingsKeys.TOOL_REVIEW_ENGINE) {
+                        ToolReviewEngineRow(
+                            title = stringResource(R.string.settings_tool_review_engine_title),
+                            summary = stringResource(R.string.settings_tool_review_engine_summary),
+                        )
+                    }
 
-                row(key = SettingsKeys.TOOL_REVIEW_TIMEOUT) {
-                    ToolReviewTimeoutRow(
-                        title = stringResource(R.string.settings_tool_review_timeout_title),
-                    )
+                    row(key = SettingsKeys.TOOL_REVIEW_TIMEOUT) {
+                        ToolReviewTimeoutRow(
+                            title = stringResource(R.string.settings_tool_review_timeout_title),
+                        )
+                    }
                 }
 
                 // 渐进加载与 MCP 暴露原本在工具页底部；它们同样是「怎么执行」的执行策略，
@@ -1105,13 +1113,13 @@ private fun buildToolsCapabilitySummary(context: Context, prefs: SharedPreferenc
 // ── 工具调用审查模式（四档） ───────────────────────────────────────────────
 
 /**
- * 审查模式选择行：只读 / 严格 / 标准 / 自动。
+ * 审查模式选择行：只读 / 严格 / 标准 / 自动 / 智能审查。
  *
  * 与同页「语言」一致，走标准 [EtaSegmentedDropdownRow]：点击行从按下位置弹出锚定
  * 下拉气泡菜单；选中项与尾标样式全部取组件默认值。
- * 每次调用实时读取（见 AgentDangerousOperationPolicy），因此这里改完立即生效，
- * 不像渐进加载那样等新会话。直接读写 Prefs（与 DecisionModelSettingsScreen 同模式）；
- * 四个档位的语义见 [AgentToolReviewMode]。
+ * 档位由页面级 state 提升传入（[mode] / [onModeChange]）：智能档专属的引擎/超时
+ * 两行跟着联动显隐。写入 Prefs 后每次工具调用实时读取（见 AgentDangerousOperationPolicy），
+ * 改完立即生效，不像渐进加载那样等新会话。
  *
  * 行内摘要只描述当前档位的实际效果（跨档位的高风险提示并入同一句），
  * 各档位的一句话说明放在菜单项第二行。
@@ -1119,8 +1127,11 @@ private fun buildToolsCapabilitySummary(context: Context, prefs: SharedPreferenc
  * 轻触反馈由组件自己触发，不要在 [EtaSegmentedDropdownRow.onItemSelected] 里再写。
  */
 @Composable
-private fun ToolReviewModeRow(title: String) {
-    var mode by remember { mutableStateOf(Prefs.toolReviewMode()) }
+private fun ToolReviewModeRow(
+    title: String,
+    mode: String,
+    onModeChange: (String) -> Unit,
+) {
     val options = listOf(
         Prefs.Keys.TOOL_REVIEW_MODE_READONLY,
         Prefs.Keys.TOOL_REVIEW_MODE_STRICT,
@@ -1160,8 +1171,8 @@ private fun ToolReviewModeRow(title: String) {
         onItemSelected = { index ->
             options.getOrNull(index)?.let { value ->
                 if (mode != value) {
-                    mode = value
                     Prefs.setToolReviewMode(value)
+                    onModeChange(value)
                 }
             }
         },

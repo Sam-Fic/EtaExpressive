@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.repository.AppUpdateRepository
 import io.github.mangi.eta.ui.icons.SubAgents
@@ -469,28 +470,31 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 destination = SettingsDestination.Inline,
             ),
         )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_REVIEW_ENGINE,
-                title = stringResource(R.string.settings_tool_review_engine_title),
-                summary = stringResource(R.string.settings_tool_review_engine_summary),
-                keywords = "smart review 智能审查 LLM 决策模型 decision 引擎 engine 模型审查 逐次判定",
-                icon = Icons.Rounded.Psychology,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
-        add(
-            SettingsEntry(
-                key = SettingsKeys.TOOL_REVIEW_TIMEOUT,
-                title = stringResource(R.string.settings_tool_review_timeout_title),
-                summary = stringResource(R.string.settings_tool_review_engine_summary),
-                keywords = "review timeout 审查 超时 超时时间 模型调用 秒",
-                icon = Icons.Rounded.Timer,
-                group = groupToolCapabilities,
-                destination = SettingsDestination.Inline,
-            ),
-        )
+        // 智能审查档专属：非智能档时主页不渲染这两行，搜索也不该命中不存在的锚点。
+        if (Prefs.toolReviewMode() == Prefs.Keys.TOOL_REVIEW_MODE_SMART) {
+            add(
+                SettingsEntry(
+                    key = SettingsKeys.TOOL_REVIEW_ENGINE,
+                    title = stringResource(R.string.settings_tool_review_engine_title),
+                    summary = stringResource(R.string.settings_tool_review_engine_summary),
+                    keywords = "smart review 智能审查 LLM 决策模型 decision 引擎 engine 模型审查 逐次判定",
+                    icon = Icons.Rounded.Psychology,
+                    group = groupToolCapabilities,
+                    destination = SettingsDestination.Inline,
+                ),
+            )
+            add(
+                SettingsEntry(
+                    key = SettingsKeys.TOOL_REVIEW_TIMEOUT,
+                    title = stringResource(R.string.settings_tool_review_timeout_title),
+                    summary = stringResource(R.string.settings_tool_review_engine_summary),
+                    keywords = "review timeout 审查 超时 超时时间 模型调用 秒",
+                    icon = Icons.Rounded.Timer,
+                    group = groupToolCapabilities,
+                    destination = SettingsDestination.Inline,
+                ),
+            )
+        }
         add(
             SettingsEntry(
                 key = SettingsKeys.TOOL_LOADING_MODE,
