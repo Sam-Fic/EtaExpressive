@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Menu
@@ -60,6 +61,12 @@ internal fun Material3HomeTopBar(
     title: String,
     onOpenConversationPane: () -> Unit,
     onRenameCurrentConversation: () -> Unit,
+    /**
+     * 当前聊天目标是否为远程智能体会话（`ChatTarget.Remote` 精确匹配）。
+     * 为 true 时右槽恢复「新建会话」，点击新建该服务器上的会话。
+     */
+    isRemoteTarget: Boolean = false,
+    onNewConversation: () -> Unit = {},
     /** 非调度台会话时显示右侧「回到调度台」按钮（原「新建对话」位，写法相同、功能换了）。 */
     showBackToConsole: Boolean = false,
     onBackToConsole: () -> Unit = {},
@@ -138,8 +145,12 @@ internal fun Material3HomeTopBar(
                 leadingButton = {
                     SplitButtonDefaults.TonalLeadingButton(
                         onClick = {
-                            TouchHaptics.click(view)
-                            onRenameCurrentConversation()
+                            // 远程智能体：标题左段不承担重命名（协议侧没有 rename），点击直接忽略。
+                            // 不改成 enabled=false：禁用态会把主标题降成低透明度，远程会话名会看不清。
+                            if (!isRemoteTarget) {
+                                TouchHaptics.click(view)
+                                onRenameCurrentConversation()
+                            }
                         },
                         // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface），
                         // 与两侧的圆钮共用同一档，顶栏整排色调统一。
@@ -222,6 +233,7 @@ internal fun Material3HomeTopBar(
                                 onOpenSubAgentStatus = onOpenSubAgentStatus,
                                 canDeleteCurrentConversation = canDeleteCurrentConversation,
                                 isDispatchConsole = isDispatchConsole,
+                                isRemoteTarget = isRemoteTarget,
                                 onDeleteCurrentConversation = onDeleteCurrentConversation,
                             )
                         }
@@ -232,7 +244,31 @@ internal fun Material3HomeTopBar(
         // 主页纯化为调度台：「新建对话」入口收进会话侧栏 FAB；这里只在打开其他会话时
         // 显示「回到调度台」——按钮写法沿用原新建按钮（TooltipBox + EtaIconButton + morph）。
         // 固定贴 End；缺席时中间组仍按对称槽位居中，外观不受影响。
-        if (showBackToConsole) {
+        // 右槽按「当前聊天目标」精确分流（顺序即优先级，三者互斥）：
+        // 远程智能体 → 新建会话；本机非调度台会话 → 回到调度台；调度台 → 清空主会话。
+        // 判据只取 ChatTarget / 路由，不取「是否连上远程」「本机 pane 选中了谁」这类间接条件：
+        // 远程视图下本机 pane 通常仍停在调度台，用后者会把远程目标误判进调度台分支。
+        if (isRemoteTarget) {
+            // 远程智能体：恢复原「新建会话」位。点击由上层按远程服务器分流（requestNewSession），
+            // 不是只换图标——远程目标下行为同样是新建该服务器上的会话。
+            Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                val newConversationDescription = stringResource(R.string.action_new_conversation)
+                FooterTooltipBox(text = newConversationDescription, enabled = true) {
+                    EtaIconButton(
+                        icon = Icons.Rounded.AddComment,
+                        contentDescription = newConversationDescription,
+                        onClick = {
+                            TouchHaptics.click(view)
+                            onNewConversation()
+                        },
+                        size = EtaIconSize.S,
+                        // 与会话侧栏顶部胶囊同款配色 token（surfaceContainerHighest / onSurface）。
+                        style = EtaButtonStyle.SurfaceHighest,
+                        shapes = IconButtonDefaults.shapes(),
+                    )
+                }
+            }
+        } else if (showBackToConsole) {
             Box(modifier = Modifier.align(Alignment.CenterEnd)) {
                 val backToConsoleDescription = stringResource(R.string.action_back_to_dispatch_console)
                 FooterTooltipBox(text = backToConsoleDescription, enabled = true) {

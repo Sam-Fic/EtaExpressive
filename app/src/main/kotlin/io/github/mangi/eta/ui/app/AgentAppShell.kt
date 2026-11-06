@@ -81,6 +81,11 @@ internal fun AgentAppShell(
     onToggleConversationPane: () -> Unit = onOpenConversationPane,
     onDismissConversationPane: () -> Unit,
     onNewConversation: () -> Unit,
+    /**
+     * 当前聊天目标是否为远程智能体会话。首页顶栏据此按目标精确分流右槽：
+     * 远程目标显示「新建会话」，而不是落进本机 pane 派生出的调度台分支。
+     */
+    isRemoteTarget: Boolean = false,
     /** 非调度台会话时首页顶栏显示「回到调度台」按钮；调度台本身与远程目标不显示。 */
     showBackToConsole: Boolean = false,
     onBackToConsole: () -> Unit = {},
@@ -196,6 +201,7 @@ internal fun AgentAppShell(
                             onBack = onBack,
                             onOpenConversationPane = onToggleConversationPane,
                             onNewConversation = onNewConversation,
+                            isRemoteTarget = isRemoteTarget,
                             showBackToConsole = showBackToConsole,
                             onBackToConsole = onBackToConsole,
                             onRenameCurrentConversation = {
@@ -281,6 +287,9 @@ internal fun AgentAppShell(
                 onOpenRemoteSettings = onOpenRemoteSettings,
                 selectedRemoteServerId = selectedRemoteServerId,
                 onSelectRemoteServer = onSelectRemoteServer,
+                // 远程目标期间不高亮任何本机会话行：选中态只属于当前聊天目标，
+                // 否则本机列表会继续把上次的本机会话标成「当前」，看起来像选错了。
+                isLocalTarget = !isRemoteTarget,
             ) {
                 pageContent()
             }
@@ -299,6 +308,8 @@ private fun AgentTopBar(
     onBack: () -> Unit,
     onOpenConversationPane: () -> Unit,
     onNewConversation: () -> Unit,
+    /** 当前聊天目标是否为远程智能体会话：首页右槽走「新建会话」分支。 */
+    isRemoteTarget: Boolean = false,
     onRenameCurrentConversation: () -> Unit = {},
     /** 非调度台会话时首页顶栏显示「回到调度台」按钮（原「新建对话」位）。 */
     showBackToConsole: Boolean = false,
@@ -390,6 +401,7 @@ private fun AgentTopBar(
                 onOpenSubAgentStatus = onOpenSubAgentStatus,
                 canDeleteCurrentConversation = canDeleteCurrentConversation,
                 isDispatchConsole = isDispatchConsole,
+                isRemoteTarget = isRemoteTarget,
                 onDeleteCurrentConversation = onDeleteCurrentConversation,
             )
         }
@@ -406,11 +418,13 @@ private fun AgentTopBar(
             scrollBehavior.state.heightOffset = 0f
         }
         // 首页：菜单 + 会话标题拆分按钮，一行排开（聊天舞台保持紧凑）。
-        // 新建对话按钮已移除：主页纯化为调度台，入口统一在会话侧栏的 FAB。
+        // 本机场景新建对话入口统一在会话侧栏的 FAB；远程智能体目标下右槽另出「新建会话」。
         Material3HomeTopBar(
             title = titleForRoute(route, currentConversationTitle),
             onOpenConversationPane = onOpenConversationPane,
             onRenameCurrentConversation = onRenameCurrentConversation,
+            isRemoteTarget = isRemoteTarget,
+            onNewConversation = onNewConversation,
             showBackToConsole = showBackToConsole,
             onBackToConsole = onBackToConsole,
             onOpenTerminal = onOpenTerminal,

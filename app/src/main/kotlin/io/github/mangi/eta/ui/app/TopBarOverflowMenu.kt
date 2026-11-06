@@ -69,6 +69,8 @@ internal fun TopBarOverflowMenu(
     onOpenCompressConversation: () -> Unit = {},
     canDeleteCurrentConversation: Boolean = false,
     isDispatchConsole: Boolean = false,
+    /** 远程智能体目标：隐藏只对本机会话有效的条目（搜索当前会话/用量/压缩/移入回收站）。 */
+    isRemoteTarget: Boolean = false,
     onDeleteCurrentConversation: () -> Unit = {},
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -107,6 +109,7 @@ internal fun TopBarOverflowMenu(
                 onOpenSubAgentStatus = onOpenSubAgentStatus,
                 canDeleteCurrentConversation = canDeleteCurrentConversation,
                 isDispatchConsole = isDispatchConsole,
+                isRemoteTarget = isRemoteTarget,
                 onDeleteCurrentConversation = onDeleteCurrentConversation,
             )
         }
@@ -141,38 +144,56 @@ internal fun TopBarMenuItems(
     onOpenSubAgentStatus: () -> Unit = {},
     canDeleteCurrentConversation: Boolean = false,
     isDispatchConsole: Boolean = false,
+    /** 远程智能体目标：隐藏搜索当前会话、用量、上下文压缩（含自动压缩开关）、移入回收站。 */
+    isRemoteTarget: Boolean = false,
     onDeleteCurrentConversation: () -> Unit = {},
 ) {
     val interactiveModePreference = remember { InteractiveModePreference() }
     val interactiveModeEnabled by rememberInteractiveModeEnabled(interactiveModePreference)
     val view = LocalView.current
 
+    // 远程智能体目标下，搜索当前会话 / 用量 / 压缩 / 移入回收站都指向本机会话，协议侧无对应能力，
+    // 直接隐藏而不是置灰。隐藏后若某段整段为空，连同它的分割线一起不渲染（见下方 if 包裹）。
+    val showSearchHistory = !isRemoteTarget
+    val showConversationTools = !isRemoteTarget
+    val showTrash = !isDispatchConsole && !isRemoteTarget
+
     // 整张菜单是一个连续的条目列表：分段只决定分割线，行形状按全局位置取首行 / 末行，
     // 末行按下的高亮才会和容器底角同心。
-    // 调度台是系统条目，顶栏菜单直接移除「移动到回收站」这一行，条目总数与后续行位置同步收窄。
-    val itemCount = (if (canStopKimiWeb) 13 else 12) - if (isDispatchConsole) 1 else 0
+    // 条目总数与各段起点按实际显示的行算，隐藏段落后首行 / 末行的圆角仍落在真正的首尾行上。
+    val sectionFirstCount = if (showSearchHistory) 2 else 1
+    val sectionSecondCount = 1
+    val sectionThirdCount = 5
+    val sectionFourthCount = if (showConversationTools) 3 else 0
+    val sectionFifthCount = if (showTrash) 1 else 0
+    val sectionSixthCount = if (canStopKimiWeb) 1 else 0
+    val itemCount = sectionFirstCount + sectionSecondCount + sectionThirdCount +
+        sectionFourthCount + sectionFifthCount + sectionSixthCount
     val firstSectionStart = 0
-    val secondSectionStart = firstSectionStart + 2
-    val thirdSectionStart = secondSectionStart + 1
-    val fourthSectionStart = thirdSectionStart + 5
-    val fifthSectionStart = fourthSectionStart + 3
-    val sixthSectionStart = fifthSectionStart + if (isDispatchConsole) 0 else 1
+    val secondSectionStart = firstSectionStart + sectionFirstCount
+    val thirdSectionStart = secondSectionStart + sectionSecondCount
+    val fourthSectionStart = thirdSectionStart + sectionThirdCount
+    val fifthSectionStart = fourthSectionStart + sectionFourthCount
+    val sixthSectionStart = fifthSectionStart + sectionFifthCount
 
     // 整张菜单只用一个圆角容器，段落之间用分割线分开。
     EtaMenuGroup(index = 0, count = 1) {
         TopBarMenuSection(first = true) {
-            TopBarMenuItem(
-                text = stringResource(R.string.action_search_history),
-                index = firstSectionStart,
-                count = itemCount,
-                onClick = { dismiss(); onOpenSearchHistory() },
-            ) {
-                Icon(Icons.Rounded.Search, contentDescription = null)
+            // 「搜索当前会话」只查本机会话历史，远程目标下隐藏（不占位、不留分割线）。
+            if (showSearchHistory) {
+                TopBarMenuItem(
+                    text = stringResource(R.string.action_search_history),
+                    index = firstSectionStart,
+                    count = itemCount,
+                    onClick = { dismiss(); onOpenSearchHistory() },
+                ) {
+                    Icon(Icons.Rounded.Search, contentDescription = null)
+                }
             }
             // 语音设置快捷入口：识别 / 朗读 / 语音对话都在一页，顶栏一步直达，不必翻设置列表。
             TopBarMenuItem(
                 text = stringResource(R.string.action_voice_settings),
-                index = firstSectionStart + 1,
+                index = firstSectionStart + if (showSearchHistory) 1 else 0,
                 count = itemCount,
                 onClick = { dismiss(); onOpenVoiceSettings() },
             ) {
@@ -250,39 +271,43 @@ internal fun TopBarMenuItems(
             }
         }
 
-        TopBarMenuSection {
-            TopBarMenuItem(
-                text = stringResource(R.string.action_token_usage),
-                index = fourthSectionStart,
-                count = itemCount,
-                onClick = { dismiss(); onOpenTokenUsage() },
-            ) {
-                Icon(Icons.Rounded.DataUsage, contentDescription = null)
-            }
-            TopBarMenuItem(
-                text = stringResource(R.string.action_compress_conversation),
-                index = fourthSectionStart + 1,
-                count = itemCount,
-                enabled = !isCompressingContext,
-                onClick = { dismiss(); onOpenCompressConversation() },
-            ) {
-                Icon(Icons.Rounded.Summarize, contentDescription = null)
-            }
-            // 开关只做状态显示（点击由整行承担），与官方菜单里的「仅展示」开关一致。
-            TopBarMenuItem(
-                text = stringResource(R.string.action_auto_compress_context),
-                index = fourthSectionStart + 2,
-                count = itemCount,
-                onClick = { onToggleAutoCompress(!autoCompressEnabled) },
-                trailingContent = {
-                    EtaExpressiveSwitch(checked = autoCompressEnabled, onCheckedChange = null)
-                },
-            ) {
-                Icon(Icons.Rounded.Compress, contentDescription = null)
+        // 用量 / 压缩 / 自动压缩开关都作用于本机会话：远程目标下整段隐藏，
+        // 空段落连同它上面的分割线一起不渲染。
+        if (showConversationTools) {
+            TopBarMenuSection {
+                TopBarMenuItem(
+                    text = stringResource(R.string.action_token_usage),
+                    index = fourthSectionStart,
+                    count = itemCount,
+                    onClick = { dismiss(); onOpenTokenUsage() },
+                ) {
+                    Icon(Icons.Rounded.DataUsage, contentDescription = null)
+                }
+                TopBarMenuItem(
+                    text = stringResource(R.string.action_compress_conversation),
+                    index = fourthSectionStart + 1,
+                    count = itemCount,
+                    enabled = !isCompressingContext,
+                    onClick = { dismiss(); onOpenCompressConversation() },
+                ) {
+                    Icon(Icons.Rounded.Summarize, contentDescription = null)
+                }
+                // 开关只做状态显示（点击由整行承担），与官方菜单里的「仅展示」开关一致。
+                TopBarMenuItem(
+                    text = stringResource(R.string.action_auto_compress_context),
+                    index = fourthSectionStart + 2,
+                    count = itemCount,
+                    onClick = { onToggleAutoCompress(!autoCompressEnabled) },
+                    trailingContent = {
+                        EtaExpressiveSwitch(checked = autoCompressEnabled, onCheckedChange = null)
+                    },
+                ) {
+                    Icon(Icons.Rounded.Compress, contentDescription = null)
+                }
             }
         }
 
-        if (!isDispatchConsole) {
+        if (showTrash) {
             TopBarMenuSection {
                 TopBarMenuItem(
                     text = stringResource(R.string.conversation_move_to_trash),

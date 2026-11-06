@@ -3,9 +3,11 @@ package io.github.mangi.eta.ui.app
 import androidx.compose.runtime.CompositionLocalProvider
 import io.github.mangi.eta.ui.components.StreamingMarkdownCache
 import io.github.mangi.eta.ui.components.LocalStreamingMarkdownStates
+import io.github.mangi.eta.ui.components.remoteSessionTitle
 import io.github.mangi.eta.ui.components.LocalChatRouteCovered
 import io.github.mangi.eta.ui.components.LocalChatTransitionActive
 import io.github.mangi.eta.ui.components.LocalChatUiActive
+import io.github.mangi.eta.ui.remote.ChatTarget
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -654,12 +656,35 @@ fun AgentAppRoot(
             LocalChatUiActive provides true,
             LocalChatRouteCovered provides (currentRoute != route),
         ) {
+        // 顶栏标题与右槽都以「当前聊天目标」为判据：远程目标走远程侧栏同一份投影，
+        // paneSection 每次重组从可观察 map 现算，切会话 / 新建落位 / 服务端改名都会即时反映。
+        val remoteTarget = agentState.selectedTarget as? ChatTarget.Remote
+        val remotePaneSection = appViewModel.remoteCoordinator.paneSection(agentState.selectedTarget)
+        // 当前聊天的流式 Markdown 状态 key：与对话页拿到的是同一个值
+        // （远程 remote:serverId:path，本机为选中会话 id / "new-conversation"）。
+        // 不能只用本机 selectedConversationId，否则远程聊天会复用本机会话的解析与打字机状态。
+        val activeConversationKey = remoteTarget
+            ?.let { appViewModel.remoteCoordinator.conversationKey(it) }
+            ?: (agentState.conversationPaneState.selectedConversationId ?: "new-conversation")
         AgentAppShell(
             currentRoute = route,
             isCurrentRoute = currentRoute == route,
             conversationPaneState = agentState.conversationPaneState,
-            currentConversationTitle = agentState.conversationPaneState.selectedConversationId?.let { id ->
-                agentState.conversationPaneState.conversations.find { it.id == id }?.title
+            currentConversationTitle = if (remoteTarget != null) {
+                // 远程目标下标题取远程侧栏同源取名（name → 首条消息 → 路径尾段），
+                // 不再沿用本机 pane 的选中会话标题（远程视图下它通常还停在调度台）。
+                // 会话列表尚未回填时退到服务器名，避免闪回本机标题。
+                remotePaneSection.servers
+                    .firstOrNull { it.id == remoteTarget.serverId }
+                    ?.let { server ->
+                        server.sessions.firstOrNull { it.path == remoteTarget.path }
+                            ?.let(::remoteSessionTitle)
+                            ?: server.name
+                    }
+            } else {
+                agentState.conversationPaneState.selectedConversationId?.let { id ->
+                    agentState.conversationPaneState.conversations.find { it.id == id }?.title
+                }
             },
             isConversationPaneOpen = conversationPaneOpen,
             onBack = { popRoute() },
@@ -679,6 +704,8 @@ fun AgentAppRoot(
                     createConversation()
                 }
             },
+            // 远程目标与首页右槽的分流判据：只认 ChatTarget，不认「本机 pane 选中了谁」。
+            isRemoteTarget = remoteTarget != null,
             // 非调度台会话（且非远程目标）时，顶栏右侧显示「回到调度台」。
             showBackToConsole = agentState.selectedTarget is io.github.mangi.eta.ui.remote.ChatTarget.Local &&
                 !agentState.currentIsDispatchConsole,
@@ -772,7 +799,7 @@ fun AgentAppRoot(
             onOpenAssistants = { pushFromDrawer(AppRoute.Assistants()) },
             onOpenUsageStats = { pushFromDrawer(AppRoute.UsageStats) },
             onOpenSettings = { pushFromDrawer(AppRoute.Settings) },
-            remoteSection = appViewModel.remoteCoordinator.paneSection(agentState.selectedTarget),
+            remoteSection = remotePaneSection,
             onSelectRemoteSession = { serverId, path ->
                 focusManager.clearFocus(force = true)
                 keyboard?.hide()
@@ -812,7 +839,7 @@ fun AgentAppRoot(
             ) {
                 CompositionLocalProvider(
                     LocalStreamingMarkdownStates provides streamingMarkdownCache.forConversation(
-                        agentState.conversationPaneState.selectedConversationId ?: "new-conversation"
+                        activeConversationKey
                     ),
                     LocalShellTopBarInset provides if (underlapTopBar) padding.calculateTopPadding() else 0.dp,
                 ) {

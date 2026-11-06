@@ -270,6 +270,8 @@ fun ConversationSidePaneScaffold(
     onOpenRemoteSettings: () -> Unit = {},
     selectedRemoteServerId: String? = null,
     onSelectRemoteServer: (String) -> Unit = {},
+    /** 当前聊天目标是本机会话：为 false（远程目标）时抽屉不高亮任何本机会话行。 */
+    isLocalTarget: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -328,6 +330,14 @@ fun ConversationSidePaneScaffold(
 
     val selectConversation: (String) -> Unit = { conversationId ->
         onConversationSelected(conversationId)
+        closePaneWithMotion()
+    }
+
+    // 远程会话行与本地会话行走同一条收尾：窄屏先播收拢动画再回到对话页，
+    // 宽屏由 closePaneWithMotion 内部跳过（并排停靠不需要收起）。
+    // 漏掉这一步会让远程切换后停在侧栏里。
+    val selectRemoteSession: (String, String) -> Unit = { serverId, path ->
+        onSelectRemoteSession(serverId, path)
         closePaneWithMotion()
     }
 
@@ -488,10 +498,11 @@ fun ConversationSidePaneScaffold(
                     onOpenSettings = onOpenSettings,
                     onOpenUsageStats = onOpenUsageStats,
                     remoteSection = remoteSection,
-                    onSelectRemoteSession = onSelectRemoteSession,
+                    onSelectRemoteSession = selectRemoteSession,
                     onOpenRemoteSettings = onOpenRemoteSettings,
                     selectedRemoteServerId = selectedRemoteServerId,
                     onSelectRemoteServer = onSelectRemoteServer,
+                    isLocalTarget = isLocalTarget,
                     modifier = Modifier.fillMaxHeight(),
                 )
             }
@@ -698,6 +709,7 @@ private fun ConversationPanePanel(
     onOpenRemoteSettings: () -> Unit = {},
     selectedRemoteServerId: String? = null,
     onSelectRemoteServer: (String) -> Unit = {},
+    isLocalTarget: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val profiles by AssistantRepository.profiles.collectAsState()
@@ -733,6 +745,7 @@ private fun ConversationPanePanel(
         onOpenRemoteSettings = onOpenRemoteSettings,
         selectedRemoteServerId = selectedRemoteServerId,
         onSelectRemoteServer = onSelectRemoteServer,
+        isLocalTarget = isLocalTarget,
         modifier = modifier,
     )
 }
@@ -817,6 +830,8 @@ private fun Material3ConversationPane(
     onOpenRemoteSettings: () -> Unit = {},
     selectedRemoteServerId: String? = null,
     onSelectRemoteServer: (String) -> Unit = {},
+    /** 远程目标期间为 false：本机会话行一律不高亮（选中态只属于当前聊天目标）。 */
+    isLocalTarget: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     // 抽屉不再做标题过滤：搜索一律走与管理聊天页同一个全文搜索页（[onOpenSearchHistory]），
@@ -1019,7 +1034,8 @@ private fun Material3ConversationPane(
                                     index = index,
                                     count = group.items.size,
                                     isLastGroup = isLastGroup,
-                                    selected = conversation.id == state.selectedConversationId,
+                                    selected = isLocalTarget &&
+                                        conversation.id == state.selectedConversationId,
                                     onClick = { onConversationSelected(conversation.id) },
                                     onRename = { onConversationRename(conversation) },
                                     onDelete = { onConversationDelete(conversation) },
@@ -1965,7 +1981,11 @@ private fun RemoteServerGroup(
     }
 }
 
-private fun remoteSessionTitle(session: RemoteSessionInfo): String =
+/**
+ * 远程会话的展示名：服务端给的标题优先，其次首条消息，最后路径尾段。
+ * 顶栏标题与侧栏会话行必须共用同一取名规则，否则同一会话在两处显示不同名字。
+ */
+internal fun remoteSessionTitle(session: RemoteSessionInfo): String =
     session.name?.takeIf { it.isNotBlank() }
         ?: session.firstMessage.takeIf { it.isNotBlank() }
         ?: session.path.substringAfterLast('/').ifBlank { session.path }
