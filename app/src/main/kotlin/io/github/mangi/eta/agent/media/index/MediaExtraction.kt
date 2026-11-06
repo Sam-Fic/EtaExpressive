@@ -561,6 +561,59 @@ internal object MediaExtraction {
         }
     }
 
+    /**
+     * 按命中时刻取一帧 JPEG（已按 [MAX_THUMB_EDGE] 缩放），供检索结果把视频预览对齐到命中时刻。
+     *
+     * 取帧策略：`OPTION_CLOSEST_SYNC` 优先（只取同步帧，快）；失败退 `OPTION_CLOSEST`（精确但慢）；
+     * 两者都拿不到返回 null，由调用方回退到索引封面图，不在这里抛错。
+     * 阻塞且不可中断，必须在 IO 线程调用（渲染端用现有信号量限并发）。
+     */
+    fun momentFrameJpeg(
+        context: Context,
+        sourceKey: String,
+        contentUri: String?,
+        filePath: String?,
+        timeMs: Long,
+    ): ByteArray? = runCatching {
+        val retriever = MediaMetadataRetriever()
+        try {
+            // 取帧只需要定位数据源：构造最小 Candidate 复用现有 setDataSource（路径优先，其次 content uri）。
+            setDataSource(
+                retriever,
+                context,
+                MediaSourceScanner.Candidate(
+                    sourceKey = sourceKey,
+                    kind = MediaKind.VIDEO,
+                    displayName = "",
+                    mime = "",
+                    sizeBytes = 0,
+                    modifiedAt = 0,
+                    contentUri = contentUri,
+                    filePath = filePath,
+                    durationMs = null,
+                    width = null,
+                    height = null,
+                ),
+            )
+            val timeUs = timeMs.coerceAtLeast(0L) * 1_000L
+            val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                ?: return@runCatching null
+            val scaled = frame.scaleToEdge(MAX_THUMB_EDGE)
+            val jpeg = scaled.toJpeg(75)
+            if (scaled !== frame) frame.recycle()
+            scaled.recycle()
+            jpeg
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }.onFailure { failure ->
+        Log.w(
+            TAG,
+            "命中时刻取帧失败 source=$sourceKey timeMs=$timeMs type=${failure.javaClass.simpleName}",
+        )
+    }.getOrNull()
+
     private fun decodeSampled(
         context: Context,
         candidate: MediaSourceScanner.Candidate,

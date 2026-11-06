@@ -81,6 +81,7 @@ import androidx.core.content.FileProvider
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.media.index.EmbeddingModelStore
 import io.github.mangi.eta.agent.media.index.EtaEmbeddingEngine
+import io.github.mangi.eta.agent.media.index.MediaExtraction
 import io.github.mangi.eta.agent.media.index.MediaFileOps
 import io.github.mangi.eta.agent.media.index.MediaFileOps.MediaDir
 import io.github.mangi.eta.agent.media.index.MediaFileOps.MediaTarget
@@ -519,6 +520,7 @@ internal fun MediaSearchScreen(
                         onClick = { runSearch() },
                         // 流式中保持可用：再点 = 取消在途检索并按当前词/标签重启（last-wins）。
                         enabled = query.trim().isNotEmpty() && ready,
+                        shapes = IconButtonDefaults.shapes(),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Search,
@@ -1220,6 +1222,7 @@ private fun MediaSelectionBar(
                         onClick = onDeleteFiles,
                         enabled = selectedCount > 0 && !busy,
                         modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                        shapes = IconButtonDefaults.shapes(),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Delete,
@@ -1282,6 +1285,9 @@ private sealed interface ThumbState {
 /**
  * 结果行缩略图。
  *
+ * 视频命中的时刻已知（`hit.frameTimeMs`）时先用该时刻现取的帧（[momentThumbnail]），
+ * 预览图对齐「命中 mm:ss」那一刻；取不到再走下面的回退，不会出现空白卡片。
+ *
  * 1. 索引里的缩略图只存文件名（[MediaThumbnailStore] 解析到当前安装目录），按目标像素采样解码；
  * 2. 缺失或解码失败时，对图片按原始 contentUri/路径在 IO 线程解一张 `96dp` 小图（带并发上限与 LRU）；
  * 3. 仍不可用时：**图片/视频**用错误色底 + error 图标（这是"加载失败/索引缺图"），
@@ -1297,6 +1303,8 @@ private fun HitThumbnail(hit: MediaSearchService.Hit) {
         initialValue = ThumbState.Loading,
         key1 = hit.sourceKey,
         key2 = hit.thumbPath,
+        // 时刻晚到（精排异步回填）时也要重载：不带这个 key 会一直停在封面图。
+        key3 = hit.frameTimeMs,
     ) {
         value = withContext(Dispatchers.IO) {
             loadThumbnail(context, hit, targetPx, fallbackPx)
@@ -1348,13 +1356,19 @@ private fun HitThumbnail(hit: MediaSearchService.Hit) {
     }
 }
 
-/** 缩略图加载：缓存文件优先，图片再回退原图；全程 IO 线程。 */
+/** 缩略图加载：视频命中时刻帧 → 缓存文件 → 图片原图；全程 IO 线程。 */
 private suspend fun loadThumbnail(
     context: Context,
     hit: MediaSearchService.Hit,
     targetPx: Int,
     fallbackPx: Int,
 ): ThumbState {
+    // 视频且命中时刻已知：预览图优先对齐命中时刻；取帧失败继续走索引封面图。
+    if (hit.kind == MediaKind.VIDEO) {
+        hit.frameTimeMs?.let { timeMs ->
+            momentThumbnail(context, hit, timeMs)?.let { return ThumbState.Ready(it) }
+        }
+    }
     val cached = MediaThumbnailStore.fileFor(context, hit.thumbPath)
     if (cached != null && cached.isFile && cached.length() > 0) {
         decodeFileSampled(cached, targetPx)?.let { return ThumbState.Ready(it) }
@@ -1362,7 +1376,7 @@ private suspend fun loadThumbnail(
         Log.w(THUMB_LOG_TAG, "缩略图解码失败 source=${hit.sourceKey} kind=${hit.kind.wire}")
     }
     if (hit.kind != MediaKind.IMAGE) {
-        // 视频/音频没有原图可解；缺缩略图就是缺（视频取帧成本不适合在列表里做）。
+        // 音频没有原图可解；视频的时刻帧已在上方尝试过，缺缩略图就是缺。
         return ThumbState.Missing
     }
     val key = "fallback:${hit.sourceKey}"
@@ -1384,6 +1398,51 @@ private suspend fun loadThumbnail(
             ThumbnailBitmapCache.put(key, bitmap)
             ThumbState.Ready(bitmap)
         }
+    }
+}
+
+/**
+ * 视频命中时刻帧：按 `hit.frameTimeMs` 现取一帧（[MediaExtraction.momentFrameJpeg] 已把帧缩到
+ * [MediaExtraction.MAX_THUMB_EDGE] 以内），让预览图对应「命中 mm:ss」那一刻而不是索引封面。
+ *
+ * 缓存键由 `sourceKey + modifiedAt + frameTimeMs` 组成：同一文件被不同查询命中到不同时刻时
+ * 互不覆盖，也需要靠它区分「文件被替换」后的旧帧。
+ * 取帧阻塞且不可中断，与图片原图回退共用 [ThumbnailDecodePermits] 并发上限，只在 IO 线程调用；
+ * 失败返回 null，由 [loadThumbnail] 回落到索引封面图。
+ */
+private suspend fun momentThumbnail(
+    context: Context,
+    hit: MediaSearchService.Hit,
+    timeMs: Long,
+): ImageBitmap? {
+    val key = "moment:${hit.sourceKey}:${hit.modifiedAt}:$timeMs"
+    ThumbnailBitmapCache.get(key)?.let { return it }
+    return ThumbnailDecodePermits.withPermit {
+        ThumbnailBitmapCache.get(key)?.let { return@withPermit it }
+        val bitmap = runCatching {
+            MediaExtraction.momentFrameJpeg(
+                context = context,
+                sourceKey = hit.sourceKey,
+                contentUri = hit.contentUri,
+                filePath = hit.path,
+                timeMs = timeMs,
+            )?.let { bytes ->
+                BitmapFactory.decodeByteArray(
+                    bytes,
+                    0,
+                    bytes.size,
+                    BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 },
+                )?.asImageBitmap()
+            }
+        }.onFailure { failure ->
+            Log.w(
+                THUMB_LOG_TAG,
+                "命中时刻帧解码失败 source=${hit.sourceKey} timeMs=$timeMs " +
+                    "type=${failure.javaClass.simpleName}",
+            )
+        }.getOrNull()
+        if (bitmap != null) ThumbnailBitmapCache.put(key, bitmap)
+        bitmap
     }
 }
 
