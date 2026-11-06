@@ -80,6 +80,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -283,6 +284,7 @@ internal fun ModelProviderDetailScreen(
                 ),
                 onClick = onSaveProvider,
                 enabled = !isSaving && !creationCommitted,
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) { paddingValues, scrollBehavior, sidePadding ->

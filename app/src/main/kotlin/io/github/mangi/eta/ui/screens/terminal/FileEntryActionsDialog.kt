@@ -9,8 +9,10 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -45,6 +47,7 @@ internal data class FileEntryActions(
     val canDelete: Boolean,
 )
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun FileEntryActionsDialog(
     target: FileEntryActions,
@@ -65,6 +68,7 @@ internal fun FileEntryActionsDialog(
                         onClick = onExport,
                         enabled = enabled,
                         modifier = Modifier.fillMaxWidth(),
+                        shapes = M3ButtonDefaults.shapes(),
                     ) {
                         M3Text(text = stringResource(R.string.linux_files_export))
                     }
@@ -124,6 +128,7 @@ internal fun EtaFileActionsButton(
                 expanded = true
             },
             enabled = enabled,
+            shapes = IconButtonDefaults.shapes(),
         ) {
             Icon(
                 imageVector = Icons.Rounded.MoreVert,

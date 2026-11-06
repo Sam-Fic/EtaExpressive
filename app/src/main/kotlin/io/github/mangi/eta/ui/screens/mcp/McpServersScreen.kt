@@ -72,6 +72,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as M3IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -557,7 +558,7 @@ private fun McpActionIcon(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    M3IconButton(onClick = onClick, enabled = enabled) {
+    M3IconButton(onClick = onClick, enabled = enabled, shapes = IconButtonDefaults.shapes(), ) {
         Icon(imageVector = icon, contentDescription = contentDescription)
     }
 }

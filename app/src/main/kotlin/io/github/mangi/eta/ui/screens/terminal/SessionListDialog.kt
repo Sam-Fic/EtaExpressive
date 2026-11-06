@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
@@ -153,11 +154,13 @@ private fun SessionRow(
                     icon = Icons.Rounded.Refresh,
                     contentDescription = stringResource(R.string.terminal_restart_session),
                     onClick = onRestart,
+                    shapes = IconButtonDefaults.shapes(),
                 )
                 TerminalIconButton(
                     icon = Icons.Rounded.Close,
                     contentDescription = stringResource(R.string.terminal_close_session),
                     onClick = onClose,
+                    shapes = IconButtonDefaults.shapes(),
                 )
             }
         },

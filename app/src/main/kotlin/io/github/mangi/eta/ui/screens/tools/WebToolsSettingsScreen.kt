@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -373,7 +374,7 @@ private fun WebSecretField(
                 if (visible) R.string.page_hide_bb0e7e else R.string.page_show_71b677,
             )
             EtaTooltip(text = visibilityDescription) {
-                IconButton(onClick = { visible = !visible }) {
+                IconButton(onClick = { visible = !visible }, shapes = IconButtonDefaults.shapes(), ) {
                     Icon(
                         imageVector = if (visible) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
                         contentDescription = visibilityDescription,

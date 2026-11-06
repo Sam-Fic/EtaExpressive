@@ -113,8 +113,9 @@ enum class EtaButtonStyle { Filled, Tonal, TonalEmphasis, SurfaceHighest, Outlin
  *   强调档（官方 `FilledTonalIconButton` + 官方 `filledTonalIconButtonColors` 覆盖，
  *   形状/尺寸/涟漪仍走官方默认）；`SurfaceHighest` 用中性表面档
  *   `surfaceContainerHighest` / `onSurface`（会话侧栏顶部胶囊未选中态同款配色 token）。
- * @param shapes 官方 [IconButtonShapes] 形状对；传官方 `IconButtonDefaults.shapes()` 即
- *   开启 M3E 按压 morph（圆 → 方圆角），不传保持官方默认的固定形状。
+ * @param shapes 官方 [IconButtonShapes] 形状对，默认 `IconButtonDefaults.shapes()`——
+ *   M3E 按压 morph（圆 → 方圆角）默认开启；显式传自定义形状对可覆盖，传
+ *   `IconButtonDefaults.shapesFor(...)` 等同效。
  * @param stretch 为 true 时横向拉伸占满剩余宽度（用于“最后的按钮向右拉伸”的行布局）。
  * @param tooltipText 长按提示文案，默认与 [contentDescription] 同源；纯图标按钮按规范
  *   必须带长按提示。传 `null` 可显式关闭；外层已包 [EtaTooltip] 时自动跳过，不会叠两层。
@@ -133,7 +134,7 @@ fun EtaIconButton(
     style: EtaButtonStyle = EtaButtonStyle.Tonal,
     enabled: Boolean = true,
     fillWidth: Boolean = false,
-    shapes: IconButtonShapes? = null,
+    shapes: IconButtonShapes? = IconButtonDefaults.shapes(),
     tooltipText: String? = contentDescription,
     keepContainerWhenDisabled: Boolean = false,
 ) {
@@ -169,7 +170,7 @@ private fun EtaIconButtonBase(
     style: EtaButtonStyle = EtaButtonStyle.Tonal,
     enabled: Boolean = true,
     fillWidth: Boolean = false,
-    shapes: IconButtonShapes? = null,
+    shapes: IconButtonShapes? = IconButtonDefaults.shapes(),
     keepContainerWhenDisabled: Boolean = false,
 ) {
     val containerSize = size.containerSize()

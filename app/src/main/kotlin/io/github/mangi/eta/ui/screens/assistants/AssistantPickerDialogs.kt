@@ -56,6 +56,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
@@ -340,7 +341,7 @@ internal fun AssistantRow(
                 Box {
                     val moreDescription = stringResource(R.string.assistant_more_named, profile.name)
                     EtaTooltip(text = moreDescription) {
-                        IconButton(onClick = { menuExpanded = true }) {
+                        IconButton(onClick = { menuExpanded = true }, shapes = IconButtonDefaults.shapes(), ) {
                             Icon(
                                 imageVector = Icons.Rounded.MoreHoriz,
                                 contentDescription = moreDescription,

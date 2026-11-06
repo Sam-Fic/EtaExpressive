@@ -1302,6 +1302,7 @@ private fun Material3DrawerToolbarButton(
             onClick = onClick,
             modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
             colors = IconButtonDefaults.iconButtonColors(contentColor = contentColor),
+            shapes = IconButtonDefaults.shapes(),
         ) {
             Icon(
                 imageVector = icon,

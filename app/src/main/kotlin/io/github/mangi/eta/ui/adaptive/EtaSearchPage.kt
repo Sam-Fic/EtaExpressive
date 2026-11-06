@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -162,7 +163,7 @@ fun EtaSearchScaffold(
                         if (showClear && query.isNotEmpty()) {
                             val clearDescription = stringResource(R.string.action_close)
                             EtaTooltip(text = clearDescription) {
-                                IconButton(onClick = { onQueryChange("") }) {
+                                IconButton(onClick = { onQueryChange("") }, shapes = IconButtonDefaults.shapes(), ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
                                         contentDescription = clearDescription,

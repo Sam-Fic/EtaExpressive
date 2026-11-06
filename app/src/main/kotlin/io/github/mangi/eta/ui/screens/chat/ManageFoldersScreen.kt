@@ -270,6 +270,7 @@ private fun ManageFolderRow(
                     colors = IconButtonDefaults.iconButtonColors(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
+                    shapes = IconButtonDefaults.shapes(),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Edit,
@@ -285,6 +286,7 @@ private fun ManageFolderRow(
                     colors = IconButtonDefaults.iconButtonColors(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
+                    shapes = IconButtonDefaults.shapes(),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.DeleteOutline,

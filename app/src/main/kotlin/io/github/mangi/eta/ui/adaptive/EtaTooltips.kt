@@ -5,6 +5,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButtonShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Text
@@ -84,6 +85,11 @@ fun EtaTooltip(
  * @param disabledTooltipText 禁用时优先展示的提示（写原因）；为空则沿用 [tooltipText]。
  * @param stateDescription 开关/选中类图标按钮的状态播报，例如「已开启」「朗读中」。
  * @param destructive 破坏性动作（删除、清空）取官方 error 内容色。
+ * @param shapes 容器形状，直通官方 `IconButton(shapes = ...)`（M3E 按压 morph）。
+ *   默认取 [IconButtonDefaults.shapes]：material3 1.5.0-alpha29 中它是
+ *   `@Composable fun shapes(): IconButtonShapes`，即 `MaterialTheme.shapes.defaultIconButtonShapes`
+ *   （active/pressed 两态均为官方 SmallIconButton 令牌的圆形容器），与不传 shapes 的
+ *   官方 `IconButton` 外观一致。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,6 +104,7 @@ fun EtaTooltipIconButton(
     tooltipEnabled: Boolean = true,
     stateDescription: String? = null,
     destructive: Boolean = false,
+    shapes: IconButtonShapes = IconButtonDefaults.shapes(),
 ) {
     val view = LocalView.current
     val semanticsModifier = Modifier.semantics {
@@ -122,6 +129,7 @@ fun EtaTooltipIconButton(
             } else {
                 IconButtonDefaults.iconButtonColors()
             },
+            shapes = shapes,
         ) {
             Icon(
                 imageVector = icon,

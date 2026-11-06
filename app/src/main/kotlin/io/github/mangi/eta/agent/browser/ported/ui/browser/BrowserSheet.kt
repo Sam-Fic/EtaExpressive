@@ -194,7 +194,7 @@ internal fun BrowserSheetTopBar(
         navigationIcon = {
             val dismissDescription = resolvedNavigationContentDescription
             EtaTooltip(text = dismissDescription) {
-                IconButton(onClick = onDismiss) {
+                IconButton(onClick = onDismiss, shapes = IconButtonDefaults.shapes(), ) {
                     Icon(
                         imageVector = navigationIcon,
                         contentDescription = dismissDescription,
@@ -355,7 +355,7 @@ fun BrowserPage(
                         text = stringResource(R.string.om_browser_history_action),
                         enabled = !isAgentBusy,
                     ) {
-                        IconButton(onClick = { showHistory = true }, enabled = !isAgentBusy) {
+                        IconButton(onClick = { showHistory = true }, enabled = !isAgentBusy, shapes = IconButtonDefaults.shapes(), ) {
                             Icon(
                                 imageVector = Icons.Rounded.History,
                                 contentDescription = stringResource(R.string.om_browser_history_action),
@@ -367,7 +367,7 @@ fun BrowserPage(
                         text = stringResource(R.string.om_browser_settings_title),
                         enabled = true,
                     ) {
-                        IconButton(onClick = { showSettings = true }) {
+                        IconButton(onClick = { showSettings = true }, shapes = IconButtonDefaults.shapes(), ) {
                             Icon(
                                 imageVector = when (userAgentProfile) {
                                     UserAgentProfile.MOBILE_CHROME -> Icons.Rounded.PhoneAndroid
@@ -544,7 +544,7 @@ fun BrowserPage(
                     {
                         val stopDescription = stringResource(R.string.om_browser_stop)
                         EtaTooltip(text = stopDescription) {
-                            IconButton(onClick = { selectedTab?.manager?.stopLoading() }) {
+                            IconButton(onClick = { selectedTab?.manager?.stopLoading() }, shapes = IconButtonDefaults.shapes(), ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Close,
                                     contentDescription = stopDescription,
@@ -754,11 +754,12 @@ private fun RowScope.BrowserTabChip(
         label = "BrowserTabContentColor",
     )
     val interactionSource = remember { MutableInteractionSource() }
-    // 按压沿用官方 Button 的按压形状（内侧圆角收到 4dp），用官方「快速」空间规格跟手。
+    // 按压沿用官方 Button 的按压形状（内侧圆角收到 4dp）与官方按压节奏：
+    // shapeByInteraction 用 DefaultEffects（≈170ms），跟手且不带 spatial 弹簧过冲。
     val isPressed by interactionSource.collectIsPressedAsState()
     val pressProgress by animateFloatAsState(
         targetValue = if (isPressed) 1f else 0f,
-        animationSpec = motionScheme.fastSpatialSpec<Float>(),
+        animationSpec = motionScheme.defaultEffectsSpec<Float>(),
         label = "BrowserTabPress",
     )
     CompositionLocalProvider(LocalContentColor provides contentColor) {

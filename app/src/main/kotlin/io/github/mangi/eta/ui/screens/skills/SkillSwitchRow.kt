@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.runtime.Composable
@@ -143,6 +144,7 @@ private fun SkillOverflowMenu(
                     expanded = true
                 },
                 enabled = enabled,
+                shapes = IconButtonDefaults.shapes(),
             ) {
                 Icon(imageVector = Icons.Rounded.MoreHoriz, contentDescription = contentDescription)
             }

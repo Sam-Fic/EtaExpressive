@@ -1158,6 +1158,7 @@ private fun IconColorChoices(title: String, selected: Int, onSelect: (Int) -> Un
                         checkedContainerColor = swatch,
                         checkedContentColor = onSwatch,
                     ),
+                    shapes = IconButtonDefaults.toggleableShapes(),
                 ) {
                     Icon(
                         imageVector = if (color == selected) Icons.Rounded.Check else Icons.Rounded.Circle,

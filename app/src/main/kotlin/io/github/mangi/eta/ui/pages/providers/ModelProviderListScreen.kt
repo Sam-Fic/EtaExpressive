@@ -68,6 +68,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.material3.Text as M3Text
@@ -146,6 +147,7 @@ internal fun ModelProviderListScreen(
                     icon = Icons.Rounded.Search,
                     contentDescription = stringResource(R.string.ui_search_provider_74e049),
                     onClick = { onNavigate(AppRoute.ModelProviderSearch) },
+                    shapes = IconButtonDefaults.shapes(),
                 )
             },
         ) {

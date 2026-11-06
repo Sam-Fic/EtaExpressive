@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
@@ -248,6 +249,7 @@ internal fun LinuxFilesScreen(
                 contentDescription = stringResource(R.string.page_refresh_38108e),
                 onClick = { listRevision++ },
                 enabled = installed && !busy && openFilePath == null,
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {

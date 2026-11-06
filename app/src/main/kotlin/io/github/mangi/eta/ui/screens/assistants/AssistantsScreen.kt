@@ -38,6 +38,7 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text as M3Text
@@ -102,6 +103,7 @@ internal fun AssistantsScreen(
                 icon = Icons.Rounded.Search,
                 contentDescription = stringResource(R.string.assistant_search),
                 onClick = { onNavigate(AppRoute.AssistantSearch(picker = picker)) },
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {

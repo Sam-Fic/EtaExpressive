@@ -848,6 +848,7 @@ private fun InputRow(
                         onSubmit()
                     },
                     enabled = canSend,
+                    shapes = IconButtonDefaults.shapes(),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.ArrowUpward,

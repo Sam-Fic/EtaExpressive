@@ -87,6 +87,7 @@ internal fun ConversationMentionPanel(
                             IconButton(
                                 onClick = { state.onRemove(mention.id) },
                                 modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                                shapes = IconButtonDefaults.shapes(),
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Close,

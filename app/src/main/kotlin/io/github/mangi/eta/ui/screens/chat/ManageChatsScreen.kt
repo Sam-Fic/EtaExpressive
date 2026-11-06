@@ -116,6 +116,7 @@ internal fun ManageChatsScreen(
                 icon = Icons.Rounded.Search,
                 contentDescription = stringResource(R.string.action_search_history),
                 onClick = { onOpenSearchHistory() },
+                shapes = IconButtonDefaults.shapes(),
             )
             TopBarIconButton(
                 icon = Icons.Rounded.Delete,
@@ -124,6 +125,7 @@ internal fun ManageChatsScreen(
                 // 调度台是系统条目，不计入「清空全部」的可删除范围。
                 enabled = conversations.any { !it.isDispatchConsole },
                 onClick = { if (conversations.any { !it.isDispatchConsole }) showDeleteAll = true },
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {
@@ -292,6 +294,7 @@ private fun ManageChatRow(
                                         checkedContentColor =
                                             MaterialTheme.colorScheme.onSecondaryContainer,
                                     ),
+                                    shapes = IconButtonDefaults.toggleableShapes(),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.PushPin,
@@ -309,6 +312,7 @@ private fun ManageChatRow(
                                     colors = IconButtonDefaults.iconButtonColors(
                                         contentColor = MaterialTheme.colorScheme.error,
                                     ),
+                                    shapes = IconButtonDefaults.shapes(),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.DeleteOutline,

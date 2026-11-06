@@ -2,6 +2,8 @@ package io.github.mangi.eta.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButtonShapes
 import io.github.mangi.eta.ui.adaptive.EtaTooltipIconButton
 
 /**
@@ -21,6 +23,8 @@ import io.github.mangi.eta.ui.adaptive.EtaTooltipIconButton
  *   （语义挂在按钮级，防 TalkBack 重复朗读）。
  * @param tooltipText 需要区分标签与提示时才传，默认与 [contentDescription] 同源。
  * @param disabledTooltipText 禁用时优先展示的提示（写原因）；为空则沿用 [tooltipText]。
+ * @param shapes 容器形状，直通 [EtaTooltipIconButton] → 官方 `IconButton(shapes = ...)`
+ *   （M3E 按压 morph）。默认 [IconButtonDefaults.shapes]，即官方默认造型，不传时外观不变。
  */
 @Composable
 internal fun TopBarIconButton(
@@ -31,6 +35,7 @@ internal fun TopBarIconButton(
     enabled: Boolean = true,
     tooltipText: String = contentDescription,
     disabledTooltipText: String? = null,
+    shapes: IconButtonShapes = IconButtonDefaults.shapes(),
 ) {
     EtaTooltipIconButton(
         icon = icon,
@@ -40,5 +45,6 @@ internal fun TopBarIconButton(
         tooltipText = tooltipText,
         disabledTooltipText = disabledTooltipText,
         destructive = destructive,
+        shapes = shapes,
     )
 }

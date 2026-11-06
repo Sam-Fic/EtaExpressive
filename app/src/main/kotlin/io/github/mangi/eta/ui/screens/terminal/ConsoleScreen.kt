@@ -69,8 +69,11 @@ import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.components.toSpanStyle
 import androidx.compose.material3.Button as M3Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButtonShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -202,6 +205,7 @@ internal fun TerminalIconButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    shapes: IconButtonShapes = IconButtonDefaults.shapes(),
 ) {
     val view = LocalView.current
     // 会话切换 / 守护任务等图标动作不自明，长按补官方 TooltipBox 提示。
@@ -216,6 +220,7 @@ internal fun TerminalIconButton(
             modifier = modifier,
             size = EtaIconSize.XS,
             style = EtaButtonStyle.Standard,
+            shapes = shapes,
         )
     }
 }
@@ -418,11 +423,13 @@ private fun ConsoleStatusBar(
                     icon = Icons.Rounded.Layers,
                     contentDescription = stringResource(R.string.terminal_sessions),
                     onClick = onOpenSessions,
+                    shapes = IconButtonDefaults.shapes(),
                 )
                 TerminalIconButton(
                     icon = Icons.Rounded.Insights,
                     contentDescription = stringResource(R.string.terminal_daemon_tasks),
                     onClick = onOpenTasks,
+                    shapes = IconButtonDefaults.shapes(),
                 )
                 TerminalTextButton(
                     text = stringResource(R.string.terminal_block_mode),
@@ -676,6 +683,7 @@ private val KeyChipContentPadding = PaddingValues(
     vertical = M3ButtonDefaults.ContentPadding.calculateTopPadding(),
 )
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun KeyChip(
     label: String,
@@ -705,6 +713,7 @@ private fun KeyChip(
             },
             contentPadding = KeyChipContentPadding,
             modifier = modifier,
+            shapes = M3ButtonDefaults.shapes(),
         ) {
             M3Text(text = label, style = MaterialTheme.typography.labelLarge)
         }

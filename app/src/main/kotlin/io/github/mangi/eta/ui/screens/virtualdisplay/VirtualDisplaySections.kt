@@ -417,6 +417,7 @@ internal fun VirtualDisplayRecoverySection(
                                             }
                                         }
                                     },
+                                    shapes = ButtonDefaults.shapes(),
                                 ) {
                                     Text(
                                         text = stringResource(R.string.vd_preview_open),
@@ -448,6 +449,7 @@ internal fun VirtualDisplayRecoverySection(
                                             }
                                         }
                                     },
+                                    shapes = ButtonDefaults.shapes(),
                                 ) {
                                     Text(
                                         text = stringResource(R.string.vd_preview_revoke),

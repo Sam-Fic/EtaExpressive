@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -431,9 +432,11 @@ private fun SubAgentProfileHeaderRow(
                 Box {
                     val moreDescription = stringResource(R.string.sas_more_for, profile.name)
                     EtaTooltip(text = moreDescription) {
-                        IconButton(enabled = editable, onClick = {
-                            if (editable) { TouchHaptics.click(view); menuExpanded = true }
-                        }) { Icon(Icons.Rounded.MoreVert, moreDescription) }
+                        IconButton(
+                            enabled = editable,
+                            onClick = { if (editable) { TouchHaptics.click(view); menuExpanded = true } },
+                            shapes = IconButtonDefaults.shapes(),
+                        ) { Icon(Icons.Rounded.MoreVert, moreDescription) }
                     }
                     if (editable) SubAgentDropdownMenu(
                         expanded = menuExpanded,

@@ -93,6 +93,7 @@ internal fun SpeechPlaybackButton(
                 }
             },
             enabled = !state.recording,
+            shapes = IconButtonDefaults.shapes(),
         ) {
             if (active && state.preparing) {
                 LoadingIndicator(

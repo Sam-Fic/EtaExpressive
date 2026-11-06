@@ -147,7 +147,7 @@ fun BrowserDownloadsSheet(
                                         val cancelDescription =
                                             stringResource(R.string.om_browser_downloads_cancel)
                                         EtaTooltip(text = cancelDescription) {
-                                            IconButton(onClick = { tabPool.cancelDownload(entry.id) }) {
+                                            IconButton(onClick = { tabPool.cancelDownload(entry.id) }, shapes = IconButtonDefaults.shapes(), ) {
                                                 Icon(
                                                     imageVector = Icons.Rounded.Cancel,
                                                     contentDescription = cancelDescription,
@@ -159,7 +159,7 @@ fun BrowserDownloadsSheet(
                                         val openDescription =
                                             stringResource(R.string.om_browser_downloads_open)
                                         EtaTooltip(text = openDescription) {
-                                            IconButton(onClick = { openDownloadedFile(context, entry) }) {
+                                            IconButton(onClick = { openDownloadedFile(context, entry) }, shapes = IconButtonDefaults.shapes(), ) {
                                                 Icon(
                                                     imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
                                                     contentDescription = openDescription,

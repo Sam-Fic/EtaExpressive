@@ -52,6 +52,7 @@ import io.github.mangi.eta.ui.screens.skills.SkillSwitchRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -190,6 +191,7 @@ internal fun AssistantEditScreen(
                 contentDescription = stringResource(R.string.action_save),
                 onClick = ::save,
                 enabled = saveEnabled,
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {

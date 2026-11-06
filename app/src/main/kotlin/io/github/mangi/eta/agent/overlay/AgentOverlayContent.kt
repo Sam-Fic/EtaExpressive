@@ -438,6 +438,7 @@ internal fun AgentOverlayBubble(
                         IconButton(
                             onClick = ::enterSupplementMode,
                             modifier = Modifier.size(28.dp),
+                            shapes = IconButtonDefaults.shapes(),
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Edit,
@@ -450,6 +451,7 @@ internal fun AgentOverlayBubble(
                             IconButton(
                                 onClick = onPause,
                                 modifier = Modifier.size(28.dp),
+                                shapes = IconButtonDefaults.shapes(),
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Pause,
@@ -462,6 +464,7 @@ internal fun AgentOverlayBubble(
                             IconButton(
                                 onClick = onResume,
                                 modifier = Modifier.size(28.dp),
+                                shapes = IconButtonDefaults.shapes(),
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.PlayArrow,
@@ -474,6 +477,7 @@ internal fun AgentOverlayBubble(
                         IconButton(
                             onClick = onStop,
                             modifier = Modifier.size(28.dp),
+                            shapes = IconButtonDefaults.shapes(),
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Stop,
@@ -667,6 +671,7 @@ internal fun AgentResultCard(
                             onClick = onClose,
                             // 官方 XS 档容器令牌（32dp），与手写 32dp 等值。
                             modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
+                            shapes = IconButtonDefaults.shapes(),
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Close,

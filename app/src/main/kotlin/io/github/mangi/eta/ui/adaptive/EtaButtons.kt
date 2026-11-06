@@ -53,6 +53,7 @@ fun EtaTopBarBackButton(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             ),
+            shapes = IconButtonDefaults.shapes(),
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,

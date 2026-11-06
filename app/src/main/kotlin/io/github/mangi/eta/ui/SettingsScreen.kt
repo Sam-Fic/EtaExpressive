@@ -109,6 +109,7 @@ import kotlinx.coroutines.withContext
 import io.github.mangi.eta.ui.components.LanguagePreference
 import io.github.mangi.eta.ui.components.TrashRetentionPreference
 import io.github.mangi.eta.ui.components.SwitchPreference
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text as M3Text
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
@@ -293,6 +294,7 @@ internal fun SettingsScreen(
                 icon = Icons.Rounded.Search,
                 contentDescription = stringResource(R.string.settings_search_hint),
                 onClick = { onNavigate(AppRoute.SettingsSearch) },
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {

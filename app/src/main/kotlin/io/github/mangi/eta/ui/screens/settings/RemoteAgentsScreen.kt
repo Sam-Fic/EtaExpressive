@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -218,6 +219,7 @@ internal fun RemoteAgentsScreen(
                                         contentDescription = stringResource(R.string.action_delete),
                                         onClick = { deleteTarget = config },
                                         destructive = true,
+                                        shapes = IconButtonDefaults.shapes(),
                                     )
                                 },
                             )

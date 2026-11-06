@@ -851,6 +851,7 @@ private fun PreviewToolbarButton(
         // small 容器：五个动作横排也要在窄屏（折叠态 / 小手机）放得下。
         modifier = modifier.size(IconButtonDefaults.smallContainerSize()),
         colors = colors,
+        shapes = IconButtonDefaults.shapes(),
     ) {
         Icon(
             imageVector = icon,

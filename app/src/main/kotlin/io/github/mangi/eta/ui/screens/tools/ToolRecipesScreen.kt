@@ -89,6 +89,7 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as M3IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -252,6 +253,7 @@ internal fun ToolRecipesScreen(
                 icon = Icons.Rounded.Refresh,
                 contentDescription = stringResource(R.string.action_refresh),
                 onClick = { scope.launch(Dispatchers.IO) { runtime.refresh() } },
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {
@@ -487,6 +489,7 @@ private fun RecipeOverflowMenu(
                 TouchHaptics.click(view)
                 expanded = true
             },
+            shapes = IconButtonDefaults.shapes(),
         ) {
             Icon(
                 imageVector = Icons.Rounded.MoreHoriz,
@@ -620,6 +623,7 @@ private fun RecipeEditPage(
                         )
                     },
                     enabled = dirty && nameError == null,
+                    shapes = IconButtonDefaults.shapes(),
                 )
             },
         ) { padding, scrollConnection, _ ->

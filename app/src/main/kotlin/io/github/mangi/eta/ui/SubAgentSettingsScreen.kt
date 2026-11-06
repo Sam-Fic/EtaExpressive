@@ -253,6 +253,7 @@ internal fun SubAgentSettingsScreen(
                                                         onClick = {
                                                             if (editable) { TouchHaptics.click(view); groupMenuExpanded = true }
                                                         },
+                                                        shapes = IconButtonDefaults.shapes(),
                                                     ) { Icon(Icons.Rounded.MoreVert, groupMoreDescription) }
                                                 }
                                                 if (editable) SubAgentDropdownMenu(
@@ -460,7 +461,7 @@ private fun SubAgentConversationSection(
                             )
                             val addProfileDescription = stringResource(R.string.sap_add_profile)
                             EtaTooltip(text = addProfileDescription) {
-                                IconButton(enabled = panelEnabled, onClick = onAddProfile) {
+                                IconButton(enabled = panelEnabled, onClick = onAddProfile, shapes = IconButtonDefaults.shapes(), ) {
                                     Icon(Icons.Rounded.Add, addProfileDescription)
                                 }
                             }

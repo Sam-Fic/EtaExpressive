@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Card
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
@@ -120,6 +121,7 @@ private fun DaemonTaskRow(
                 icon = Icons.Rounded.Close,
                 contentDescription = stringResource(R.string.terminal_stop),
                 onClick = { onStop(task.id) },
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     )

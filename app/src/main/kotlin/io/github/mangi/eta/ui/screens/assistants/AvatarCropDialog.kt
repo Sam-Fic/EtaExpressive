@@ -48,6 +48,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as M3IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 
@@ -165,7 +166,7 @@ internal fun AvatarCropDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                M3IconButton(onClick = onCancel) {
+                M3IconButton(onClick = onCancel, shapes = IconButtonDefaults.shapes(), ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.action_cancel),
@@ -182,6 +183,7 @@ internal fun AvatarCropDialog(
                         createAvatarCrop(bitmap, viewportSize, zoom, pan)?.let(onConfirm)
                     },
                     enabled = viewportSize.width > 0 && viewportSize.height > 0,
+                    shapes = IconButtonDefaults.shapes(),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Check,

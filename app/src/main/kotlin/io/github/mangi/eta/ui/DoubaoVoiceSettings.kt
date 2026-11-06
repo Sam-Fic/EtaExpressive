@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -186,6 +187,7 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                     icon = Icons.Rounded.MoreVert,
                     contentDescription = stringResource(R.string.dv_settings_cd),
                     onClick = { settingsMenu = true },
+                    shapes = IconButtonDefaults.shapes(),
                 )
                 EtaTextMenu(
                     expanded = settingsMenu,
@@ -824,7 +826,7 @@ private fun PersonalVoiceRow(
                 stringResource(R.string.dv_preview)
             }
             EtaTooltip(text = previewDescription) {
-                IconButton(enabled = previewActive || voice.demo.startsWith("https://"), onClick = { TouchHaptics.click(view); onPreview() }) {
+                IconButton(enabled = previewActive || voice.demo.startsWith("https://"), onClick = { TouchHaptics.click(view); onPreview() }, shapes = IconButtonDefaults.shapes(), ) {
                     Icon(if (previewActive) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
                         contentDescription = previewDescription)
                 }
@@ -832,7 +834,7 @@ private fun PersonalVoiceRow(
             Box {
                 val actionsDescription = stringResource(R.string.dv_voice_actions)
                 EtaTooltip(text = actionsDescription) {
-                    IconButton(onClick = { TouchHaptics.click(view); menu = true }) { Icon(Icons.Rounded.MoreVert, contentDescription = actionsDescription) }
+                    IconButton(onClick = { TouchHaptics.click(view); menu = true }, shapes = IconButtonDefaults.shapes(), ) { Icon(Icons.Rounded.MoreVert, contentDescription = actionsDescription) }
                 }
                 EtaTextMenu(
                     expanded = menu,

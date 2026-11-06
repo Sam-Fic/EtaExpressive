@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -1227,6 +1228,7 @@ private fun SelectedScreenContext(
                 onClick = onRemove,
                 enabled = enabled,
                 modifier = Modifier.size(30.dp),
+                shapes = IconButtonDefaults.shapes(),
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,

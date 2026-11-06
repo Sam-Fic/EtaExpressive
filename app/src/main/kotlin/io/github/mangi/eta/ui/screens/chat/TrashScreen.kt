@@ -77,6 +77,7 @@ internal fun TrashScreen(
                 contentDescription = stringResource(R.string.trash_search_title),
                 onClick = onOpenSearch,
                 enabled = trash.isNotEmpty(),
+                shapes = IconButtonDefaults.shapes(),
             )
             // 清空回收站是不可逆动作：图标与涟漪同取 error 色，交给 destructive 统一处理。
             TopBarIconButton(
@@ -85,6 +86,7 @@ internal fun TrashScreen(
                 onClick = { confirmEmpty = true },
                 destructive = true,
                 enabled = trash.isNotEmpty(),
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {
@@ -212,6 +214,7 @@ private fun TrashRow(
                             colors = IconButtonDefaults.iconButtonColors(
                                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             ),
+                            shapes = IconButtonDefaults.shapes(),
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.RestoreFromTrash,
@@ -223,6 +226,7 @@ private fun TrashRow(
                             colors = IconButtonDefaults.iconButtonColors(
                                 contentColor = MaterialTheme.colorScheme.error,
                             ),
+                            shapes = IconButtonDefaults.shapes(),
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.DeleteForever,

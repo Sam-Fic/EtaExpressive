@@ -311,6 +311,7 @@ private fun CopyButton(text: String, tint: Color) {
         onClick = copyAction,
         modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
         content = copyIcon,
+        shapes = IconButtonDefaults.shapes(),
     )
 }
 

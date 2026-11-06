@@ -43,6 +43,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as M3IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -174,7 +175,7 @@ internal fun ProviderIconAction(
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
-    M3IconButton(onClick = onClick, enabled = enabled) {
+    M3IconButton(onClick = onClick, enabled = enabled, shapes = IconButtonDefaults.shapes(), ) {
         Icon(imageVector = icon, contentDescription = contentDescription)
     }
 }

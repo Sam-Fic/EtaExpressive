@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -80,6 +81,7 @@ internal fun TopBarOverflowMenu(
                 onRefreshKimiWeb()
                 menuExpanded = true
             },
+            shapes = IconButtonDefaults.shapes(),
         )
 
         EtaMenuPopup(
