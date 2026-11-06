@@ -1036,11 +1036,11 @@
   <string name="voice_screen_context_summary">将作为下一条消息的上下文</string>
   <string name="voice_screen_remove">移除当前屏幕截图</string>
   <string name="voice_screen_preset_translate">翻译屏幕内容</string>
-  <string name="voice_screen_preset_translate_prompt">翻译当前屏幕上的内容：保留原有结构，先给完整译文，必要时再补充简短说明</string>
+  <string name="voice_screen_preset_translate_prompt">翻译本条消息附带的截图中的内容：保留原有结构，先给完整译文，必要时再补充简短说明</string>
   <string name="voice_screen_preset_calendar">添加屏幕上的日程</string>
-  <string name="voice_screen_preset_calendar_prompt">识别当前屏幕上的日程或活动信息，并添加到系统日历。信息不完整时按屏幕上能看到的内容合理补全，完成后告诉我具体添加了哪一条；屏幕上没有日程就直接说明</string>
+  <string name="voice_screen_preset_calendar_prompt">识别本条消息附带的截图中的日程或活动信息，并添加到系统日历。信息不完整时按截图中能看到的内容合理补全，完成后告诉我具体添加了哪一条；截图中没有日程就直接说明</string>
   <string name="voice_screen_preset_organize">整理屏幕内容</string>
-  <string name="voice_screen_preset_organize_prompt">整理当前屏幕上的内容：提炼要点并重新组织成清晰的结构，只使用屏幕上出现的信息，不要编造</string>
+  <string name="voice_screen_preset_organize_prompt">整理本条消息附带的截图中的内容：提炼要点并重新组织成清晰的结构，只使用截图中出现的信息，不要编造</string>
   <string name="voice_input_hint">发消息问 Eta……</string>
   <string name="voice_send">发送</string>
   <string name="injected_reasoning">Eta 正在推理……</string>
