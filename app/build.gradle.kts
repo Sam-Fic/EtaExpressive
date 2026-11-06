@@ -229,9 +229,12 @@ dependencies {
     testImplementation(libs.json)
     testImplementation(libs.room.testing)
     testImplementation(libs.robolectric)
-    // 与 App 使用的 Compose UI 版本保持一致；selection 相关用例需要真实手势覆盖。
-    testImplementation("androidx.compose.ui:ui-test-junit4:1.12.0-rc01")
-    debugImplementation("androidx.compose.ui:ui-test-manifest:1.12.0-rc01")
+    // 这两个版本必须跟 material3 传递解析出的 androidx.compose 版本一致，否则声明的旧版本
+    // 会被 atomic group 约束悄悄抬到新版（此前写死 1.12.0-rc01、实际解析 1.13.0-alpha01 就是
+    // 这种情况）。版本统一收敛到 libs.versions.toml 的 compose 变量；解析后的 ui/ui-android
+    // 版本由 buildSrc 的 eta.compose-semantics-cache 校验，漂移会直接失败而不是静默通过。
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 // Pin and verify the small JNI runtime; speech model is opt-in at runtime, never bundled.

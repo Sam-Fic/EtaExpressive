@@ -29,6 +29,11 @@ jsoup = "1.23.2"
 xz = "1.12"
 androidx-baselineprofile = "1.5.0"
 androidx-benchmark-macro-junit4 = "1.5.0"
+# androidX Compose 实现版本。它不是独立可调的版本：material3 1.5.0-alpha29 的 POM 把
+# androidx.compose.* 钉在 1.13.0-alpha01，本仓实际解析结果也由这条传递链决定；
+# 改这里等于强行拉高整组 Compose（buildSrc 的 eta.compose-semantics-cache 会在解析后
+# 校验 ui/ui-android 版本，不一致直接失败，不会静默漂移）。
+compose = "1.13.0-alpha01"
 
 [libraries]
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
@@ -46,6 +51,8 @@ activity-compose = { group = "androidx.activity", name = "activity-compose", ver
 markdown-renderer = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-android", version.ref = "markdownRenderer" }
 markdown-renderer-m3 = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3-android", version.ref = "markdownRenderer" }
 material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4", version.ref = "compose" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest", version.ref = "compose" }
 material-color-utilities = { group = "com.materialkolor", name = "material-color-utilities", version.ref = "material-color-utilities" }
 hidden-api-bypass = { group = "org.lsposed.hiddenapibypass", name = "hiddenapibypass", version.ref = "hiddenApiBypass" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
