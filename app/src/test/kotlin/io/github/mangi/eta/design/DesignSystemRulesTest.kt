@@ -7,7 +7,7 @@ import java.io.File
 /**
  * 设计系统执法测试（零新依赖的文件扫描版；未来可升级为 Konsist 反射规则）。
  *
- * 对应 `docs/design-system.md` 的分层与规则。这里只放**当前为真**的约束——
+ * 这里只放**当前为真**的约束——
  * 每条规则都必须此刻全绿，禁止「先写失败规则等修复」；存量债务用白名单钉住，
  * 白名单外新增即失败。
  */
@@ -162,7 +162,7 @@ class DesignSystemRulesTest {
         assertTrue(
             "禁止在业务文件直接实例化进度/加载指示器：请改用 EtaLoadingSlot / EtaProgressBar，" +
                 "调用点只传 progress: Float?（null 不定型、非 null 确定型）；" +
-                "确属明确不迁的存量请在白名单登记。详见 docs/design-system.md：\n" +
+                "确属明确不迁的存量请在白名单登记：\n" +
                 hits.joinToString("\n"),
             hits.isEmpty(),
         )
@@ -171,7 +171,7 @@ class DesignSystemRulesTest {
     /**
      * R5：长按提示气泡只有一个出处。`TooltipBox` / `PlainTooltip` / `RichTooltip` /
      * `rememberTooltipState` 只能在 `ui/adaptive/EtaTooltips.kt` 调用，业务页面一律用
-     * `EtaTooltip`（详见 docs/accessibility-tooltips.md）。
+     * `EtaTooltip`。
      */
     @Test
     fun `tooltip implementation stays in the adaptive wrapper`() {
@@ -182,7 +182,7 @@ class DesignSystemRulesTest {
         )
         assertTrue(
             "长按提示只能通过 ui/adaptive/EtaTooltips.kt 的 EtaTooltip / EtaTooltipIconButton 提供，" +
-                "业务页面禁止手写 TooltipBox / PlainTooltip —— 详见 docs/accessibility-tooltips.md：\n" +
+                "业务页面禁止手写 TooltipBox / PlainTooltip：\n" +
                 hits.joinToString("\n"),
             hits.isEmpty(),
         )
