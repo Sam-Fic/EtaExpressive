@@ -67,6 +67,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
@@ -444,7 +445,9 @@ internal fun AgentOverlayCapsule(
             // 不再叠 0.96 半透明底色或描边，外观全部由 M3 容器与形状令牌决定。
             Surface(
                 modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    // 四周外衬全部给阴影留白（见 CapsuleShadowGutter）：窗口尺寸 = 内容 + 外衬，
+                    // 外衬即落影的净空，宿主常量必须同值同步。
+                    .padding(horizontal = CapsuleShadowGutter, vertical = CapsuleShadowGutter)
                     .width(targetCapsuleWidth)
                     .graphicsLayer {
                         // 点击时轻微回弹，展开后保持原尺寸；只改绘制层，不触发重新布局。
@@ -465,11 +468,21 @@ internal fun AgentOverlayCapsule(
                     },
                 shape = RoundedCornerShape(capsuleCorner),
                 color = MaterialTheme.colorScheme.surfaceContainer,
-                // M3E 浮层对齐 FloatingToolbar 官方默认：无投影，靠 surfaceContainer 色阶
-                // 与 tonal（官方 Level2，栏类组件档）分层。旧 8dp 投影在贴边窗口里只留
-                // 6dp 下边距，被窗口边界裁掉一截，反而显脏。
+                // 落影取官方的「漂浮容器」档位：MenuDefaults.ShadowElevation
+                // = MenuTokens.ContainerElevation = ElevationTokens.Level2 = 3dp。
+                // 取证（androidx.compose.material3:material3:1.5.0-alpha29 sources）：
+                // · commonMain/androidx/compose/material3/MenuDefaults.kt「ShadowElevation」
+                // · commonMain/androidx/compose/material3/tokens/MenuTokens.kt「ContainerElevation」
+                // · commonMain/androidx/compose/material3/tokens/ElevationTokens.kt「Level2 = 3.0.dp」
+                // M3E 没有为 overlay 浮层单独定义 elevation：FloatingToolbarDefaults 的展开/收起
+                // 容器档都是 Level0，且源码自标「TODO read from token」(FloatingToolbar.kt)，
+                // 不足以作依据；ElevationTokens / ElevationDefaults 本身是 internal，
+                // 因此这里引用公开派生值 MenuDefaults.ShadowElevation，不另造数值。
+                // 该档位由 Surface 内部 Modifier.graphicsLayer(shadowElevation, clip = false)
+                // 绘制在布局边界之外（Surface.kt「Modifier.surface」），必须配合 12dp 外衬，
+                // 否则会被紧贴内容的胶囊窗口裁成硬边。
                 tonalElevation = 3.dp,
-                shadowElevation = 0.dp,
+                shadowElevation = MenuDefaults.ShadowElevation,
             ) {
                 // 共享元素层：收起态微缩镜（18×32 圆角镜身）与展开态舞台画布（148×328）以同一
                 // key 配对，morph 时由官方 SharedTransition 连续变形，预览不再「瞬移+交叉淡化」。
@@ -1453,6 +1466,20 @@ private fun StageActionToggle(
 private val CapsuleInnerCorner = 28.dp
 
 /**
+ * 阴影外衬（每侧 dp）：[Surface] 的投影由 `Modifier.graphicsLayer(shadowElevation, clip = false)`
+ * 绘制在布局边界之外，而胶囊窗口尺寸 = 内容 + 外衬 + 缓冲、紧贴内容，外衬不足就会被窗口
+ * 裁成硬边。3dp 档位（[MenuDefaults.ShadowElevation]）的投影在 2.8125 密度下外扩约 10px，
+ * 12dp ≈ 34px 足够容纳四周落影，因此四周统一 12dp。
+ *
+ * 同步要求：宿主 AgentRuntimeService 的
+ * `CAPSULE_PADDING_HORIZONTAL_DP` / `CAPSULE_PADDING_VERTICAL_DP` 必须与本值一致，
+ * 否则窗口会裁内容或留出多余空隙。
+ * 垂直外衬由原来的 6dp 提到 12dp：窗口顶边仍是位置锚点（拖拽/甩出坐标语义不变），
+ * 所以胶囊贴系统栏上沿时本体比原先内缩 6dp——这 6dp 正是投影所需净空。
+ */
+private val CapsuleShadowGutter = 12.dp
+
+/**
  * 测量值超出已上报窗口多少才算「不可预测的长高」（px）：过滤取整抖动与逐帧采样差，
  * 避免静止态反复改窗。真实换行一步 ~39px，远大于此容差，不会被吞。
  * 尺寸轴已全部并到 320ms 定长 tween（无过冲），此容差只作数值保护，
@@ -1478,9 +1505,9 @@ private val CapsuleAxisFloatSpec = tween<Float>(EtaMotion.CapsuleExpandDurationM
 private const val VirtualDisplayPreviewSharedKey = "vd_preview"
 
 /**
- * 舞台画布高度 = 舞台窗口 524 − 上下留白 12 − 头部 56（`TextFieldDefaults.MinHeight`）
- * − 展开体上下内边距 16（[EtaDimens.SpaceSm] × 2）− 两处 8dp 间距
- * − 接管栏 48 − 动作行 48（官方 40dp 按钮的 48dp 触摸槽）。
+ * 舞台画布高度 = 舞台窗口 536 − 上下留白 24（每侧 12dp 阴影外衬）− 头部 56
+ * （`TextFieldDefaults.MinHeight`）− 展开体上下内边距 16（[EtaDimens.SpaceSm] × 2）
+ * − 两处 8dp 间距 − 接管栏 48 − 动作行 48（官方 40dp 按钮的 48dp 触摸槽）。
  */
 private val StageCanvasHeight = 328.dp
 

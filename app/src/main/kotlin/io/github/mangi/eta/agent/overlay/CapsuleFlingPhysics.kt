@@ -77,8 +77,8 @@ internal class CapsuleFlingSession {
  * 松手瞬间由宿主结算的甩出计划。
  *
  * @property center 松手时窗口的水平中心 + 顶边（物理屏幕坐标，允许已在界外）
- * @property footprint 甩出期间用于边界计算的窗口占位；缩球时取球窗（80×68dp），
- *   否则取当前胶囊窗尺寸（含透明外衬）
+ * @property footprint 甩出期间用于边界计算的窗口占位；缩球时取球窗（80×80dp，56dp 球 + 四周
+ *   12dp 阴影外衬），否则取当前胶囊窗尺寸（含透明外衬）
  * @property velocity 已按系统 fling 上限钳过的松手速度（px/s）
  */
 internal data class CapsuleFlingPlan(

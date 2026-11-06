@@ -1992,7 +1992,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         val lp = capsuleParams ?: return
         if (capsuleContentWidthPx <= 0 || capsuleContentHeightPx <= 0) return
         // 外衬必须与 Compose 侧 Surface padding 的实际像素严格对齐再加缓冲：
-        // Compose 是每侧独立 roundToPx(12dp / 6dp)，而 dpToPx 是截断——2.8125 密度下
+        // Compose 是每侧独立 roundToPx(12dp)，而 dpToPx 是截断——2.8125 密度下
         // 12dp 截断成 33px、Compose 实际消耗 34px，窗口每帧比内容矮 1px，内容被
         // 钳小后上报更小，形成「钳制→上报→收窗」逐帧缩水回路（几秒缩到消失）。
         val width = capsuleContentWidthPx + capsulePaddingPx(CAPSULE_PADDING_HORIZONTAL_DP) +
@@ -2708,21 +2708,24 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private const val MAX_ARCHIVED_USER_IMAGE_PREVIEWS = 4
         // 胶囊窗口初始尺寸估计（挂窗第一帧用），此后由 Compose「早涨晚缩」上报状态机
         // 贴合（updateCapsuleWindowSize）：目标变大立即贴上，变小等动画落定收拢。
-        // 高度 = 上下留白 12 + 头部 56（TextFieldDefaults.MinHeight）+ 8dp 间距 + 内容 + 8dp 间距。
+        // 高度 = 上下留白 24（每侧 12dp 阴影外衬）+ 头部 56（TextFieldDefaults.MinHeight）
+        // + 8dp 间距 + 内容 + 8dp 间距；估计偏大由「涨即贴/晚缩」自愈，偏小会裁内容。
         private const val CAPSULE_WINDOW_WIDTH_DP = 272
         private const val CAPSULE_MICRO_WINDOW_WIDTH_DP = 290
         // 展开宽 360（Compose 侧还会按屏宽−40 钳制）+ 上下留白 12*2 之外留出的余量；
         // 首帧估计偏大没关系，涨即贴上报会立刻收敛；分析目标 ≥ 任何测量值，不会触发钳制缩水。
         private const val CAPSULE_EXPANDED_WINDOW_WIDTH_DP = 368
-        private const val CAPSULE_COLLAPSED_HEIGHT_DP = 68
-        private const val CAPSULE_CONTROLS_HEIGHT_DP = 132
-        private const val CAPSULE_STAGE_HEIGHT_DP = 524
-        private const val CAPSULE_SUPPLEMENT_HEIGHT_DP = 260
-        // Compose 侧胶囊 Surface 外圈留白（每侧 12dp / 6dp，按 roundToPx 求和）。
+        private const val CAPSULE_COLLAPSED_HEIGHT_DP = 80
+        private const val CAPSULE_CONTROLS_HEIGHT_DP = 144
+        private const val CAPSULE_STAGE_HEIGHT_DP = 536
+        private const val CAPSULE_SUPPLEMENT_HEIGHT_DP = 272
+        // Compose 侧胶囊 Surface 外圈留白（每侧 12dp，按 roundToPx 求和），四周同等：
+        // 其中垂直方向的 12dp 是 Compose `CapsuleShadowGutter` 的阴影净空——窗口边界紧贴
+        // 内容，投影画在 Surface 布局边界之外，没有这段外衬就会被窗口裁成硬边。
         // 2px 缓冲确保窗口永远略大于「内容 + padding」，钝化任何取整误差；
         // 透明边距肉眼不可见，但任何 1px 缺口都会触发逐帧缩水回路。
         private const val CAPSULE_PADDING_HORIZONTAL_DP = 12
-        private const val CAPSULE_PADDING_VERTICAL_DP = 6
+        private const val CAPSULE_PADDING_VERTICAL_DP = 12
         private const val CAPSULE_WINDOW_SLACK_PX = 2
         private const val CAPSULE_CLEARANCE_SLOP_DP = 8
         // 拖拽越界段的阻尼系数（橡皮筋）：越界位移按此比例缩放跟手。
@@ -2731,9 +2734,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         private const val CAPSULE_FLING_SETTLE_GUARD_MS = 420L
         // 缩球判定：横向速度达到系统 fling 上限的此比例、且横向意图占优时触发。
         private const val CAPSULE_BALL_FLING_FRACTION = 0.45f
-        // 缩球后的窗口尺寸：56dp 球 + 外圈留白 24/12（Compose 侧 CapsuleBallDiameter）。
+        // 缩球后的窗口尺寸：56dp 球 + 外圈留白 24/24（Compose 侧 CapsuleBallDiameter，
+        // 四周 12dp 阴影外衬；与 CAPSULE_PADDING_*_DP 保证同源）。
         private const val CAPSULE_BALL_WINDOW_WIDTH_DP = 80
-        private const val CAPSULE_BALL_WINDOW_HEIGHT_DP = 68
+        private const val CAPSULE_BALL_WINDOW_HEIGHT_DP = 80
         // 窗口级淡出时长；Compose 内部退场动画通常更短，窗口只负责收尾。
         private const val WINDOW_EXIT_DURATION_MS = 140L
         private const val WINDOW_ENTER_DURATION_MS = 170L
