@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RemoveRedEye
@@ -95,6 +96,8 @@ internal object SettingsKeys {
     const val TOOL_CONFIRM_DANGEROUS = "tool_confirm_dangerous"
     const val TOOL_LOADING_MODE = "tool_loading_mode"
     const val MCP_TOOL_EXPOSURE = "mcp_tool_exposure"
+    const val TOOL_REVIEW_ENGINE = "tool_review_engine"
+    const val TOOL_REVIEW_TIMEOUT = "tool_review_timeout"
     const val TOOL_SUBAGENT = "tool_subagent"
     const val MEDIA_INDEX = "media_index"
 
@@ -462,6 +465,28 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 summary = stringResource(R.string.settings_tool_review_mode_summary),
                 keywords = "dangerous confirm 危险 高危 确认 审查 只读 严格 标准 自动 安全 拦截 review permission",
                 icon = Icons.Rounded.Warning,
+                group = groupToolCapabilities,
+                destination = SettingsDestination.Inline,
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.TOOL_REVIEW_ENGINE,
+                title = stringResource(R.string.settings_tool_review_engine_title),
+                summary = stringResource(R.string.settings_tool_review_engine_summary),
+                keywords = "smart review 智能审查 LLM 决策模型 decision 引擎 engine 模型审查 逐次判定",
+                icon = Icons.Rounded.Psychology,
+                group = groupToolCapabilities,
+                destination = SettingsDestination.Inline,
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.TOOL_REVIEW_TIMEOUT,
+                title = stringResource(R.string.settings_tool_review_timeout_title),
+                summary = stringResource(R.string.settings_tool_review_engine_summary),
+                keywords = "review timeout 审查 超时 超时时间 模型调用 秒",
+                icon = Icons.Rounded.Timer,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Inline,
             ),

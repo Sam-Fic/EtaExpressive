@@ -58,15 +58,18 @@ class AgentToolGroupsTest {
         AgentToolGroups.deferredGroups.forEach { group ->
             group.toolNames.forEach { assertFalse("$it 属 ${group.id} 组，不该常驻", it in resident) }
         }
-        // 常驻部分必须正好是基础组 + 一个开启入口，否则「全延迟」名不副实。
+        // 常驻部分必须正好是基础组 + 两个控制入口（整组打开 / 工具级搜索），
+        // 否则「全延迟」名不副实。两个入口都不属于任何延迟组，本身不占组内 schema。
         assertEquals(
             emptySet<String>(),
-            resident - AgentToolGroups.BASIC_GROUP.toolNames - AgentToolGroupCatalog.USE_GROUP,
+            resident - AgentToolGroups.BASIC_GROUP.toolNames -
+                AgentToolGroupCatalog.USE_GROUP - AgentToolSearchCatalog.SEARCH,
         )
         listOf("ask_user", "get_current_context", "launch_app").forEach {
             assertTrue("$it 应保持常驻", it in resident)
         }
         assertTrue(AgentToolGroupCatalog.USE_GROUP in resident)
+        assertTrue(AgentToolSearchCatalog.SEARCH in resident)
     }
 
     @Test fun deferralActuallySavesSchemaTokens() {

@@ -375,4 +375,73 @@ class AgentDangerousOperationPolicyTest {
             ) as ToolExecutionDecision.Reject).code,
         )
     }
+
+    // ── 智能审查档（模型裁决 + 失败回退） ──────────────────────────────────────
+
+    @org.junit.After
+    fun clearSmartReviewBridge() {
+        AgentDangerousOperationPolicy.smartReview = null
+    }
+
+    @Test fun smartModeAllowsWhenModelAllows() {
+        AgentDangerousOperationPolicy.smartReview = { _, _, _ ->
+            AgentToolReviewVerdict.Allow("consistent with request", "llm", 42)
+        }
+        assertNull(
+            AgentDangerousOperationPolicy.decision(
+                "terminal", """{"action":"exec","command":"rm -rf build"}""", mode = AgentToolReviewMode.SMART,
+            ),
+        )
+    }
+
+    @Test fun smartModeDeniesWithoutAskPath() {
+        AgentDangerousOperationPolicy.smartReview = { _, _, _ ->
+            AgentToolReviewVerdict.Deny("out of scope", "decision", 31)
+        }
+        val decision = AgentDangerousOperationPolicy.decision(
+            "power_control", """{"action":"reboot"}""", mode = AgentToolReviewMode.SMART,
+        ) as ToolExecutionDecision.Reject
+        assertEquals(AgentDangerousOperationPolicy.SMART_DENY_CODE, decision.code)
+        assertTrue(decision.message.contains("未做任何改动"))
+        assertFalse(decision.message.contains(AgentDangerousConfirmationGate.CONFIRM_OPTION_ID))
+    }
+
+    @Test fun smartModeFallsBackToRuleReviewOnFailure() {
+        // 模型失败/超时/未注入桥：一律回退标准档规则确认，绝不直接放行。
+        listOf(
+            null,
+            AgentToolReviewVerdict.Fallback("timeout", 6000),
+        ).forEach { verdict ->
+            AgentDangerousOperationPolicy.smartReview = { _, _, _ -> verdict }
+            val decision = AgentDangerousOperationPolicy.decision(
+                "set_timezone", """{"action":"set","timezone":"UTC"}""", mode = AgentToolReviewMode.SMART,
+            )
+            assertEquals(
+                AgentDangerousOperationPolicy.CONFIRM_CODE,
+                (decision as ToolExecutionDecision.Reject).code,
+            )
+        }
+        // 注入桥抛异常也不该打断工具流程（策略内 try/catch）。
+        AgentDangerousOperationPolicy.smartReview = { _, _, _ -> throw IllegalStateException("boom") }
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "set_timezone", """{"action":"set","timezone":"UTC"}""", mode = AgentToolReviewMode.SMART,
+            ) is ToolExecutionDecision.Reject,
+        )
+    }
+
+    @Test fun smartModeSkipsLowRiskCalls() {
+        // 低风险/纯读不花模型往返：桥根本不该被调用。
+        var invoked = false
+        AgentDangerousOperationPolicy.smartReview = { _, _, _ ->
+            invoked = true
+            AgentToolReviewVerdict.Deny("should not be called", "llm", 1)
+        }
+        assertNull(
+            AgentDangerousOperationPolicy.decision(
+                "read_file", """{"path":"/sdcard/a"}""", mode = AgentToolReviewMode.SMART,
+            ),
+        )
+        assertFalse(invoked)
+    }
 }

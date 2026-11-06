@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Psychology
 import io.github.mangi.eta.ui.icons.SubAgents
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Vibration
@@ -563,6 +564,21 @@ internal fun SettingsScreen(
                 row(key = SettingsKeys.TOOL_CONFIRM_DANGEROUS) {
                     ToolReviewModeRow(
                         title = stringResource(R.string.settings_tool_review_mode),
+                    )
+                }
+
+                // 智能审查档的两个配置：引擎（LLM / 决策模型）与单次超时。
+                // 只在智能档下有意义，其余档位由协调器自然忽略；放在一起便于对照。
+                row(key = SettingsKeys.TOOL_REVIEW_ENGINE) {
+                    ToolReviewEngineRow(
+                        title = stringResource(R.string.settings_tool_review_engine_title),
+                        summary = stringResource(R.string.settings_tool_review_engine_summary),
+                    )
+                }
+
+                row(key = SettingsKeys.TOOL_REVIEW_TIMEOUT) {
+                    ToolReviewTimeoutRow(
+                        title = stringResource(R.string.settings_tool_review_timeout_title),
                     )
                 }
 
@@ -1110,12 +1126,14 @@ private fun ToolReviewModeRow(title: String) {
         Prefs.Keys.TOOL_REVIEW_MODE_STRICT,
         Prefs.Keys.TOOL_REVIEW_MODE_STANDARD,
         Prefs.Keys.TOOL_REVIEW_MODE_AUTO,
+        Prefs.Keys.TOOL_REVIEW_MODE_SMART,
     )
     val labels = listOf(
         stringResource(R.string.settings_tool_review_mode_readonly),
         stringResource(R.string.settings_tool_review_mode_strict),
         stringResource(R.string.settings_tool_review_mode_standard),
         stringResource(R.string.settings_tool_review_mode_auto),
+        stringResource(R.string.settings_tool_review_mode_smart),
     )
     // 当前档位的实际效果：高风险/致命操作的确认规则并进同一句，不单列脚注。
     val effects = listOf(
@@ -1123,12 +1141,14 @@ private fun ToolReviewModeRow(title: String) {
         stringResource(R.string.settings_tool_review_mode_strict_effect),
         stringResource(R.string.settings_tool_review_mode_standard_effect),
         stringResource(R.string.settings_tool_review_mode_auto_effect),
+        stringResource(R.string.settings_tool_review_mode_smart_effect),
     )
     val hints = listOf(
         stringResource(R.string.settings_tool_review_mode_readonly_hint),
         stringResource(R.string.settings_tool_review_mode_strict_hint),
         stringResource(R.string.settings_tool_review_mode_standard_hint),
         stringResource(R.string.settings_tool_review_mode_auto_hint),
+        stringResource(R.string.settings_tool_review_mode_smart_hint),
     )
     val selectedIndex = options.indexOf(mode).coerceAtLeast(0)
     EtaSegmentedDropdownRow(
@@ -1147,6 +1167,61 @@ private fun ToolReviewModeRow(title: String) {
         },
         summary = effects[selectedIndex],
         itemSummaries = hints,
+    )
+}
+
+/**
+ * 智能审查档的引擎选择（LLM 审查 / 决策模型判断）。
+ *
+ * LLM 引擎的专用模型留给工具页/压缩模型 picker 配置；这里只选引擎与超时，
+ * 未配专用模型时由 [AgentToolReviewCoordinator] 回退到当前对话模型。
+ */
+@Composable
+private fun ToolReviewEngineRow(title: String, summary: String) {
+    var engine by remember { mutableStateOf(Prefs.toolReviewEngine()) }
+    val options = listOf(Prefs.Keys.REVIEW_ENGINE_LLM, Prefs.Keys.REVIEW_ENGINE_DECISION)
+    val labels = listOf(
+        stringResource(R.string.settings_tool_review_engine_llm),
+        stringResource(R.string.settings_tool_review_engine_decision),
+    )
+    EtaSegmentedDropdownRow(
+        title = title,
+        icon = Icons.Rounded.Psychology,
+        items = labels,
+        selectedIndex = options.indexOf(engine).coerceAtLeast(0),
+        onItemSelected = { index ->
+            options.getOrNull(index)?.let { value ->
+                if (engine != value) {
+                    engine = value
+                    Prefs.setToolReviewEngine(value)
+                }
+            }
+        },
+        description = summary,
+    )
+}
+
+/** 审查模型单次调用的超时（1..20 秒）；改动立即生效，下一次调用即用新值。 */
+@Composable
+private fun ToolReviewTimeoutRow(title: String) {
+    var timeoutMs by remember { mutableStateOf(Prefs.toolReviewTimeoutMs()) }
+    val values = listOf(3000, 6000, 10000, 15000, 20000)
+    val labels = values.map {
+        stringResource(R.string.settings_tool_review_timeout_value, it / 1000)
+    }
+    EtaSegmentedDropdownRow(
+        title = title,
+        icon = Icons.Rounded.Timer,
+        items = labels,
+        selectedIndex = values.indexOf(timeoutMs).let { if (it < 0) 1 else it },
+        onItemSelected = { index ->
+            values.getOrNull(index)?.let { value ->
+                if (timeoutMs != value) {
+                    timeoutMs = value
+                    Prefs.putInt(Prefs.Keys.AGENT_TOOL_REVIEW_TIMEOUT_MS, value)
+                }
+            }
+        },
     )
 }
 

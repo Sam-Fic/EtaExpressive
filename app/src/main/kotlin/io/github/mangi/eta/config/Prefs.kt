@@ -110,12 +110,14 @@ internal object Prefs {
         const val MCP_EXPOSURE_ALWAYS = "always"
 
         /**
-         * 工具调用审查模式（四档，对齐 ZCode 的权限模式光谱）：
+         * 工具调用审查模式（五档，对齐 ZCode 的权限模式光谱 + Eta 自己的智能审查）：
          * - [TOOL_REVIEW_MODE_READONLY]：只读——非低风险调用直接拒绝（对齐 plan）；
          * - [TOOL_REVIEW_MODE_STRICT]：严格——中风险也逐次确认（不再享受会话内一次）；
          * - [TOOL_REVIEW_MODE_STANDARD]：标准（默认，原「危险操作确认」开关开启的行为）；
-         * - [TOOL_REVIEW_MODE_AUTO]：自动——中风险免确认，高/致命仍确认（对齐开关关闭；
-         *   高/致命的确认是安全底线，任何档位都不豁免）。
+         * - [TOOL_REVIEW_MODE_AUTO]：自动——中风险免确认，高/致命仍确认（旧开关关闭的行为）；
+         * - [TOOL_REVIEW_MODE_SMART]：智能审查——中风险以上调用交给一个独立模型
+         *   逐次判定 allow/deny（[AGENT_TOOL_REVIEW_ENGINE] 选择 LLM 或决策模型），
+         *   模型失败时回退标准档的规则确认，绝不会因审查失效直接放行。
          *
          * 每次调用实时读取，改设置立即生效（不同于渐进加载的新会话语义）：
          * 审查是安全边界，用户收紧时应立即拦住下一次调用。
@@ -125,6 +127,27 @@ internal object Prefs {
         const val TOOL_REVIEW_MODE_STRICT = "strict"
         const val TOOL_REVIEW_MODE_STANDARD = "standard"
         const val TOOL_REVIEW_MODE_AUTO = "auto"
+        const val TOOL_REVIEW_MODE_SMART = "smart"
+
+        /**
+         * 智能审查档的引擎（二选一，各自独立配置）：
+         * - [REVIEW_ENGINE_LLM]：独立 LLM 审查——普通对话模型经 [ModelFeatureCompletion]
+         *   输出结构化 JSON（allow/deny + 理由），配置见 [AGENT_TOOL_REVIEW_LLM_PROVIDER_ID] 等；
+         * - [REVIEW_ENGINE_DECISION]：decision 模型判断——复用判断模型的
+         *   `/v1/systemone` 客户端（[AgentDecisionModelClient]）与它的 provider/model/端点配置，
+         *   用一个 choice 题问 allow/deny，无需另配模型。
+         */
+        const val AGENT_TOOL_REVIEW_ENGINE = "agent_tool_review_engine"
+        const val REVIEW_ENGINE_LLM = "llm"
+        const val REVIEW_ENGINE_DECISION = "decision"
+
+        /** LLM 审查引擎的 provider/model（与压缩模型同款 picker，缺省时回退到当前对话模型）。 */
+        const val AGENT_TOOL_REVIEW_LLM_PROVIDER_ID = "agent_tool_review_llm_provider_id"
+        const val AGENT_TOOL_REVIEW_LLM_MODEL_ID = "agent_tool_review_llm_model_id"
+        /** LLM 审查引擎单次调用超时（毫秒）；过短会频繁回退，过长会卡住工具轮。 */
+        const val AGENT_TOOL_REVIEW_TIMEOUT_MS = "agent_tool_review_timeout_ms"
+        const val TOOL_REVIEW_TIMEOUT_DEFAULT_MS = 6000
+        const val TOOL_REVIEW_TIMEOUT_MAX_MS = 20000
 
         /**
          * 屏幕观察与 GUI 操作总开关：observe_screen、点击/长按/滑动/滚动、文本输入、
@@ -642,6 +665,32 @@ internal object Prefs {
     fun setToolReviewMode(mode: String) {
         putString(Keys.AGENT_TOOL_REVIEW_MODE, mode)
     }
+
+    /** 智能审查档的引擎（LLM / 决策模型）；未知值回退 LLM。 */
+    fun toolReviewEngine(): String =
+        getString(Keys.AGENT_TOOL_REVIEW_ENGINE, Keys.REVIEW_ENGINE_LLM)
+            .takeIf { it == Keys.REVIEW_ENGINE_DECISION } ?: Keys.REVIEW_ENGINE_LLM
+
+    fun setToolReviewEngine(engine: String) {
+        putString(Keys.AGENT_TOOL_REVIEW_ENGINE, engine)
+    }
+
+    /** LLM 审查引擎的 provider/model 记录 id；空表示回退到当前对话模型。 */
+    fun toolReviewLlmProviderId(): String =
+        getString(Keys.AGENT_TOOL_REVIEW_LLM_PROVIDER_ID)
+
+    fun toolReviewLlmModelId(): String =
+        getString(Keys.AGENT_TOOL_REVIEW_LLM_MODEL_ID)
+
+    fun setToolReviewLlmModel(providerId: String, modelId: String) {
+        putString(Keys.AGENT_TOOL_REVIEW_LLM_PROVIDER_ID, providerId)
+        putString(Keys.AGENT_TOOL_REVIEW_LLM_MODEL_ID, modelId)
+    }
+
+    /** 审查模型单次调用超时（毫秒），钳制在 1s..[Keys.TOOL_REVIEW_TIMEOUT_MAX_MS]。 */
+    fun toolReviewTimeoutMs(): Int =
+        getInt(Keys.AGENT_TOOL_REVIEW_TIMEOUT_MS, Keys.TOOL_REVIEW_TIMEOUT_DEFAULT_MS)
+            .coerceIn(1000, Keys.TOOL_REVIEW_TIMEOUT_MAX_MS)
 
     /** 关闭时压缩用当前对话模型；已选过自定义模型的旧配置视为开启。 */
     fun isCustomCompressModelEnabled(preferences: SharedPreferences? = localAgent): Boolean {

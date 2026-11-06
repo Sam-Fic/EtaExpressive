@@ -37,6 +37,7 @@ import io.github.mangi.eta.agent.skill.SkillRuntime
 import io.github.mangi.eta.agent.skill.PublicGitHubSkillSource
 import io.github.mangi.eta.agent.tool.AgentLocalTools
 import io.github.mangi.eta.agent.tool.AgentDangerousOperationPolicy
+import io.github.mangi.eta.agent.tool.AgentToolReviewCoordinator
 import io.github.mangi.eta.agent.tool.AssistantToolSwitches
 import io.github.mangi.eta.agent.tool.AgentToolRequirements
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
@@ -236,6 +237,28 @@ internal class AgentRuntimeRunExecutor(
             // 用来把「被决策收窄」与「用户关闭」区分成不同错误来源。
             val decisionPlanRef = java.util.concurrent.atomic.AtomicReference<
                 io.github.mangi.eta.agent.decision.AgentDecisionPlan?>(null)
+            // 智能审查档的模型裁决桥：这里才拿得到 ModelConfig / 控制器 / 会话上下文。
+            // 每次 run 注入一次（构造实参列表里不能写赋值语句），闭包捕获本次 run
+            // 的用户请求与配置；失败由策略回退规则确认。smartReview 是进程级 var，
+            // 多个 run 并发时以最后一次注入为准（结论按调用参数缓存，不影响正确性）。
+            AgentDangerousOperationPolicy.smartReview = { name, arguments, assessment ->
+                val recentRequest = request.history
+                    .asReversed()
+                    .firstOrNull { it.role == "user" && it.content.isNotBlank() }
+                    ?.content
+                    ?.take(1500)
+                    ?: request.prompt.take(1500)
+                AgentToolReviewCoordinator.review(
+                    toolName = name,
+                    argumentsJson = arguments,
+                    riskLevel = assessment.level.name,
+                    riskReasons = assessment.reasons,
+                    conversationContext = recentRequest,
+                    fallbackModelConfig = request.config,
+                    controller = runController,
+                    sessionId = request.effectiveModelSessionId,
+                )
+            }
             val executor = AgentLocalTools(
                 context = appContext, logger = AndroidAgentLogger, browserRunId = request.runId,
                 guiControl = guiRun,
