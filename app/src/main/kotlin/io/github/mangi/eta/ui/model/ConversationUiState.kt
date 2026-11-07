@@ -66,13 +66,14 @@ enum class ConversationModeUi {
 const val UNCATEGORIZED_FOLDER_ID: String = "\$uncategorized"
 
 /**
- * null = 「聊天」tab：包含所有对话；[UNCATEGORIZED_FOLDER_ID] = 未分类：仅未归入文件夹的对话；
+ * null = 「聊天」tab：包含所有对话（含调度台系统条目）；[UNCATEGORIZED_FOLDER_ID] = 未分类：
+ * 仅未归入文件夹的普通会话（调度台是系统级条目，不参与分类，不进未分类组）；
  * 其余为具体文件夹 id：仅该文件夹下的对话。
  */
 fun List<ConversationSummaryUi>.filterForFolder(selectedFolderId: String?): List<ConversationSummaryUi> =
     when (selectedFolderId) {
         null -> this
-        UNCATEGORIZED_FOLDER_ID -> filter { it.folderId.isNullOrBlank() }
+        UNCATEGORIZED_FOLDER_ID -> filter { it.folderId.isNullOrBlank() && !it.isDispatchConsole }
         else -> filter { it.folderId == selectedFolderId }
     }
 
