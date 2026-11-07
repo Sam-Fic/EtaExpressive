@@ -81,7 +81,8 @@ import kotlinx.coroutines.withContext
  * - 「私有工作区」分组把位置说明与当前 `/workspace` 路径合并成一行，取代原先割裂的
  *   「标题卡 + 路径卡」；
  * - 「公共目录访问」从顶栏菜单提到明面，成为带授权状态的分段行；
- * - 「工作区文件」分组承载目录内容，空态 / 加载态收进分段容器，导入动作交给右下角扩展 FAB；
+ * - 「工作区文件」分组承载目录内容；前进 / 后退时整组切成加载指示器，不残留上一层目录结构，
+ *   空态收进分段容器，导入动作交给右下角扩展 FAB；
  * - 文件操作走行尾「更多」按钮的 M3 Expressive 菜单（导出 / 删除）。
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -113,10 +114,10 @@ internal fun WorkspaceScreen(onBack: () -> Unit) {
     var path by rememberSaveable { mutableStateOf("") }
     var pendingExport by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<WorkspaceEntry?>(null) }
-    var entries by remember { mutableStateOf<List<WorkspaceEntry>>(emptyList()) }
+    // null = 目录正在列举（或尚未列举）。导航时立即置空，加载期间不再残留上一层条目。
+    var entries by remember { mutableStateOf<List<WorkspaceEntry>?>(null) }
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
-    var listing by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
     var publicAccess by remember { mutableStateOf(Environment.isExternalStorageManager()) }
     val accessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -131,7 +132,10 @@ internal fun WorkspaceScreen(onBack: () -> Unit) {
                 uris.forEach { if (store.importFile(it)) succeeded++ }
                 message = if (succeeded == uris.size) context.getString(R.string.capability_workspace_imported)
                 else context.getString(R.string.capability_workspace_partial_import, succeeded)
-                if (succeeded > 0) path = "imports"
+                if (succeeded > 0) {
+                    entries = null
+                    path = "imports"
+                }
                 revision++
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -174,7 +178,8 @@ internal fun WorkspaceScreen(onBack: () -> Unit) {
         }
     }
     LaunchedEffect(path, revision, linuxReady, distribution, backend) {
-        listing = true
+        // 列举开始前先作废旧目录内容：加载期整组只显示指示器，不残留上一层结构。
+        entries = null
         try {
             entries = if (linuxReady) {
                 val result = withContext(Dispatchers.IO) {
@@ -205,8 +210,6 @@ internal fun WorkspaceScreen(onBack: () -> Unit) {
         } catch (_: Exception) {
             entries = emptyList()
             message = context.getString(R.string.capability_workspace_failed)
-        } finally {
-            listing = false
         }
     }
 
@@ -256,12 +259,17 @@ internal fun WorkspaceScreen(onBack: () -> Unit) {
             path = path,
             entries = entries,
             busy = busy,
-            listing = listing,
             publicAccess = publicAccess,
             message = message,
             onRequestPublicAccess = { requestPublicAccess() },
-            onNavigateUp = { path = path.substringBeforeLast('/', "") },
-            onOpenDirectory = { target -> path = target },
+            onNavigateUp = {
+                entries = null
+                path = path.substringBeforeLast('/', "")
+            },
+            onOpenDirectory = { target ->
+                entries = null
+                path = target
+            },
             onExport = { entry -> requestExport(entry.path, entry.name) },
             onDelete = { entry -> requestDelete(entry.path, entry.name, entry.directory) },
         )
@@ -335,13 +343,15 @@ internal fun WorkspaceScreen(onBack: () -> Unit) {
  *
  * 分组统一走 [EtaSegmentedColumn]：16dp 页边距 + 13dp 组间距，标题取官方
  * `titleSmallEmphasized` primary 色，条目形状由分段列注入，与其余设置页保持同一套节奏。
+ *
+ * `entries == null` 表示目录正在列举：此时整组只显示 [EtaLoadingSlot]，连 `../` 行一起收起。
+ * 导航是用户主动操作，需要即时的状态反馈，因此不走短操作的 120ms 显示门控。
  */
 private fun LazyListScope.materialWorkspaceItems(
     context: Context,
     path: String,
-    entries: List<WorkspaceEntry>,
+    entries: List<WorkspaceEntry>?,
     busy: Boolean,
-    listing: Boolean,
     publicAccess: Boolean,
     message: String?,
     onRequestPublicAccess: () -> Unit,
@@ -443,109 +453,129 @@ private fun LazyListScope.materialWorkspaceItems(
         }
     }
 
-    // 组三：工作区文件 —— 目录内容；空态与加载态用分段容器承载。
+    // 组三：工作区文件 —— 目录内容；加载期整组切换为指示器，不残留上一层结构。
     item(key = "m3-files") {
         EtaSegmentedColumn(
             modifier = groupModifier,
             title = stringResource(R.string.capability_workspace_files),
         ) {
-            if (path.isNotBlank()) {
-                item(key = "m3-parent") {
-                    EtaSegmentedRow(
-                        onClick = onNavigateUp,
-                        enabled = !busy,
-                        leadingContent = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.DriveFileMove,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        content = {
-                            M3Text(
-                                text = "../",
-                                style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                            )
-                        },
-                        supportingContent = {
-                            M3Text(
-                                text = stringResource(R.string.capability_workspace_parent),
-                            )
-                        },
-                    )
-                }
-            }
-            if (entries.isEmpty()) {
-                item(key = "m3-empty") {
+            val currentEntries = entries
+            if (currentEntries == null) {
+                // 目录正在列举：整组只留指示器，连 `../` 行一起收起。
+                item(key = "m3-loading") {
                     EtaSegmentedItemContainer {
-                        // 本地目录首载通常几十毫秒：门控 120ms 后再显示，显示后至少保留 400ms；
-                        // 收尾时先保留指示器、不立刻切到空态，避免视觉重叠。
-                        val loading = listing || busy
-                        val showLoading = rememberEtaLoadingShown(loading)
-                        if (showLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 32.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                EtaLoadingSlot(
-                                    progress = null,
-                                    contained = true,
-                                    size = EtaDimens.BlockLoadingSize,
-                                )
-                            }
-                        } else if (!loading) {
-                            ListEmptyState(
-                                title = stringResource(R.string.capability_workspace_empty),
-                                summary = stringResource(R.string.capability_workspace_empty_summary),
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            EtaLoadingSlot(
+                                progress = null,
+                                contained = true,
+                                size = EtaDimens.BlockLoadingSize,
                             )
                         }
                     }
                 }
             } else {
-                entries.forEach { entry ->
-                    item(key = entry.path) {
+                if (path.isNotBlank()) {
+                    item(key = "m3-parent") {
                         EtaSegmentedRow(
-                            onClick = if (entry.directory) {
-                                { onOpenDirectory(entry.path) }
-                            } else {
-                                null
-                            },
+                            onClick = onNavigateUp,
                             enabled = !busy,
                             leadingContent = {
                                 Icon(
-                                    imageVector = if (entry.directory) {
-                                        Icons.Rounded.Folder
-                                    } else {
-                                        Icons.AutoMirrored.Rounded.InsertDriveFile
-                                    },
+                                    imageVector = Icons.AutoMirrored.Rounded.DriveFileMove,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             },
                             content = {
-                                M3Text(text = entry.name)
+                                M3Text(
+                                    text = "../",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                                )
                             },
                             supportingContent = {
                                 M3Text(
-                                    text = if (entry.directory) {
-                                        stringResource(R.string.capability_workspace_directory)
-                                    } else {
-                                        Formatter.formatShortFileSize(context, entry.size)
-                                    },
-                                )
-                            },
-                            trailingContent = {
-                                EtaFileActionsButton(
-                                    canExport = !entry.directory,
-                                    canDelete = true,
-                                    enabled = !busy,
-                                    onExport = { onExport(entry) },
-                                    onDelete = { onDelete(entry) },
+                                    text = stringResource(R.string.capability_workspace_parent),
                                 )
                             },
                         )
+                    }
+                }
+                if (currentEntries.isEmpty()) {
+                    item(key = "m3-empty") {
+                        EtaSegmentedItemContainer {
+                            // 导入 / 导出这类短操作仍走门控：显示延迟 120ms、最短可见 400ms，
+                            // 收尾时先保留指示器、不立刻切到空态，避免视觉重叠。
+                            val showLoading = rememberEtaLoadingShown(busy)
+                            if (showLoading) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 32.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    EtaLoadingSlot(
+                                        progress = null,
+                                        contained = true,
+                                        size = EtaDimens.BlockLoadingSize,
+                                    )
+                                }
+                            } else if (!busy) {
+                                ListEmptyState(
+                                    title = stringResource(R.string.capability_workspace_empty),
+                                    summary = stringResource(R.string.capability_workspace_empty_summary),
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    currentEntries.forEach { entry ->
+                        item(key = entry.path) {
+                            EtaSegmentedRow(
+                                onClick = if (entry.directory) {
+                                    { onOpenDirectory(entry.path) }
+                                } else {
+                                    null
+                                },
+                                enabled = !busy,
+                                leadingContent = {
+                                    Icon(
+                                        imageVector = if (entry.directory) {
+                                            Icons.Rounded.Folder
+                                        } else {
+                                            Icons.AutoMirrored.Rounded.InsertDriveFile
+                                        },
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                content = {
+                                    M3Text(text = entry.name)
+                                },
+                                supportingContent = {
+                                    M3Text(
+                                        text = if (entry.directory) {
+                                            stringResource(R.string.capability_workspace_directory)
+                                        } else {
+                                            Formatter.formatShortFileSize(context, entry.size)
+                                        },
+                                    )
+                                },
+                                trailingContent = {
+                                    EtaFileActionsButton(
+                                        canExport = !entry.directory,
+                                        canDelete = true,
+                                        enabled = !busy,
+                                        onExport = { onExport(entry) },
+                                        onDelete = { onDelete(entry) },
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
             }

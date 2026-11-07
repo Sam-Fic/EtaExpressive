@@ -74,7 +74,8 @@ import kotlinx.coroutines.withContext
  *
  * Material 3 Expressive 分支按设置页信息架构重排为分段列表：
  * - 「当前位置」分组承载等宽路径行（查看态时行尾挂文件操作按钮）；
- * - 「文件浏览」分组承载 `../`、目录条目、空态与加载态，条目操作走行尾「更多」菜单。
+ * - 「文件浏览」分组承载 `../`、目录条目、空态与加载态；目录前进 / 后退时整组切成加载指示器，
+ *   不残留上一层目录结构，条目操作走行尾「更多」菜单。
  */
 @Composable
 internal fun LinuxFilesScreen(
@@ -236,8 +237,17 @@ internal fun LinuxFilesScreen(
         pendingDelete = LinuxPendingDelete(path = path, name = name, directory = directory)
     }
     val onOpenFile: (String) -> Unit = { path -> openFilePath = path }
-    val onOpenDirectory: (String) -> Unit = { path -> currentPath = path }
-    val onNavigateUp: () -> Unit = { currentPath = parentLinuxPath(currentPath) }
+    // 与路径切换同帧作废旧条目：加载期只显示指示器，不残留上一层目录结构。
+    val onOpenDirectory: (String) -> Unit = { path ->
+        entries = null
+        listError = null
+        currentPath = path
+    }
+    val onNavigateUp: () -> Unit = {
+        entries = null
+        listError = null
+        currentPath = parentLinuxPath(currentPath)
+    }
 
     EtaScaffoldPage(
         title = stringResource(R.string.linux_files_title),
@@ -247,7 +257,11 @@ internal fun LinuxFilesScreen(
             TopBarIconButton(
                 icon = Icons.Rounded.Refresh,
                 contentDescription = stringResource(R.string.page_refresh_38108e),
-                onClick = { listRevision++ },
+                onClick = {
+                    entries = null
+                    listError = null
+                    listRevision++
+                },
                 enabled = installed && !busy && openFilePath == null,
                 shapes = IconButtonDefaults.shapes(),
             )
@@ -466,13 +480,16 @@ private fun LazyListScope.materialLinuxFileItems(
         item(key = "m3-list-notice") { MaterialGroupHint(text) }
     }
 
-    // 文件浏览：`../` + 目录条目 + 空态 / 加载态。
+    // 文件浏览：加载期整组只显示指示器；`../` + 目录条目 + 空态在列举结束后出现。
     item(key = "m3-files") {
         EtaSegmentedColumn(
             modifier = groupModifier,
             title = stringResource(R.string.linux_files_entry_title),
         ) {
-            if (currentPath != "/") {
+            val currentEntries = entries
+            val loading = listError == null && currentEntries == null
+            // 加载期连 `../` 行一起收起，避免残留上一层目录的骨架。
+            if (!loading && currentPath != "/") {
                 item(key = "m3-parent") {
                     EtaSegmentedRow(
                         onClick = onNavigateUp,
@@ -498,7 +515,6 @@ private fun LazyListScope.materialLinuxFileItems(
                     )
                 }
             }
-            val currentEntries = entries
             when {
                 listError != null -> item(key = "m3-list-error") {
                     EtaSegmentedItemContainer {
@@ -507,20 +523,19 @@ private fun LazyListScope.materialLinuxFileItems(
                 }
                 currentEntries == null -> item(key = "m3-list-loading") {
                     EtaSegmentedItemContainer {
-                        // 目录首载通常几十毫秒：门控 120ms 后再显示。
-                        EtaLoadingGate(visible = true) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 32.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                EtaLoadingSlot(
-                                    progress = null,
-                                    contained = true,
-                                    size = EtaDimens.BlockLoadingSize,
-                                )
-                            }
+                        // 目录导航是用户主动操作，指示器即时出现（不走短操作 120ms 门控），
+                        // 加载结束即切回内容，不给目录切换人为加 400ms 等待。
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            EtaLoadingSlot(
+                                progress = null,
+                                contained = true,
+                                size = EtaDimens.BlockLoadingSize,
+                            )
                         }
                     }
                 }

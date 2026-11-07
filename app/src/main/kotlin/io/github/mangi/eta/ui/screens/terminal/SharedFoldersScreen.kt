@@ -328,6 +328,8 @@ private fun SharedFolderPickerPage(
         val normalized = SharedFolderMounts.normalizeSourcePath(target) ?: "/"
         path = normalized
         pathInput = normalized
+        // 与路径切换同帧作废旧目录：加载期直接落到指示器，不残留上一层条目。
+        entries = null
         browseError = null
         formError = null
         if (!nameTouched) nameInput = SharedFolderMounts.defaultName(normalized)
