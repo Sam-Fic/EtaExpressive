@@ -102,6 +102,7 @@ import io.github.mangi.eta.ui.model.ToolGroupSwitch
 import io.github.mangi.eta.ui.model.ConversationFolderUi
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
 import io.github.mangi.eta.ui.model.PermissionHealthAction
+import io.github.mangi.eta.ui.model.allConversations
 import io.github.mangi.eta.ui.navigation.AgentNavigator
 import io.github.mangi.eta.ui.navigation.AppRoute
 import io.github.mangi.eta.ui.navigation.isKnownAppRoute
@@ -682,8 +683,10 @@ fun AgentAppRoot(
                             ?: server.name
                     }
             } else {
+                // 全量池查标题：pane.conversations 是文件夹筛选子集，回到调度台等跨文件夹
+                // 跳转后选中会话不在其中，查池外会话标题会变成空。
                 agentState.conversationPaneState.selectedConversationId?.let { id ->
-                    agentState.conversationPaneState.conversations.find { it.id == id }?.title
+                    agentState.conversationPaneState.allConversations.find { it.id == id }?.title
                 }
             },
             isConversationPaneOpen = conversationPaneOpen,

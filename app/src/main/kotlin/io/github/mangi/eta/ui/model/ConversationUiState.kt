@@ -76,6 +76,15 @@ fun List<ConversationSummaryUi>.filterForFolder(selectedFolderId: String?): List
         else -> filter { it.folderId == selectedFolderId }
     }
 
+/**
+ * 「当前选中会话」的全量查找池。[conversations] 是按 [ConversationPaneUiState.selectedFolderId]
+ * 筛选后的可见子集，而选中会话可以不属于当前浏览的文件夹（回到调度台、跨文件夹跳转等）：
+ * 顶栏身份判据、标题这类「选中会话是谁」的问题必须查全量，否则查不到会把调度台误判成普通会话。
+ * 回收站成员不进池：选中会话恒为未删除状态。
+ */
+val ConversationPaneUiState.allConversations: List<ConversationSummaryUi>
+    get() = historyConversations.ifEmpty { conversations }
+
 /** Always derive from the complete folder list, never from the previous search results. */
 internal fun ConversationPaneUiState.searchResults(): List<ConversationSummaryUi> {
     val query = searchQuery.trim()

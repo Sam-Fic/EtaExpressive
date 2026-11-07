@@ -1524,9 +1524,10 @@ private fun Material3ConversationRow(
                     onDismissRequest = { showActionMenu = false },
                 ) {
                     EtaMenuGroup(index = 0, count = 1) {
-                        // 调度台是系统条目：显示名固定，但重命名仍改真实标题；取消置顶与删除入口不提供。
+                        // 调度台是系统条目：显示名固定，但重命名仍改真实标题；取消置顶、
+                        // 移动到分类与删除入口不提供（分类归属是普通会话的整理属性）。
                         val systemEntry = conversation.isDispatchConsole
-                        val actionCount = if (systemEntry) 4 else 6
+                        val actionCount = if (systemEntry) 3 else 6
                         var actionIndex = 0
                         DrawerActionMenuItem(
                             index = actionIndex++,
@@ -1573,16 +1574,18 @@ private fun Material3ConversationRow(
                                 onExportAnalysis()
                             },
                         )
-                        DrawerActionMenuItem(
-                            index = actionIndex++,
-                            count = actionCount,
-                            text = stringResource(R.string.drawer_move_to_folder),
-                            icon = Icons.Rounded.Folder,
-                            onClick = {
-                                showActionMenu = false
-                                onMoveToFolder()
-                            },
-                        )
+                        if (!systemEntry) {
+                            DrawerActionMenuItem(
+                                index = actionIndex++,
+                                count = actionCount,
+                                text = stringResource(R.string.drawer_move_to_folder),
+                                icon = Icons.Rounded.Folder,
+                                onClick = {
+                                    showActionMenu = false
+                                    onMoveToFolder()
+                                },
+                            )
+                        }
                         if (!systemEntry) {
                             DrawerActionMenuItem(
                                 index = actionIndex,

@@ -45,6 +45,7 @@ import io.github.mangi.eta.ui.components.captureForTopBar
 import io.github.mangi.eta.ui.components.rememberTopBarBackdrop
 import io.github.mangi.eta.ui.model.ConversationPaneUiState
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
+import io.github.mangi.eta.ui.model.allConversations
 import io.github.mangi.eta.ui.navigation.AppRoute
 import io.github.mangi.eta.ui.adaptive.EtaTopBarBackButton
 import androidx.compose.material3.Icon
@@ -188,10 +189,11 @@ internal fun AgentAppShell(
             topBar = {
                 if (currentRoute !is AppRoute.Settings) {
                     TopBarBackdrop(backdrop) {
-                        // 顶栏菜单「删除当前会话」的可用性：pane.conversations 为全量摘要（未经筛选），
-                        // 选中 id 在其中能查到才允许删除；删除走侧栏同一 onConversationDelete 确认弹窗链路。
+                        // 顶栏菜单「删除当前会话」的可用性与调度台身份判据：从全量摘要池查
+                        // （pane.conversations 是文件夹筛选后的可见子集，回到调度台等跨文件夹
+                        // 跳转后选中会话不在其中，查不到会把调度台误判成普通会话，右槽三分支全落空）。
                         val selectedConversation = conversationPaneState?.let { pane ->
-                            pane.selectedConversationId?.let { id -> pane.conversations.find { it.id == id } }
+                            pane.selectedConversationId?.let { id -> pane.allConversations.find { it.id == id } }
                         }
                         // 调度台是系统条目：不可删除，顶栏删除入口也不显示。
                         val currentDeletableConversation = selectedConversation?.takeIf { !it.isDispatchConsole }
@@ -207,7 +209,7 @@ internal fun AgentAppShell(
                             onRenameCurrentConversation = {
                                 val pane = conversationPaneState
                                 val conversation = pane?.selectedConversationId?.let { id ->
-                                    pane.conversations.find { it.id == id }
+                                    pane.allConversations.find { it.id == id }
                                 }
                                 if (conversation != null) onConversationRename(conversation)
                             },

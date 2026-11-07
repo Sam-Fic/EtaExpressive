@@ -556,6 +556,12 @@ internal class AgentAppState(
             conversationPinned = conversationPinned + consoleId
             repaired = true
         }
+        // 调度台不参与分类：藏「移动到分类」入口前的版本允许把它移进文件夹，
+        // 这里清掉历史遗留归属，避免它出现在某个文件夹的筛选视图里。
+        if (consoleId in conversationFolderIds) {
+            conversationFolderIds = conversationFolderIds - consoleId
+            repaired = true
+        }
         // 标题是真实会话属性：这里只修身份与保护状态，绝不改标题，也不动 updatedAt。
         if (repaired) {
             refreshConversationSummaries()
@@ -3240,6 +3246,16 @@ internal class AgentAppState(
     fun moveConversationToFolder(conversationId: String, folderId: String?) {
         if (rejectConversationArchiveMutation(protectStoppingRun = false)) return
         if (conversationId !in conversationsById) return
+        // 调度台是系统条目：分类归属是普通会话的整理属性，一律不动（入口已在侧栏藏掉，
+        // 这里防的是历史遗留归属与其他调用方）；顺带幂等清掉残留条目。
+        if (isDispatchConsoleConversation(conversationId)) {
+            if (conversationId in conversationFolderIds) {
+                conversationFolderIds = conversationFolderIds - conversationId
+                refreshConversationSummaries()
+                persistConversations()
+            }
+            return
+        }
         conversationFolderIds = if (folderId.isNullOrBlank()) {
             conversationFolderIds - conversationId
         } else {
@@ -3277,7 +3293,9 @@ internal class AgentAppState(
                 withConversationArchive {
                     val source = conversationsById
                     val timestamps = conversationUpdatedAt
-                    // 调度台是系统条目：清空全部会话时保留它（内容、标题、文件夹、置顶状态都留着）。
+                    // 调度台是系统条目：清空全部会话时保留它（内容、标题、置顶状态都留着）。
+                    // 文件夹归属不保留：调度台不参与分类，冷启动 ensureDispatchConsoleSelected
+                    // 也会幂等清理历史遗留条目。
                     val consoleId = dispatchConsoleId()?.takeIf { it in source }
                     val ids = source.keys.filter { it != consoleId }
                     if (ids.isEmpty()) return@withConversationArchive
@@ -3309,7 +3327,6 @@ internal class AgentAppState(
                     val keptTitle = consoleId?.let {
                         conversationTitles[it]?.takeIf(String::isNotBlank) ?: dispatchConsoleTitle()
                     }
-                    val keptFolderId = consoleId?.let { conversationFolderIds[it] }
                     val keptMarkerIds = consoleId?.takeIf { it in conversationCompletionMarkers }?.let { setOf(it) } ?: emptySet()
                     // Commit before deleting drafts/images or changing UI. Once committed,
                     // cancellation must not leave UI representing rows that no longer exist.
@@ -3320,7 +3337,7 @@ internal class AgentAppState(
                             conversationsById = if (consoleId != null && keptState != null) mapOf(consoleId to keptState) else emptyMap(),
                             titles = consoleId?.let { mapOf(it to (keptTitle ?: "")) } ?: emptyMap(),
                             updatedAt = consoleId?.let { mapOf(it to (keptUpdatedAt ?: 0L)) } ?: emptyMap(),
-                            folderIds = consoleId?.let { id -> keptFolderId?.let { mapOf(id to it) } } ?: emptyMap(),
+                            folderIds = emptyMap(),
                             pinnedIds = consoleId?.let { setOf(it) } ?: emptySet(),
                             completionMarkerIds = keptMarkerIds,
                             folders = conversationFolders,
@@ -3342,7 +3359,7 @@ internal class AgentAppState(
                             conversationTitles = consoleId?.let { mapOf(it to (keptTitle ?: "")) } ?: emptyMap()
                             conversationUpdatedAt = consoleId?.let { mapOf(it to (keptUpdatedAt ?: 0L)) } ?: emptyMap()
                             conversationCreatedAt = consoleId?.let { id -> keptCreatedAt?.let { mapOf(id to it) } } ?: emptyMap()
-                            conversationFolderIds = consoleId?.let { id -> keptFolderId?.let { mapOf(id to it) } } ?: emptyMap()
+                            conversationFolderIds = emptyMap()
                             conversationPinned = consoleId?.let { setOf(it) } ?: emptySet()
                             conversationCompletionMarkers = keptMarkerIds
                             conversationDeletedAt = conversationDeletedAt - ids
