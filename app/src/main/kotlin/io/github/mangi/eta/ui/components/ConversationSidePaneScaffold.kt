@@ -201,13 +201,21 @@ private object DrawerMetrics {
     const val SettlePositionalThreshold = 0.32f
     // 临界阻尼（无回弹）。全屏抽屉越过打开锚点会露出底下的主页，所以收敛不做回弹。
     const val SettleDampingRatio = Spring.DampingRatioNoBouncy
-    // 松手收敛弹簧的刚度随甩动速度在 Slow..Fast 之间插值：
-    // 慢拖轻放用低刚度（柔和靠岸），快甩用高刚度（迅速到位，但仍是减速落地而不是硬截停）。
-    const val SettleStiffnessSlow = 520f
-    const val SettleStiffnessFast = 1600f
-    // 刚度插值对应的松手速度区间（dp/s）：低于 Soft 一律最软，高于 Firm 一律最硬。
-    const val SettleSoftVelocityDp = 100f
-    const val SettleFirmVelocityDp = 2000f
+    // 松手收敛弹簧的刚度：单一低刚度，同 miuix 导航手势提交收敛
+    // （top.yukonga.miuix.kmp.nav.runtime.NavDriverSpec.STIFFNESS，damping=1 配套）。
+    // ω=√146≈12.1/s：整屏收敛九成位移约 320ms（慢放），残程 <1dp 后动画停机约 680ms，
+    // 与 500ms 导航转场同一档体感；
+    // 松手瞬间速度与手指连续，随后可感加速、长减速靠岸——「加减速感」的来源。
+    // 早期版本按甩动速度把刚度插值到 520..1600，可视段被压到 100~170ms、减速段不可感知，
+    // 读起来是匀速直线（作者实测反馈「太线性」）；快甩改由 seed 速度携带（见
+    // DrawerSettleSpringSpec 的封顶），不靠加刚度提速。整体偏慢时的唯一旋钮：上调到 200..250。
+    const val SettleStiffness = 146f
+    // 弹簧停机阈值（收敛值的单位）：残程小于它就停止动画并置 settled。
+    // miuix NavDriverSpec.VISIBILITY_THRESHOLD = 0.0025（步长单位）；按整屏 384dp 折算约
+    // 0.96dp，取整 1dp。不加这项 spring 默认 0.01 值单位——窄屏 px 下残程 1% 要爬近 1s，
+    // isAnimationRunning 迟迟不落、visible 回写被拖住。宽屏动画值是 progress（0..1），
+    // 调用方按 1dp / paneWidth 换算传入，两边同一语义。（Dp 不能作 const val，用普通 val。）
+    val SettleVisibilityThresholdDp = 1.dp
     // 临界阻尼弹簧的初始速度超过 ω·剩余距离就会越过锚点；留 8% 余量，保证不露底。
     const val SettleVelocityHeadroom = 0.92f
     val PaneHorizontalPadding = 16.dp
@@ -630,7 +638,12 @@ private fun WideSidePaneLayout(
                             scope.launch {
                                 progress.animateTo(
                                     targetValue = target,
-                                    animationSpec = DrawerSettleSpringSpec(density.density),
+                                    // 停机阈值换算成 progress 单位：1dp / paneWidth，语义与窄屏一致。
+                                    animationSpec = DrawerSettleSpringSpec(
+                                        visibilityThreshold = with(density) {
+                                            DrawerMetrics.SettleVisibilityThresholdDp.toPx() / paneWidthPx
+                                        },
+                                    ),
                                     initialVelocity = velocityFraction,
                                 )
                                 // 停稳后再回写展开状态：动画中间改会让整页重组，看着像顿一下。
@@ -1626,22 +1639,32 @@ private val DockedPaneShape = AbsoluteRoundedCornerShape(
 )
 
 /**
- * 松手后的收敛弹簧：刚度随甩动速度变化。
+ * 松手后的收敛弹簧：单一低刚度、临界阻尼、携带松手速度。
  *
- * 慢拖轻放用低刚度，柔和靠岸；快甩用高刚度，更快到位。
- * 不管哪种速度，弹簧都会把残余速度平滑衰减到 0 再贴住锚点，
- * 而不是「借惯性冲到锚点后被硬截停」——后者正是高速甩动时发直、发硬的来源。
+ * 物理对齐本仓 miuix 导航的手势提交收敛（`NavMotion.commit` =
+ * `NavSettleSpec.Spring(dampingRatio=1, stiffness=146, clampOvershoot=true)`，见
+ * miuix-nav `NavDriver.kt` 的 NavDriverSpec 与 `NavMotion.kt`）：
  *
- * 临界阻尼下初始速度超过 ω·剩余距离就会越过锚点（全屏抽屉越过 0 位会露出主页），
- * 所以按剩余距离给初始速度设了上限。
+ * - 临界阻尼解为 `d(t) = (D + (ωD − u0)·t)·e^(−ωt)`（D = 剩余距离，u0 = 朝目标的速度）。
+ *   仅当 `u0 > ω·D` 时线性项转负、越过锚点再弹回，所以松手速度按
+ *   [DrawerMetrics.SettleVelocityHeadroom]·ω·D 封顶：慢放原速靠岸，快甩借自身速度提前
+ *   到达而不是靠加刚度提速——后者会把减速段压到感知不到，整段读成匀速直线。
+ * - ω 与动画值的单位无关，封顶公式在值单位下无量纲：窄屏（DrawerState，单位 px）与
+ *   宽屏（progress 0..1）共用同一实现，宽屏传 `initialVelocity = velocityFraction` 也
+ *   因此是正确单位（早期实现按 px/s 解释 fraction 导致单位错位，宽屏永远落在最软档）。
+ * - 单位不同的只有停机阈值 [visibilityThreshold]（值单位）：窄屏传 1dp 折算的 px，
+ *   宽屏传 1dp/paneWidth 折算的 progress，见 [DrawerMetrics.SettleVisibilityThresholdDp]。
+ *
+ * 不用 tween：miuix `NavSettleEasing` KDoc 明说 gesture handoff 必须 seed 释放速度，
+ * tween 从零速起步会在松手瞬间造成速度断崖。不走 `animateToWithDecay` 的衰减路径：
+ * 速度越快被截停时残速越大（见 [DrawerNoFlingDecay]）。
  */
 internal class DrawerSettleSpringSpec(
-    private val density: Float,
+    private val visibilityThreshold: Float,
 ) : FiniteAnimationSpec<Float> {
     override fun <V : AnimationVector> vectorize(
         converter: TwoWayConverter<Float, V>,
     ): VectorizedFiniteAnimationSpec<V> = object : VectorizedFiniteAnimationSpec<V> {
-        private var resolvedStiffness = Float.NaN
         private var resolvedVelocity = Float.NaN
         private var resolvedVelocityVector: V? = null
         private var delegate: VectorizedAnimationSpec<V>? = null
@@ -1655,26 +1678,20 @@ internal class DrawerSettleSpringSpec(
             val target = converter.convertFromVector(targetValue)
             val distance = abs(target - from)
             val rawVelocity = converter.convertFromVector(initialVelocity).takeIf { it.isFinite() } ?: 0f
-            val speedDp = abs(rawVelocity) / density
-            val speedFraction = (
-                (speedDp - DrawerMetrics.SettleSoftVelocityDp) /
-                    (DrawerMetrics.SettleFirmVelocityDp - DrawerMetrics.SettleSoftVelocityDp)
-                ).coerceIn(0f, 1f)
-            val stiffness = DrawerMetrics.SettleStiffnessSlow +
-                (DrawerMetrics.SettleStiffnessFast - DrawerMetrics.SettleStiffnessSlow) * speedFraction
-            val velocityLimit = DrawerMetrics.SettleVelocityHeadroom * sqrt(stiffness) * distance
+            // 无过冲封顶（值单位）：u0 ≤ headroom·ω·D。
+            val velocityLimit = DrawerMetrics.SettleVelocityHeadroom * sqrt(DrawerMetrics.SettleStiffness) * distance
             val velocity = if (abs(rawVelocity) > velocityLimit) {
                 if (rawVelocity < 0f) -velocityLimit else velocityLimit
             } else {
                 rawVelocity
             }
-            if (delegate == null || stiffness != resolvedStiffness || velocity != resolvedVelocity) {
-                resolvedStiffness = stiffness
+            if (delegate == null || velocity != resolvedVelocity) {
                 resolvedVelocity = velocity
                 resolvedVelocityVector = converter.convertToVector(velocity)
                 delegate = spring<Float>(
                     dampingRatio = DrawerMetrics.SettleDampingRatio,
-                    stiffness = stiffness,
+                    stiffness = DrawerMetrics.SettleStiffness,
+                    visibilityThreshold = visibilityThreshold,
                 ).vectorize(converter)
             }
             return delegate!!
@@ -1773,7 +1790,7 @@ private object DrawerNoFlingDecay : DecayAnimationSpec<Float> {
  * `DismissibleNavigationDrawer` 的 `SideEffect` 每次组合都会把 DrawerState 自己的
  * open/close/anchored 三个 spec 覆写回官方值，但这三个入口我们都不依赖：程序化开合
  * 全部显式传 tween，手势松手读的是 anchored state 上这四项，M3 从不触碰。
- * 宿主每次组合重设一次，顺带跟上 density 变化（弹簧刚度按 dp/s 换算）。
+ * 宿主每次组合重设一次，顺带跟上 density 变化（速度阈值与弹簧停机阈值按 dp 折算 px）。
  *
  * 每一步都单独 `runCatching`：任何一项反射失败就跳过该项，整体退回官方行为，不会崩。
  */
@@ -1835,7 +1852,10 @@ private object DrawerMotionSetters {
 
     fun apply(state: DrawerState, density: Density) {
         val anchored = anchoredField?.get(state) ?: return
-        val settleSpec = DrawerSettleSpringSpec(density.density)
+        // 窄屏动画值单位是 px，停机阈值直接取 1dp 的像素值。
+        val settleSpec = DrawerSettleSpringSpec(
+            visibilityThreshold = with(density) { DrawerMetrics.SettleVisibilityThresholdDp.toPx() },
+        )
         // 每一项单独兜底：某个 setter 缺失/签名漂移时，其余项仍然生效。
         runCatching { positionalSetter?.invoke(anchored, positionalThresholdProxy()) }
         runCatching { velocitySetter?.invoke(anchored, velocityThresholdProxy(density)) }
