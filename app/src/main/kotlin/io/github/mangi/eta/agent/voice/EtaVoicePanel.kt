@@ -195,21 +195,26 @@ internal object EtaScreenContextStateReducer {
 internal enum class ScreenContextPreset(
     @StringRes val labelRes: Int,
     @StringRes val promptRes: Int,
+    /** Runtime 侧预设 id：让目录构建按快捷功能直下工具，不靠解析 prompt 文案判断。 */
+    val toolPreset: String,
     val icon: ImageVector,
 ) {
     TRANSLATE(
         labelRes = R.string.voice_screen_preset_translate,
         promptRes = R.string.voice_screen_preset_translate_prompt,
+        toolPreset = AgentVoiceToolPresets.SCREEN_TRANSLATE,
         icon = Icons.Rounded.Translate,
     ),
     ADD_CALENDAR(
         labelRes = R.string.voice_screen_preset_calendar,
         promptRes = R.string.voice_screen_preset_calendar_prompt,
+        toolPreset = AgentVoiceToolPresets.SCREEN_CALENDAR,
         icon = Icons.Rounded.CalendarMonth,
     ),
     ORGANIZE(
         labelRes = R.string.voice_screen_preset_organize,
         promptRes = R.string.voice_screen_preset_organize_prompt,
+        toolPreset = AgentVoiceToolPresets.SCREEN_ORGANIZE,
         icon = Icons.Rounded.Summarize,
     ),
 }

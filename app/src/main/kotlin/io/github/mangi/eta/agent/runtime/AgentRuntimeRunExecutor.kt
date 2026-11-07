@@ -13,6 +13,7 @@ import io.github.mangi.eta.agent.decision.AgentDecisionRouter
 import io.github.mangi.eta.agent.browser.ChildBrowserSession
 import io.github.mangi.eta.agent.dispatch.AgentDispatchPayload
 import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
+import io.github.mangi.eta.agent.model.AgentCalendarIntent
 import io.github.mangi.eta.agent.model.AgentDispatchToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
@@ -43,6 +44,7 @@ import io.github.mangi.eta.agent.tool.AgentToolRequirements
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
 import io.github.mangi.eta.agent.tool.PendingSkillConflictCapabilityParser
 import io.github.mangi.eta.agent.tool.ToolExecutionDecision
+import io.github.mangi.eta.agent.voice.AgentVoiceToolPresets
 import io.github.mangi.eta.agent.voice.EtaAssistantOverlayService
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
@@ -216,6 +218,31 @@ internal class AgentRuntimeRunExecutor(
                 Prefs.resolveToolLoadingMode(request.effectiveModelSessionId)
             }.getOrDefault(Prefs.Keys.TOOL_LOADING_MODE_SEARCH)
             val toolLoadingFullCatalog = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_OFF
+            // 日程任务预热：运行建立阶段按本轮指令做确定性判定，所有入口同一条链路。
+            // 显式快捷功能预设优先；命中关键词时要求个人数据开关开着，且日历读写权限或 root
+            // 至少有一个可用，否则不预热（避免绕过开关/权限，也避免下发空目录）。
+            val voicePreset = AgentVoiceToolPresets.resolve(request.toolPreset)
+            val calendarIntentHit = voicePreset == null && AgentCalendarIntent.matches(request.prompt)
+            val calendarGroupUsable = calendarIntentHit && allowPersonal && runCatching {
+                AgentToolCapabilities.capture(appContext)
+            }.getOrNull()?.let { it.rootAvailable || it.calendarReadable || it.calendarWritable } == true
+            val presetToolNames: Set<String>? = voicePreset?.toolNames
+                ?: AgentCalendarIntent.toolNames.takeIf { calendarGroupUsable }
+            val presetOpenedGroups: Set<String>? = voicePreset?.openedGroups
+                ?: AgentCalendarIntent.openedGroups.takeIf { calendarGroupUsable }
+            val presetRun = presetToolNames != null
+            // 日程相关预设（含关键词命中）在请求发起这一刻取真实系统时间，跨轮复用同一份，
+            // 让模型直接换算「明天下午三点」，不必先调取时工具。
+            val presetRunAt = if (voicePreset?.injectCurrentTime == true || calendarGroupUsable) {
+                java.time.Instant.now()
+            } else {
+                null
+            }
+            // 命中日程但目录实际为空（工具被单独禁用等）时安全退化回普通对话；
+            // 纯对话预设（翻译/整理）保持零工具，不退化。
+            val presetFallbackWhenEmpty = voicePreset?.injectCurrentTime == true || calendarGroupUsable
+            // 这里只表达会话档位；预设运行时由目录层按 preset 非空自行关闭 tools_search。
+            // 这样命中日程但目录为空退化回普通对话时，仍保留原有的搜索能力。
             val toolLoadingSearchEnabled = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_SEARCH
             val mcpDeferred = runCatching { Prefs.mcpToolExposureDeferred() }.getOrDefault(true)
             val mcpProjection: AgentModelClient.McpToolProjection? =
@@ -626,7 +653,12 @@ internal class AgentRuntimeRunExecutor(
                 deviceTools = allowDevice && request.config.deviceTools,
                 personalTools = allowPersonal && request.config.personalTools,
             )
-            val decisionPlan = AgentDecisionRouter.route(request, effectiveConfig, AndroidAgentLogger)
+            // 日程预热运行不跑判断模型：工具集已由预设/关键词确定，再收窄只会让模型看不到工具。
+            val decisionPlan = if (presetRun) {
+                null
+            } else {
+                AgentDecisionRouter.route(request, effectiveConfig, AndroidAgentLogger)
+            }
             decisionPlanRef.set(decisionPlan)
             // M4：只观测「决策没选、却实际执行」的延迟组；降级/续跑 overlay 内部会自动跳过。
             val decisionMismatch = decisionPlan?.let { plan ->
@@ -657,6 +689,14 @@ internal class AgentRuntimeRunExecutor(
                 config = effectiveConfig,
                 // 决策 overlay：收窄 allowed / 预开组 / 闲聊关段都在 complete 内部读取。
                 decision = decisionPlan,
+                // 日程预设：非 null 时目录只保留这些工具（空集 = 零工具纯对话）；
+                // 预开组只用于提示里的能力段落，不影响普通对话。
+                presetToolNames = presetToolNames,
+                presetOpenedGroups = presetOpenedGroups,
+                // 预设运行发起时刻：日程预设/关键词命中时非 null，用于在提示里注入当前本地时间。
+                presetRunAt = presetRunAt,
+                // 命中日程但日历目录实际为空 → 安全退回普通对话（不动纯对话预设）。
+                presetFallbackWhenEmpty = presetFallbackWhenEmpty,
                 sessionId = request.effectiveModelSessionId,
                 capabilitiesProvider = { AgentToolCapabilities.captureForRound(appContext).copy(virtualDisplay = runVirtualDisplay()) },
                 // 延迟工具域：tools_use_group 成功后由执行器累积，下一轮重建目录时生效。

@@ -129,6 +129,16 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     private var backInvokedDispatcher: OnBackInvokedDispatcher? = null
     private var backInvokedCallback: OnBackInvokedCallback? = null
     private var runJob: Job? = null
+
+    /**
+     * 对话运行的作用域：独立于浮窗 UI 生命周期。
+     *
+     * 关闭浮窗只应结束 UI 承载，不应中断已经在 Runtime 中推进的对话。因此 run 不使用
+     * [scope]（它随 Service 销毁被取消），而由每次运行自建的 runScope 承载；只有显式
+     * 停止（[stopCurrentRun]）才取消它，运行结束（含浮窗已关闭的情况）会在回执结果后
+     * 自行回收，结果由 Runtime 归档后进入应用内会话历史。
+     */
+    private var runScope: CoroutineScope? = null
     private var entryCaptureJob: Job? = null
     private var activeRunId: String? = null
     private var entryGeneration = 0L
@@ -201,7 +211,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         entryCaptureJob?.cancel()
         entryCaptureJob = null
         screenContextAttachment = null
-        cancelCurrentRun()
+        // 关闭浮窗只结束 UI 承载，不打断正在 Runtime 中推进的对话：运行协程挂在独立的
+        // runScope 上，会在结果回执后自行回收；只有显式停止（stopCurrentRun）才取消运行。
         // onCreate 之前就被销毁（例如启动即失败）时这些对象还不存在，不能直接访问。
         if (::voiceController.isInitialized) voiceController.stop()
         removeWindow()
@@ -646,7 +657,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
-    private fun submitPrompt(prompt: String) {
+    private fun submitPrompt(prompt: String, toolPreset: String = "") {
         val normalized = prompt.trim()
         if (normalized.isBlank() || activeRunId != null) return
         val attachment = screenContextAttachment.takeIf { uiState.screenContext.selected }
@@ -675,7 +686,10 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             ),
         )
         updateSoftInput(visible = false)
-        runJob = scope.launch {
+        // 本次运行使用独立作用域：关闭浮窗后 Service 的 scope 会被取消，但对话必须继续。
+        val runScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        this.runScope = runScope
+        val job = runScope.launch {
             // 屏幕上下文图片在前，用户附件图片 / 视频在后，与应用内发送路径的顺序一致。
             val runImages = attachment?.let { listOf(it.image) }.orEmpty() +
                 withContext(Dispatchers.IO) {
@@ -692,10 +706,20 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             val result = runtimeClient.run(
                 request = AgentRuntimeWire.RunRequest(
                     runId = runId,
+                    // 与应用内请求对齐：同一套 turn/session 标识、助手、历史状态与上下文计量。
+                    // 语音没有云端回执，calibratedInputTokens 保持 null，等价于应用内「无回执」
+                    // 分支；allowUnmeasuredContextSend 同样按该分支置 true。
+                    turnId = runId,
+                    assistantId = config.assistantId,
                     prompt = runtimePrompt,
                     config = config,
                     images = runImages,
                     history = conversationHistory,
+                    historyAlreadyCompacted = true,
+                    modelSessionId = conversationKey,
+                    allowUnmeasuredContextSend = true,
+                    // 空串 = 普通对话；快捷功能预设由 Runtime 选择目录构建策略。
+                    toolPreset = toolPreset,
                     handoff = AgentRuntimeWire.EntryHandoff(
                         id = "$conversationKey:$runId",
                         source = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
@@ -739,6 +763,14 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     }
                 }
             }
+        }
+        runJob = job
+        job.invokeOnCompletion {
+            // 运行结束（无论浮窗是否已经关闭）都回收本次运行独占的作用域。
+            if (this@EtaAssistantOverlayService.runScope === runScope) {
+                this@EtaAssistantOverlayService.runScope = null
+            }
+            runScope.cancel()
         }
     }
 
@@ -1093,6 +1125,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             requestRuntimeCancellation(runId)
             runJob?.cancel()
             runJob = null
+            runScope?.cancel()
+            runScope = null
             uiState = uiState.copy(
                 phase = EtaVoicePhase.READY,
                 status = EtaVoiceStatus.Stopped,
@@ -1114,6 +1148,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         requestRuntimeCancellation(runId)
         runJob?.cancel()
         runJob = null
+        runScope?.cancel()
+        runScope = null
     }
 
     private fun requestRuntimeCancellation(runId: String) {
@@ -1175,7 +1211,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         uiState = uiState.copy(
             screenContext = uiState.screenContext.copy(selected = true),
         )
-        submitPrompt(getString(preset.promptRes))
+        submitPrompt(getString(preset.promptRes), toolPreset = preset.toolPreset)
     }
 
     private fun removeScreenContext() {
@@ -1265,7 +1301,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         entryGeneration++
         entryCaptureJob?.cancel()
         entryCaptureJob = null
-        cancelCurrentRun()
+        // 关闭浮窗只结束 UI 承载：把运行与 UI 解绑但不取消，对话继续在 Runtime 中推进，
+        // 结果由 Runtime 归档并进入应用内历史。
+        activeRunId = null
         // 浮窗关闭即收声：自动朗读不跨浮窗生命周期继续。
         ReplyReadAloudController.stop()
         scope.launch(Dispatchers.Main.immediate) {

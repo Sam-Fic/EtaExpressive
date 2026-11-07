@@ -145,6 +145,26 @@ internal object AgentModelClient {
          * 只读本参数，不写回 Prefs；跨轮通过 [initialOpenedGroups] 与每轮重建保持一致。
          */
         decision: AgentDecisionPlan? = null,
+        /**
+         * 语音快捷功能预设：非 null 时目录只保留这些工具（空集 = 零工具纯对话）。
+         * 与 [decision] 互斥：预设运行在 Runtime 侧不产生决策 overlay。
+         */
+        presetToolNames: Set<String>? = null,
+        /**
+         * 预设运行视为已打开的延迟组；非 null 时替代历史/决策推出来的初始组集合。
+         * 只影响目录与提示里的组可用性，不改变后续轮次的工具调用恢复。
+         */
+        presetOpenedGroups: Set<String>? = null,
+        /**
+         * 预设运行发起时刻；非 null 时在系统提示里注入该时刻的本地时间、时区与
+         * 相对日期换算口径（语音「创建屏幕日程」免去取时间往返）。
+         */
+        presetRunAt: java.time.Instant? = null,
+        /**
+         * 命中日程关键词（非显式零工具预设）时置 true：若预设工具在能力投影后实际为空，
+         * 本轮退回普通对话（正常目录 + 正常渐进加载），而不是退化成零工具纯对话。
+         */
+        presetFallbackWhenEmpty: Boolean = false,
     ): ModelResponse.Text {
         config.validate()
         val initialCapabilities = capabilitiesProvider()
@@ -192,11 +212,11 @@ internal object AgentModelClient {
         // 而怀疑参数没有送达。
         // 动态延迟组（MCP server）：run 内冻结，目录、索引、解锁与恢复四处共用。
         val mcpGroups = mcpProjection?.deferredGroups().orEmpty()
-        val initialOpenedGroups = run {
-            // 跨 run 恢复的三个来源：历史工具名反推（静态组 + MCP server 组）、
-            // 压缩边界标记（工具调用被压缩掉时的兜底）、决策模型预开。
+        // 跨 run 恢复的三个来源：历史工具名反推（静态组 + MCP server 组）、
+        // 压缩边界标记（工具调用被压缩掉时的兜底）、决策模型预开。
+        fun historyOpenedGroups(): Set<String> {
             val historyNames = historyToolNames(outboundHistory)
-            AgentToolGroups.deferredGroupsOf(historyNames, mcpGroups) +
+            return AgentToolGroups.deferredGroupsOf(historyNames, mcpGroups) +
                 mcpProjection?.openedGroupIdsFrom(historyNames).orEmpty() +
                 AgentToolGroups.openedGroupsFromMarkers(outboundHistory.map { it.content }) +
                 // 决策预开：control 下 allowed 全集、advise 下只预开 selected∪sticky∪历史保护。
@@ -209,6 +229,8 @@ internal object AgentModelClient {
                     emptySet()
                 }
         }
+        // 预设运行由 Runtime 显式给出组状态：不读历史/决策推出来的组，避免把无关组带进来。
+        var initialOpenedGroups = presetOpenedGroups ?: historyOpenedGroups()
         // control 成功/fail-closed 时限制 tools_use_group 的枚举；null 表示不接管。
         val decisionOpenableLimit = decision?.openableGroupLimit
         // 闲聊态关段只在 control 成功时由 router 置位，prompt builder 直接据此裁剪。
@@ -218,6 +240,8 @@ internal object AgentModelClient {
             memoryEnabled: Boolean = memoryContext.enabled,
             recipeTools: JSONArray = JSONArray(),
             openedToolGroups: Set<String> = initialOpenedGroups,
+            /** 预设工具名；null = 常规目录。退化回普通对话时传 null 重建。 */
+            preset: Set<String>? = presetToolNames,
         ): JSONArray {
             searchIndex?.clear()
             val tools = AgentToolCatalog.build(
@@ -250,6 +274,8 @@ internal object AgentModelClient {
                 dynamicGroups = mcpProjection?.deferredGroups().orEmpty(),
                 searchIndex = searchIndex,
                 toolSearchEnabled = toolLoadingSearchEnabled,
+                // 预设运行：豁免延迟折叠并跳过 tools_search / tools_use_group。
+                presetToolNames = preset,
             )
             for (index in 0 until additionalTools.length()) {
                 tools.put(additionalTools.opt(index))
@@ -264,9 +290,27 @@ internal object AgentModelClient {
                 tools.put(recipeTools.opt(index))
             }
             if (compactionArchive != null) tools.put(AgentCompactionArchive.tool())
-            return tools
+            // 目录构建之后追加的 MCP / 配方 / 压缩档案也要按预设收口，
+            // 否则一次「纯对话」快捷运行仍会看到与本次任务无关的工具。
+            return preset?.let { AgentToolCatalog.retainOnly(tools, it) } ?: tools
         }
-        val tools = toolsFor(initialCapabilities, recipeTools = recipeToolsProvider())
+        var effectivePresetTools = presetToolNames
+        var initialTools = toolsFor(initialCapabilities, recipeTools = recipeToolsProvider())
+        if (presetFallbackWhenEmpty && presetToolNames != null && initialTools.length() == 0) {
+            // 命中日程但日历组在能力投影后实际为空（权限/开关/单工具禁用）：
+            // 退回普通对话——正常目录、正常渐进加载与判断模型，而不是零工具纯对话。
+            effectivePresetTools = null
+            initialOpenedGroups = historyOpenedGroups()
+            initialTools = toolsFor(
+                initialCapabilities,
+                recipeTools = recipeToolsProvider(),
+                openedToolGroups = initialOpenedGroups,
+                preset = null,
+            )
+        }
+        val tools = initialTools
+        // 退化后不再注入时间，也不再宣传日历能力。
+        val effectivePresetRunAt = if (effectivePresetTools != null) presetRunAt else null
         val messages = AgentPromptBuilder.buildInitialMessages(
             config,
             prompt,
@@ -288,6 +332,7 @@ internal object AgentModelClient {
             trimChatSections = trimChatSections,
             openableGroupLimit = decisionOpenableLimit,
             dynamicToolGroups = mcpGroups,
+            presetRunAt = effectivePresetRunAt,
         )
         var transcriptStartIndex = messages.length()
         val traceFormatter = AgentTraceFormatter(
@@ -378,6 +423,7 @@ internal object AgentModelClient {
                             memoryEnabled = nextMemoryContext.enabled,
                             recipeTools = recipeTools,
                             openedToolGroups = nextOpenedGroups,
+                            preset = effectivePresetTools,
                         )
                         val systemMessages = AgentPromptBuilder.buildSystemMessages(
                             config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
@@ -395,6 +441,8 @@ internal object AgentModelClient {
                             trimChatSections = trimChatSections,
                             openableGroupLimit = decisionOpenableLimit,
                             dynamicToolGroups = mcpGroups,
+                            // 预设运行的时间口径跨轮稳定：复用 run 建立时捕获的同一份。
+                            presetRunAt = effectivePresetRunAt,
                         )
                         // 系统前缀的条数会随「本轮打开了哪些工具组」变化（指引块与组索引都是条件消息）。
                         // JSONArray.put(index, …) 是替换不是插入，按索引覆写会在前缀变长时盖掉历史与用户消息，

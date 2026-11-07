@@ -2,29 +2,28 @@ package io.github.mangi.eta.agent.runtime
 
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.data.model.ReasoningEffort
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentRuntimeRequestConfigResolverTest {
     @Test
-    fun etaVoiceRequestUsesRuntimeConfigAndUpdatesArchiveMetadata() {
-        val runtimeConfig = modelConfig("runtime-key", ReasoningEffort.HIGH)
+    fun etaVoiceRequestKeepsEntryConfigForParityWithInAppChat() {
+        val entryConfig = modelConfig("entry-key", ReasoningEffort.OFF)
         val request = request(
             source = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
-            config = modelConfig("entry-key", ReasoningEffort.OFF),
+            config = entryConfig,
         )
 
-        val resolved = AgentRuntimeRequestConfigResolver.applyRuntimeConfig(request, runtimeConfig)
-        val payload = AgentExternalArchivePayload.from(requireNotNull(resolved.handoff).payload)
+        val resolved = AgentRuntimeRequestConfigResolver.applyRuntimeConfig(
+            request,
+            modelConfig("runtime-key", ReasoningEffort.HIGH),
+        )
 
-        assertTrue(AgentRuntimeRequestConfigResolver.requiresRuntimeConfig(request))
-        assertSame(runtimeConfig, resolved.config)
-        requireNotNull(payload)
-        assertTrue(requireNotNull(payload.thinkingEnabled))
-        assertEquals(ReasoningEffort.HIGH, payload.reasoningEffort)
+        // 语音与应用内共用同一份由发起方组装的配置；这里再替换会抹掉工具开关与助手人格。
+        assertFalse(AgentRuntimeRequestConfigResolver.requiresRuntimeConfig(request))
+        assertSame(request, resolved)
+        assertSame(entryConfig, resolved.config)
     }
 
     @Test

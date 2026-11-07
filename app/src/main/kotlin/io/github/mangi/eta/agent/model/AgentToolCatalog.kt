@@ -61,6 +61,13 @@ internal object AgentToolCatalog {
          * 不提供工具级搜索——目录其余部分与按工具档完全一致。
          */
         toolSearchEnabled: Boolean = true,
+        /**
+         * 语音快捷功能预设：非 null 时跳过延迟组解锁，只保留这些工具（空集 = 零工具纯对话）。
+         *
+         * 预设工具不因「所属延迟组未打开」被折叠，但仍受组开关、单工具禁用与能力投影约束；
+         * 同时不再下发 `tools_search` / `tools_use_group`，判断模型也不参与收窄。
+         */
+        presetToolNames: Set<String>? = null,
     ): JSONArray {
         // 组开关只决定「参与下发」；延迟折叠与单工具禁用统一在最后一次过滤完成，
         // 目录过滤、索引行与 tools_use_group 枚举共用同一份可用性判定，
@@ -83,7 +90,14 @@ internal object AgentToolCatalog {
                 else -> AgentToolGroups.isMcpGroupId(group.id)
             }
         }
-        val withheld = AgentToolGroups.withheldTools(openedToolGroups, disabledTools, dynamicGroups)
+        val withheld = if (presetToolNames == null) {
+            AgentToolGroups.withheldTools(openedToolGroups, disabledTools, dynamicGroups)
+        } else {
+            // 预设工具直接可见：先只按「延迟组是否打开」折叠，再豁免预设名单，
+            // 最后并入单工具禁用——用户关掉的工具不会因为进了预设而被重新打开。
+            AgentToolGroups.withheldTools(openedToolGroups, emptySet(), dynamicGroups)
+                .minus(presetToolNames) + disabledTools
+        }
         val emitted = JSONArray()
         if (basicTools) AgentQuestionToolCatalog.appendTo(emitted)
         AgentContextAppToolCatalog.appendTo(emitted, screenTools = screenTools, basicTools = basicTools)
@@ -125,21 +139,31 @@ internal object AgentToolCatalog {
         // 决策收窄（control）时再按 openableGroupLimit 过滤：提示里不能点名一个 gate 允许、
         // 但被判断模型排除的组，否则模型会反复尝试一个必然被拒的组。
         // 动态组（MCP）不受决策枚举约束：决策模型只认识静态组，见 availability 注释。
-        val openable = AgentToolGroups.openableIds(groupAvailability, dynamicGroups)
-            .filter { groupId ->
-                openableGroupLimit == null || groupId in openableGroupLimit ||
-                    AgentToolGroups.isMcpGroupId(groupId)
-            }
+        val openable = if (presetToolNames != null) {
+            // 快捷功能运行跳过渐进加载：没有可搜索/可解锁的组，目录一次到位。
+            emptyList<String>()
+        } else {
+            AgentToolGroups.openableIds(groupAvailability, dynamicGroups)
+                .filter { groupId ->
+                    openableGroupLimit == null || groupId in openableGroupLimit ||
+                        AgentToolGroups.isMcpGroupId(groupId)
+                }
+        }
         AgentToolGroupCatalog.appendTo(
             emitted,
             openableIds = openable,
             // 只在「决策接管且被收窄到空集」时保留工具；gate 全被关掉时仍需返回 true 让模型
-            // 看到「组已在设置中关闭」的解释性错误。
-            allowEmpty = allowEmptyGroupTool && openableGroupLimit != null && openable.isEmpty(),
+            // 看到「组已在设置中关闭」的解释性错误。预设运行始终不下发空枚举提示。
+            allowEmpty = presetToolNames == null &&
+                allowEmptyGroupTool && openableGroupLimit != null && openable.isEmpty(),
         )
         // 工具级搜索与 tools_use_group 同一门面：有可打开的组才有可搜索的对象；
-        // 按组档不下发（模型仍可用 tools_use_group 整组打开）。
-        AgentToolSearchCatalog.appendTo(emitted, openable, toolSearchEnabled)
+        // 按组档不下发（模型仍可用 tools_use_group 整组打开）；预设运行两者都不给。
+        AgentToolSearchCatalog.appendTo(
+            emitted,
+            openable,
+            toolSearchEnabled && presetToolNames == null,
+        )
         if (AgentFileSystemTier.allowsFileTools(fileSystemTier)) {
             AgentFileVisionToolCatalog.appendTo(emitted)
             AgentTerminalToolCatalog.appendTo(emitted, fileSystemTier)
@@ -154,7 +178,24 @@ internal object AgentToolCatalog {
                 if (name.isNotEmpty()) searchIndex[name] = description
             }
         }
-        return capabilities.project(filterWithheld(emitted, withheld))
+        val projected = capabilities.project(filterWithheld(emitted, withheld))
+        return presetToolNames?.let { retainOnly(projected, it) } ?: projected
+    }
+
+    /**
+     * 快捷功能预设目录：只保留预设点名的工具（空集返回空目录）。
+     *
+     * 基础交互组不隐式保留：翻译/整理是零工具纯对话；创建日程在预设里显式带上所需基础工具。
+     */
+    fun retainOnly(tools: JSONArray, toolNames: Set<String>): JSONArray {
+        if (toolNames.isEmpty()) return JSONArray()
+        val kept = JSONArray()
+        for (index in 0 until tools.length()) {
+            val item = tools.optJSONObject(index) ?: continue
+            val name = item.optJSONObject("function")?.optString("name").orEmpty()
+            if (name in toolNames) kept.put(item)
+        }
+        return kept
     }
 
     /**

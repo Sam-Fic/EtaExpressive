@@ -281,6 +281,7 @@ internal object AgentRuntimeWire {
     private const val KEY_CALIBRATED_INPUT_TOKENS = "calibrated_input_tokens"
     private const val KEY_ALLOW_UNMEASURED_CONTEXT_SEND = "allow_unmeasured_context_send"
     private const val KEY_ENTRY_TOOLS = "entry_tools"
+    private const val KEY_TOOL_PRESET = "tool_preset"
     private const val KEY_CREATED_AT = "created_at"
     private const val KEY_RESULTS = "results"
     private const val KEY_ENTRY_TOOL_CALL_ID = "entry_tool_call_id"
@@ -344,6 +345,13 @@ internal object AgentRuntimeWire {
         val xiaomiToolsBridgeCatalogJson: String = "",
         /** 注入宿主（小爱进程内桥）声明的能力集；空 = 无宿主能力。 */
         val hostCapabilities: Set<String> = emptySet(),
+        /**
+         * 语音浮窗屏幕快捷功能的预设 id；空 = 普通对话。
+         *
+         * Runtime 据此选择目录构建策略（预设工具直发、跳过渐进加载与判断模型），
+         * 不靠解析 prompt 文案判断运行类型。
+         */
+        val toolPreset: String = "",
     ) {
         val effectiveTurnId: String get() = turnId.ifBlank { runId }
         // 旧入口沿用会话 handoff；无持久会话的入口以首个 run 为会话起点。
@@ -505,6 +513,7 @@ internal object AgentRuntimeWire {
         putBoolean(KEY_HISTORY_ALREADY_COMPACTED, request.historyAlreadyCompacted)
         request.calibratedInputTokens?.takeIf { it > 0 }?.let { putInt(KEY_CALIBRATED_INPUT_TOKENS, it) }
         putBoolean(KEY_ALLOW_UNMEASURED_CONTEXT_SEND, request.allowUnmeasuredContextSend)
+        putString(KEY_TOOL_PRESET, request.toolPreset.trim())
         putStringArrayList(
             KEY_ENTRY_TOOLS,
             ArrayList(
@@ -690,6 +699,7 @@ internal object AgentRuntimeWire {
                 bundle.getString(KEY_XIAOMI_TOOLS_BRIDGE_CATALOG_JSON),
             ),
             hostCapabilities = bundle.getStringArrayList(KEY_HOST_CAPABILITIES).orEmpty().toSet(),
+            toolPreset = bundle.getString(KEY_TOOL_PRESET).orEmpty().trim(),
         )
 
     fun entryToolCallToBundle(call: EntryToolCall): Bundle {
