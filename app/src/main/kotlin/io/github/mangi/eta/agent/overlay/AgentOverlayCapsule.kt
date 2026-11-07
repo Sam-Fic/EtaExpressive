@@ -4,10 +4,6 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -28,9 +24,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -84,7 +78,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -92,7 +85,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -121,7 +113,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
-import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
 import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaMotion
@@ -129,18 +120,19 @@ import io.github.mangi.eta.ui.adaptive.etaConnectedGroupColors
 import io.github.mangi.eta.ui.components.VirtualTouchFocusLayer
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
- * 顶部状态胶囊：收起时只显示一句当前步骤（后台虚拟屏激活时右侧镶嵌 18×32.dp 实时微缩镜），
+ * 顶部状态胶囊：收起时只显示阶段指示器 + 一句当前步骤（不再嵌屏幕预览），
  * 点击展开补充、暂停、停止及画廊装裱式虚拟屏交互视窗。
  *
  * 位置固定在状态栏下方居中，不随 Agent 的点击位置移动，避免和目标控件重叠。
  * 状态文字只在语义变化时以上滑淡入切换，流式正文不进入胶囊。
  */
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun AgentOverlayCapsule(
     state: AgentOverlayState,
@@ -163,17 +155,18 @@ internal fun AgentOverlayCapsule(
     onSwipeVirtualCanvas: (Float, Float, Float, Float, Int) -> Unit = { _, _, _, _, _ -> },
     /** 窗口内容尺寸上报（px）：早涨晚缩——目标变大即贴、变小等动画落定，morph 两端各动一次窗。 */
     onContentSizeChanged: (widthPx: Int, heightPx: Int) -> Unit = { _, _ -> },
-    /** 头部拖动：与光球同一套 [AgentOrbDragGesture]——未过 slop 是点击，过了才回调本项并整窗拖动。 */
-    onDragStart: () -> Unit = {},
-    onDrag: (Float, Float) -> Unit = { _, _ -> },
-    /** 抬手：宿主先落「缩球」决策，再回传甩出计划（占位/起点/钳过的速度）；null = 不甩出。 */
+    /**
+     * 抬手：宿主只结算「缩球」决策并回传计划（速度 + 是否成球）；null = 窗口已不在，不必甩出。
+     * 起点与实时尺寸都握在帧循环手里，宿主不再传占位，也不再有「拖动期间位置归宿主」这一段。
+     */
     onDragEnd: (velocityX: Float, velocityY: Float) -> CapsuleFlingPlan? = { _, _ -> null },
-    /** 甩出逐帧窗口落位（中心 x + 顶边 y，物理坐标）：允许越界，不做钳制。 */
-    onFlingStep: (centerX: Float, topY: Float) -> Unit = { _, _ -> },
-    /** 甩出落定（贴边回弹结束或被打断）：宿主据此收尾并恢复正常钳制路径。 */
-    onFlingFinish: (centerX: Float, topY: Float) -> Unit = { _, _ -> },
-    /** 甩出因边界变化而作废（旋转/inset）：宿主丢弃物理位置并按新边界钳回。 */
-    onFlingCancel: () -> Unit = {},
+    /**
+     * 帧循环逐帧下发的落点（**内容盒**中心 x + 内容顶边 y，物理像素）：宿主只做
+     * 「内容盒 → 窗口」的对称投影（补回阴影外衬），允许越界、不做任何钳制。
+     */
+    onPosition: (centerX: Float, contentTopY: Float) -> Unit = { _, _ -> },
+    /** 当前落点（内容中心 x + 内容顶边 y）：帧循环首次参与积分时用它播种起点。 */
+    capsulePlacement: () -> Offset? = { null },
     /** 缩球态：大力甩向横边后停靠用，内容只剩阶段指示器（运行中即 contained LoadingIndicator）。 */
     minimized: Boolean = false,
 ) {
@@ -215,11 +208,12 @@ internal fun AgentOverlayCapsule(
     // 因此这里统一收口到官方规格，只保留脉冲/进度这类自有节奏。
     val motionScheme = MaterialTheme.motionScheme
 
-    // 展开的所有布局轴（宽度 / 展开进度 / 正文高度 / 微缩镜宽度 / 正文三态容器高度 /
-    // 暂停钮宽度）共用同一条 320ms 定长时间轴：彼此同时起步、同时收尾，不会出现
+    // 展开的所有布局轴（展开进度 / 正文高度 / 正文三态容器高度 / 暂停钮宽度）
+    // 共用同一条 320ms 定长时间轴：彼此同时起步、同时收尾，不会出现
     // 「宽度先胀开、正文随后才浮出」的串联观感，也不会有一条弹簧在主轴收尾后继续跑。
     // 逐层套 Expressive spatial 弹簧会各自带过冲长尾，叠起来就是慢动作
     // （取值见 EtaMotion.CapsuleExpandDurationMillis）。
+    // 唯一例外是胶囊 ⇄ 球的宽度 morph：它按参考实现逐帧指数插值（见 CapsuleMotion / 帧循环）。
     val expandMillis = EtaMotion.CapsuleExpandDurationMillis
     val expandDpSpec = tween<Dp>(expandMillis, easing = FastOutSlowInEasing)
     val expandSizeSpec = tween<IntSize>(expandMillis, easing = FastOutSlowInEasing)
@@ -255,8 +249,6 @@ internal fun AgentOverlayCapsule(
         },
     )
 
-    // 微缩镜只在收起 + 副屏在场时出现；尾部内缩让它中心落在右上圆角弧心上（与左上指示器对称）。
-    val lensVisible = virtualDisplay.active && !expanded && !minimized
     // 展开宽按屏钳制：CapsuleExpandedWidth(360) + 窗口外衬 24 = 384dp 在小米 13 Ultra
     // （屏宽恰 384dp）上是零余量全宽请求，会被系统改写并触发「上报→收窗→再上报」的
     // 逐帧缩水回路；留出 ≥40dp 余量保证窗口与放置钳制都有活动空间。
@@ -286,7 +278,6 @@ internal fun AgentOverlayCapsule(
     val stateTargetWidth = when {
         minimized -> CapsuleBallDiameter
         expanded -> expandedWidth
-        virtualDisplay.active -> CapsuleMicroLensWidth
         else -> CapsuleDefaultWidth
     }
     val stateTargetHeight = when {
@@ -294,11 +285,48 @@ internal fun AgentOverlayCapsule(
         expanded -> TextFieldDefaults.MinHeight + EtaDimens.SpaceSm + bodyTargetHeight + EtaDimens.SpaceSm
         else -> TextFieldDefaults.MinHeight
     }
-    val targetCapsuleWidth by animateDpAsState(
-        targetValue = stateTargetWidth,
-        animationSpec = expandDpSpec,
-        label = "capsule_width",
-    )
+    // 胶囊 ⇄ 球宽度 morph：与参考实现逐帧同构 `w += (wT − w) × (1 − e^(−16·dt))`。
+    // 宽度是组合侧推进的 Animatable（dp），只在**布局阶段**被读取——组合作用域不读它，
+    // 因此逐帧推进只失效布局、不触发任何重组（旧实现在组合里读 Animatable.value，
+    // 每帧整棵胶囊树重组，是掉帧主因）。
+    // 两条通道互斥：展开 / 收起走 320ms 主轴 tween；胶囊 ⇄ 球走 `runCapsuleMotion` 的
+    // 单一帧循环（与物理共用同一个 dt、同一帧、同一顺序）。绝不让两个写入方同帧覆盖。
+    // 圆角恒为 28dp（= 56/2），宽度收到 56dp 时自然成为正圆，与参考实现
+    // `borderRadius = h/2` 完全等价（胶囊与球同高 56dp，圆角两端都是 h/2）。
+    // 运动状态机（位置/速度/形态目标 + 唤醒信号）。宽度**不**住在这里。
+    val motion = remember(density) { CapsuleMotion(density = density.density) }
+    val capsuleWidthAnim = remember { Animatable(stateTargetWidth.value) }
+    var onBallMorphAxis by remember { mutableStateOf(minimized) }
+    LaunchedEffect(stateTargetWidth, minimized) {
+        val target = stateTargetWidth.value
+        val ballWidth = CapsuleBallDiameter.value
+        // 起止任一端是球（56dp）才走 morph 轴；纯胶囊窗的换档仍交给主轴 tween。
+        val morph = minimized || onBallMorphAxis ||
+            abs(capsuleWidthAnim.value - ballWidth) <= 1f
+        if (!morph) {
+            onBallMorphAxis = false
+            motion.morphWidth = false
+            capsuleWidthAnim.animateTo(
+                target,
+                tween<Float>(durationMillis = expandMillis, easing = FastOutSlowInEasing),
+            )
+            return@LaunchedEffect
+        }
+        // 目标还在球的这一侧（去程）就保持标记；回到胶囊后由下一次目标切换离开该轴。
+        onBallMorphAxis = abs(target - ballWidth) <= 1f
+        // 交给单一帧循环：形变与物理同帧推进，收敛后循环自行挂起。
+        motion.morphWidth = true
+        motion.widthTargetDp = target
+        motion.wake()
+    }
+    // 状态目标内容尺寸（px）：**只作首轮实测前的起值兜底**（见 liveSizePx）。循环能否休眠
+    // 看的是实测尺寸连续几帧不变，绝不拿这两个值去比——几何也一律走实测值，把目标交给循环
+    // 去钳位就是展开瞬间位置跳变的来源。
+    LaunchedEffect(stateTargetWidth, stateTargetHeight, density) {
+        motion.targetContentWidthPx = with(density) { stateTargetWidth.roundToPx() }.toFloat()
+        motion.targetContentHeightPx = with(density) { stateTargetHeight.roundToPx() }.toFloat()
+        motion.wake()
+    }
     // ── 窗口尺寸上报：早涨晚缩，morph 全程零逐帧改窗 ────────────────────
     // 旧方案把动画逐帧值交给窗口（宽=动画值、高=逐帧测量），每帧一次
     // updateViewLayout，且窗口尺寸逐帧变化引发 surface 缓冲整体重分配，
@@ -377,7 +405,7 @@ internal fun AgentOverlayCapsule(
     // 并无 28dp 内圆。同心锚点是 40dp 阶段指示器（圆心落左上弧心，20 + 8 = 28），
     // 收起/展开两态同源；展开体其余角均无贴角内圆（画布/按钮组皆居中），故全态恒 28dp。
     val capsuleCorner = CapsuleInnerCorner
-    // 缩球时正文文字淡出（宽度由 tween 收窄带走），恢复时随宽展开淡回。
+    // 缩球时正文文字淡出（宽度由指数 morph 收窄带走），恢复时随宽展开淡回。
     // 淡出 fastEffects ≈110ms（尽快让位给宽度收缩）；淡入 defaultEffects ≈170ms，
     // 比布局轴 320ms 先收尾（效果层恒短于布局轴，不存在主轴后长尾）。
     val headerTextAlpha by animateFloatAsState(
@@ -386,14 +414,9 @@ internal fun AgentOverlayCapsule(
         label = "capsule_header_text_alpha",
     )
     // 末端内边距随缩球同步收放，不能硬切：morph 首帧文字仍 ~95% 不透明，
-    // 16↔8dp 跳变会让整段文字横移一瞬。微缩镜在场时收到 28−9=19dp，
-    // 让 18dp 宽的镜身中心恰好落在右上圆角弧心上（28,28），与左上指示器同一同心规则。
+    // 16↔8dp 跳变会让整段文字横移一瞬。
     val headerEndPadding by animateDpAsState(
-        targetValue = when {
-            minimized -> EtaDimens.SpaceSm
-            lensVisible -> CapsuleInnerCorner - MicroLensGlassWidth / 2
-            else -> EtaDimens.SpaceLg
-        },
+        targetValue = if (minimized) EtaDimens.SpaceSm else EtaDimens.SpaceLg,
         animationSpec = expandDpSpec,
         label = "capsule_header_end_padding",
     )
@@ -411,17 +434,113 @@ internal fun AgentOverlayCapsule(
     val activationKey = remember { AgentOrbActivationKey() }
     // 尾部窗口拟合取代 VelocityTracker：停顿判定 + 120ms 最小二乘，轻放不会带着历史速度乱飞。
     val dragSamples = remember { CapsuleDragVelocitySampler() }
-    val flingSession = remember { CapsuleFlingSession() }
     val overlayView = LocalView.current
     val overlayConfiguration = LocalConfiguration.current
     var dragging by remember { mutableStateOf(false) }
-    // 旋转/inset 变化会改写可用边界：正在甩出的动画立即作废，位置交还宿主按新边界钳回。
+    // 抓取偏移 = 按下瞬间「内容中心 − 指针 raw」，对应参考实现的 `ox = x - px`。
+    var grabOffset by remember { mutableStateOf(Offset.Zero) }
+    // 按压回弹只认真按压（按下缩一点、抬手弹回）。曾用「展开进度」算出中点缩 3% 的钟形，
+    // 于是每一次涨缩（含程序触发的展开）都凭空多一下缩放，与宽度主轴对着干。
+    var pressed by remember { mutableStateOf(false) }
+    val press by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = if (pressed) {
+            motionScheme.fastSpatialSpec()
+        } else {
+            motionScheme.defaultSpatialSpec()
+        },
+        label = "capsule_press",
+    )
+    // 可用边界每次配置只取一次：currentWindowMetrics + inset 读取有 IPC 成本，不能逐帧做。
+    // 用 state 承载而不是进帧循环的 key：配置一变就把正在跑的循环 cancel 掉，甩出就永远等不到
+    // 落定回调，flingRunning 一直为真 → 「晚缩」冻结在大窗、透明区域白吃触摸。
+    var viewport by remember { mutableStateOf(capsuleViewport(overlayView)) }
+    // 实时内容尺寸：几何、边界、落位全只认它（morph / 展开 / 换态期间逐帧变化）。
+    // 还没量过时退回状态目标，避免首轮拿到 Zero 把可用区间算成一条线。
+    fun liveSizePx(): IntSize {
+        val measured = measuredSize
+        return if (measured.width > 0 && measured.height > 0) measured else IntSize(
+            motion.targetContentWidthPx.roundToInt(),
+            motion.targetContentHeightPx.roundToInt(),
+        )
+    }
+    /** 向宿主取当前落点（内容盒语义）；取到就同步顶边锚并作废去重基线。 */
+    fun seedFromHost(): Boolean {
+        val seed = capsulePlacement() ?: return false
+        motion.centerX = seed.x
+        motion.anchorTopY = seed.y
+        motion.centerY = seed.y + liveSizePx().height / 2f
+        motion.resetEmitted()
+        motion.positioned = true
+        return true
+    }
+    // 唯一的帧循环：跟手 → 物理 step → 形变 → 约束 → 落位，与参考实现 frame() 同序同帧。
+    // 空闲时挂起在 wakeups 上（不注册 Choreographer 回调），只有按下/移动/甩出/目标变化才唤醒；
+    // 上一版「物理循环 + 宽度动画循环」两条帧驱动并存，同一帧两次唤醒且 dt 不同源。
+    LaunchedEffect(motion) {
+        try {
+            while (true) {
+                motion.wakeups.receive()
+                // 首次参与约束时向宿主取当前落点（未知则跳过本次，等下一次唤醒）。
+                if (!motion.positioned && !seedFromHost()) continue
+                runCapsuleMotion(
+                    motion = motion,
+                    widthDp = capsuleWidthAnim,
+                    liveSize = { liveSizePx() },
+                    viewport = { viewport },
+                    onPosition = onPosition,
+                    // 落定只需解除「甩出期间冻结晚缩」：最终落点已经由最后一次强制下发交清，
+                    // 宿主不再需要单独的收尾回调去接管位置——位置从头到尾只有这一个来源。
+                    onSettled = { flingRunning = false },
+                )
+            }
+        } finally {
+            // 循环被取消（组合销毁、motion 重建）也要解除冻结，否则窗口永久停在甩出时的大尺寸。
+            flingRunning = false
+        }
+    }
+    // 旋转/inset 变化改写可用边界：更新 viewport 后唤醒循环，由它按新边界逐帧夹回并重新下发。
+    // 这里不自己挪窗口——那正是「两个写入方」的起点。
     LaunchedEffect(overlayConfiguration) {
-        val job = flingSession.job ?: return@LaunchedEffect
-        if (!job.isActive) return@LaunchedEffect
-        job.cancel()
-        flingSession.job = null
-        onFlingCancel()
+        viewport = capsuleViewport(overlayView)
+        motion.wake()
+    }
+    // 抬手甩出：把宿主结算的计划灌进状态机，唤醒唯一帧循环（不再另起一条动画协程）。
+    // 起点就是循环上一帧积分出的内容中心，实时尺寸由循环自己按实测读，这里都不重新播种。
+    fun startFling(plan: CapsuleFlingPlan) {
+        motion.velocityX = plan.velocity.x
+        motion.velocityY = plan.velocity.y
+        motion.phase = CapsuleMotionPhase.Free
+        motion.phaseStartNanos = 0L
+        if (plan.ballTarget) {
+            // 甩出缩球：宽度立刻进 morph 通道（与物理同帧起步，不等下一次重组）。
+            // 高度只切目标档位，由 Compose 的收起动画逐帧量出实测值，循环跟着实测走。
+            motion.morphWidth = true
+            motion.widthTargetDp = CapsuleBallDiameter.value
+        }
+        flingRunning = true
+        motion.wake()
+    }
+    // 抬手进 free：参考实现里非点击的 release 一律是 free + 拟合速度（哪怕为 0，也会由
+    // free → settle → rest 连续收尾），不在这里写死落点，轨迹才不会有急刹或闪现。
+    fun releaseToFree(velocity: Offset) {
+        motion.velocityX = velocity.x
+        motion.velocityY = velocity.y
+        motion.phase = CapsuleMotionPhase.Free
+        motion.phaseStartNanos = 0L
+        motion.wake()
+    }
+    // 手势作废（多指接管、系统取消）：不抛掷、不补速度，停在原地由循环按实时尺寸夹回。
+    fun cancelCapsuleGesture() {
+        dragging = false
+        pressed = false
+        dragSamples.reset()
+        dragGesture.cancel()
+        motion.pointerDown = false
+        motion.phase = CapsuleMotionPhase.Rest
+        motion.velocityX = 0f
+        motion.velocityY = 0f
+        motion.wake()
     }
     val toggleLabel = stringResource(if (expanded) R.string.overlay_collapse else R.string.overlay_expand)
 
@@ -448,13 +567,26 @@ internal fun AgentOverlayCapsule(
                     // 四周外衬全部给阴影留白（见 CapsuleShadowGutter）：窗口尺寸 = 内容 + 外衬，
                     // 外衬即落影的净空，宿主常量必须同值同步。
                     .padding(horizontal = CapsuleShadowGutter, vertical = CapsuleShadowGutter)
-                    .width(targetCapsuleWidth)
+                    // 逐帧宽度在 **measure 阶段** 读取（宽度是胶囊⇄球 morph 的唯一变量）。
+                    // 旧实现在组合作用域读 Animatable.value → 每帧整棵胶囊树重组，是掉帧根因；
+                    // 这里只失效布局（一次 Row 重测），组合、绘制缓存都不动。
+                    .layout { measurable, constraints ->
+                        // 宽度是 dp，按当前密度换算成 px；Animatable 只在布局阶段被读。
+                        val widthPx = (capsuleWidthAnim.value * density.density)
+                            .roundToInt()
+                            .coerceIn(0, constraints.maxWidth)
+                        val placeable = measurable.measure(
+                            constraints.copy(minWidth = widthPx, maxWidth = widthPx),
+                        )
+                        layout(placeable.width, placeable.height) {
+                            placeable.placeRelative(0, 0)
+                        }
+                    }
                     .graphicsLayer {
-                        // 点击时轻微回弹，展开后保持原尺寸；只改绘制层，不触发重新布局。
-                        val press = 1f - 0.03f * (1f - expansion) * expansion * 4f
-                        val shrink = 1f - 0.08f * clearance
-                        scaleX = press * shrink
-                        scaleY = press * shrink
+                        // 按压回弹 + 让路缩放都只改绘制层，不触发重新布局。
+                        val shrink = press * (1f - 0.08f * clearance)
+                        scaleX = shrink
+                        scaleY = shrink
                         translationY = -12.dp.toPx() * clearance
                         alpha = 1f - clearance
                         transformOrigin = TransformOrigin(0.5f, 0f)
@@ -462,8 +594,15 @@ internal fun AgentOverlayCapsule(
                     .onGloballyPositioned { coords ->
                         // 只喂测量值给上报状态机（早涨晚缩），不直连宿主：
                         // 逐帧直报会拖累窗口每帧 resize（见上报段注释）。
-                        if (coords.size.height >= 0) {
+                        // 尺寸没变就不写 state：morph 之外的布局也会回调本项，
+                        // 无谓的 snapshot 写入会让 snapshotFlow 的静默期计时反复重启。
+                        if (coords.size != measuredSize) {
                             measuredSize = coords.size
+                            // 尺寸一变就唤醒循环：边界与顶边锚都按实时内容尺寸算，展开/收起
+                            // 途中必须逐帧重贴，落定前循环也不许休眠。唤醒写在布局回调里，
+                            // 而不是加一条 LaunchedEffect(measuredSize)——那会把实测尺寸读进
+                            // 组合作用域，morph 期间逐帧整棵胶囊树重组，正是当初的掉帧主因。
+                            motion.wake()
                         }
                     },
                 shape = RoundedCornerShape(capsuleCorner),
@@ -484,11 +623,8 @@ internal fun AgentOverlayCapsule(
                 tonalElevation = 3.dp,
                 shadowElevation = MenuDefaults.ShadowElevation,
             ) {
-                // 共享元素层：收起态微缩镜（18×32 圆角镜身）与展开态舞台画布（148×328）以同一
-                // key 配对，morph 时由官方 SharedTransition 连续变形，预览不再「瞬移+交叉淡化」。
-                // 窗口早涨晚缩已在 morph 两端把窗口撑到位，共享元素 overlay 有完整的绘制空间。
-                SharedTransitionLayout {
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                // 微缩镜预览已移除：收起态只保留阶段指示器 + 状态文字，不再嵌实时画面。
+                Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -514,79 +650,81 @@ internal fun AgentOverlayCapsule(
                                 .pointerInteropFilter { event ->
                                     when (event.actionMasked) {
                                         MotionEvent.ACTION_DOWN -> {
-                                            // 甩出途中再按下：立即收手并把当前落点交还宿主；位置不跳变，
-                                            // 后续若是拖动就由滑块接管，若是点击则由宿主钳回界内。
-                                            flingSession.job?.takeIf { it.isActive }?.let { job ->
-                                                job.cancel()
-                                                flingSession.job = null
-                                                onFlingFinish(flingSession.center.x, flingSession.center.y)
-                                            }
+                                            // 按住即接管（参考实现 pointerdown → phase = "drag"）：飞行途中
+                                            // 可以徒手接住，形变若在进行中继续由同一循环收敛。
+                                            // 位置仍归循环积分——这里只记抓取偏移，逐事件不碰窗口：
+                                            // 每个 ACTION_MOVE 一次 updateViewLayout（还要现取一次屏幕边界）
+                                            // 才是「卡手」的直接来源，120/240Hz 采样率下每帧白付好几次。
+                                            if (!motion.positioned) seedFromHost()
+                                            motion.pointerDown = true
+                                            motion.phase = CapsuleMotionPhase.Drag
+                                            motion.velocityX = 0f
+                                            motion.velocityY = 0f
+                                            motion.dragTargetX = motion.centerX
+                                            motion.dragTargetY = motion.centerY
+                                            grabOffset = Offset(
+                                                motion.centerX - event.rawX,
+                                                motion.centerY - event.rawY,
+                                            )
+                                            pressed = true
+                                            dragging = false
                                             dragSamples.reset()
                                             dragSamples.add(event)
-                                            dragging = false
                                             dragGesture.begin(event.getPointerId(0), event.rawX, event.rawY)
+                                            motion.wake()
                                         }
-                                        MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
-                                            if (event.actionMasked == MotionEvent.ACTION_MOVE) {
-                                                dragSamples.add(event)
-                                            }
+
+                                        MotionEvent.ACTION_MOVE -> {
+                                            dragSamples.add(event)
                                             if (event.pointerCount != 1) {
-                                                dragging = false
-                                                dragSamples.reset()
-                                                dragGesture.cancel()
+                                                cancelCapsuleGesture()
                                             } else {
-                                                dragGesture.move(event.getPointerId(0), event.rawX, event.rawY)?.let {
-                                                    // 越过 slop 才移交位置所有权：纯点击不会残留“拖动中”状态。
-                                                    if (!dragging) onDragStart()
+                                                // 越过 slop 才算拖动：纯点击不会残留「拖动中」状态。
+                                                if (dragGesture.move(
+                                                        event.getPointerId(0),
+                                                        event.rawX,
+                                                        event.rawY,
+                                                    ) != null
+                                                ) {
                                                     dragging = true
-                                                    onDrag(it.x, it.y)
                                                 }
-                                                if (event.actionMasked == MotionEvent.ACTION_UP) {
-                                                    if (dragGesture.finish(event.getPointerId(0))) {
-                                                        // 点击：不抛掷。
-                                                        dragSamples.reset()
-                                                        onToggleExpanded()
-                                                    } else if (dragging) {
-                                                        // 拖过 slop 的抬手：尾部窗口拟合速度 →
-                                                        // 宿主结算缩球决策与占位，再跑两段真弹簧。
-                                                        dragging = false
-                                                        val velocity = dragSamples.estimate(event.eventTime)
-                                                        dragSamples.reset()
-                                                        val plan = onDragEnd(velocity.x, velocity.y)
-                                                        if (plan != null) {
-                                                            val view = overlayView
-                                                            flingSession.center = plan.center
-                                                            flingRunning = true
-                                                            flingSession.job = scope.launch {
-                                                                try {
-                                                                    runCapsuleFling(
-                                                                        plan = plan,
-                                                                        viewport = { capsuleViewport(view) },
-                                                                        onStep = { position ->
-                                                                            flingSession.center = position
-                                                                            onFlingStep(position.x, position.y)
-                                                                        },
-                                                                    )
-                                                                } finally {
-                                                                    // 被打断（按下/旋转）也走这里：解冻收拢，让窗口按当前尺寸收敛。
-                                                                    flingRunning = false
-                                                                }
-                                                                onFlingFinish(
-                                                                    flingSession.center.x,
-                                                                    flingSession.center.y,
-                                                                )
-                                                            }
-                                                        }
-                                                    }
+                                                if (dragging) {
+                                                    // 参考实现的 px + ox：只推进目标点，跟手交给循环插值。
+                                                    motion.dragTargetX = event.rawX + grabOffset.x
+                                                    motion.dragTargetY = event.rawY + grabOffset.y
+                                                    motion.wake()
                                                 }
                                             }
                                         }
-                                        MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN,
-                                        MotionEvent.ACTION_POINTER_UP -> {
+
+                                        MotionEvent.ACTION_UP -> {
+                                            pressed = false
+                                            motion.pointerDown = false
+                                            val wasDragging = dragging
                                             dragging = false
+                                            val velocity = dragSamples.estimate(event.eventTime)
                                             dragSamples.reset()
-                                            dragGesture.cancel()
+                                            if (dragGesture.finish(event.getPointerId(0))) {
+                                                // 点击：不抛掷、不改位置，只把相位交回静止，
+                                                // 展开/收起途中由循环按实时尺寸逐帧重贴边界。
+                                                motion.phase = CapsuleMotionPhase.Rest
+                                                motion.velocityX = 0f
+                                                motion.velocityY = 0f
+                                                motion.wake()
+                                                onToggleExpanded()
+                                            } else if (wasDragging) {
+                                                // 拖过 slop 的抬手：宿主只结算「是否缩球」，拟合速度直接进
+                                                // free；速度为 0 也照这条链收尾（free → settle → rest 连续）。
+                                                val plan = onDragEnd(velocity.x, velocity.y)
+                                                if (plan != null) startFling(plan) else releaseToFree(velocity)
+                                            } else {
+                                                // 手势早已被多指/取消接管：这里只让循环按实时尺寸夹回一次。
+                                                motion.wake()
+                                            }
                                         }
+
+                                        MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN,
+                                        MotionEvent.ACTION_POINTER_UP -> cancelCapsuleGesture()
                                     }
                                     true
                                 }
@@ -596,9 +734,22 @@ internal fun AgentOverlayCapsule(
                                 .padding(
                                     start = capsuleCorner -
                                         IconButtonDefaults.smallContainerSize().width / 2,
-                                    // 缩球态末端收到 8dp：8 + 40dp 指示器槽 + 8 = 56dp 球径内正中。
-                                    end = headerEndPadding,
-                                ),
+                                )
+                                // 缩球态末端内边距在 **measure 阶段** 读取（原样等价于
+                                // `.padding(end = headerEndPadding)`）：组合期读 animateDpAsState
+                                // 会让整段内容（Surface + 正文）在 320ms 内逐帧重组，
+                                // 与宽度 morph 撞在同一段帧里，是掉帧的第二根因。
+                                .layout { measurable, constraints ->
+                                    val endPx = headerEndPadding.roundToPx()
+                                    val inner = constraints.copy(
+                                        minWidth = 0,
+                                        maxWidth = (constraints.maxWidth - endPx).coerceAtLeast(0),
+                                    )
+                                    val placeable = measurable.measure(inner)
+                                    layout(placeable.width + endPx, placeable.height) {
+                                        placeable.placeRelative(0, 0)
+                                    }
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             PhaseIndicator(phase = state.phase, accent = accent)
@@ -637,52 +788,9 @@ internal fun AgentOverlayCapsule(
                                 },
                             )
                             }
-                            // 显式标签 lensMorph：下方 sharedBounds 的 animatedVisibilityScope 必须绑本层
-                            // （微缩镜的进出场轴）。外层还有胶囊总进出场的隐式 `AnimatedVisibility` 标签，
-                            // this@AnimatedVisibility 依赖「最近外层同名标签」规则——中间一旦插入新的
-                            // AnimatedVisibility，引用会静默改绑，morph 挂到错误的可见性轴上。
-                            AnimatedVisibility(
-                                visible = lensVisible,
-                                // 微缩镜容器宽度也是「共享元素的目标矩形」：它必须和
-                                // sharedBounds 的 320ms tween 同一时刻收尾。走 official
-                                // spatial 弹簧时（defaultSpatial ζ0.8/380 实收 ~440ms、
-                                // fastSpatial ζ0.6/800 实收 ~400ms 且 9.5% 过冲）会在
-                                // morph 交接之后继续变宽/越零被夹，收起的末尾就抽一下。
-                                enter = fadeIn(motionScheme.defaultEffectsSpec()) + expandHorizontally(
-                                    animationSpec = expandSizeSpec,
-                                    expandFrom = Alignment.End,
-                                ),
-                                exit = fadeOut(motionScheme.fastEffectsSpec()) + shrinkHorizontally(
-                                    animationSpec = expandSizeSpec,
-                                    shrinkTowards = Alignment.End,
-                                ),
-                            ) lensMorph@{
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Spacer(Modifier.width(EtaDimens.SpaceSm))
-                                    // 收起端的共享元素：morph 期间 18×32 镜身由官方 SharedTransition
-                                    // 连续长成画布；无配对时（如 VD 单独下线）回退到本处进出场动画。
-                                    VirtualDisplayMicroLens(
-                                        snapshot = virtualDisplay,
-                                        accent = accent,
-                                        modifier = Modifier.sharedBounds(
-                                            sharedContentState = rememberSharedContentState(
-                                                key = VirtualDisplayPreviewSharedKey,
-                                            ),
-                                            animatedVisibilityScope = this@lensMorph,
-                                            enter = EnterTransition.None,
-                                            exit = ExitTransition.None,
-                                            boundsTransform = { _, _ ->
-                                                tween(expandMillis, easing = FastOutSlowInEasing)
-                                            },
-                                        ),
-                                    )
-                                }
-                            }
                         }
 
-                        // 显式标签 bodyMorph：下方舞台画布的 sharedBounds 必须绑本层（展开/收起轴），
-                        // 取内层 AnimatedContent 的 scope 会挂到 bodyMode 互切上；显式命名同时避开
-                        // 外层总进出场与 627 那层同名隐式标签的歧义。
+                        // 正文展开/收起轴：舞台画布与按钮组都在这一条 320ms 时间轴上进出。
                         AnimatedVisibility(
                             visible = expanded && !minimized,
                             enter = expandVertically(
@@ -731,20 +839,6 @@ internal fun AgentOverlayCapsule(
                                                 onFullscreen = onFullscreenVirtualDisplay,
                                                 onTapCanvas = onTapVirtualCanvas,
                                                 onSwipeCanvas = onSwipeVirtualCanvas,
-                                                // 展开端的共享元素：scope 必须取外层正文 AnimatedVisibility
-                                                // （this@bodyMorph）——morph 挂在展开/收起这条时间轴上，
-                                                // 取 AnimatedContent 的 scope 会挂到 bodyMode 互切上，morph 失配。
-                                                frameModifier = Modifier.sharedBounds(
-                                                    sharedContentState = rememberSharedContentState(
-                                                        key = VirtualDisplayPreviewSharedKey,
-                                                    ),
-                                                    animatedVisibilityScope = this@bodyMorph,
-                                                    enter = EnterTransition.None,
-                                                    exit = ExitTransition.None,
-                                                    boundsTransform = { _, _ ->
-                                                        tween(expandMillis, easing = FastOutSlowInEasing)
-                                                    },
-                                                ),
                                             )
                                             Spacer(Modifier.height(EtaDimens.SpaceSm))
                                             CapsuleActions(
@@ -775,7 +869,6 @@ internal fun AgentOverlayCapsule(
                                 }
                             }
                         }
-                    }
                 }
             }
         }
@@ -1077,102 +1170,6 @@ private fun CapsuleAction(
 }
 
 /**
- * 镶嵌在收起态顶部胶囊右侧的 18×32.dp 实时微缩取景器（Micro-Lens）。
- *
- * 平时安静展示虚拟屏缩略画面；当虚拟屏内发生点击或滑动时，外圈泛起柔和的呼吸微光。
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-internal fun VirtualDisplayMicroLens(
-    snapshot: VirtualDisplaySnapshot,
-    accent: Color,
-    modifier: Modifier = Modifier,
-) {
-    val pulse = remember { Animatable(0f) }
-    LaunchedEffect(snapshot.touchEffect?.sequence) {
-        if (snapshot.touchEffect != null) {
-            pulse.snapTo(1f)
-            pulse.animateTo(0f, tween(durationMillis = 420, easing = FastOutSlowInEasing))
-        }
-    }
-
-    val borderColor = lerp(
-        MaterialTheme.colorScheme.outlineVariant,
-        accent,
-        pulse.value,
-    )
-    // 取景器高 = 官方 XS 图标按钮容器高度（32dp），形状保持全圆角。
-    val lensShape = RoundedCornerShape(percent = 50)
-
-    // 官方 M3 Surface 容器：实色 surfaceContainerHigh + 实色描边，无半透明底色。
-    Surface(
-        modifier = modifier
-            .size(
-                width = MicroLensGlassWidth,
-                height = IconButtonDefaults.extraSmallContainerSize().height,
-            )
-            .graphicsLayer {
-                val scale = 1f + 0.06f * pulse.value
-                scaleX = scale
-                scaleY = scale
-            },
-        shape = lensShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, borderColor),
-    ) {
-        // 保留最后一帧，画面丢失时旧帧跟着淡出，避免取景器瞬间变空。
-        var lastFrame by remember { mutableStateOf(snapshot.frame) }
-        LaunchedEffect(snapshot.frame) { snapshot.frame?.let { lastFrame = it } }
-        val frame = snapshot.frame ?: lastFrame
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            // 帧到达/退出时淡入淡出，避免占位点与缩略画面硬切。
-            val lensMotionScheme = MaterialTheme.motionScheme
-            AnimatedContent(
-                targetState = snapshot.frame != null,
-                modifier = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    fadeIn(lensMotionScheme.defaultEffectsSpec()) togetherWith
-                        fadeOut(lensMotionScheme.fastEffectsSpec())
-                },
-                contentAlignment = Alignment.Center,
-                label = "lens_frame_presence",
-            ) { hasFrame ->
-                if (hasFrame && frame != null) {
-                    Image(
-                        bitmap = frame,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(accent),
-                    )
-                }
-            }
-            val effect = snapshot.touchEffect
-            if (effect != null && pulse.value > 0.02f) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val (nx, ny) = when (effect) {
-                        is VirtualTouchEffect.Tap -> effect.normalizedX to effect.normalizedY
-                        is VirtualTouchEffect.Swipe -> effect.endX to effect.endY
-                    }
-                    val center = Offset(nx * size.width, ny * size.height)
-                    drawCircle(
-                        color = accent,
-                        radius = 2.2.dp.toPx() * pulse.value,
-                        center = center,
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
  * 画廊装裱式虚拟屏视窗（Gallery Matte Stage）。
  *
  * 内画框取官方 extraLarge 28dp，外层卡片同为 28dp 同族圆角；画布按宽高比居中装裱，
@@ -1190,9 +1187,6 @@ internal fun VirtualDisplayStageSection(
     onSwipeCanvas: (Float, Float, Float, Float, Int) -> Unit,
     modifier: Modifier = Modifier,
     fullscreenEnabled: Boolean = true,
-    /** 直接挂在画布 Surface（画框本体）上：共享元素 morph 必须以画框的边界为准，
-     *  挂到 [modifier]（整段 Column，fillMaxWidth）会把 morph 边界放大成整行宽。 */
-    frameModifier: Modifier = Modifier,
 ) {
     // 内画框取官方 extraLarge 28dp，与外层卡片（恒 28dp，见 capsuleCorner）同族圆角。
     val frameShape = MaterialTheme.shapes.extraLarge
@@ -1213,7 +1207,7 @@ internal fun VirtualDisplayStageSection(
     ) {
         // ── 画廊留白内衬画布（官方 extraLarge 28dp，与 8dp 衬底同心） ──────
         Surface(
-            modifier = frameModifier
+            modifier = Modifier
                 .height(StageCanvasHeight)
                 .aspectRatio(snapshot.aspectRatio, matchHeightConstraintsFirst = true)
                 .pointerInput(snapshot.displayId, snapshot.userControlling, isPaused) {
@@ -1482,8 +1476,8 @@ private val CapsuleShadowGutter = 12.dp
 /**
  * 测量值超出已上报窗口多少才算「不可预测的长高」（px）：过滤取整抖动与逐帧采样差，
  * 避免静止态反复改窗。真实换行一步 ~39px，远大于此容差，不会被吞。
- * 尺寸轴已全部并到 320ms 定长 tween（无过冲），此容差只作数值保护，
- * 同时兼作「落定不上报」的判定阈值（见落定分支的差量判断）。
+ * 尺寸轴中除胶囊 ⇄ 球宽度 morph（逐帧指数插值）外均并到 320ms 定长 tween（无过冲），
+ * 此容差只作数值保护，同时兼作「落定不上报」的判定阈值（见落定分支的差量判断）。
  */
 private const val CapsuleReportGrowTolerancePx = 6
 
@@ -1501,9 +1495,6 @@ private val CapsuleAxisOffsetSpec =
 /** 同 [CapsuleAxisSizeSpec]，transform 轴（Float：scaleIn/scaleOut）版本。 */
 private val CapsuleAxisFloatSpec = tween<Float>(EtaMotion.CapsuleExpandDurationMillis, easing = FastOutSlowInEasing)
 
-/** 收起态微缩镜与展开态舞台画布的共享元素 key（官方 SharedTransition 配对用）。 */
-private const val VirtualDisplayPreviewSharedKey = "vd_preview"
-
 /**
  * 舞台画布高度 = 舞台窗口 536 − 上下留白 24（每侧 12dp 阴影外衬）− 头部 56
  * （`TextFieldDefaults.MinHeight`）− 展开体上下内边距 16（[EtaDimens.SpaceSm] × 2）
@@ -1512,7 +1503,6 @@ private const val VirtualDisplayPreviewSharedKey = "vd_preview"
 private val StageCanvasHeight = 328.dp
 
 private val CapsuleDefaultWidth = 248.dp
-private val CapsuleMicroLensWidth = 264.dp
 
 /**
  * 展开体统一宽度（舞台 / 控制 / 补充三态）。依据：按钮组行需要三个官方
@@ -1533,6 +1523,3 @@ private val CapsuleExpandedWidth = 360.dp
  * 大力甩向屏幕横边时触发，停靠在边缘；点按恢复成收起态胶囊。
  */
 private val CapsuleBallDiameter = 56.dp
-
-/** 微缩镜镜身宽度；尾部同心内缩 = 胶囊内角 − 此值一半（镜身中心落在右上圆角弧心上）。 */
-private val MicroLensGlassWidth = 18.dp

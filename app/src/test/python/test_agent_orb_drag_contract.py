@@ -25,7 +25,8 @@ class AgentOrbDragContractTest(unittest.TestCase):
         self.assertIn("gesture.begin(event.getPointerId(0), event.rawX, event.rawY)", content)
         self.assertIn("gesture.move(event.getPointerId(0), event.rawX, event.rawY)", content)
         self.assertIn("gesture.finish(event.getPointerId(0))", content)
-        self.assertIn("if (event.pointerCount != 1) gesture.cancel()", content)
+        # 9fef7758a 起取消分支为多行（先停 dragging 再作废手势），钉住分支存在即可。
+        self.assertIn("if (event.pointerCount != 1) {", content)
         self.assertIn("MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN", content)
         self.assertIn("onDragStart()", content)
         self.assertNotIn("detectDragGestures", content)

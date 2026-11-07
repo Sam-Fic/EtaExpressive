@@ -25,11 +25,33 @@ class AgentOverlayCapsuleContractTest(unittest.TestCase):
     def test_capsule_uses_m3_tokens_and_shares_the_touch_focus_layer(self):
         source = (MAIN / "agent/overlay/AgentOverlayCapsule.kt").read_text()
         self.assertIn("MaterialTheme.colorScheme", source)
-        self.assertIn("VirtualDisplayMicroLens", source)
         self.assertIn("VirtualDisplayStageSection", source)
         self.assertIn("VirtualTouchFocusLayer", source)
         self.assertIn("onTakeOverVirtualDisplay", source)
         self.assertNotIn("miuix", source.lower())
+
+    def test_capsule_position_has_a_single_writer(self):
+        """位置只由 CapsuleFlingPhysics 的帧循环写入：宿主只投影，手势不碰窗口。"""
+        physics = (MAIN / "agent/overlay/CapsuleFlingPhysics.kt").read_text()
+        capsule = (MAIN / "agent/overlay/AgentOverlayCapsule.kt").read_text()
+        service = (MAIN / "agent/runtime/AgentRuntimeService.kt").read_text()
+        # 帧循环全仓唯一：物理文件里只有定义、组合文件里只有调用，且必须 try/finally
+        # 包住——中途被取消也要解除「甩出冻结晚缩」。
+        self.assertEqual(1, physics.count("suspend fun runCapsuleMotion("))
+        self.assertEqual(1, capsule.count("runCapsuleMotion("))
+        self.assertIn("} finally {", capsule)
+        # 手势与逐帧路径不得现取屏幕边界（IPC 成本 + 两个写入方的起点）；注释提及不限。
+        self.assertNotIn(".currentWindowMetrics", capsule)
+        self.assertNotIn("overlayBounds(", capsule)
+        # 宿主侧所有权让渡机制与橡皮筋（参考实现是硬钳）已整体删除。
+        self.assertNotIn("capsulePointerCaptured", service)
+        self.assertNotIn("capsuleFlingSettleUntil", service)
+        self.assertNotIn("CAPSULE_OVERDRAG_RESISTANCE", service)
+        self.assertNotIn("clearCapsuleFlingState", service)
+        # 运动状态只认内容盒：无窗口外衬字段、无窗口高度积分。
+        self.assertNotIn("gutterPx", physics)
+        self.assertNotIn("heightTargetPx", physics)
+        self.assertNotIn("ownsPosition", physics)
 
     def test_service_binds_capsule_only_when_virtual_display_is_active(self):
         source = (MAIN / "agent/runtime/AgentRuntimeService.kt").read_text()
