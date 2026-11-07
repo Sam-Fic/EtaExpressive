@@ -39,6 +39,20 @@ class VirtualDisplayRecoveryPolicyTest {
             }
         }
     }
+    @Test fun onlyUnrecoverableStatesNeedProgramTermination() {
+        assertFalse(VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(null))
+        assertFalse(VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(fresh))
+        // 已完成的 handoff + 空源盘仍可走合法的 release-only，不属于必须终结的闩死态。
+        assertFalse(VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(
+            fresh.copy(finishing = true, handoffComplete = true, sourceEmpty = true)))
+        for (state in listOf(
+            fresh.copy(finishing = true), fresh.copy(handoffComplete = true),
+            fresh.copy(releaseAttempted = true), fresh.copy(mutationUncertain = true),
+        )) {
+            assertTrue(state.toString(), VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(state))
+        }
+    }
+
     @Test fun staleOwnerRecordNeedsThisBootAndBothIdentitiesGone() {
         assertTrue(VirtualDisplayRecoveryPolicy.staleOwnerGone(true, true, true))
         // A cross-boot pid or display id may belong to an unrelated owner now.

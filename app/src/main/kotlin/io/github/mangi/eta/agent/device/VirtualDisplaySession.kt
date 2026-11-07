@@ -67,6 +67,11 @@ internal object VirtualDisplaySession {
          */
         var adopted = false
         var abortCleanupAttempted = false
+        /**
+         * 程序侧兜底终结已尝试过：闩死的 owner 只尝试一次，
+         * 失败后复用同一份终态回执，不再向模型重复抛同类错误。
+         */
+        var autoTerminationAttempted = false
         var persisted = false
         var receipt: JSONObject? = null
         /** Shared across finish/onRunClosed for this run so automatic retries cannot multiply. */
@@ -415,6 +420,9 @@ internal object VirtualDisplaySession {
                 // this caller actually wants. Keep SESSION_FINISHED for this run's own session.
                 if (!freesRunSlot(s)) return reply(false, "SESSION_FINISHED")
                 sessions.remove(runId)
+            } else if (s.autoTerminationAttempted) {
+                // 程序侧兜底已给出终态结论：直接复用，不再把 cleanup_only 反复抛给模型。
+                return s.receipt ?: reply(false, "RECOVERY_REQUIRED").put("phase", s.phase)
             } else {
                 // A cancelled run can still select delivery tasks and finish through the owner.
                 // Do not restore GUI access or reset this run's automatic retry budget.
@@ -439,14 +447,26 @@ internal object VirtualDisplaySession {
                 clearPresence(s)
                 s.runId = runId
                 sessions[runId] = s
-                // A deliberate later run gets a fresh clean-rejection budget, never mutation replay.
-                s.handoffBudget.reset()
-                return reply(true).put("recovered", true).put("cleanup_only", true)
-                    .put("phase", s.phase).put("message", ADOPTED_CLEANUP_ONLY)
+                // 程序侧兜底：原 run 已结束，若 owner 已被中断的 launch/handoff 闩死，
+                // finish 永远只会 REFUSE。直接终结 owner，再继续创建新副屏，
+                // 而不是把 cleanup_only 反复抛给模型。
+                val latched = s.client?.let {
+                    VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(freshHandoffState(it)?.flags)
+                } == true
+                if (latched && !s.autoTerminationAttempted) {
+                    val terminated = terminateLatchedOwner(context, s, "adopted_latched")
+                    if (!createIfMissing || !terminated.optBoolean("ok")) return terminated
+                } else {
+                    // A deliberate later run gets a fresh clean-rejection budget, never mutation replay.
+                    s.handoffBudget.reset()
+                    return reply(true).put("recovered", true).put("cleanup_only", true)
+                        .put("phase", s.phase).put("message", ADOPTED_CLEANUP_ONLY)
+                }
+            } else {
+                // Adopting an unreachable owner leaves cleanup impossible forever. Forget it and let
+                // the persisted record re-authenticate the owner, or prove it stale, instead.
+                s.client?.close()
             }
-            // Adopting an unreachable owner leaves cleanup impossible forever. Forget it and let
-            // the persisted record re-authenticate the owner, or prove it stale, instead.
-            s.client?.close()
         }
         var recoveryStage = "record_read"
         val saved = try { recoveryPrefs(context) } catch (ex: Exception) {
@@ -481,7 +501,15 @@ internal object VirtualDisplaySession {
                     AndroidAgentLogger.warn("Virtual display recovery discarded a stale owner record")
                 } else {
                     if (!sameBoot) throw VirtualDisplayRecoveryException(recoveryStage, "RECOVERY_BOOT_MISMATCH")
-                    if (record.mutationBarrier != null) return fail(s, "MUTATION_UNCERTAIN_NO_REPLAY")
+                    if (record.mutationBarrier != null) {
+                        // 落盘 barrier 表示上一次进程在 release 前后中断，owner 状态不可重放。
+                        // 程序侧直接终结这个残留 owner 并继续开新副屏，而不是让每个新 run
+                        // 永久收到 MUTATION_UNCERTAIN_NO_REPLAY。
+                        val terminated = terminateLatchedOwner(context, s, "recovery_barrier")
+                        if (!createIfMissing || !terminated.optBoolean("ok")) return terminated
+                        sessions.remove(runId)
+                        return startFreshOwner(context, runId, saved, boot)
+                    }
                     recoveryStage = "connect"
                     val c = VirtualDisplayOwnerClient.reconnectChecked(AndroidAgentLogger, record.socket, record.pid,
                         record.displayId, record.uniqueId, record.token, record.run)
@@ -491,6 +519,14 @@ internal object VirtualDisplaySession {
                     recoveryStage = "handoff_state"
                     val observed = handoffState(c, state)
                         ?: throw VirtualDisplayRecoveryException(recoveryStage, "RECOVERY_HANDOFF_STATE_INVALID")
+                    // 程序侧兜底：上一轮中断留下的闩死态没有合法 finish 路径，直接终结 owner 后
+                    // 继续开新副屏，避免模型反复收到 CLEANUP_REQUIRED / RECOVERY_UNCERTAIN。
+                    if (VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(observed.flags)) {
+                        val terminated = terminateLatchedOwner(context, s, "recovery_latched")
+                        if (!createIfMissing || !terminated.optBoolean("ok")) return terminated
+                        sessions.remove(runId)
+                        return startFreshOwner(context, runId, saved, boot)
+                    }
                     val registered = observed.retainedTaskIds
                     recoveryStage = "selection"
                     // A missing kept field is an empty delivery selection, not "every retained task".
@@ -510,6 +546,15 @@ internal object VirtualDisplaySession {
         } catch (ex: Exception) {
             val e = VirtualDisplayRecoveryException.classify(recoveryStage, ex)
             AndroidAgentLogger.warn("Virtual display recovery stage=${e.stage} code=${e.code} field=${e.field} type=${e.exceptionType}")
+            // 已认证连上 owner、但状态读取/选择校验失败：owner 确实仍占用副屏，且不存在合法
+            // finish 路径。程序侧先终结这个残留 owner 再继续开新副屏，而不是把同一个恢复错误
+            // 反复抛给模型。未连上（client == null）时身份不可信，不自动终结。
+            if (s.client != null && e.stage in setOf("status", "handoff_state", "selection")) {
+                val terminated = terminateLatchedOwner(context, s, "recovery_${e.stage}")
+                if (!createIfMissing || !terminated.optBoolean("ok")) return terminated
+                sessions.remove(runId)
+                return startFreshOwner(context, runId, saved, boot)
+            }
             // This block authenticates and reads only; it has not sent a handoff or release.
             s.phase = "held"; s.closedRun = true; s.cleanupOnly = true; s.adopted = true
             return reply(false, e.code).put("recovery_stage", e.stage).put("recovery_field", e.field)
@@ -520,28 +565,7 @@ internal object VirtualDisplaySession {
             sessions.remove(runId)
             return reply(false, "NO_VIRTUAL_SESSION").put("stale_cleared", staleCleared)
         }
-        return when (val started = VirtualDisplayOwnerClient.start(context, AndroidAgentLogger)) {
-            is OwnerStartResult.Failed -> fail(s, started.errorCode)
-            is OwnerStartResult.Ready -> {
-                val c = started.client
-                s.client = c
-                s.persisted = runCatching { saved.edit().putString("socket", c.socketName)
-                    .putLong("pid", c.ownerPid).putInt("display", c.displayId)
-                    .putString("unique", c.uniqueId).putString("token", c.recoveryToken)
-                    .putString("run", runId).putString("boot", boot).commit() }.getOrDefault(false)
-                if (!s.persisted) return fail(s, "RECOVERY_STATE_UNWRITABLE")
-                val state = c.status()
-                if (handoffState(c, state) == null) fail(s, "OWNER_STATE_UNKNOWN")
-                else {
-                    s.phase = "active"
-                    val started = body(state)
-                    s.width = started.optInt("width", 0)
-                    s.height = started.optInt("height", 0)
-                    publishPresence(s, started)
-                    started.put("run_id", runId)
-                }
-            }
-        }
+        return startFreshOwner(context, runId, saved, boot)
     }
     /** Read only app-owned metadata; never treat the unrelated port-3070 daemon as this owner. */
     @Synchronized fun recoveryStatus(context: Context): JSONObject {
@@ -943,6 +967,90 @@ internal object VirtualDisplaySession {
             }
     }
 
+    /**
+     * 程序侧兜底终结闩死的 owner。
+     *
+     * 触发前提：owner 已被中断的 launch/handoff 闩死，finish 只剩 REFUSE，不存在合法的
+     * 归位/释放路径。此时复用设置页的分级强制重置（认证 force release，失败后以 root
+     * 终结 owner 进程），全程不移动任务、不重放任何变更；成功则清空恢复记录，失败只保留
+     * 一份终态回执。只尝试一次，避免模型或后续 run 反复收到同类不确定错误。
+     */
+    private fun terminateLatchedOwner(context: Context, s: Session, reason: String): JSONObject {
+        s.autoTerminationAttempted = true
+        s.handoffBudget.stop()
+        AndroidAgentLogger.warn(
+            "Virtual display auto termination: conversation=- run=${s.runId.ifBlank { "-" }} " +
+                "dispatch=- reason=$reason phase=${s.phase}",
+        )
+        val reset = runCatching { forceReset(context) }.getOrElse {
+            reply(false, "FORCE_RESET_INCOMPLETE").put("tier", "incomplete")
+        }
+        if (reset.optBoolean("ok")) {
+            clearPresence(s)
+            runCatching { s.client?.close() }
+            s.client = null
+            s.phase = "finished"
+            val receipt = reply(
+                true,
+                detail = "上一轮中断残留的副屏会话已由程序自动终结（${reset.optString("tier")}），" +
+                    "任务不会被移动；需要副屏可直接重新调用 start_virtual_session",
+            ).put("released", true).put("handedOff", false).put("autoTerminated", true)
+                .put("tier", reset.optString("tier"))
+                .put("recordCleared", reset.optBoolean("recordCleared"))
+            // forceReset 成功后会清空 sessions：把本 run 的终态回执放回槽位，
+            // 让 deliveryReceipt 与重入的 finish 仍能读到事实结论。
+            sessions[s.runId] = s
+            AndroidAgentLogger.info(
+                "Virtual display auto termination done: run=${s.runId.ifBlank { "-" }} " +
+                    "tier=${reset.optString("tier")} recordCleared=${reset.optBoolean("recordCleared")}",
+            )
+            return receipt.also { s.receipt = it }
+        }
+        s.phase = "uncertain"
+        val receipt = reply(
+            false,
+            "VIRTUAL_SESSION_STUCK",
+            "上一轮中断残留的副屏 owner 无法自动终结，程序已停止重试，不会再重复报同一错误。" +
+                "如需继续，请到「设置 - 虚拟屏」执行强制重置，或重启设备后再发起新的副屏会话",
+        ).put("autoTerminated", false).put("mutation_uncertain", true)
+            .put("automatic_retry_allowed", false).put("tier", reset.optString("tier"))
+            .withHandoffAttempts(s)
+        sessions[s.runId] = s
+        return receipt.also { s.receipt = it }
+    }
+
+    /** 自愈后（或首次）创建全新 owner；不会复用被终结的会话。 */
+    private fun startFreshOwner(
+        context: Context, runId: String, saved: SharedPreferences, boot: String,
+    ): JSONObject {
+        sessions.remove(runId)
+        val s = Session()
+        s.runId = runId
+        sessions[runId] = s
+        return when (val started = VirtualDisplayOwnerClient.start(context, AndroidAgentLogger)) {
+            is OwnerStartResult.Failed -> fail(s, started.errorCode)
+            is OwnerStartResult.Ready -> {
+                val c = started.client
+                s.client = c
+                s.persisted = runCatching { saved.edit().putString("socket", c.socketName)
+                    .putLong("pid", c.ownerPid).putInt("display", c.displayId)
+                    .putString("unique", c.uniqueId).putString("token", c.recoveryToken)
+                    .putString("run", runId).putString("boot", boot).commit() }.getOrDefault(false)
+                if (!s.persisted) return fail(s, "RECOVERY_STATE_UNWRITABLE")
+                val state = c.status()
+                if (handoffState(c, state) == null) fail(s, "OWNER_STATE_UNKNOWN")
+                else {
+                    s.phase = "active"
+                    val started = body(state)
+                    s.width = started.optInt("width", 0)
+                    s.height = started.optInt("height", 0)
+                    publishPresence(s, started)
+                    started.put("run_id", runId)
+                }
+            }
+        }
+    }
+
     /** 强制重置专用的有界重连；失败只降级到 root 档，不抛恢复异常。 */
     private fun reconnectForReset(
         socketName: String, pid: Long, displayId: Int, uniqueId: String, token: String, runId: String,
@@ -1046,6 +1154,18 @@ internal object VirtualDisplaySession {
         if (s.phase == "finished") return s.receipt?.let {
             if (it.opt("ok") == false) withPreservedReceiptExplanation(s, it) else it
         } ?: reply(true).put("already_finished", true).put("released", true)
+        // 程序侧兜底：owner 已被中断的 launch/handoff 闩死时，finish 没有合法的归位/释放路径；
+        // 直接由程序终结 owner。只尝试一次，失败后复用同一份终态回执，不再反复报同类错误。
+        if (ctx != null && !s.autoTerminationAttempted) {
+            val client = s.client
+            val latched = when {
+                client != null -> VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(freshHandoffState(client)?.flags)
+                // 运行已结束且没有可用连接：交给程序侧终结残留 owner，避免设备被永久占用。
+                s.persisted && s.closedRun -> true
+                else -> false
+            }
+            if (latched) return terminateLatchedOwner(ctx, s, "finish_latched")
+        }
         // An ambiguous attempt must not reach either handoff OR release, even after adoption.
         if (s.handoffBudget.blocked || Thread.currentThread().isInterrupted)
             return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
@@ -1280,13 +1400,23 @@ internal object VirtualDisplaySession {
             ?: reply(false, "ABORT_CLEANUP_UNVERIFIED").put("released", false)
         // start() can bind a held/recovered owner from another run to this runId. Do not
         // erase that owner's marks or remove its tasks merely because this later run failed.
+        // 程序侧兜底：收养会话被闩死时没有合法清理路径，先终结 owner，
+        // 避免调用方反复收到 RECOVERY_REQUIRED。
+        if (s.cleanupOnly && !s.autoTerminationAttempted && s.client?.let {
+                VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(freshHandoffState(it)?.flags)
+            } == true)
+            return terminateLatchedOwner(context, s, "abort_cleanup_only")
         if (s.cleanupOnly) return reply(false, "RECOVERY_REQUIRED").put("released", false)
         s.abortCleanupAttempted = true
         // A failed/ambiguous previous handoff must not be replayed or get a different selection.
         if (s.handoffBudget.blocked || s.handoffState != null || s.handoffSelection != null)
             return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
         if (!s.persisted) return fail(s, "RECOVERY_STATE_UNWRITABLE")
-        val c = s.client ?: return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
+        val c = s.client
+        if (c == null) {
+            // 运行已结束且没有可用连接：交给程序侧终结残留 owner，避免设备被永久占用。
+            return terminateLatchedOwner(context, s, "abort_no_client")
+        }
         // 归位失败会让后来的清理因“任务已逃逸”而失败；归位结果不确定时直接保持恢复态。
         val pre = runCatching { c.status() }.getOrNull()
         if (pre?.ok == true && escapedTaskIds(pre) > 0) {
@@ -1303,8 +1433,12 @@ internal object VirtualDisplaySession {
         }
         val observed = freshHandoffState(c) ?: return failPreservingPrior(s, "OWNER_STATE_UNKNOWN")
         val f = observed.flags
-        if (f.finishing || f.handoffComplete || f.releaseAttempted || f.mutationUncertain)
+        if (f.finishing || f.handoffComplete || f.releaseAttempted || f.mutationUncertain) {
+            // 程序侧兜底：闩死态没有合法清理路径；仅完成 handoff 的空源盘仍交给 finish 正常释放。
+            if (VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(f))
+                return terminateLatchedOwner(context, s, "abort_latched")
             return failPreservingPrior(s, "RECOVERY_UNCERTAIN")
+        }
         // Explicit keep is a delivery selection, not authorization to deliver an unfinished run.
         // Persist empty selection before cleanup so process recovery cannot re-promote it.
         val cleared = runCatching { recoveryPrefs(context).edit()
@@ -1352,6 +1486,11 @@ internal object VirtualDisplaySession {
             }
         }
         if (s.client == null) {
+            // 运行已结束且没有可用连接：交给程序侧终结残留 owner，而不是留下永久占用。
+            if (s.persisted) {
+                s.receipt = terminateLatchedOwner(context, s, "run_closed_no_client")
+                return
+            }
             failPreservingPrior(s, "RECOVERY_UNCERTAIN")
             return
         }
@@ -1377,9 +1516,22 @@ internal object VirtualDisplaySession {
         }
         val s=sessions[runId]?:return text(reply(false,"NO_VIRTUAL_SESSION"))
         s.previewExcludedPackages.addAll(excludedPackages)
-        if(s.phase!="active" || s.cleanupOnly || !s.persisted)
+        if(s.phase!="active" || s.cleanupOnly || !s.persisted) {
+            // 程序侧兜底：收养的会话被闩死时先终结 owner，再让调用方重新 start；
+            // 只返回一次结论，不再让模型反复收到同类 CLEANUP_REQUIRED。
+            if(s.cleanupOnly && !s.autoTerminationAttempted && s.client?.let {
+                    VirtualDisplayRecoveryPolicy.ownerTerminallyLatched(freshHandoffState(it)?.flags)
+                } == true) {
+                val terminated=terminateLatchedOwner(context,s,"gui_cleanup_required")
+                return text(if(terminated.optBoolean("ok"))
+                    reply(false,"VIRTUAL_SESSION_RESET",
+                        "上一轮中断残留的副屏会话已由程序自动清理，请重新调用 start_virtual_session 开始新的副屏会话")
+                        .put("autoTerminated", true).put("phase","finished")
+                else terminated)
+            }
             return text(reply(false,"VIRTUAL_SESSION_CLEANUP_REQUIRED",CLEANUP_REQUIRED_MESSAGE)
                 .put("cleanup_only", s.cleanupOnly).put("phase", s.phase))
+        }
         val c=s.client!!
         try {
             if(tool=="observe_screen") {

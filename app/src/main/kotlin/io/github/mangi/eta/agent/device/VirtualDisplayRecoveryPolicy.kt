@@ -12,6 +12,15 @@ internal object VirtualDisplayRecoveryPolicy {
         else -> Action.HANDOFF
     }
 
+    /**
+     * 程序侧兜底判定：owner 已处于无法通过 handoff/release 正常收口的终止态
+     * （中断的 launch/handoff 留下 finishing / mutationUncertain / releaseAttempted 闩锁）。
+     * 这类会话继续调用 finish 只会得到 REFUSE，应由程序终结 owner 进程。
+     * flags == null（状态未知）不算：它可能只是瞬时读取失败，仍需保留恢复路径。
+     */
+    fun ownerTerminallyLatched(f: Flags?): Boolean =
+        f != null && finishAction(f) == Action.REFUSE
+
     /** 兜底释放的只读输入。任何未知或不一致都视为阻塞，不做猜测。 */
     data class ForcedReleaseInput(
         val keptTaskIds: Set<Int>,
