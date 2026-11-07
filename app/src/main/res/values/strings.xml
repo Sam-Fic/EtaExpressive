@@ -3074,6 +3074,10 @@
   <string name="media_threshold_label">Match threshold</string>
   <string name="media_threshold_hidden">%1$d results hidden below the threshold</string>
   <string name="media_threshold_empty_hint">No results above the threshold — try lowering it</string>
+  <string name="media_search_settings">Search settings</string>
+  <string name="media_view_mode_label">View mode</string>
+  <string name="media_view_mode_list">List</string>
+  <string name="media_view_mode_grid">Grid</string>
   <string name="media_settings_title">Media semantic search</string>
   <string name="media_settings_entry_title">Media semantic search</string>
   <string name="media_settings_entry_summary">Model, scan scope and index for searching photos, videos and files by meaning</string>

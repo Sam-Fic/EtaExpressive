@@ -3040,6 +3040,10 @@
   <string name="media_threshold_label">匹配度閾值</string>
   <string name="media_threshold_hidden">已隱藏 %1$d 條低於閾值的結果</string>
   <string name="media_threshold_empty_hint">當前閾值下沒有匹配結果，試試調低匹配度閾值</string>
+  <string name="media_search_settings">搜尋設定</string>
+  <string name="media_view_mode_label">檢視模式</string>
+  <string name="media_view_mode_list">列表</string>
+  <string name="media_view_mode_grid">宮格</string>
   <string name="media_settings_title">媒體語義搜尋</string>
   <string name="media_settings_entry_title">媒體語義搜尋</string>
   <string name="media_settings_entry_summary">依語義搜尋本機圖片、影片與檔案的模型、掃描範圍與索引設定</string>
