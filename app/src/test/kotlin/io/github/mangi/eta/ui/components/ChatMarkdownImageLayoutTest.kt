@@ -52,8 +52,7 @@ class ChatMarkdownImageLayoutTest {
     private fun show(content: androidx.compose.runtime.State<AgentMessageUi>, open: (String)->Unit = {}) {
         compose.setContent {
             MaterialTheme(colorScheme = lightColorScheme()) {
-                // 预览 hook 已升级为 (source, 缩略图窗口矩形)：测试只关心被打开的源，忽略锚点。
-                CompositionLocalProvider(LocalOpenChatImagePreview provides ({ source, _ -> open(source) })) {
+                CompositionLocalProvider(LocalOpenChatImagePreview provides open) {
                     Column(Modifier.width(360.dp).background(androidx.compose.ui.graphics.Color.White).testTag("message")
                         .verticalScroll(rememberScrollState())) {
                         ChatMessageItem(content.value, androidx.compose.runtime.remember { ChatMessageActions() }, false, modifier=Modifier.fillMaxWidth(),
