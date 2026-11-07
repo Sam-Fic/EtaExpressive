@@ -271,6 +271,17 @@ internal object EmbeddingModelStore {
         prefs(context).edit().putFloat("search_min_score", minScore.coerceIn(0f, 1f)).apply()
     }
 
+    /**
+     * 检索页结果视图偏好：true 为宫格（相册式纯缩略图墙），false 为行列表（默认）。
+     * 纯展示层偏好，不影响检索与结果集；切档即时落盘，进检索页时恢复。
+     */
+    fun searchViewGrid(context: Context): Boolean =
+        prefs(context).getBoolean("search_view_grid", false)
+
+    fun setSearchViewGrid(context: Context, grid: Boolean) {
+        prefs(context).edit().putBoolean("search_view_grid", grid).apply()
+    }
+
     internal fun valid(file: File, asset: EmbeddingModelCatalog.Asset): Boolean = runCatching {
         if (!file.isFile || file.length() != asset.bytes) return false
         val digest = MessageDigest.getInstance("SHA-256")
