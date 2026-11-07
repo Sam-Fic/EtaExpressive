@@ -17,6 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -54,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.layout.rememberPageContentSidePadding
@@ -67,6 +74,7 @@ import kotlinx.coroutines.delay
  * 且没有搜索词就不渲染内容；本骨架只提供顶栏与列表容器，适合「顶栏常驻 + 还要挂常驻
  * 筛选条」的场景（媒体语义搜索把类型标签固定在顶栏下方，搜索前后都能切换类型）。
  * 这类页自绘搜索记录时用 [EtaSearchHistoryItems]，与 [EtaSearchPage] 共用同一份版式。
+ * 宫格正文（媒体搜索的结果墙）走 [EtaSearchGridScaffold]，顶栏与本骨架共用一份。
  *
  * @param query 当前搜索词。
  * @param onQueryChange 搜索词变化回调。
@@ -98,7 +106,6 @@ fun EtaSearchScaffold(
     content: LazyListScope.() -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
 
     // 进入页面即聚焦并弹出输入法（等输入框摆好后请求，失败稍候重试）。
     if (autoFocus) {
@@ -115,71 +122,17 @@ fun EtaSearchScaffold(
         // KernelSU 式：整页背景与顶栏同用 surfaceContainer，分段条目（surfaceBright）浮在其上。
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
-            Column(
-                // 顶栏整块（连同下方的常驻标签条）自带不透明底色：未选中的 FilterChip
-                // 容器色是透明的，少了这层底色就会透出后面的内容。
-                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer),
-            ) {
-                TopAppBar(
-                    title = {
-                        TextField(
-                            value = query,
-                            onValueChange = onQueryChange,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester),
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyLarge,
-                            placeholder = {
-                                Text(
-                                    text = searchPlaceholder,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                            ),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(
-                                onSearch = {
-                                    onSubmit?.invoke(query)
-                                    focusManager.clearFocus()
-                                },
-                            ),
-                        )
-                    },
-                    navigationIcon = {
-                        EtaTopBarBackButton(
-                            onClick = onBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
-                    },
-                    actions = {
-                        // 有输入内容时才出现清除按钮。
-                        if (showClear && query.isNotEmpty()) {
-                            val clearDescription = stringResource(R.string.action_close)
-                            EtaTooltip(text = clearDescription) {
-                                IconButton(onClick = { onQueryChange("") }, shapes = IconButtonDefaults.shapes(), ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Close,
-                                        contentDescription = clearDescription,
-                                    )
-                                }
-                            }
-                        }
-                        actions()
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                )
-                topContent?.invoke()
-            }
+            EtaSearchTopBar(
+                query = query,
+                onQueryChange = onQueryChange,
+                searchPlaceholder = searchPlaceholder,
+                onBack = onBack,
+                onSubmit = onSubmit,
+                showClear = showClear,
+                actions = actions,
+                topContent = topContent,
+                focusRequester = focusRequester,
+            )
         },
     ) { innerPadding ->
         val sidePadding = rememberPageContentSidePadding()
@@ -198,6 +151,191 @@ fun EtaSearchScaffold(
             content()
             if (bottomSpacer) {
                 item(key = "eta_bottom_spacer") {
+                    Spacer(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .navigationBarsPadding(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 搜索页顶栏：返回钮 + 透明底搜索框（无边框融入标题栏）+ 有输入时出现的清除按钮 +
+ * 右侧动作区，顶栏下可挂常驻内容（如媒体搜索的类型标签条）。
+ *
+ * [EtaSearchScaffold] 与 [EtaSearchGridScaffold] 共用这一份，保证列表与宫格两类正文的
+ * 顶栏观感、聚焦行为完全一致。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EtaSearchTopBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    searchPlaceholder: String,
+    onBack: () -> Unit,
+    onSubmit: ((String) -> Unit)?,
+    showClear: Boolean,
+    actions: @Composable RowScope.() -> Unit,
+    topContent: (@Composable () -> Unit)?,
+    focusRequester: FocusRequester,
+) {
+    val focusManager = LocalFocusManager.current
+    Column(
+        // 顶栏整块（连同下方的常驻标签条）自带不透明底色：未选中的 FilterChip
+        // 容器色是透明的，少了这层底色就会透出后面的内容。
+        modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        TopAppBar(
+            title = {
+                TextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    placeholder = {
+                        Text(
+                            text = searchPlaceholder,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            onSubmit?.invoke(query)
+                            focusManager.clearFocus()
+                        },
+                    ),
+                )
+            },
+            navigationIcon = {
+                EtaTopBarBackButton(
+                    onClick = onBack,
+                    contentDescription = stringResource(R.string.action_back),
+                )
+            },
+            actions = {
+                // 有输入内容时才出现清除按钮。
+                if (showClear && query.isNotEmpty()) {
+                    val clearDescription = stringResource(R.string.action_close)
+                    EtaTooltip(text = clearDescription) {
+                        IconButton(onClick = { onQueryChange("") }, shapes = IconButtonDefaults.shapes(), ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = clearDescription,
+                            )
+                        }
+                    }
+                }
+                actions()
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+        )
+        topContent?.invoke()
+    }
+}
+
+/**
+ * 宫格版搜索页骨架：顶栏与 [EtaSearchScaffold] 完全同款（共用 [EtaSearchTopBar]），
+ * 正文是官方 [LazyVerticalGrid]（签名已对 foundation-android 1.13.0-alpha01 sources 核验：
+ * `LazyVerticalGrid(columns, modifier, state, contentPadding, reverseLayout, verticalArrangement,
+ * horizontalArrangement, flingBehavior, userScrollEnabled, overscrollEffect, cacheWindow, content)`；
+ * item 支持可选 `span: (LazyGridItemSpanScope.() -> GridItemSpan)?`，全跨 item 用
+ * `span = { GridItemSpan(maxLineSpan) }`）。
+ *
+ * 取证（RULES §1.3）：`~/.gradle/caches/modules-2/files-2.1/androidx.compose.foundation/
+ * foundation-android/1.13.0-alpha01/…-sources.jar` → `commonMain/…/lazy/grid/LazyGridDsl.kt`
+ * （`LazyVerticalGrid` 重载、`GridCells.Fixed`、`LazyGridScope.item(key, span, contentType, content)`）、
+ * `LazyGridSpan.kt`（`GridItemSpan(currentLineSpan)` 工厂 + `LazyGridItemSpanScope.maxLineSpan`）。
+ *
+ * 与 [EtaSearchScaffold] 的分工：列表正文与「检索中 / 空闲 / 错误」这类全屏态条目走
+ * [EtaSearchScaffold]（其 `fillParentMaxSize` 是 LazyItemScope 专属）；只有「已有命中」的
+ * 宫格墙走本骨架——LazyGridItemScope 没有 fillParentMaxSize（同版本源码核验：
+ * `LazyGridItemScope.kt` 仅含 `animateItem`），全屏态条目进不了宫格。
+ *
+ * @param columns 宫格列数（官方 [GridCells.Fixed]）。
+ * @param cellSpacing 格间距，水平与垂直同值。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EtaSearchGridScaffold(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    searchPlaceholder: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    onSubmit: ((String) -> Unit)? = null,
+    autoFocus: Boolean = true,
+    showClear: Boolean = true,
+    actions: @Composable RowScope.() -> Unit = {},
+    topContent: (@Composable () -> Unit)? = null,
+    gridState: LazyGridState = rememberLazyGridState(),
+    columns: Int = 3,
+    cellSpacing: Dp = 2.dp,
+    bottomSpacer: Boolean = true,
+    content: LazyGridScope.() -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+
+    // 进入页面即聚焦并弹出输入法（等输入框摆好后请求，失败稍候重试）。
+    if (autoFocus) {
+        LaunchedEffect(Unit) {
+            repeat(10) {
+                if (runCatching { focusRequester.requestFocus() }.isSuccess) return@LaunchedEffect
+                delay(32)
+            }
+        }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        topBar = {
+            EtaSearchTopBar(
+                query = query,
+                onQueryChange = onQueryChange,
+                searchPlaceholder = searchPlaceholder,
+                onBack = onBack,
+                onSubmit = onSubmit,
+                showClear = showClear,
+                actions = actions,
+                topContent = topContent,
+                focusRequester = focusRequester,
+            )
+        },
+    ) { innerPadding ->
+        val sidePadding = rememberPageContentSidePadding()
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            state = gridState,
+            modifier = Modifier
+                .fillMaxSize()
+                // 视口整体落在顶栏之下：与 [EtaSearchScaffold] 同一套处理，顶栏下方常驻内容
+                // （类型标签条）不被滚动内容透出。
+                .padding(top = innerPadding.calculateTopPadding()),
+            // 宽屏下结果墙居中限宽，宫格本体仍铺满全宽，两侧不留滚动死区。
+            contentPadding = PaddingValues(start = sidePadding, end = sidePadding),
+            horizontalArrangement = Arrangement.spacedBy(cellSpacing),
+            verticalArrangement = Arrangement.spacedBy(cellSpacing),
+        ) {
+            content()
+            if (bottomSpacer) {
+                item(key = "eta_grid_bottom_spacer", span = { GridItemSpan(maxLineSpan) }) {
                     Spacer(
                         modifier = Modifier
                             .height(24.dp)
