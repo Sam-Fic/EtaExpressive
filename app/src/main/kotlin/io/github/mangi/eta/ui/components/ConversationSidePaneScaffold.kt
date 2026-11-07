@@ -11,7 +11,6 @@ import androidx.compose.animation.core.VectorizedDecayAnimationSpec
 import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
 import io.github.mangi.eta.agent.remote.RemoteSessionInfo
@@ -76,6 +75,7 @@ import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.DismissibleNavigationDrawer
@@ -91,6 +91,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface as M3Surface
@@ -1473,21 +1474,34 @@ private fun Material3ConversationRow(
                             if (conversation.isActiveRun) {
                                 // M3E LoadingIndicator（morph 变形）：行尾运行态标记，
                                 // 与工具行、AgentStatusCard 的运行态同一套 loading 语言。
+                                // 签名按依赖版本 material3 1.5.0-alpha29 源码核实：
+                                // `LoadingIndicator(modifier, color: Color = LoadingIndicatorDefaults.indicatorColor, polygons)`；
+                                // 默认色走 token `LoadingIndicatorTokens.ActiveIndicatorColor`
+                                // = `ColorSchemeKeyTokens.Primary`（即 colorScheme.primary），
+                                // 与行底 tertiaryContainer 不成对，选中行会重演角色错配。
+                                // 这里显式覆盖为 LocalContentColor：未选中取常规内容色，
+                                // 选中行底为 tertiaryContainer 时取 onTertiaryContainer，
+                                // 与同行的前导图标、PushPin 保持同一套内容色语义。
                                 LoadingIndicator(
                                     modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = LocalContentColor.current,
                                 )
                             } else if (conversation.hasCompletionMarker) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(EtaDimens.StatusDotSize)
-                                        .clip(CircleShape)
-                                        .border(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            shape = CircleShape,
-                                        ),
-                                )
+                                // 完成标记：实心小圆点，表示「有尚未查看的完成结果」。
+                                // 官方组件按依赖版本 material3 1.5.0-alpha29 源码核实：
+                                // `Badge(modifier, containerColor = BadgeDefaults.containerColor,
+                                //   contentColor = contentColorFor(containerColor),
+                                //   content: (@Composable RowScope.() -> Unit)? = null)`；
+                                // content 为 null 时走指示点形态，尺寸取 token `BadgeTokens.Size`
+                                // = 6dp、形状取 `BadgeTokens.Shape` = `ShapeKeyTokens.CornerFull`
+                                // （正圆），与既有 EtaDimens.StatusDotSize（6dp）同档，故直接
+                                // 用官方默认尺寸，不再另传 size。官方默认 containerColor 是
+                                // token `BadgeTokens.Color` = `ColorSchemeKeyTokens.Error`
+                                // （通知红点语义），与本行不成对，因此显式覆盖为 LocalContentColor：
+                                // 未选中取 trailing 槽内容色 onSurfaceVariant，选中行底为
+                                // tertiaryContainer 时取 onTertiaryContainer，与同槽的
+                                // loading 指示器、PushPin 保持同一套取色。
+                                Badge(containerColor = LocalContentColor.current)
                             }
                             if (conversation.isPinned) {
                                 Icon(
