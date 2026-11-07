@@ -11,6 +11,7 @@ import java.util.Locale
 import androidx.core.content.FileProvider
 import io.github.mangi.eta.agent.media.AgentVideoCodec
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,6 +22,8 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +35,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.shape.CircleShape
@@ -53,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +79,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -100,6 +106,7 @@ import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.fullImageSourceAt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -111,6 +118,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -587,71 +596,84 @@ private fun ChatImagePreviewBody(
                         .padding(8.dp),
                 )
             }
-            // M3E 官方浮动工具栏（M3 toolbars 组件）：底部居中的药丸，tertiaryContainer 容器 +
-            // onTertiaryContainer 内容色；保存 / 复制绝对路径 / 添加到对话 / 其他应用打开 / 分享。
-            // leadingContent 传空：官方 minimumInteractiveBalancedPadding 只在两侧都没有
-            // leading/trailing 内容时生效，会把纯 IconButton 内容的工具栏撑高（见输入区同款注释）。
-            HorizontalFloatingToolbar(
-                expanded = true,
-                colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(
-                    toolbarContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    toolbarContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                ),
-                // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
-                contentPadding = EtaFloatingToolbarConcentricPadding(
-                    IconButtonDefaults.smallContainerSize().width,
-                ),
-                leadingContent = {},
+            // 底部纵向组：照片浏览器式缩略图条在上、浮动工具栏在下。两者同属一个 Column，
+            // 工具栏恒贴 24dp 底线、不因条的出现/消失被顶动；条只在多图画廊里显示。
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(bottom = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                PreviewToolbarButton(
-                    icon = Icons.Rounded.Download,
-                    label = stringResource(R.string.action_save),
-                    onClick = saveAction,
-                    enabled = saveEnabled,
-                    colors = toolbarButtonColors,
-                )
-                Spacer(modifier = Modifier.width(PreviewToolbarGap))
-                PreviewToolbarButton(
-                    icon = Icons.Rounded.ContentCopy,
-                    label = stringResource(R.string.chat_image_copy_path),
-                    onClick = copyPathAction,
-                    enabled = source.isNotBlank(),
-                    colors = toolbarButtonColors,
-                )
-                Spacer(modifier = Modifier.width(PreviewToolbarGap))
-                PreviewToolbarButton(
-                    icon = Icons.Rounded.AddPhotoAlternate,
-                    label = stringResource(
-                        if (isVideo) {
-                            R.string.chat_video_add_to_conversation
-                        } else {
-                            R.string.chat_image_add_to_conversation
-                        },
+                if (sources.size > 1) {
+                    PreviewThumbnailStrip(
+                        sources = sources,
+                        pagerState = pagerState,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                }
+                // M3E 官方浮动工具栏（M3 toolbars 组件）：底部居中的药丸，tertiaryContainer 容器 +
+                // onTertiaryContainer 内容色；保存 / 复制绝对路径 / 添加到对话 / 其他应用打开 / 分享。
+                // leadingContent 传空：官方 minimumInteractiveBalancedPadding 只在两侧都没有
+                // leading/trailing 内容时生效，会把纯 IconButton 内容的工具栏撑高（见输入区同款注释）。
+                HorizontalFloatingToolbar(
+                    expanded = true,
+                    colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(
+                        toolbarContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        toolbarContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     ),
-                    onClick = attachAction,
-                    enabled = attachEnabled,
-                    colors = toolbarButtonColors,
-                )
-                Spacer(modifier = Modifier.width(PreviewToolbarGap))
-                PreviewToolbarButton(
-                    icon = Icons.AutoMirrored.Rounded.OpenInNew,
-                    label = stringResource(R.string.chat_image_open_with),
-                    onClick = openWithAction,
-                    enabled = shareEnabled,
-                    colors = toolbarButtonColors,
-                )
-                Spacer(modifier = Modifier.width(PreviewToolbarGap))
-                PreviewToolbarButton(
-                    icon = Icons.Rounded.Share,
-                    label = stringResource(R.string.chat_image_share),
-                    onClick = shareAction,
-                    enabled = shareEnabled,
-                    colors = toolbarButtonColors,
-                )
+                    // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
+                    contentPadding = EtaFloatingToolbarConcentricPadding(
+                        IconButtonDefaults.smallContainerSize().width,
+                    ),
+                    leadingContent = {},
+                ) {
+                    PreviewToolbarButton(
+                        icon = Icons.Rounded.Download,
+                        label = stringResource(R.string.action_save),
+                        onClick = saveAction,
+                        enabled = saveEnabled,
+                        colors = toolbarButtonColors,
+                    )
+                    Spacer(modifier = Modifier.width(PreviewToolbarGap))
+                    PreviewToolbarButton(
+                        icon = Icons.Rounded.ContentCopy,
+                        label = stringResource(R.string.chat_image_copy_path),
+                        onClick = copyPathAction,
+                        enabled = source.isNotBlank(),
+                        colors = toolbarButtonColors,
+                    )
+                    Spacer(modifier = Modifier.width(PreviewToolbarGap))
+                    PreviewToolbarButton(
+                        icon = Icons.Rounded.AddPhotoAlternate,
+                        label = stringResource(
+                            if (isVideo) {
+                                R.string.chat_video_add_to_conversation
+                            } else {
+                                R.string.chat_image_add_to_conversation
+                            },
+                        ),
+                        onClick = attachAction,
+                        enabled = attachEnabled,
+                        colors = toolbarButtonColors,
+                    )
+                    Spacer(modifier = Modifier.width(PreviewToolbarGap))
+                    PreviewToolbarButton(
+                        icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                        label = stringResource(R.string.chat_image_open_with),
+                        onClick = openWithAction,
+                        enabled = shareEnabled,
+                        colors = toolbarButtonColors,
+                    )
+                    Spacer(modifier = Modifier.width(PreviewToolbarGap))
+                    PreviewToolbarButton(
+                        icon = Icons.Rounded.Share,
+                        label = stringResource(R.string.chat_image_share),
+                        onClick = shareAction,
+                        enabled = shareEnabled,
+                        colors = toolbarButtonColors,
+                    )
+                }
             }
         }
 }
@@ -728,6 +750,115 @@ private fun PreviewPageIndicator(
             style = etaTextStyle(EtaType.Caption),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
+    }
+}
+
+/**
+ * 照片浏览器式缩略图条：M3 官方 [HorizontalMultiBrowseCarousel]（multi-browse 形态：当前项大档，
+ * 两侧 item 依焦点递减缩小到 40~56dp 并 mask 裁形，吸附走官方默认 singleAdvanceFlingBehavior）。
+ *
+ * 组件取证（docs/RULES.md §1.3）：androidx.compose.material3:material3 1.5.0-alpha29，carousel 包三个文件均无
+ * Experimental 注解（非实验 API）。证据：`/home/sam/Desktop/eta-m3-refs/compose-material3-1.5.0-alpha29-sources/
+ * commonMain/androidx/compose/material3/carousel/Carousel.kt:108` —— 签名摘要
+ * `HorizontalMultiBrowseCarousel(state: CarouselState, preferredItemWidth: Dp, modifier = Modifier,
+ * itemSpacing: Dp = 0.dp, flingBehavior = CarouselDefaults.singleAdvanceFlingBehavior(state),
+ * userScrollEnabled = true, minSmallItemWidth = CarouselDefaults.MinSmallItemSize /* 40.dp */,
+ * maxSmallItemWidth = CarouselDefaults.MaxSmallItemSize /* 56.dp */,
+ * contentPadding: PaddingValues = PaddingValues(0.dp),
+ * content: @Composable CarouselItemScope.(itemIndex: Int) -> Unit)`；
+ * `CarouselState.scrollToItem / animateScrollToItem(item: Int, animationSpec: AnimationSpec<Float> = spring())`
+ * （CarouselState.kt:86/99，内部即 pagerState.scrollToPage，item 序号与本预览页 pager 的
+ * page 序号同一坐标系——currentItem 就是 pagerState.currentPage）；item 写法照官方 sample
+ * （`/home/sam/Desktop/eta-m3-refs/Compose-Material-3-Expressive-Catalog/.../samples/CarouselSamples.kt:98`）：
+ * `maskClip(shape)` 裁形 + 选中态 `maskBorder(BorderStroke, shape)` 高亮环 + 点击翻页。
+ *
+ * 联动：[pagerState] 是唯一真源——点缩略图 `animateScrollToPage` 翻主图；主图停页（settledPage）
+ * 后条再滚动跟随，拖动主图过程中条保持不动（照片浏览器直觉）。缩略图按需 decode（照
+ * ToolMediaThumbnail 的 IO 模式），滚出可视区随组合销毁释放；视频条目不 decode，只给播放图标。
+ */
+@Composable
+private fun PreviewThumbnailStrip(
+    sources: List<String>,
+    pagerState: PagerState,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    // 初始停页与主图对齐（预览常从画廊中间某张打开）；rememberSaveable 恢复时 initialItem 不生效，
+    // 正是期望行为——恢复的是用户离开时的条位置。Saver 三个字段都是 Int（itemCount 存的是
+    // getter 现算值，非 lambda），画廊再大也不进 Bundle。
+    val carouselState = rememberCarouselState(initialItem = pagerState.settledPage) { sources.size }
+    // 主图停页 → 条滚到该页；首发射即打开时的停页，与 initialItem 相同，无多余滚动。
+    // 注意：用户正拖着条时主图恰好停页，程序滚动（同为 Default 优先级）会接管条的滚动，
+    // 这是 MutatePriority 的库层语义，属可接受边缘。
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            carouselState.animateScrollToItem(page)
+        }
+    }
+    HorizontalMultiBrowseCarousel(
+        state = carouselState,
+        preferredItemWidth = 72.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(72.dp),
+        itemSpacing = 8.dp,
+        contentPadding = PaddingValues(horizontal = 16.dp),
+    ) { index ->
+        val source = sources.getOrNull(index).orEmpty()
+        val selected = index == pagerState.currentPage
+        val isVideo = AgentVideoCodec.isVideoSource(source)
+        var bitmap by remember(source) { mutableStateOf<ImageBitmap?>(null) }
+        if (!isVideo) {
+            LaunchedEffect(source) {
+                bitmap = withContext(Dispatchers.IO) { ChatImageBytes.load(context, source)?.bitmap }
+            }
+        }
+        // 读屏复用页码指示器的完整句式（“第 x 张，共 y 张”），与顶部胶囊念法一致。
+        val spoken = stringResource(R.string.chat_image_page_of, index + 1, sources.size)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics { contentDescription = spoken }
+                .clickable {
+                    TouchHaptics.click(view)
+                    scope.launch { pagerState.animateScrollToPage(index) }
+                }
+                .maskClip(MaterialTheme.shapes.small)
+                // 绘制次序：mask 先裁形，底色再铺，高亮环最后画——border 修饰符先画者垫底，
+                // 环若在底色之前会被盖掉。
+                .background(previewPlaceholderColor())
+                .then(
+                    if (selected) {
+                        Modifier.maskBorder(
+                            BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                            MaterialTheme.shapes.small,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            val image = bitmap
+            when {
+                image != null -> Image(
+                    bitmap = image,
+                    // 语义由外层条目 Box 的 contentDescription 统一承担。
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                isVideo -> Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    // 与上方视频海报的播放图标同档（72dp 缩略图配 36dp 图标，StatusIconSize 16dp 太小）。
+                    modifier = Modifier.size(EtaDimens.EmptyStateHintIconSize),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
