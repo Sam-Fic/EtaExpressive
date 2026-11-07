@@ -34,6 +34,11 @@ data class AppearanceSettings(
         interfaceScale = normalizeInterfaceScale(interfaceScale),
         iconLightColor = iconLightColor or 0xFF000000.toInt(),
         iconDarkColor = iconDarkColor or 0xFF000000.toInt(),
+        // 纯黑 = 「深色 + 纯黑背景」这一档模式的标志位，只在 themeMode == DARK 时有意义。
+        // 旧实现从纯黑切到跟随系统/浅色只覆写 themeMode，会残留 true，导致「跟随系统」
+        // 在系统深色时也走进纯黑背景；这里在唯一的读写汇聚点把非法组合收敛掉，
+        // 存量残留随下一次读设置自愈，预览卡与真实主题消费归一化数据后自然一致。
+        pureBlackEnabled = pureBlackEnabled && themeMode == AppearanceThemeMode.DARK,
     )
 
     companion object {
