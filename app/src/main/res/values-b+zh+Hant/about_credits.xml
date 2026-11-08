@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="credits_section_title">參考與致謝</string>
-    <string name="credits_section_summary">README 中的致謝清單</string>
     <string name="credits_entry_eta_upstream">本專案基於的上游專案。</string>
     <string name="credits_entry_y248">參考倉庫，大量實用功能均來自此分支。</string>
     <string name="credits_entry_number444">參考分支，小米超級島的實作來源：焦點通知 param_v2 官方協議、雙通道島展開機制（新 id 首發才展開、8 秒自動撤銷）與真機全鏈路測定文件。</string>

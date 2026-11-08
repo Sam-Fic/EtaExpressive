@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="credits_section_title">Credits &amp; references</string>
-    <string name="credits_section_summary">Acknowledgements from the README</string>
     <string name="credits_entry_eta_upstream">The upstream project this fork is based on.</string>
     <string name="credits_entry_y248">Reference repository: many practical features come from this branch.</string>
     <string name="credits_entry_number444">Reference fork and the source of the Xiaomi Super Island support: the official miui.focus param_v2 protocol, the dual-channel island-expansion mechanism (first-post-only expansion, 8-second auto-dismiss), and its on-device measurement notes.</string>

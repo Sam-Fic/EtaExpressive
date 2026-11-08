@@ -97,7 +97,7 @@
     <string name="agent_task_surface_background">後台執行</string>
     <string name="agent_task_surface_ask_summary">每次操作手機前詢問前台還是後台</string>
     <string name="agent_task_surface_foreground_summary">在主屏上操作，和現在一樣</string>
-    <string name="agent_task_surface_background_summary">實驗性：副螢幕執行，標記交付任務後遷回後台並關閉副螢幕</string>
+    <string name="agent_task_surface_background_summary">實驗性：在副螢幕執行，任務完成後回到主螢幕並關閉副螢幕</string>
     <string name="agent_task_surface_hint">安裝模組不代表交接可用。後臺功能未就緒時不會自動改用主屏；可手動選擇前臺執行</string>
     <string name="agent_task_surface_prompt_title">這次任務在哪裡執行</string>
     <string name="agent_task_surface_prompt_body">實驗性後台執行，僅在交付任務移交成功並確認源屏為空時關閉副螢幕；失敗時保留副螢幕</string>

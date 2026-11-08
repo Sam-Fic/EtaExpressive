@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="credits_section_title">参考与致谢</string>
-    <string name="credits_section_summary">README 中的致谢清单</string>
     <string name="credits_entry_eta_upstream">本项目基于的上游项目。</string>
     <string name="credits_entry_y248">参考仓库，大量实用功能均来自此分支。</string>
     <string name="credits_entry_number444">参考分支，小米超级岛的实现来源：焦点通知 param_v2 官方协议、双通道岛展开机制（新 id 首发才展开、8 秒自动撤销）与真机全链路测定文档。</string>

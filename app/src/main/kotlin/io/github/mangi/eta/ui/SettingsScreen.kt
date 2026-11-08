@@ -608,6 +608,7 @@ internal fun SettingsScreen(
                         prefs = agentPrefs,
                         title = stringResource(R.string.tools_mcp_deferred_title),
                         summary = stringResource(R.string.tools_mcp_deferred_summary),
+                        summaryOff = stringResource(R.string.tools_mcp_deferred_summary_off),
                         key = Prefs.Keys.AGENT_MCP_EXPOSURE_DEFERRED,
                         icon = Icons.Rounded.Dns,
                     )
@@ -621,6 +622,7 @@ internal fun SettingsScreen(
                         prefs = agentPrefs,
                         title = stringResource(R.string.settings_shell_tools),
                         summary = stringResource(R.string.settings_shell_tools_summary),
+                        summaryOff = stringResource(R.string.settings_shell_tools_summary_off),
                         key = Prefs.Keys.AGENT_SHELL_TOOLS,
                         icon = Icons.Rounded.Code,
                     )
@@ -716,6 +718,7 @@ internal fun SettingsScreen(
                     SwitchPreference(
                         title = stringResource(R.string.settings_file_logging),
                         summary = stringResource(R.string.settings_file_logging_summary),
+                        summaryOff = stringResource(R.string.settings_file_logging_summary_off),
                         checked = appSettings.fileLoggingEnabled,
                         onCheckedChange = { enabled ->
                             coroutineScope.launch {
@@ -1304,6 +1307,7 @@ internal fun SwitchPref(
     prefs: SharedPreferences?,
     title: String,
     summary: String? = null,
+    summaryOff: String? = null,
     key: String,
     icon: ImageVector,
 ) {
@@ -1326,6 +1330,7 @@ internal fun SwitchPref(
     SwitchPreference(
         title = title,
         summary = summary,
+        summaryOff = summaryOff,
         checked = checked,
         onCheckedChange = { value ->
             // 同步提交；RemotePreferences.commit() 失败（binder 提交失败）时回滚 UI 状态，

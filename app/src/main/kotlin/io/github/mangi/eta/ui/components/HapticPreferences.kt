@@ -119,15 +119,18 @@ internal fun SwitchPreference(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     summary: String? = null,
+    summaryOff: String? = null,
     startAction: @Composable (() -> Unit)? = null,
     insideMargin: PaddingValues = PaddingValues(16.dp),
     holdDownState: Boolean = false,
     enabled: Boolean = true,
 ) {
     val view = LocalView.current
+    // 开/关两态 supporting text 互斥：关闭且提供了 summaryOff 时显示关闭态文案，否则显示 summary（开启态/主描述）。
+    val displaySummary = if (!checked && summaryOff != null) summaryOff else summary
     M3PreferenceRow(
         title = title,
-        summary = summary,
+        summary = displaySummary,
         enabled = enabled,
         modifier = modifier,
         startAction = startAction,

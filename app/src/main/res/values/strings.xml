@@ -188,7 +188,8 @@
   <string name="app_press_back_again_to_exit">Press back again to exit</string>
   <string name="settings_diagnostics">Diagnostics</string>
   <string name="settings_file_logging">Record diagnostic logs</string>
-  <string name="settings_file_logging_summary">When enabled, runtime logs and redacted tool-call diagnostics are saved on-device. Tool diagnostics record structure and fingerprints, not commands, argument values or keys. Turning it off stops writing and keeps existing logs</string>
+  <string name="settings_file_logging_summary">On-device runtime logs and redacted tool-call diagnostics are saved (not commands, argument values or keys)</string>
+  <string name="settings_file_logging_summary_off">Off: no new logs are recorded, existing logs are kept</string>
   <string name="settings_export_logs">Export logs</string>
   <string name="settings_search_hint">Search settings</string>
   <string name="settings_search_no_matches">No matching settings</string>
@@ -736,7 +737,8 @@
   <string name="tools_loading_mode_group_hint">Open the whole group at once</string>
   <string name="tools_loading_mode_off_hint">Send the full catalog</string>
   <string name="tools_mcp_deferred_title">Load MCP tools on demand</string>
-  <string name="tools_mcp_deferred_summary">Each MCP server loads as a deferred group like built-in tools; turn off to always send every server\'s tool schemas</string>
+  <string name="tools_mcp_deferred_summary">Each MCP server loads as a deferred group like built-in tools</string>
+  <string name="tools_mcp_deferred_summary_off">Turn off to always send every server\'s tool schemas</string>
   <string name="tool_ui_ask_user">Ask you a question</string>
   <string name="tool_ui_ask_user_summary">Pause and ask one focused question with options when a decision would change the result</string>
   <string name="tool_ui_skills_list">List Skills</string>
@@ -802,7 +804,8 @@
   <string name="settings_screen_tools_summary">Let the model read UI nodes and tap, swipe, type and press keys. Turn this off to remove every accessibility GUI tool</string>
   <string name="settings_shell_tools">Allow command execution</string>
   <string name="tools_row_blocked_by_setting">Turned off by the "%1$s" switch in Settings</string>
-  <string name="settings_shell_tools_summary">Let the model run shell commands. Turn this off to keep file reading and writing but block run_command and terminal</string>
+  <string name="settings_shell_tools_summary">Let the model run shell commands</string>
+  <string name="settings_shell_tools_summary_off">Turn this off to keep file reading and writing but block run_command and terminal</string>
   <string name="settings_self_settings_tools">Eta self-configuration tools</string>
   <string name="settings_self_settings_tools_summary">Let the model read and change Eta\'s own settings, models and providers</string>
   <string name="tool_status_running">Running</string>
@@ -3162,7 +3165,7 @@
   <string name="media_index_notification_title">Eta is updating the media index</string>
   <string name="media_index_notification_progress">Indexing… %1$d/%2$d · added %3$d · skipped %4$d</string>
   <string name="media_index_stop">Stop indexing</string>
-  <string name="media_action_open_search">Search media</string>
+  <string name="media_action_open_search">Semantic search</string>
   <string name="media_action_open_search_summary">Find photos, videos and files with natural language</string>
   <string name="media_saf_group">Custom folders (SAF)</string>
   <string name="media_saf_empty">No custom folders added yet</string>

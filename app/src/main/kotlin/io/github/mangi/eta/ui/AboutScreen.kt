@@ -173,7 +173,6 @@ internal fun AboutScreen(onBack: () -> Unit, onOpenCredits: () -> Unit) {
                 item {
                     EtaClickableRow(
                         title = stringResource(R.string.credits_section_title),
-                        summary = stringResource(R.string.credits_section_summary),
                         leading = {
                             PreferenceIcon(
                                 icon = Icons.Rounded.Description,
