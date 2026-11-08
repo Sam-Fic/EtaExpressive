@@ -545,7 +545,12 @@ internal fun AgentChatBody(
                 messageEdit = messageEdit,
                 assistantId = assistantId,
                 voiceState = voiceState,
-                onStartVoiceMode = voiceController::start,
+                onStartVoiceMode = { mode ->
+                    // 进入语音前收起键盘：默认输入法若是语音键盘（如通义 FunAudio），
+                    // 其录音会话会与语音对话抢同一支麦克风（2026-11-08 设备实测）。
+                    keyboard?.hide()
+                    voiceController.start(mode)
+                },
                 onStopVoiceMode = voiceController::stop,
                 keepBottomAnchored = keepBottomAnchored,
                 onBottomAnchorChanged = { keepBottomAnchored = it },
