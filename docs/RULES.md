@@ -84,9 +84,10 @@ R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改�
 
 长按触发时长取系统 `ViewConfiguration.longPressTimeoutMillis`（默认约 500ms，可被系统设置改变），不要硬编码。
 
-### 2.3 尺寸令牌
+### 2.3 尺寸与圆角令牌
 
-Loading 相关尺寸只能取 `EtaDimens`：`StatusIconSize=16`、`DenseIconSize=20`、`InlineLoadingSize=18`、`RowLeadingLoadingSize=24`、`BlockLoadingSize=28`。不要在文件里定义私有尺寸常量。
+1. Loading 相关尺寸只能取 `EtaDimens`：`StatusIconSize=16`、`DenseIconSize=20`、`InlineLoadingSize=18`、`RowLeadingLoadingSize=24`、`BlockLoadingSize=28`。不要在文件里定义私有尺寸常量。
+2. 圆角先对照 `EtaDimens` 的圆角索引找同语义值（索引只记符号与出处，值就近归属：分段列表 `EtaSegmentedList`、连接式按钮组 `EtaExpressiveKit`）；确实全新才就近命名。同心圆角规则：外层容器圆角 = 内层圆角 + 两层间距。不新增一次性圆角字面量。
 
 ### 2.4 Loading 选型
 
@@ -117,6 +118,15 @@ Loading 相关尺寸只能取 `EtaDimens`：`StatusIconSize=16`、`DenseIconSize
 3. 适用范围是全局资源规范（`strings.xml` 及 `speech.xml` / `tts.xml` 等同类用户可见资源），不是只针对某一组预设；新增或改写任意语言的条目都要遵守。
 4. `DesignSystemRulesTest` 只执法 R1–R5，**没有**字符串标点检查；本条靠评审自查，不新增测试。
 
+### 2.7 透明度弱化
+
+「禁用 / 未授权 / 不可用」内容的弱化统一用 `EtaAlphas.DisabledContent`（0.38，官方禁用态规范），不得散落字面量；非禁用语义出现的 0.38 属巧合值，不引用本令牌。
+
+### 2.8 动效规格
+
+1. 官方 `MaterialTheme.motionScheme`（spatial / effects 弹簧）优先；官方没有的项目自有时间轴只在 `EtaMotion` 登记单一出处（每个值带成文理由），不得在他处写第二份。
+2. 页面级导航转场（含不能路由的页内子页的手补转场）规格见 §3.3；`EtaMotion.NavigationFallbackDurationMillis` 是转场时长单一出处。
+
 ## 3. 行为红线
 
 ### 3.1 内置助手
@@ -138,6 +148,15 @@ Loading 相关尺寸只能取 `EtaDimens`：`StatusIconSize=16`、`DenseIconSize
 - 容器固定为 miuix `NavDisplay` + `NavBackStack`（`AppRoute : NavKey`）；**不得再引入 `androidx.navigation`**。
 - 被覆盖条目仅在 1 层内保持组合（`opaqueDepth = 1`）。
 - 一次性副作用不得挂在 entry：回到窗口内时 `LaunchedEffect(Unit)` 会重跑。
+- **整屏子页必须做成路由**：静态内容（无表单草稿、owner 票据等不可序列化状态）禁止用 `EtaPageSurface` 或页内布尔开关承载；`EtaPageSurface` 只留给状态无法序列化进路由的编辑器。新增路由按既有五处登记（`AppRoute` 声明、`AgentAppRoot` entry、`AgentNavigator` 显式表、`AgentAppShell` titleForRoute、`FrameDiagnosticRoute`），由 `test_app_route_entry_parity_contract.py` 防漏登。
+- **确实不能路由的页内子页（如浏览器设置与浏览器共用 `BrowserTabPool`），手补转场必须逐项对齐 NavDisplay 程序化转场**；缺任何一项就是可感知的「页内侧滑感」：
+  1. 位移与进度统一 `tween(EtaMotion.NavigationFallbackDurationMillis, NavProgrammaticEasing)`；禁止 M3E Spatial 弹簧（自带过冲、时长不定）。
+  2. **顶页全程不透明**：给顶页加 fadeIn / fadeOut 会在运动中透出底页。
+  3. **effects 层两样（转场几何之外的正交层，缺一不可）**：被盖页全屏黑 scrim，alpha = `NavDisplayEffects.Default.dimAmount`(0.5) × coverProgress，画在进入页之下；进入页运动期间 leading 角圆角裁切，半径取 `rememberNavSystemCornerRadius()`，仅转场进度在开区间内生效（起止满屏时圆角与物理屏角重合，除裁切不可见）。
+  4. `AnimatedContent` 变体按方向逐格对齐：推入 = 新页整屏不透明推入 + 旧页 1/4 视差淡到 0.9；弹出 = 旧页整屏不透明滑出**且置顶层**（`ContentTransform.targetContentZIndex = -1f`；此版本没有 `targetContentOnTop`）+ 被盖页从视差位复位淡入。
+  5. 被盖页固定 1/4 视差 + alpha 淡到 0.9；所有随进度变化的读取走 `graphicsLayer` 延迟块，逐帧零重组。
+  6. 底部 `ModalBottomSheet` 与系统弹窗动画属 Sheet / 弹窗语义，不适用本条。
+- 样板：`BrowserSheet.kt`（AnimatedVisibility 版）、`DoubaoVoiceSettings.kt`（AnimatedContent 版）。
 
 ### 3.4 胶囊动画与窗口
 
