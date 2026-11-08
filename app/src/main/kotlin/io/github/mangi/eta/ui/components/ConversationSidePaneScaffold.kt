@@ -4,12 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector
 import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.TwoWayConverter
-import androidx.compose.animation.core.VectorizedAnimationSpec
 import androidx.compose.animation.core.VectorizedDecayAnimationSpec
 import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
@@ -171,6 +168,7 @@ import io.github.mangi.eta.ui.model.UNCATEGORIZED_FOLDER_ID
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.ConversationSummaryUi
 import kotlin.math.abs
+import kotlin.math.sign
 import kotlin.math.sqrt
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
@@ -199,25 +197,29 @@ private object DrawerMetrics {
     // 位置阈值占全程的比例。官方 0.5 意味着拖过一半才松手。
     // 抽屉是「越长越全」的连续面板，稍微一拉就有反馈更符合预期。
     const val SettlePositionalThreshold = 0.32f
-    // 临界阻尼（无回弹）。全屏抽屉越过打开锚点会露出底下的主页，所以收敛不做回弹。
-    const val SettleDampingRatio = Spring.DampingRatioNoBouncy
-    // 松手收敛弹簧的刚度：单一低刚度，同 miuix 导航手势提交收敛
-    // （top.yukonga.miuix.kmp.nav.runtime.NavDriverSpec.STIFFNESS，damping=1 配套）。
-    // ω=√146≈12.1/s：整屏收敛九成位移约 320ms（慢放），残程 <1dp 后动画停机约 680ms，
-    // 与 500ms 导航转场同一档体感；
-    // 松手瞬间速度与手指连续，随后可感加速、长减速靠岸——「加减速感」的来源。
-    // 早期版本按甩动速度把刚度插值到 520..1600，可视段被压到 100~170ms、减速段不可感知，
-    // 读起来是匀速直线（作者实测反馈「太线性」）；快甩改由 seed 速度携带（见
-    // DrawerSettleSpringSpec 的封顶），不靠加刚度提速。整体偏慢时的唯一旋钮：上调到 200..250。
-    const val SettleStiffness = 146f
-    // 弹簧停机阈值（收敛值的单位）：残程小于它就停止动画并置 settled。
-    // miuix NavDriverSpec.VISIBILITY_THRESHOLD = 0.0025（步长单位）；按整屏 384dp 折算约
-    // 0.96dp，取整 1dp。不加这项 spring 默认 0.01 值单位——窄屏 px 下残程 1% 要爬近 1s，
-    // isAnimationRunning 迟迟不落、visible 回写被拖住。宽屏动画值是 progress（0..1），
-    // 调用方按 1dp / paneWidth 换算传入，两边同一语义。（Dp 不能作 const val，用普通 val。）
-    val SettleVisibilityThresholdDp = 1.dp
-    // 临界阻尼弹簧的初始速度超过 ω·剩余距离就会越过锚点；留 8% 余量，保证不露底。
-    const val SettleVelocityHeadroom = 0.92f
+    // 无过冲是硬约束：全屏抽屉越过任一锚点都会露出底下的主页。松手收敛不用弹簧
+    // （见 DrawerSettleCurveSpec 的弃用理由），改用恒定减速度的分段二次曲线，
+    // 结构性无过冲。
+    // 松手收敛标称时长（整步）：450ms，按 sqrt(残程/整步) 收缩（小修正不该拖满整步）、
+    // 下限 120ms；峰速触及封顶时标称会被「梯形闭合」反推的实际时长取代——
+    // 手递手交接的整步收敛约 460~610ms，与 iOS sheet 同档。
+    // 为什么峰速必须封顶（四轮实测体感的结论，作者逐一反馈）：
+    //  ① 速度自适应弹簧 520..1600 →「太线性」；② 低刚度临界阻尼弹簧 →「松手后有匀速段」
+    // （指数尾速度等比缓降永不归零，读成匀速巡航）；③ Hermite 500ms →「手指右划仍有匀速段」
+    // （S 曲线中段平台 + 峰速仅 1.3× 手速，与拖拽匀速段连成一条）；④ Hermite 280ms →
+    // 「进/出/轻抛还是很线性」（峰速 2.4× 手速 ≈4800px/s，±10% 峰速带 90ms 掠过 44% 屏宽，
+    // 读成匀速扫屏）。注入本身被 DrawerMotionInjectionTest 证明生效，真因是结构性的：
+    // 手势松手时面板已在运动中，「从静止起飞」的加速段永远看不到（按钮路径有，所以
+    // 按钮一直被评价为「还可以」）；收敛段能传达的只有减速，而减速要被看见，速度必须
+    // 落在可跟踪区间——于是改为恒定减速度：峰速封顶、制动段占残程 50% 以上、减速度
+    // 全程不衰减、终点精确归零，像刹车而不是滑行。
+    const val SettleDurationMillis = 450
+    // 短残程收敛的时长下限（ms）：低于它的小修正会显得突兀。
+    const val SettleMinDurationMillis = 120f
+    // 收敛峰速封顶（单位：整步距离/秒）。实际峰速 = 2.8·√(残程·整步)——随残程收缩，
+    // D=整步时 ≈1075dp/s（小米 13 Ultra），整段速度都可跟踪；快甩松手速度若已高于
+    // 该峰速，直接进入纯制动（恒定减速从松手速度落到 0，时长 = 2·残程/松手速度）。
+    const val SettlePeakVelocityFraction = 2.8f
     val PaneHorizontalPadding = 16.dp
     // 首排（胶囊行）与首页顶栏同一水平中线：首页顶栏是 64dp 行高 + 4dp 纵向内边距，
     // 40dp 图标按钮居中后中线在状态栏下 4 + 8 + 20 = 32dp；这里 12 + 20 = 32dp 与之对齐。
@@ -298,11 +300,8 @@ fun ConversationSidePaneScaffold(
     )
     // 每次组合后重设一次：阈值/规格是 anchored state 上的可写字段，
     // 重设可跟上 density 变化；M3 自带的 SideEffect 只改 open/close/anchored spec，
-    // 不碰手势收敛实际读取的那几项。
+    // 不碰手势收敛实际读取的那几项。注入本身在下方窄屏分支内进行（需要 paneWidth）。
     val density = LocalDensity.current
-    SideEffect {
-        drawerState.applyEtaDrawerMotion(density)
-    }
     val drawerScope = rememberCoroutineScope()
     // 侧栏跟随页面退场时用的时长：导航转场时长（500ms）+ 两帧余量，见 EtaMotion.drawerNavExitMillis。
     // 只要不短于新页推入，新页就会先把侧栏盖住，侧栏收得再慢也不会露出空档。
@@ -530,6 +529,12 @@ fun ConversationSidePaneScaffold(
         } else {
             // 平推（非覆盖）：侧栏占据左侧 paneWidth，聊天页整体右移同样的距离，不加遮罩、不压暗。
             // 手势收敛与锚点仍交给 Material3 的 Dismissible 实现，只是内容被推走而不是被盖住。
+            // 阈值/收敛曲线是 anchored state 上的可写字段，这里每次组合重设一次：
+            // 跟上 density 与 paneWidth 变化；M3 自带的 SideEffect 只改 open/close/anchored
+            // spec，不碰手势收敛实际读取的那几项。
+            SideEffect {
+                drawerState.applyEtaDrawerMotion(density, with(density) { paneWidth.toPx() })
+            }
             DismissibleNavigationDrawer(
                 drawerState = drawerState,
                 gesturesEnabled = backHandlerEnabled,
@@ -557,7 +562,7 @@ fun ConversationSidePaneScaffold(
  * 对话列用 `weight(1f)` 吃掉剩余宽度，随进度连续变窄。
  *
  * 手势与手机端一致：向右滑拉开、向左滑推回，松手后按位置 + 速度决定去向，
- * 收敛用同一套 [DrawerSettleSpringSpec] 弹簧；按钮等程序化开合用同一套非线性缓动。
+ * 收敛用同一套 [DrawerSettleCurveSpec] 速度匹配曲线；按钮等程序化开合用同一套非线性缓动。
  */
 @Composable
 private fun WideSidePaneLayout(
@@ -638,12 +643,8 @@ private fun WideSidePaneLayout(
                             scope.launch {
                                 progress.animateTo(
                                     targetValue = target,
-                                    // 停机阈值换算成 progress 单位：1dp / paneWidth，语义与窄屏一致。
-                                    animationSpec = DrawerSettleSpringSpec(
-                                        visibilityThreshold = with(density) {
-                                            DrawerMetrics.SettleVisibilityThresholdDp.toPx() / paneWidthPx
-                                        },
-                                    ),
+                                    // 宽屏动画值是 progress（0..1），整步距离即 1f。
+                                    animationSpec = DrawerSettleCurveSpec(fullDistance = 1f),
                                     initialVelocity = velocityFraction,
                                 )
                                 // 停稳后再回写展开状态：动画中间改会让整页重组，看着像顿一下。
@@ -1639,62 +1640,135 @@ private val DockedPaneShape = AbsoluteRoundedCornerShape(
 )
 
 /**
- * 松手后的收敛弹簧：单一低刚度、临界阻尼、携带松手速度。
+ * 松手后的收敛曲线：恒定减速度的分段二次曲线（梯形速度剖面）。
  *
- * 物理对齐本仓 miuix 导航的手势提交收敛（`NavMotion.commit` =
- * `NavSettleSpec.Spring(dampingRatio=1, stiffness=146, clampOvershoot=true)`，见
- * miuix-nav `NavDriver.kt` 的 NavDriverSpec 与 `NavMotion.kt`）：
+ * 速度剖面：从松手速度 u0 以恒定加速度 a 升到峰速 vP，再以同一个 a 匀减速到 0——
+ * 全程 |dv/dt| = a 恒定（只在峰速瞬间翻转方向），位置是分段二次函数，闭式可算。
  *
- * - 临界阻尼解为 `d(t) = (D + (ωD − u0)·t)·e^(−ωt)`（D = 剩余距离，u0 = 朝目标的速度）。
- *   仅当 `u0 > ω·D` 时线性项转负、越过锚点再弹回，所以松手速度按
- *   [DrawerMetrics.SettleVelocityHeadroom]·ω·D 封顶：慢放原速靠岸，快甩借自身速度提前
- *   到达而不是靠加刚度提速——后者会把减速段压到感知不到，整段读成匀速直线。
- * - ω 与动画值的单位无关，封顶公式在值单位下无量纲：窄屏（DrawerState，单位 px）与
- *   宽屏（progress 0..1）共用同一实现，宽屏传 `initialVelocity = velocityFraction` 也
- *   因此是正确单位（早期实现按 px/s 解释 fraction 导致单位错位，宽屏永远落在最软档）。
- * - 单位不同的只有停机阈值 [visibilityThreshold]（值单位）：窄屏传 1dp 折算的 px，
- *   宽屏传 1dp/paneWidth 折算的 progress，见 [DrawerMetrics.SettleVisibilityThresholdDp]。
+ * 为什么是「恒定减速度」而不是弹簧/Hermite/更大更小的 S 曲线（四轮实测体感迭代，
+ * 作者逐一反馈，注入链路由 [DrawerMotionInjectionTest] 证明全程生效）：
+ * - 手势松手时面板已经在运动中，「从静止起飞」的加速段永远看不到——按钮路径
+ *   （程序化 tween，从静止开始）一直被评价为「还可以」，手势路径一直被评价为「线性」，
+ *   差别就在这里。收敛段能传达的只有减速。
+ * - 而减速要被眼睛看到，速度必须落在可跟踪区间：峰速过高（Hermite 280ms 方案的
+ *   2.4×u0 ≈ 4800px/s）时 ±10% 峰速带在 90ms 内掠过 44% 屏宽，加减速再大也只是
+ *   「匀速扫屏」；刹车太软（临界阻尼弹簧的指数尾）速度等比缓降、永不归零，读成
+ *   「匀速巡航」后段。两个坑这四轮都踩过。
+ * - 恒定减速度同时避开两者：峰速封顶在可跟踪档（[DrawerMetrics.SettlePeakVelocityFraction]），
+ *   制动段占残程 50% 以上、减速度全程不衰减（像刹车而不是滑行）、终点速度精确归零
+ *   （无爬行尾，isAnimationRunning 及时落定）。进侧栏 / 出侧栏 / 轻轻抛出 / 快甩共用。
  *
- * 不用 tween：miuix `NavSettleEasing` KDoc 明说 gesture handoff 必须 seed 释放速度，
- * tween 从零速起步会在松手瞬间造成速度断崖。不走 `animateToWithDecay` 的衰减路径：
- * 速度越快被截停时残速越大（见 [DrawerNoFlingDecay]）。
+ * 参数（u0 = 朝目标的速度，可负=阈值下反向松手；D = 残程）：
+ * - 峰速封顶 vPcap = 2.8·√(D·整步)（[DrawerMetrics.SettlePeakVelocityFraction]，随残程收缩）。
+ *   u0 ≥ vPcap（快甩）→ 纯制动：vP = u0，T = 2D/u0，a = u0²/(2D)。
+ * - 否则从标称时长 T_nom = 450·√(D/整步)（[DrawerMetrics.SettleDurationMillis]，钳
+ *   [DrawerMetrics.SettleMinDurationMillis] 下限）解梯形闭合方程
+ *   `2T·vP² − 4D·vP + (2D·u0 − T·u0²) = 0` 取大根；解出的 vP 超过 vPcap 时取 vPcap
+ *   并用 `T = 2D(2vP−u0)/(2vP²−u0²)` 反推实际时长（制动为主，速度连续性不受影响）。
+ *   a = (2vP−u0)/T，加速段时长 t1 = (vP−u0)/a。
+ *
+ * 不变量（DrawerSettleMotionTest 全量锚定）：速度处处连续（t=0 = u0）、v ≥ 0 单调
+ * （u0 ≥ 0 时结构性无过冲）、终点速度与位置精确归零、制动段速度线性下降
+ * （对抗指数尾回归）。整步距离 [fullDistance] 用动画值单位（窄屏 DrawerState = 屏宽 px；
+ * 宽屏 Animatable progress = 1f），峰速/时长公式与单位无关，窄宽两端共用。
+ *
+ * 不用 tween 的官方 API 是因为它不能 seed 速度（松手瞬间速度断崖）；不走
+ * `animateToWithDecay` 的衰减路径见 [DrawerNoFlingDecay]。
  */
-internal class DrawerSettleSpringSpec(
-    private val visibilityThreshold: Float,
+internal class DrawerSettleCurveSpec(
+    private val fullDistance: Float,
 ) : FiniteAnimationSpec<Float> {
     override fun <V : AnimationVector> vectorize(
         converter: TwoWayConverter<Float, V>,
     ): VectorizedFiniteAnimationSpec<V> = object : VectorizedFiniteAnimationSpec<V> {
-        private var resolvedVelocity = Float.NaN
-        private var resolvedVelocityVector: V? = null
-        private var delegate: VectorizedAnimationSpec<V>? = null
+        // 三元组（from, target, u0）→收敛计划是纯函数，每次调用现算现用，
+        // 同一实例被不同三元组交替调用（测试、复用）也不会串状态。
+        private var delta = Float.NaN
+        private var durationMillis = Float.NaN
+        private var toward = Float.NaN
+        private var peakVelocity = Float.NaN
+        private var acceleration = Float.NaN
+        private var surgeMillis = Float.NaN
+        private var surgeDistance = Float.NaN
 
         private fun prepare(
             initialValue: V,
             targetValue: V,
             initialVelocity: V,
-        ): VectorizedAnimationSpec<V> {
+        ) {
             val from = converter.convertFromVector(initialValue)
             val target = converter.convertFromVector(targetValue)
-            val distance = abs(target - from)
+            delta = target - from
+            val distance = abs(delta)
+            if (distance < EpsilonDistance || fullDistance < EpsilonDistance) {
+                // 零距离本来就在锚点上：0 时长立即完成。运动字段一并归零，
+                // 防止复用同一 vectorize 实例时读到上一组计划的残留值。
+                durationMillis = 0f
+                toward = 0f
+                peakVelocity = 0f
+                acceleration = 0f
+                surgeMillis = 0f
+                surgeDistance = 0f
+                return
+            }
             val rawVelocity = converter.convertFromVector(initialVelocity).takeIf { it.isFinite() } ?: 0f
-            // 无过冲封顶（值单位）：u0 ≤ headroom·ω·D。
-            val velocityLimit = DrawerMetrics.SettleVelocityHeadroom * sqrt(DrawerMetrics.SettleStiffness) * distance
-            val velocity = if (abs(rawVelocity) > velocityLimit) {
-                if (rawVelocity < 0f) -velocityLimit else velocityLimit
+            // 朝目标的速度（值单位/秒）；背离目标时为负，梯形加速段会先折返再正向加速。
+            toward = rawVelocity * sign(delta)
+            val peakCap = DrawerMetrics.SettlePeakVelocityFraction * sqrt(distance * fullDistance)
+            if (toward >= peakCap) {
+                // 快甩：松手速度已高于可跟踪峰速，直接恒定减速落到 0。
+                peakVelocity = toward
+                durationMillis = 2f * distance / toward * 1000f
             } else {
-                rawVelocity
+                val nominalMillis = (DrawerMetrics.SettleDurationMillis * sqrt(distance / fullDistance))
+                    .coerceIn(DrawerMetrics.SettleMinDurationMillis, DrawerMetrics.SettleDurationMillis.toFloat())
+                val nominalSeconds = nominalMillis / 1000f
+                // 梯形闭合：T·vP² + (T·u0 − 2D)·vP + D·u0 − T·u0²/2 = 0 的大根。
+                // （由 D = (u0+vP)/2·t1 + vP/2·t2、T = t1+t2 消去 t1/t2。）
+                val discriminant = 4f * distance * distance -
+                    2f * nominalSeconds * toward * (2f * distance - nominalSeconds * toward)
+                val solved = if (discriminant > 0f) {
+                    (2f * distance + sqrt(discriminant)) / (2f * nominalSeconds)
+                } else {
+                    peakCap
+                }
+                peakVelocity = minOf(solved, peakCap)
+                durationMillis = if (solved <= peakCap) {
+                    nominalMillis
+                } else {
+                    2f * distance * (2f * peakVelocity - toward) /
+                        (2f * peakVelocity * peakVelocity - toward * toward) * 1000f
+                }
             }
-            if (delegate == null || velocity != resolvedVelocity) {
-                resolvedVelocity = velocity
-                resolvedVelocityVector = converter.convertToVector(velocity)
-                delegate = spring<Float>(
-                    dampingRatio = DrawerMetrics.SettleDampingRatio,
-                    stiffness = DrawerMetrics.SettleStiffness,
-                    visibilityThreshold = visibilityThreshold,
-                ).vectorize(converter)
+            acceleration = (2f * peakVelocity - toward) / (durationMillis / 1000f)
+            surgeMillis = if (acceleration > 0f) (peakVelocity - toward) / acceleration * 1000f else 0f
+            val surgeSeconds = surgeMillis / 1000f
+            surgeDistance = (toward + peakVelocity) / 2f * surgeSeconds
+        }
+
+        /** 沿目标方向的已行进距离（值单位）。t 已钳到 [0, T]。 */
+        private fun traveledAt(tSeconds: Float): Float {
+            return if (tSeconds <= surgeMillis / 1000f) {
+                toward * tSeconds + acceleration * tSeconds * tSeconds / 2f
+            } else {
+                val brakeSeconds = tSeconds - surgeMillis / 1000f
+                surgeDistance + peakVelocity * brakeSeconds - acceleration * brakeSeconds * brakeSeconds / 2f
             }
-            return delegate!!
+        }
+
+        /** 沿目标方向的速度（值单位/秒）。t 已钳到 [0, T]。 */
+        private fun velocityAt(tSeconds: Float): Float {
+            return if (tSeconds <= surgeMillis / 1000f) {
+                toward + acceleration * tSeconds
+            } else {
+                maxOf(peakVelocity - acceleration * (tSeconds - surgeMillis / 1000f), 0f)
+            }
+        }
+
+        private fun clampSeconds(playTimeNanos: Long): Float {
+            if (durationMillis <= 0f) return durationMillis / 1000f
+            val tSeconds = playTimeNanos / 1_000_000_000f
+            return tSeconds.coerceIn(0f, durationMillis / 1000f)
         }
 
         override fun getValueFromNanos(
@@ -1703,13 +1777,10 @@ internal class DrawerSettleSpringSpec(
             targetValue: V,
             initialVelocity: V,
         ): V {
-            val animation = prepare(initialValue, targetValue, initialVelocity)
-            return animation.getValueFromNanos(
-                playTimeNanos,
-                initialValue,
-                targetValue,
-                resolvedVelocityVector!!,
-            )
+            prepare(initialValue, targetValue, initialVelocity)
+            val from = converter.convertFromVector(initialValue)
+            // sign 而非 delta/|delta|：delta 恰为 0（已在锚点上）时后者是 0/0 = NaN。
+            return converter.convertToVector(from + sign(delta) * traveledAt(clampSeconds(playTimeNanos)))
         }
 
         override fun getVelocityFromNanos(
@@ -1718,13 +1789,9 @@ internal class DrawerSettleSpringSpec(
             targetValue: V,
             initialVelocity: V,
         ): V {
-            val animation = prepare(initialValue, targetValue, initialVelocity)
-            return animation.getVelocityFromNanos(
-                playTimeNanos,
-                initialValue,
-                targetValue,
-                resolvedVelocityVector!!,
-            )
+            prepare(initialValue, targetValue, initialVelocity)
+            val along = velocityAt(clampSeconds(playTimeNanos))
+            return converter.convertToVector(along * sign(delta))
         }
 
         override fun getDurationNanos(
@@ -1732,15 +1799,19 @@ internal class DrawerSettleSpringSpec(
             targetValue: V,
             initialVelocity: V,
         ): Long {
-            val animation = prepare(initialValue, targetValue, initialVelocity)
-            return animation.getDurationNanos(initialValue, targetValue, resolvedVelocityVector!!)
+            prepare(initialValue, targetValue, initialVelocity)
+            return (durationMillis * 1_000_000f).toLong()
         }
+    }
+
+    private companion object {
+        const val EpsilonDistance = 1e-4f
     }
 }
 
 /**
  * 松手收敛不走「惯性投影」，把投影目标固定为当前位置，foundation 因此总会回退到
- * [DrawerSettleSpringSpec]。
+ * [DrawerSettleCurveSpec]。
  *
  * alpha29 的 `animateToWithDecay`：投影能越过目标锚点时，它直接跑衰减动画，并在到达
  * 锚点的那一帧 `cancelAnimation()`。速度越快，被截断时残留的速度越大——刚好是最需要
@@ -1790,11 +1861,14 @@ private object DrawerNoFlingDecay : DecayAnimationSpec<Float> {
  * `DismissibleNavigationDrawer` 的 `SideEffect` 每次组合都会把 DrawerState 自己的
  * open/close/anchored 三个 spec 覆写回官方值，但这三个入口我们都不依赖：程序化开合
  * 全部显式传 tween，手势松手读的是 anchored state 上这四项，M3 从不触碰。
- * 宿主每次组合重设一次，顺带跟上 density 变化（速度阈值与弹簧停机阈值按 dp 折算 px）。
+ * 宿主每次组合重设一次，顺带跟上 density 与 paneWidth 变化（速度阈值按 dp 折算 px，
+ * 收敛曲线的整步距离取屏宽）。
  *
  * 每一步都单独 `runCatching`：任何一项反射失败就跳过该项，整体退回官方行为，不会崩。
+ * internal 供 DrawerMotionInjectionTest 在 JVM 上验证注入真的落位（runCatching 会吞错，
+ * 没有这条测试，注入失败只能靠体感反推）。
  */
-private object DrawerMotionSetters {
+internal object DrawerMotionSetters {
     private val anchoredClass = runCatching {
         Class.forName("androidx.compose.foundation.gestures.AnchoredDraggableState")
     }.getOrNull()
@@ -1850,12 +1924,10 @@ private object DrawerMotionSetters {
         }
     }
 
-    fun apply(state: DrawerState, density: Density) {
+    fun apply(state: DrawerState, density: Density, fullDistancePx: Float) {
         val anchored = anchoredField?.get(state) ?: return
-        // 窄屏动画值单位是 px，停机阈值直接取 1dp 的像素值。
-        val settleSpec = DrawerSettleSpringSpec(
-            visibilityThreshold = with(density) { DrawerMetrics.SettleVisibilityThresholdDp.toPx() },
-        )
+        // 窄屏动画值单位是 px，整步距离 = 屏宽（闭合锚点 −paneWidth 到打开锚点 0）。
+        val settleSpec = DrawerSettleCurveSpec(fullDistance = fullDistancePx)
         // 每一项单独兜底：某个 setter 缺失/签名漂移时，其余项仍然生效。
         runCatching { positionalSetter?.invoke(anchored, positionalThresholdProxy()) }
         runCatching { velocitySetter?.invoke(anchored, velocityThresholdProxy(density)) }
@@ -1902,8 +1974,8 @@ private object DrawerMotionSetters {
     }
 }
 
-private fun DrawerState.applyEtaDrawerMotion(density: Density) {
-    DrawerMotionSetters.apply(this, density)
+private fun DrawerState.applyEtaDrawerMotion(density: Density, fullDistancePx: Float) {
+    DrawerMotionSetters.apply(this, density, fullDistancePx)
 }
 
 internal data class ConversationDrawerGroup(
