@@ -8,6 +8,7 @@ package io.github.mangi.eta.agent.dispatch
  * admit ──目标空闲──▶ armed(run 起跑) ──settleRun──▶ settled（通知恰一次，随后出账）
  * admit ──目标忙───▶ queued(按会话排队) ──drain──▶ armed
  * 未武装的排队项 ──cancelConversation──▶ dropped
+ * drain 交出/已武装的单在起跑前发现目标仍忙 ──requeueFront/unarmToQueue──▶ queued（队首）
  * ```
  *
  * 不变量：
@@ -120,6 +121,27 @@ internal class AgentDispatchLedger {
      */
     fun restore(request: DispatchRequest) = synchronized(lock) {
         handedOut[request.dispatchId] = request
+    }
+
+    /**
+     * 排空回退：drain 交出的单在起跑前发现目标仍忙，退回会话队列队首（先于其他排队项
+     * 再次被交出）。请求不在 handedOut 态（仍排队/已武装/未知）时静默忽略——
+     * 已武装的单必须走 [unarmToQueue]，否则会双重入队。
+     */
+    fun requeueFront(request: DispatchRequest) = synchronized(lock) {
+        handedOut.remove(request.dispatchId) ?: return
+        queues.getOrPut(request.conversationId) { ArrayDeque() }.addFirst(QueueEntry(request))
+    }
+
+    /**
+     * 起跑拒绝回退：registry 以目标忙拒绝刚武装的 run 时，撤销武装并把请求退回队列队首。
+     * 未知 runId 静默忽略（非派发 run / 已结算）；调用方需同步把 DB 侧 claim 行从 armed 改回 queued。
+     */
+    fun unarmToQueue(runId: String): ArmedClaim? = synchronized(lock) {
+        val claim = armedByRunId.remove(runId) ?: return null
+        armedByDispatchId.remove(claim.request.dispatchId)
+        queues.getOrPut(claim.request.conversationId) { ArrayDeque() }.addFirst(QueueEntry(claim.request))
+        claim
     }
 
     /** 目标会话的全部排队项按取消处理（会话被用户停止/删除时）；返回被丢弃的请求。 */

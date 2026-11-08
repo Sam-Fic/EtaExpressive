@@ -52,6 +52,16 @@ internal class AgentDispatchCoordinator(
 
     private val ledger = AgentDispatchLedger()
 
+    /**
+     * 已结算待排空的下一单（被结算 runId → 队首请求）。
+     *
+     * 结算先于出 registry（commitTerminal 内 beforePublish 先于 beforeTerminalPublish），
+     * 此刻起跑下一单必被 registry 以 CONVERSATION_BUSY 拒绝，所以只暂存不执行；
+     * run 出 registry 后由服务调 [onRunFinished] 消费。
+     */
+    private val pendingDrains =
+        java.util.concurrent.ConcurrentHashMap<String, AgentDispatchLedger.DispatchRequest>()
+
     /** 会话 id → 最近一次终态 run 的组合历史；LRU 上限 [MAX_CONTEXT_SESSIONS] 份。 */
     private val lastRunContexts = java.util.LinkedHashMap<String, LastRunContext>(16, 0.75f, true)
 
@@ -238,6 +248,8 @@ internal class AgentDispatchCoordinator(
             originText = settlement.claim.request.originText,
             runId = settlement.claim.runId,
         )
+        // 下一单不在这里起跑：本 run 尚未出 registry（见 pendingDrains 注释），存等 onRunFinished。
+        settlement.next?.let { pendingDrains[request.runId] = it }
     }
 
     /** 用户/调度台主动停止：立即按 STOPPED 结算，晚到的终态结算因账本幂等而无效。 */
@@ -257,6 +269,99 @@ internal class AgentDispatchCoordinator(
             detail = settlement.detail,
             originText = settlement.claim.request.originText,
             runId = settlement.claim.runId,
+        )
+        // STOPPED 不排空：主动停止（task_abort / 用户停止）后队列语义交给
+        // cancelConversation（task_abort 会连同队首一起取消）或后续终态，这里把
+        // 结算排出的队首退回队首位，避免滞留 handedOut 成为幽灵单。
+        settlement.next?.let { ledger.requeueFront(it) }
+    }
+
+    // ---------------------------------------------------------------- 排空
+
+    /**
+     * run 出 registry 后的排空钩子：消费结算时暂存的 [AgentDispatchLedger.Settlement.next]。
+     *
+     * 服务在 run 的每个出口调用（run 线程 finally / 早期失败分支），此刻 run 已从
+     * registry 移除、忙态复查真实可信；无待排空单（非派发 run / 未排队）时静默。
+     */
+    fun onRunFinished(runId: String) {
+        val next = pendingDrains.remove(runId) ?: return
+        startNextQueued(next)
+    }
+
+    private fun startNextQueued(next: AgentDispatchLedger.DispatchRequest) {
+        val target = runBlocking {
+            EtaDatabase.get(context).conversationDao().conversationEntity(next.conversationId)
+        }
+        if (target == null || target.deletedAt != null) {
+            deleteClaim(next.dispatchId)
+            publishNotice(
+                conversationId = next.conversationId,
+                dispatchId = next.dispatchId,
+                outcome = AgentDispatchLedger.Outcome.FAILED,
+                summary = "",
+                detail = "目标会话已不存在，排队中的派发已放弃",
+                originText = next.originText,
+            )
+            return
+        }
+        if (target.id in activeConversationIds()) {
+            // 目标又忙上了（本会话起了别的 run）：退回队首等下一次结算；
+            // DB claim 行本来就是 queued，不用动。
+            ledger.requeueFront(next)
+            AndroidAgentLogger.info(
+                "dispatch drain: conversation=${next.conversationId} " +
+                    "dispatch=${next.dispatchId} requeued(busy)",
+            )
+            return
+        }
+        val fallbackConfig = runBlocking { RuntimeConfigRepository.currentRuntimeConfig() }
+        if (fallbackConfig == null) {
+            deleteClaim(next.dispatchId)
+            publishNotice(
+                conversationId = next.conversationId,
+                dispatchId = next.dispatchId,
+                outcome = AgentDispatchLedger.Outcome.FAILED,
+                summary = "",
+                detail = "没有可用模型，排队中的派发未能执行",
+                originText = next.originText,
+            )
+            return
+        }
+        AndroidAgentLogger.info(
+            "dispatch drain: conversation=${next.conversationId} dispatch=${next.dispatchId} start",
+        )
+        startDispatchedRun(next, target, orchestratorConversationId = consoleConversationId,
+            orchestratorSession = null, orchestratorConfig = fallbackConfig)
+    }
+
+    /**
+     * 起跑被 registry 拒绝的回退钩子（服务在 Admission.Rejected 处调用）。
+     *
+     * - CONVERSATION_BUSY（TOCTOU：admit 复查空闲后、起跑前目标转忙）：撤销武装退回
+     *   队首，claim 行降回 queued——排队语义本来就该兜住"起跑时忙"，不发失败回报；
+     * - 其他拒绝（容量满/标识冲突等确定性失败）：按 FAILED 结算发回报，不回队重试，
+     *   否则坏配置会在每次结算时无限重派。
+     *
+     * 非派发 run 在账本里静默忽略。调用方随后需调 [onRunFinished]：FAILED 分支若
+     * 结算出下一单，同样要等本 run 出口排空。
+     */
+    fun onRunStartRejected(request: AgentRuntimeWire.RunRequest, code: String) {
+        if (code != START_REJECTED_BUSY) {
+            onRunTerminal(
+                request,
+                AgentRuntimeWire.RunResult(
+                    runId = request.runId, ok = false, content = "",
+                    error = "派发起跑被拒（$code）",
+                ),
+            )
+            return
+        }
+        val claim = ledger.unarmToQueue(request.runId) ?: return
+        runBlocking { EtaDatabase.get(context).dispatchClaimDao().demoteToQueued(claim.request.dispatchId) }
+        AndroidAgentLogger.info(
+            "dispatch start rejected: conversation=${claim.request.conversationId} " +
+                "run=${request.runId} dispatch=${claim.request.dispatchId} requeued(busy)",
         )
     }
 
@@ -465,7 +570,18 @@ internal class AgentDispatchCoordinator(
             return json(ok = false, code = "NOT_OWNED", message = ABORT_DENIED_MESSAGE)
         }
         val stopped = activeRunIdFor(conversationId)?.let(stopRun) ?: false
-        ledger.cancelConversation(conversationId)
+        // 先停 run 再取消队列：停止结算会把排空的队首退回（requeueFront），这里一并按取消处理。
+        ledger.cancelConversation(conversationId).forEach { dropped ->
+            // notify-once：排队单随会话取消也要各发一次终态回报，卡片与等待中的模型才能落定。
+            publishNotice(
+                conversationId = dropped.conversationId,
+                dispatchId = dropped.dispatchId,
+                outcome = AgentDispatchLedger.Outcome.STOPPED,
+                summary = "",
+                detail = "调度台停止了该会话，排队中的派发已取消",
+                originText = dropped.originText,
+            )
+        }
         runBlocking { EtaDatabase.get(context).dispatchClaimDao().deleteByConversation(conversationId) }
         return JSONObject()
             .put("ok", true)
@@ -663,6 +779,9 @@ internal class AgentDispatchCoordinator(
         const val MAX_TURN_CHARS = 2_000
         const val NOTICE_SUMMARY_CHARS = 600
         const val MAX_CONTEXT_SESSIONS = 8
+
+        /** 与 RuntimeRunRegistry.admit 的忙拒绝码一致：唯一应当回队重试的起跑拒绝。 */
+        const val START_REJECTED_BUSY = "CONVERSATION_BUSY"
         const val ABORT_DENIED_MESSAGE =
             "只能停止调度台自己创建的会话；用户手建的会话请由用户停止"
 

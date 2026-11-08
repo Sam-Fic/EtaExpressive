@@ -118,4 +118,52 @@ class AgentDispatchLedgerTest {
         )
         assertTrue(admission is AgentDispatchLedger.Admission.Rejected)
     }
+
+    @Test
+    fun requeueFrontPutsDrainedRequestBackAtHead() {
+        val ledger = AgentDispatchLedger()
+        repeat(3) { index ->
+            assertTrue(ledger.admit(request("d$index"), conversationBusy = true) is AgentDispatchLedger.Admission.Queued)
+        }
+        // d1 排空后起跑前发现目标仍忙：退回队首，再次 drain 仍先交出 d1。
+        assertEquals("d0", ledger.drain("conv-1")?.dispatchId)
+        ledger.requeueFront(request("d0"))
+        assertEquals("d0", ledger.drain("conv-1")?.dispatchId)
+
+        // 回退的单可以重新武装并正常结算排空，后续顺序不变。
+        assertNotNull(ledger.markArmed("d0", "run-0", 1L))
+        val settlement = ledger.settleRun("run-0", AgentDispatchLedger.Outcome.COMPLETED, detail = "")
+        assertEquals("d1", settlement?.next?.dispatchId)
+    }
+
+    @Test
+    fun requeueFrontIgnoresNonHandedOutRequests() {
+        val ledger = AgentDispatchLedger()
+        assertTrue(ledger.admit(request("d1"), conversationBusy = true) is AgentDispatchLedger.Admission.Queued)
+        // 仍排队中的单不在 handedOut，回退是空操作（否则会重复入队）。
+        ledger.requeueFront(request("d1"))
+        assertEquals("d1", ledger.drain("conv-1")?.dispatchId)
+        // 已武装的单同理不可回退，否则会绕过 armed 出账。
+        assertNotNull(ledger.markArmed("d1", "run-1", 1L))
+        ledger.requeueFront(request("d1"))
+        assertEquals(1, ledger.armedCount)
+        assertNotNull(ledger.settleRun("run-1", AgentDispatchLedger.Outcome.COMPLETED, detail = ""))
+    }
+
+    @Test
+    fun unarmToQueueRevokesArmedClaimBackToHead() {
+        val ledger = AgentDispatchLedger()
+        assertTrue(ledger.admit(request("d1"), conversationBusy = false) is AgentDispatchLedger.Admission.Start)
+        assertTrue(ledger.admit(request("d2"), conversationBusy = true) is AgentDispatchLedger.Admission.Queued)
+        assertNotNull(ledger.markArmed("d1", "run-1", 1L))
+
+        // 起跑被拒（TOCTOU 目标转忙）：撤销武装退回队首，之后重新排空仍先 d1。
+        val claim = ledger.unarmToQueue("run-1")
+        assertEquals("d1", claim?.request?.dispatchId)
+        assertEquals(0, ledger.armedCount)
+        assertEquals("d1", ledger.drain("conv-1")?.dispatchId)
+
+        // unarm 幂等：同一 runId 第二次撤销静默。
+        assertNull(ledger.unarmToQueue("run-1"))
+    }
 }

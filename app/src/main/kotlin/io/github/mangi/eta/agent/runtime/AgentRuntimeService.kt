@@ -879,6 +879,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             is RuntimeRunRegistry.Admission.Rejected -> {
                 AndroidAgentLogger.debug { "Agent runtime request rejected: code=${admission.code}" }
                 finishWithFailure(admission.message, replyTo)
+                // 派发 run 的债权已武装：忙拒绝回队首重试，其他拒绝按 FAILED 收声；
+                // 非派发 run 在账本里静默忽略。随后排空本 run 出口暂存的下一单。
+                dispatchCoordinator.onRunStartRejected(request, admission.code)
+                dispatchCoordinator.onRunFinished(request.runId)
                 return
             }
         }
@@ -898,10 +902,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             }
         }
         if (!executionHeld && (!allowBoundFallback || AgentExecutionService.backupMaintenance)) {
-            session.complete(AgentRuntimeWire.RunResult(
+            val startFailure = AgentRuntimeWire.RunResult(
                 runId = request.runId, ok = false, content = "",
                 error = getString(R.string.runtime_service_start_failed),
-            )) {}
+            )
+            // 此分支的 session.complete 不经 persistCompletedRun（beforePublish 为空），
+            // 派发债权收不到终态会挂到重启：这里先结算，registry 随 complete 里的
+            // beforeTerminalPublish 注销后即可安全排空。
+            dispatchCoordinator.onRunTerminal(request, startFailure)
+            session.complete(startFailure) {}
+            dispatchCoordinator.onRunFinished(request.runId)
             return
         }
         AgentChildRunControl.begin(session)
@@ -1018,6 +1028,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     postKeepScreenOnUpdate()
                     // 兜底注销：终态发布钩子被跳过时（如存储失败路径）也要释放会话名额。
                     runs.finish(request.runId, session)
+                    // 出 registry 后才排空调度队列：结算点本 run 还在册，同步起跑必撞忙。
+                    dispatchCoordinator.onRunFinished(request.runId)
                 }
             }
         } catch (failure: Throwable) {
@@ -1030,6 +1042,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             AndroidAgentLogger.error("Agent runtime thread start failed: type=${failure.safeLogType()}")
             runCatching { persistCompletedRun(request, result) }
             session.complete(result) {}
+            // 线程没起来就没有 finally 兜底：这里显式排空（persistCompletedRun 已结算暂存）。
+            dispatchCoordinator.onRunFinished(request.runId)
             postTerminalOverlay(
                 session, result, null,
                 conversationId = AgentConversationIdentity.fromHandoff(request.handoff, request.runId),

@@ -23,4 +23,10 @@ internal interface DispatchClaimDao {
         "UPDATE dispatch_claims SET run_id = :runId, state = 'armed' WHERE dispatch_id = :dispatchId"
     )
     suspend fun markArmed(dispatchId: String, runId: String)
+
+    /** 起跑被拒回退队列：撤销武装态；created_at 不动，恢复对账的先后顺序保持原样。 */
+    @Query(
+        "UPDATE dispatch_claims SET run_id = NULL, state = 'queued' WHERE dispatch_id = :dispatchId"
+    )
+    suspend fun demoteToQueued(dispatchId: String)
 }
