@@ -230,7 +230,15 @@ fun EtaDialogActions(
     }
 }
 
-/** 自适应单行输入框。 */
+/**
+ * 自适应单行输入框。
+ *
+ * 直通官方 `OutlinedTextField` 的 value 重载（[isError] 与 [singleLine] 原样透传）。
+ * 签名取证：androidx.compose.material3:material3-android 1.5.0-alpha29 sources jar
+ * （gradle caches `material3-android-1.5.0-alpha29-sources.jar`）`OutlinedTextField.kt:314`
+ * 的 String 重载——`:328 isError: Boolean = false`、`:332 singleLine: Boolean = false`，
+ * 错误态由官方 `defaultErrorSemantics` 挂语义（`:355`）。
+ */
 @Composable
 fun EtaTextField(
     value: String,

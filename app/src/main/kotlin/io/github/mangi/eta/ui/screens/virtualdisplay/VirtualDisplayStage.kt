@@ -120,6 +120,8 @@ internal fun VirtualDisplayLiveStage(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
+        // 不用 shapes 令牌：舞台卡与分段列表是同一层级的浮起卡片，圆角对齐分段列表
+        // 外圆角 16dp（EtaSegmentedOuterCornerRadius，已登记 EtaDimens 圆角索引）。
         shape = RoundedCornerShape(EtaSegmentedOuterCornerRadius),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
