@@ -11,8 +11,6 @@ import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.Animatable
@@ -46,6 +44,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -114,7 +113,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -127,6 +125,7 @@ import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
+import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaMorphChipShape
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.etaConnectedButtonShapes
@@ -136,6 +135,9 @@ import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
+import top.yukonga.miuix.kmp.nav.runtime.NavProgrammaticEasing
 
 /** 与 [BrowserTabPool] 的最大标签数一致（页面里「+」的禁用条件）。 */
 private const val MAX_TABS = 3
@@ -299,17 +301,34 @@ fun BrowserPage(
     var showSettings by remember { mutableStateOf(false) }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // 设置子页与浏览器共用同一个 BrowserTabPool，不能拆成独立路由（重新 acquire 会重置标签）；
-    // 在页内按 miuix `NavDisplay` 路由转场的几何补上入栈/出栈：设置页侧滑，底层浏览器做四分之一屏视差。
-    // 页级位移统一取 M3E Spatial（轻微过冲），淡化取 Effects（临界阻尼、无过冲）；
-    // 视差进度与滑入同用一条 Spatial，两层才同步。
-    val settingsSlideSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-    val settingsSlideOffsetSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
-    val settingsFadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    // 在页内按 miuix `NavDisplay` 路由转场的几何补上入栈/出栈：设置页整屏侧滑且保持不透明，
+    // 底层浏览器做四分之一屏视差并淡到 0.9。规格必须与真页面推入一致——NavDisplay 的程序化
+    // 转场是定长 tween(500, NavProgrammaticEasing)（取证：miuix-nav 0.9.4 AAR，NavDriverSpec
+    // .PROGRAMMATIC_DURATION_MILLIS=500，NavSettleEasingKt.NavProgrammaticEasing = NavSettleEasing
+    // (0.8f, 0.95f)，公开 API）。此前取 M3E Spatial 弹簧自带过冲、顶页还从 0.9 透明度淡入，
+    // 节奏与全应用页面转场不同，观感突兀。位移（Float）与 AnimatedVisibility 的 IntOffset
+    // 两条 tween 同曲线同时长同帧起播，tween 确定性保证逐帧同步。
     val settingsProgress by animateFloatAsState(
         targetValue = if (showSettings) 1f else 0f,
-        animationSpec = settingsSlideSpec,
+        animationSpec = tween(durationMillis = EtaMotion.NavigationFallbackDurationMillis.toInt(), easing = NavProgrammaticEasing),
         label = "browser-settings-progress",
     )
+    // NavDisplay 的 effects 层（[NavDisplayEffects]）在页内复刻——真页面推入除了转场几何，
+    // 还有两样正交效果，缺了就是"页内侧滑"与"真页面推入"的观感差异来源：
+    // ① 被盖页压暗 scrim：全屏黑、alpha = dimAmount(0.5) × coverProgress，画在进入页之下
+    //    （NavDisplay.kt 的 scrim Box：`alpha = dimAmount * scrimFraction`）；
+    // ② 进入页运动期间的 leading 角圆角裁切：半径取系统屏角（shouldClipCornersAt 的
+    //    -1<d<0 口径——起止满屏时圆角与物理屏角重合，除裁切不可见）。
+    // miuix squircle 模块对本 app 是 runtime 依赖（不在编译类路径），用 RoundedCornerShape
+    // 近似，500ms 运动中不可辨；裁切经 graphicsLayer 延迟读进度，零重组。
+    val navSystemCornerRadius = rememberNavSystemCornerRadius()
+    val settingsClipShape = remember(rtl, navSystemCornerRadius) {
+        if (rtl) {
+            RoundedCornerShape(topStart = 0.dp, topEnd = navSystemCornerRadius, bottomEnd = navSystemCornerRadius, bottomStart = 0.dp)
+        } else {
+            RoundedCornerShape(topStart = navSystemCornerRadius, topEnd = 0.dp, bottomEnd = 0.dp, bottomStart = navSystemCornerRadius)
+        }
+    }
     // [T-android-browser-download-ux] Downloads panel + badge state.
     var showDownloads by remember { mutableStateOf(false) }
     val downloadEntries by tabPool.downloads.collectAsState()
@@ -617,19 +636,48 @@ fun BrowserPage(
         }
     }
 
+        // ① 被盖页压暗 scrim：全屏黑，alpha 随转场进度升到 dimAmount 上限（0.5），
+        //    画在浏览器之上、设置页之下；alpha 在 graphicsLayer 里延迟读进度，零重组。
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = NavDisplayEffects.Default.dimAmount * settingsProgress }
+                .background(Color.Black),
+        )
+
         AnimatedVisibility(
             visible = showSettings,
-            enter = slideInHorizontally(animationSpec = settingsSlideOffsetSpec) { width ->
+            // 顶页保持不透明：MiuixDefault 只对被盖页做视差与压暗，给顶页加淡入淡出
+            // 会在运动中透出底页（此前 0.9 透明度淡入正是"怪"感来源之一）。
+            enter = slideInHorizontally(
+                animationSpec = tween(EtaMotion.NavigationFallbackDurationMillis.toInt(), easing = NavProgrammaticEasing),
+            ) { width ->
                 (width * if (rtl) -1f else 1f).toInt()
-            } + fadeIn(animationSpec = settingsFadeSpec, initialAlpha = 0.9f),
-            exit = slideOutHorizontally(animationSpec = settingsSlideOffsetSpec) { width ->
+            },
+            exit = slideOutHorizontally(
+                animationSpec = tween(EtaMotion.NavigationFallbackDurationMillis.toInt(), easing = NavProgrammaticEasing),
+            ) { width ->
                 (width * if (rtl) -1f else 1f).toInt()
-            } + fadeOut(animationSpec = settingsFadeSpec, targetAlpha = 0.9f),
+            },
         ) {
-            BrowserSettingsPage(
-                tabPool = tabPool,
-                onDismiss = { showSettings = false },
-            )
+            // ② 进入页 leading 角圆角裁切，只在运动中生效（0<p<1，对应 shouldClipCornersAt
+            //    的 -1<d<0）：落定满屏时圆角与物理屏角重合，除裁切不可见。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val progress = settingsProgress
+                        if (progress > 0.001f && progress < 0.999f) {
+                            clip = true
+                            shape = settingsClipShape
+                        }
+                    },
+            ) {
+                BrowserSettingsPage(
+                    tabPool = tabPool,
+                    onDismiss = { showSettings = false },
+                )
+            }
         }
     }
 

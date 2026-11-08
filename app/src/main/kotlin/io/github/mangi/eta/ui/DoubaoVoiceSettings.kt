@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -57,6 +58,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
+import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -74,6 +76,7 @@ import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.nav.runtime.NavProgrammaticEasing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,10 +117,13 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // 内部页快照驱动 AnimatedContent：退场页只读快照，不会跟着外部状态提前变成下一页。
     val page = DoubaoVoicePage(mode = mode, step = step, account = showAccount, sync = showSync)
-    // 页间侧滑与容器路由转场同一套 M3E 规格：位移走 Spatial（轻微过冲），淡化走 Effects。
-    // 规格须在组合期读好，transitionSpec 里不能读 CompositionLocal。
-    val pageSlideSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
-    val pageFadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    // 页间侧滑与容器路由转场同一套规格：NavDisplay 的程序化转场是定长 tween(500,
+    // NavProgrammaticEasing)（取证：miuix-nav 0.9.4 AAR，NavDriverSpec.PROGRAMMATIC_DURATION_MILLIS
+    // =500，NavSettleEasingKt.NavProgrammaticEasing = NavSettleEasing(0.8f, 0.95f)，公开 API）。
+    // 此前取 M3E Spatial 弹簧（自带过冲），与真页面推入节奏不一致。规格须在组合期读好，
+    // transitionSpec 里不能读 CompositionLocal。
+    val pageSlideSpec = tween<IntOffset>(EtaMotion.NavigationFallbackDurationMillis.toInt(), easing = NavProgrammaticEasing)
+    val pageFadeSpec = tween<Float>(EtaMotion.NavigationFallbackDurationMillis.toInt(), easing = NavProgrammaticEasing)
     // 向导内层/忙时自己消费返回；回到本页首页后交给 miuix `NavDisplay`，保留路由级预测性返回。
     androidx.activity.compose.BackHandler(enabled = busy || importBusy || !home) {
         if (!busy && !importBusy && !home) back()
@@ -215,22 +221,33 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
             targetState = page,
             transitionSpec = {
                 val forward = targetState.depth >= initialState.depth
-                // 与容器路由转场同一套几何：新页从侧边推入，旧页做四分之一屏视差并淡到 0.9。
-                val sign = if (forward) 1f else -1f
-                val enterSign = if (rtl) -sign else sign
-                val enter = slideInHorizontally(
-                    animationSpec = pageSlideSpec,
-                ) { width -> (width * enterSign).toInt() } + fadeIn(
-                    animationSpec = pageFadeSpec,
-                    initialAlpha = 0.9f,
-                )
-                val exit = slideOutHorizontally(
-                    animationSpec = pageSlideSpec,
-                ) { width -> (-width * enterSign / 4f).toInt() } + fadeOut(
-                    animationSpec = pageFadeSpec,
-                    targetAlpha = 0.9f,
-                )
-                enter togetherWith exit
+                val enterSign = if (rtl) -1 else 1
+                val exitSign = if (rtl) 1 else -1
+                // 与容器路由（miuix NavDisplay MiuixDefault）转场逐格对齐：
+                // 推入——新页整屏推入且不透明，旧页 1/4 视差退后并淡到 0.9（被盖页待遇）；
+                // 弹出——旧页整屏滑出且不透明，被盖页从 1/4 视差位复位、从 0.9 淡入。
+                // 此前两格的透明度写反了（推入的新页淡入、弹出的旧页淡出），且弹出时
+                // 旧页只滑 1/4 屏、新页却从整屏外滑入，与真页面弹出方向相反。
+                val enter = if (forward) {
+                    slideInHorizontally(animationSpec = pageSlideSpec) { width -> width * enterSign }
+                } else {
+                    slideInHorizontally(animationSpec = pageSlideSpec) { width -> width * exitSign / 4 } +
+                        fadeIn(animationSpec = pageFadeSpec, initialAlpha = 0.9f)
+                }
+                val exit = if (forward) {
+                    slideOutHorizontally(animationSpec = pageSlideSpec) { width -> width * exitSign / 4 } +
+                        fadeOut(animationSpec = pageFadeSpec, targetAlpha = 0.9f)
+                } else {
+                    slideOutHorizontally(animationSpec = pageSlideSpec) { width -> width * enterSign }
+                }
+                // 弹出时离场页才是顶层（从被盖页上方滑走）：target 是被盖页，把它压到
+                // zIndex -1（默认 0，同值时 target 在顶——ContentTransform.targetContentZIndex，
+                // var，javap 取证于 compose animation classes.jar）。
+                if (forward) {
+                    enter togetherWith exit
+                } else {
+                    (enter togetherWith exit).apply { targetContentZIndex = -1f }
+                }
             },
             label = "doubao-voice-page",
         ) { current ->
