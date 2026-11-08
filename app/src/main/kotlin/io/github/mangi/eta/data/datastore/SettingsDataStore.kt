@@ -51,6 +51,8 @@ internal object SettingsDataStore {
     private val APPEARANCE_TOP_BAR_BLUR_STYLE = stringPreferencesKey("appearance_top_bar_blur_style")
     private val APPEARANCE_PREDICTIVE_BACK_ENABLED =
         booleanPreferencesKey("appearance_predictive_back_enabled")
+    private val APPEARANCE_SWIPE_BACK_ENABLED =
+        booleanPreferencesKey("appearance_swipe_back_enabled")
     private val APPEARANCE_INTERFACE_SCALE = floatPreferencesKey("appearance_interface_scale")
     private val APPEARANCE_MORPH_LOADING_INDICATOR =
         booleanPreferencesKey("appearance_morph_loading_indicator")
@@ -637,6 +639,7 @@ internal object SettingsDataStore {
                 this[APPEARANCE_TOP_BAR_BLUR_STYLE],
             ),
             predictiveBackEnabled = this[APPEARANCE_PREDICTIVE_BACK_ENABLED] ?: false,
+            swipeBackEnabled = this[APPEARANCE_SWIPE_BACK_ENABLED] ?: true,
             interfaceScale = this[APPEARANCE_INTERFACE_SCALE] ?: 1f,
             morphLoadingIndicator = this[APPEARANCE_MORPH_LOADING_INDICATOR] ?: true,
             morphLoadingBeforeResponseOnly = this[APPEARANCE_MORPH_LOADING_BEFORE_RESPONSE] ?: false,
@@ -656,6 +659,7 @@ internal object SettingsDataStore {
         this[APPEARANCE_BLUR_ENABLED] = settings.blurEnabled
         this[APPEARANCE_TOP_BAR_BLUR_STYLE] = settings.topBarBlurStyle.persistedValue
         this[APPEARANCE_PREDICTIVE_BACK_ENABLED] = settings.predictiveBackEnabled
+        this[APPEARANCE_SWIPE_BACK_ENABLED] = settings.swipeBackEnabled
         this[APPEARANCE_INTERFACE_SCALE] = settings.interfaceScale
         this[APPEARANCE_MORPH_LOADING_INDICATOR] = settings.morphLoadingIndicator
         this[APPEARANCE_MORPH_LOADING_BEFORE_RESPONSE] = settings.morphLoadingBeforeResponseOnly

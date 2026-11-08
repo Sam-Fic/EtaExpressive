@@ -16,6 +16,8 @@ data class AppearanceSettings(
     val blurEnabled: Boolean = true,
     val topBarBlurStyle: AppearanceTopBarBlurStyle = AppearanceTopBarBlurStyle.GAUSSIAN,
     val predictiveBackEnabled: Boolean = false,
+    /** 边缘横移返回上一页；交给 miuix NavDisplay 的 entry.swipeDismiss，不依赖系统 API 等级。 */
+    val swipeBackEnabled: Boolean = true,
     val interfaceScale: Float = DEFAULT_INTERFACE_SCALE,
     val morphLoadingIndicator: Boolean = true,
     val morphLoadingBeforeResponseOnly: Boolean = false,

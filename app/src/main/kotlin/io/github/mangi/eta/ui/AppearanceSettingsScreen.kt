@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.Launch
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.UnfoldLess
 import androidx.compose.material.icons.rounded.Style
 import androidx.compose.material3.ButtonGroupDefaults
@@ -237,6 +238,7 @@ internal fun AppearanceSettingsScreen(onBack: () -> Unit) {
                 update { current -> current.copy(morphLoadingBeforeResponseOnly = enabled) }
             },
             onSetPredictiveBack = { enabled -> update { current -> current.copy(predictiveBackEnabled = enabled) } },
+            onSetSwipeBack = { enabled -> update { current -> current.copy(swipeBackEnabled = enabled) } },
         )
     }
 
@@ -303,6 +305,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
     onSetMorphLoading: (Boolean) -> Unit,
     onSetMorphBeforeResponse: (Boolean) -> Unit,
     onSetPredictiveBack: (Boolean) -> Unit,
+    onSetSwipeBack: (Boolean) -> Unit,
 ) {
     // ① 主题预览卡（按候选配色实时渲染缩略屏幕）
     // 页面统一节奏：每个分组自带 16dp 页边距 + 13dp 组间距，数值取自适应层令牌。
@@ -438,17 +441,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
         }
     }
 
-    // ⑤ 预测性返回：独立开关行（KernelSU 同位置，色彩条目之后）。
-    // 仅 API 34+ 显示——底层 PredictiveBackController.apply 在更低版本本就 no-op。
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        item(key = "m3_predictive_back") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            ) {
+    // ⑤ 返回手势组（KernelSU 同位置，色彩条目之后）：预测性返回在上、横移返回在下。
+    // 两者互不影响：前者是系统 API 34+ 的动画开关，后者是应用内 miuix entry.swipeDismiss，
+    // 不依赖系统版本，所以横移返回那一行在低版本也必须保留。
+    item(key = "m3_back_gestures") {
+        EtaSegmentedColumn(
+            modifier = Modifier.padding(
+                start = EtaGroupHorizontalPadding,
+                end = EtaGroupHorizontalPadding,
+                bottom = EtaSegmentedGroupSpacing,
+            ),
+        ) {
+            // 仅 API 34+ 显示——底层 PredictiveBackController.apply 在更低版本本就 no-op。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 item {
                     EtaSwitchRow(
                         leading = {
@@ -460,6 +465,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appearanceMaterial3Co
                         onCheckedChange = onSetPredictiveBack,
                     )
                 }
+            }
+            item {
+                EtaSwitchRow(
+                    leading = {
+                        PreferenceIcon(icon = Icons.Rounded.Swipe)
+                    },
+                    title = stringResource(R.string.appearance_swipe_back),
+                    summary = stringResource(R.string.appearance_swipe_back_summary),
+                    checked = appearance.swipeBackEnabled,
+                    onCheckedChange = onSetSwipeBack,
+                )
             }
         }
     }

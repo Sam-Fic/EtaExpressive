@@ -78,15 +78,17 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         self.assertNotIn("taskRecoveryWorking", root)
         self.assertIn("onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) }", root)
 
-    def test_task_preference_routes_are_plain_composables_without_swipe_parameter(self):
+    def test_task_preference_routes_share_the_global_swipe_dismiss(self):
         root = (UI / "app/AgentAppRoot.kt").read_text()
-        # M3 壳层不再给二级页挂手势返回参数：swipeDismiss / NavSwipeDirection 这套
-        # 早期返回开关已整体删除，路由都是普通 entry。
-        for gone in ("NavSwipeDirection", "taskPreferenceSwipeDismiss", "swipeDismiss"):
-            self.assertNotIn(gone, root)
-        self.assertIn("entry<AppRoute.AgentTaskPreference> {", root)
-        self.assertIn("entry<AppRoute.VirtualDisplayRecovery> {", root)
-        self.assertIn("entry<AppRoute.VirtualDisplay> {", root)
+        # 边缘横移返回由全局开关统一驱动：方向在 NavDisplay builder 外算好，
+        # 逐条 entry 显式传值；不再给单个页面挂 taskPreferenceSwipeDismiss 这类特例。
+        self.assertIn("val navSwipeDismiss = when", root)
+        self.assertIn("NavSwipeDirection.None", root)
+        self.assertNotIn("taskPreferenceSwipeDismiss", root)
+        for route in ("AgentTaskPreference", "VirtualDisplayRecovery", "VirtualDisplay"):
+            self.assertIn(
+                f"entry<AppRoute.{route}>(swipeDismiss = navSwipeDismiss) {{", root,
+            )
         self.assertIn("VirtualDisplayScreen(onBack = ::popRoute)", root)
 
     def test_installation_is_rechecked_on_resume_not_live_backend_status(self):

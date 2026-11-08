@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -156,6 +157,7 @@ import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 
 /**
  * Agent App 根组件：持有本地导航栈，并把 Screen actions 交给 [AgentAppState]。
@@ -169,6 +171,8 @@ fun AgentAppRoot(
     onAssistantConversationOpened: (Boolean) -> Unit = {},
     onInboundShareConsumed: () -> Unit = {},
     onLiveTargetConsumed: () -> Unit = {},
+    /** 边缘横移返回开关；关闭时所有路由的 swipeDismiss 方向为 [NavSwipeDirection.None]。 */
+    swipeBackEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     val uiScope = rememberCoroutineScope()
@@ -871,13 +875,31 @@ fun AgentAppRoot(
             },
         )
     } else {
+        // 边缘横移返回：直接用 miuix 自带的 NavSwipeDismiss，不自己写 pointerInput。
+        // 签名经 miuix-nav-android-0.9.4.aar 内 classes.jar 的 javap 核实：
+        //   NavEntryBuilder.entry(Function1<NavKey,Any?>, NavTransition, NavSwipeDirection,
+        //                        Map<String,Any?>, Function3<T,Composer,Int,Unit>)
+        // 第 3 位即 Kotlin 参数 swipeDismiss；entry$default 在未传该位时写 aconst_null。
+        // NavDisplayLayout 只从栈顶 entry 的 metadata[NAV_SWIPE_DISMISS_METADATA_KEY] 取方向，
+        // 所以必须逐条显式传值——漏一条就等于那一页没有手势。
+        // 方向必须在 builder 外先读成普通值再捕获：NavDisplay 用 remember(builder) 缓存
+        // entryProvider，若在 builder 内读 State.value，builder 引用不变，已建好的 NavEntry
+        // 会一直保留旧方向。RTL 下从右边缘起滑，方向反过来。
+        val navSwipeDismiss = when {
+            !swipeBackEnabled -> NavSwipeDirection.None
+            LocalLayoutDirection.current == LayoutDirection.Rtl -> NavSwipeDirection.RightToLeft
+            else -> NavSwipeDirection.LeftToRight
+        }
         NavDisplay(
             backStack = backStack,
             modifier = Modifier.fillMaxSize(),
             onBack = { popRoute() },
             effects = navEffects,
         ) {
-            entry<AppRoute.Home> {
+            // 栈底特例：Home 永远是返回栈第一项（没有 pushRoute(AppRoute.Home) 的调用），
+            // 给它横移返回既没有「上一页」可回，又会和首页左边缘拉出会话抽屉抢手势，
+            // 还可能让 popRoute() 的双击退出守卫弹出提示。其余路由统一用全局方向。
+            entry<AppRoute.Home>(swipeDismiss = NavSwipeDirection.None) {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 // 主页纯化为调度台：每次回到主页都落到调度台会话（远程目标除外）。
@@ -990,7 +1012,7 @@ fun AgentAppRoot(
                     }
                     }
                 }
-            entry<AppRoute.Chat> {
+            entry<AppRoute.Chat>(swipeDismiss = navSwipeDismiss) {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
                 RoutedShell(route = AppRoute.Chat, underlapTopBar = true) {
@@ -1093,13 +1115,13 @@ fun AgentAppRoot(
                     }
                     }
                 }
-            entry<AppRoute.Browser> {
+            entry<AppRoute.Browser>(swipeDismiss = navSwipeDismiss) {
                 AgentBrowserScreen(
                     onBack = ::popRoute,
                     conversationId = agentState.conversationPaneState.selectedConversationId,
                 )
             }
-            entry<AppRoute.Terminal> {
+            entry<AppRoute.Terminal>(swipeDismiss = navSwipeDismiss) {
                 LaunchedEffect(Unit) { requestExecutionNotifications() }
                 RoutedShell(route = AppRoute.Terminal) {
                     TerminalEntryScreen(
@@ -1110,7 +1132,7 @@ fun AgentAppRoot(
                     )
                 }
             }
-            entry<AppRoute.TerminalDaemonTasks> {
+            entry<AppRoute.TerminalDaemonTasks>(swipeDismiss = navSwipeDismiss) {
                 val terminalStore = appViewModel.terminalStore
                 val terminalState by terminalStore.uiState.collectAsState()
                 // 终端会话常驻运行：进页面先刷新一次，之后随终端状态继续更新。
@@ -1122,26 +1144,26 @@ fun AgentAppRoot(
                     onLoadLogs = terminalStore::daemonLogs,
                 )
             }
-            entry<AppRoute.Haptics> {
+            entry<AppRoute.Haptics>(swipeDismiss = navSwipeDismiss) {
                 HapticsSettingsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.AgentTaskPreference> {
+            entry<AppRoute.AgentTaskPreference>(swipeDismiss = navSwipeDismiss) {
                 AgentTaskPreferenceScreen(
                     onBack = ::popRoute,
                     onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) },
                 )
             }
             // Compatibility alias for a restored old back stack; there is no separate recovery page.
-            entry<AppRoute.VirtualDisplayRecovery> {
+            entry<AppRoute.VirtualDisplayRecovery>(swipeDismiss = navSwipeDismiss) {
                 AgentTaskPreferenceScreen(
                     onBack = ::popRoute,
                     onOpenVirtualDisplay = { pushRoute(AppRoute.VirtualDisplay) },
                 )
             }
-            entry<AppRoute.VirtualDisplay> {
+            entry<AppRoute.VirtualDisplay>(swipeDismiss = navSwipeDismiss) {
                 VirtualDisplayScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.Tools> {
+            entry<AppRoute.Tools>(swipeDismiss = navSwipeDismiss) {
                 // 工具页状态是快照：进页必须重读一次，否则从设置页改完开关再进来，
                 // 看到的是上次构建时的旧快照（这就是「两处开关不同步」的来源）。
                 LaunchedEffect(Unit) { agentState.refreshToolsState() }
@@ -1169,7 +1191,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.Skills> {
+            entry<AppRoute.Skills>(swipeDismiss = navSwipeDismiss) {
                 LaunchedEffect(Unit) {
                     agentState.refreshSkills()
                 }
@@ -1189,7 +1211,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.Permissions> {
+            entry<AppRoute.Permissions>(swipeDismiss = navSwipeDismiss) {
                 LaunchedEffect(Unit) {
                     agentState.refreshPermissionHealth()
                 }
@@ -1322,7 +1344,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.SystemEnhance> {
+            entry<AppRoute.SystemEnhance>(swipeDismiss = navSwipeDismiss) {
                 SystemEnhanceScreen(
                     onAction = { action ->
                         when (action) {
@@ -1333,13 +1355,13 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.Workspace> {
+            entry<AppRoute.Workspace>(swipeDismiss = navSwipeDismiss) {
                 WorkspaceScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.UsageStats> {
+            entry<AppRoute.UsageStats>(swipeDismiss = navSwipeDismiss) {
                 UsageStatsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.ManageChats> {
+            entry<AppRoute.ManageChats>(swipeDismiss = navSwipeDismiss) {
                 ManageChatsScreen(
                     conversations = agentState.conversationPaneState.historyConversations,
                     onBack = ::popRoute,
@@ -1357,7 +1379,7 @@ fun AgentAppRoot(
                     onOpenSearchHistory = { pushRoute(AppRoute.MessageSearch()) },
                 )
             }
-            entry<AppRoute.ManageFolders> {
+            entry<AppRoute.ManageFolders>(swipeDismiss = navSwipeDismiss) {
                 ManageFoldersScreen(
                     folders = agentState.conversationPaneState.folders,
                     conversations = agentState.conversationPaneState.historyConversations,
@@ -1369,7 +1391,7 @@ fun AgentAppRoot(
                     onOpenRemoteAgents = { pushRoute(AppRoute.RemoteAgents) },
                 )
             }
-            entry<AppRoute.ConversationTrash> {
+            entry<AppRoute.ConversationTrash>(swipeDismiss = navSwipeDismiss) {
                 TrashScreen(
                     trash = agentState.conversationPaneState.trashConversations,
                     onBack = ::popRoute,
@@ -1384,7 +1406,7 @@ fun AgentAppRoot(
                     onOpenSearch = { pushRoute(AppRoute.ConversationTrashSearch) },
                 )
             }
-            entry<AppRoute.ConversationTrashSearch> {
+            entry<AppRoute.ConversationTrashSearch>(swipeDismiss = navSwipeDismiss) {
                 TrashSearchScreen(
                     onSearch = { query ->
                         agentState.conversationPaneState.trashConversations.filter {
@@ -1400,7 +1422,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.MessageSearch> { route ->
+            entry<AppRoute.MessageSearch>(swipeDismiss = navSwipeDismiss) { route ->
                 MessageSearchScreen(
                     onSearch = { query ->
                         agentState.searchHistory(
@@ -1419,21 +1441,21 @@ fun AgentAppRoot(
                     showConversationTitle = !route.conversationScoped,
                 )
             }
-            entry<AppRoute.ConversationTokenUsage> {
+            entry<AppRoute.ConversationTokenUsage>(swipeDismiss = navSwipeDismiss) {
                 // 与旧弹窗同源：用量取当前会话的实时投影，页面留在栈上也会随对话继续变化。
                 ConversationTokenUsageScreen(
                     usage = cumulativeUsage,
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.SubAgentStatus> {
+            entry<AppRoute.SubAgentStatus>(swipeDismiss = navSwipeDismiss) {
                 // 与旧弹窗同源：取当前会话的实时子助手名册。
                 SubAgentStatusScreen(
                     agents = shellHomeState.childStatusRoster,
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.Settings> {
+            entry<AppRoute.Settings>(swipeDismiss = navSwipeDismiss) {
                 SettingsScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
@@ -1444,7 +1466,7 @@ fun AgentAppRoot(
                     onFocusConsumed = { settingsFocusKey = null },
                 )
             }
-            entry<AppRoute.MediaSearch> {
+            entry<AppRoute.MediaSearch>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.screens.search.MediaSearchScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
@@ -1456,25 +1478,25 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.MediaIndexSettings> {
+            entry<AppRoute.MediaIndexSettings>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.screens.settings.MediaIndexSettingsScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.MobileActionsSettings> {
+            entry<AppRoute.MobileActionsSettings>(swipeDismiss = navSwipeDismiss) {
                 MobileActionsSettingsScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.MobileActions> {
+            entry<AppRoute.MobileActions>(swipeDismiss = navSwipeDismiss) {
                 MobileActionsScreen(
                     onOpenSettings = { pushRoute(AppRoute.MobileActionsSettings) },
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.SettingsSearch> {
+            entry<AppRoute.SettingsSearch>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.SettingsSearchScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
@@ -1487,85 +1509,85 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.SystemTakeover> {
+            entry<AppRoute.SystemTakeover>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.SystemTakeoverSettingsScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.About> {
+            entry<AppRoute.About>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.AboutScreen(
                     onBack = ::popRoute,
                     onOpenCredits = { pushRoute(AppRoute.AboutCredits) },
                 )
             }
-            entry<AppRoute.AboutCredits> {
+            entry<AppRoute.AboutCredits>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.AboutCreditsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.AuxiliaryVision> {
+            entry<AppRoute.AuxiliaryVision>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.ModelFeatureSettingsScreen(
                     feature = io.github.mangi.eta.agent.model.ModelFeature.VISION, onBack = ::popRoute)
             }
-            entry<AppRoute.SubAgents> {
+            entry<AppRoute.SubAgents>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.SubAgentSettingsScreen(
                     onBack = ::popRoute,
                     onOpenPreset = { presetId -> pushRoute(AppRoute.SubAgentPresetDetail(presetId)) },
                 )
             }
-            entry<AppRoute.SubAgentPresetDetail> { route ->
+            entry<AppRoute.SubAgentPresetDetail>(swipeDismiss = navSwipeDismiss) { route ->
                 io.github.mangi.eta.ui.SubAgentPresetDetailScreen(
                     presetId = route.presetId,
                     onBack = ::popRoute,
                     isCurrentRoute = currentRoute == route,
                 )
             }
-            entry<AppRoute.TitleModel> {
+            entry<AppRoute.TitleModel>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.ModelFeatureSettingsScreen(
                     feature = io.github.mangi.eta.agent.model.ModelFeature.TITLE, onBack = ::popRoute)
             }
-            entry<AppRoute.ErrorReconnectSettings> {
+            entry<AppRoute.ErrorReconnectSettings>(swipeDismiss = navSwipeDismiss) {
                 ErrorReconnectSettingsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.LiveActivitySettings> {
+            entry<AppRoute.LiveActivitySettings>(swipeDismiss = navSwipeDismiss) {
                 LiveActivitySettingsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.WebToolsSettings> {
+            entry<AppRoute.WebToolsSettings>(swipeDismiss = navSwipeDismiss) {
                 WebToolsSettingsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.VoiceSettings> {
+            entry<AppRoute.VoiceSettings>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(
                     onBack = ::popRoute,
                     onOpenVoiceSubPage = ::openVoiceSubPage,
                 )
             }
             // Retain serialized legacy routes, but show the same unified voice surface.
-            entry<AppRoute.TtsSettings> {
+            entry<AppRoute.TtsSettings>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(onBack = ::popRoute,
                     initialSection = io.github.mangi.eta.ui.VoiceSettingsSection.READ_ALOUD,
                     onOpenVoiceSubPage = ::openVoiceSubPage)
             }
-            entry<AppRoute.SpeechSettings> {
+            entry<AppRoute.SpeechSettings>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(
                     onBack = ::popRoute,
                     onOpenVoiceSubPage = ::openVoiceSubPage,
                 )
             }
-            entry<AppRoute.VoiceModeSettings> {
+            entry<AppRoute.VoiceModeSettings>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(onBack = ::popRoute,
                     initialSection = io.github.mangi.eta.ui.VoiceSettingsSection.CONVERSATION,
                     onOpenVoiceSubPage = ::openVoiceSubPage)
             }
-            entry<AppRoute.DoubaoVoices> {
+            entry<AppRoute.DoubaoVoices>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.DoubaoVoiceSettings(onBack = ::popRoute)
             }
-            entry<AppRoute.MimoVoices> {
+            entry<AppRoute.MimoVoices>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.MimoVoicesScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.AppearanceSettings> {
+            entry<AppRoute.AppearanceSettings>(swipeDismiss = navSwipeDismiss) {
                 AppearanceSettingsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.DataBackup> {
+            entry<AppRoute.DataBackup>(swipeDismiss = navSwipeDismiss) {
                 DataBackupScreen(
                     context = context,
                     onBack = ::popRoute,
@@ -1579,7 +1601,7 @@ fun AgentAppRoot(
                     onImportAnalysis = agentState::importConversationAnalysis,
                 )
             }
-            entry<AppRoute.Memory> {
+            entry<AppRoute.Memory>(swipeDismiss = navSwipeDismiss) {
                 AgentMemoryOverviewScreen(
                     onBack = ::popRoute,
                     onOpenAssistant = { assistantId ->
@@ -1587,7 +1609,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.AssistantMemory> { route ->
+            entry<AppRoute.AssistantMemory>(swipeDismiss = navSwipeDismiss) { route ->
                 LaunchedEffect(route.assistantId) {
                     agentState.refreshMemory(route.assistantId)
                 }
@@ -1605,79 +1627,79 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.LinuxEnvironment> {
+            entry<AppRoute.LinuxEnvironment>(swipeDismiss = navSwipeDismiss) {
                 LinuxEnvironmentScreen(
                     context = context,
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.SharedFolders> {
+            entry<AppRoute.SharedFolders>(swipeDismiss = navSwipeDismiss) {
                 SharedFoldersScreen(
                     context = context,
                     onBack = ::popRoute,
                     onOpenPicker = { pushRoute(AppRoute.SharedFolderPicker) },
                 )
             }
-            entry<AppRoute.SharedFolderPicker> {
+            entry<AppRoute.SharedFolderPicker>(swipeDismiss = navSwipeDismiss) {
                 SharedFolderPickerScreen(
                     context = context,
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.LinuxFiles> { route ->
+            entry<AppRoute.LinuxFiles>(swipeDismiss = navSwipeDismiss) { route ->
                 LinuxFilesScreen(
                     context = context,
                     distribution = route.distribution,
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.ModelProviders> {
+            entry<AppRoute.ModelProviders>(swipeDismiss = navSwipeDismiss) {
                 ModelProviderListScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                     currentProviderId = shellHomeState.providerId,
                 )
             }
-            entry<AppRoute.ModelProviderSearch> {
+            entry<AppRoute.ModelProviderSearch>(swipeDismiss = navSwipeDismiss) {
                 ModelProviderSearchScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                     currentProviderId = shellHomeState.providerId,
                 )
             }
-            entry<AppRoute.McpServers> {
+            entry<AppRoute.McpServers>(swipeDismiss = navSwipeDismiss) {
                 McpServersScreen(
                     onNavigate = { route -> pushRoute(route) },
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.McpServerDetail> { route ->
+            entry<AppRoute.McpServerDetail>(swipeDismiss = navSwipeDismiss) { route ->
                 McpServerDetailScreen(
                     serverId = route.serverId,
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.ToolRecipes> {
+            entry<AppRoute.ToolRecipes>(swipeDismiss = navSwipeDismiss) {
                 ToolRecipesScreen(
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.RemoteAgents> {
+            entry<AppRoute.RemoteAgents>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.screens.settings.RemoteAgentsScreen(
                     onBack = ::popRoute,
                     coordinator = appViewModel.remoteCoordinator,
                     onOpenEditor = { serverId -> pushRoute(AppRoute.RemoteAgentEditor(serverId)) },
                 )
             }
-            entry<AppRoute.RemoteAgentEditor> { route ->
+            entry<AppRoute.RemoteAgentEditor>(swipeDismiss = navSwipeDismiss) { route ->
                 io.github.mangi.eta.ui.screens.settings.RemoteAgentEditorScreen(
                     serverId = route.serverId,
                     onBack = ::popRoute,
                     coordinator = appViewModel.remoteCoordinator,
                 )
             }
-            entry<AppRoute.ModelProviderDetail> { route ->
+            entry<AppRoute.ModelProviderDetail>(swipeDismiss = navSwipeDismiss) { route ->
                 ModelProviderDetailScreen(
                     providerId = route.providerId,
                     onBack = ::popRoute,
@@ -1687,7 +1709,7 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.ContextCompression> {
+            entry<AppRoute.ContextCompression>(swipeDismiss = navSwipeDismiss) {
                 ContextCompressionSettingsScreen(
                     isCompressing = if (shellHomeState.selectedContextTaskId == null)
                         shellHomeState.isCompressingContext || shellHomeState.isWaitingForCompression
@@ -1700,10 +1722,10 @@ fun AgentAppRoot(
                     },
                 )
             }
-            entry<AppRoute.DecisionModel> {
+            entry<AppRoute.DecisionModel>(swipeDismiss = navSwipeDismiss) {
                 DecisionModelSettingsScreen(onBack = ::popRoute)
             }
-            entry<AppRoute.Assistants> { route ->
+            entry<AppRoute.Assistants>(swipeDismiss = navSwipeDismiss) { route ->
                 AssistantsScreen(
                     picker = route.picker,
                     onNavigate = { destination -> pushRoute(destination) },
@@ -1712,7 +1734,7 @@ fun AgentAppRoot(
                     onSelectAssistant = agentState::selectAssistant,
                 )
             }
-            entry<AppRoute.AssistantSearch> { route ->
+            entry<AppRoute.AssistantSearch>(swipeDismiss = navSwipeDismiss) { route ->
                 AssistantSearchScreen(
                     picker = route.picker,
                     onNavigate = { destination -> pushRoute(destination) },
@@ -1721,20 +1743,20 @@ fun AgentAppRoot(
                     onSelectAssistant = agentState::selectAssistant,
                 )
             }
-            entry<AppRoute.AssistantEdit> { route ->
+            entry<AppRoute.AssistantEdit>(swipeDismiss = navSwipeDismiss) { route ->
                 AssistantEditScreen(
                     assistantId = route.assistantId,
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.ModelProviderAuthMethod> { route ->
+            entry<AppRoute.ModelProviderAuthMethod>(swipeDismiss = navSwipeDismiss) { route ->
                 ProviderAuthMethodScreen(
                     providerType = route.providerType,
                     onNavigate = { destination -> pushRoute(destination) },
                     onBack = ::popRoute,
                 )
             }
-            entry<AppRoute.ModelProviderNew> { route ->
+            entry<AppRoute.ModelProviderNew>(swipeDismiss = navSwipeDismiss) { route ->
                 ModelProviderDetailScreen(
                     newType = route.providerType,
                     authMode = route.authMode,

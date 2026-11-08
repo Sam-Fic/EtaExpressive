@@ -381,6 +381,8 @@
   <string name="appearance_blur_style_progressive_summary">頂部漸強模糊</string>
   <string name="appearance_predictive_back">預測性返回手勢</string>
   <string name="appearance_predictive_back_summary">啟用預測性返回動畫效果</string>
+  <string name="appearance_swipe_back">橫移返回手勢</string>
+  <string name="appearance_swipe_back_summary">從螢幕邊緣橫移返回上一頁</string>
   <string name="appearance_interface_scale">介面縮放</string>
   <string name="appearance_interface_scale_summary" formatted="false">調整全域顯示比例（80%–110%）</string>
   <string name="appearance_interface_scale_dialog_title">介面縮放</string>

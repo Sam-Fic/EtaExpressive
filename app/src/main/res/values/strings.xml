@@ -246,6 +246,8 @@
   <string name="appearance_blur_style_progressive_summary">Increase blur progressively toward the top</string>
   <string name="appearance_predictive_back">Predictive back gesture</string>
   <string name="appearance_predictive_back_summary">Enable predictive back animations</string>
+  <string name="appearance_swipe_back">Swipe back gesture</string>
+  <string name="appearance_swipe_back_summary">Swipe from the edge to return to the previous page.</string>
   <string name="appearance_interface_scale">Interface scale</string>
   <string name="appearance_interface_scale_summary" formatted="false">Adjust the global display scale (80%–110%)</string>
   <string name="appearance_interface_scale_dialog_title">Interface scale</string>

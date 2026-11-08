@@ -155,7 +155,7 @@ class SubAgentPresetUiContractTest(unittest.TestCase):
         self.assertIn('data class SubAgentPresetDetail(val presetId: String) : AppRoute', route)
         self.assertIn('AppRoute.SubAgentPresetDetail::class', table)
         for needle in ('onOpenPreset = { presetId -> pushRoute(AppRoute.SubAgentPresetDetail(presetId)) }',
-                       'entry<AppRoute.SubAgentPresetDetail> { route ->',
+                       'entry<AppRoute.SubAgentPresetDetail>(swipeDismiss = navSwipeDismiss) { route ->',
                        'SubAgentPresetDetailScreen(',
                        'isCurrentRoute = currentRoute == route'):
             self.assertIn(needle, root)

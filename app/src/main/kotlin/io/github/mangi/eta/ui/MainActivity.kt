@@ -80,6 +80,9 @@ class MainActivity : ComponentActivity() {
                         },
                         onInboundShareConsumed = { inboundShareUris = emptyList() },
                         onLiveTargetConsumed = { liveTargetConversationId = null },
+                        // 与主题共用同一份 DataStore 快照：开关一改就重组 NavDisplay 的 builder，
+                        // 不需要像预测性返回那样 recreate Activity。
+                        swipeBackEnabled = appearance.swipeBackEnabled,
                     )
                 }
             }
