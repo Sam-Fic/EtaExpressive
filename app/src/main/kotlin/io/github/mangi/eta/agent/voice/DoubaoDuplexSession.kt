@@ -173,6 +173,18 @@ internal class DoubaoDuplexSession(
 
     @SuppressLint("MissingPermission")
     private suspend fun captureInput(ws: WebSocket) {
+        // 与 SpeechInputSession.recognize 共用同一把进程级麦克风互斥锁：实时通话整个会话都
+        // 持有 AudioRecord，不互斥时应用内语音对话与浮窗实时通话会同时占麦、互相串音。
+        SpeechInputSession.lockMicrophoneOrThrow()
+        try {
+            captureInputLocked(ws)
+        } finally {
+            SpeechInputSession.unlockMicrophone()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun captureInputLocked(ws: WebSocket) {
         val minimum = AudioRecord.getMinBufferSize(
             INPUT_RATE,
             AudioFormat.CHANNEL_IN_MONO,
@@ -219,8 +231,10 @@ internal class DoubaoDuplexSession(
                 check(accepted) { "实时语音连接已关闭" }
             }
         } finally {
+            // close() 可能在另一条线程先行 stop/release（见 [close]），二次释放会抛
+            // IllegalStateException；取消中的协程抛新异常会进未捕获处理器，必须吞掉。
             runCatching { audio.stop() }
-            audio.release()
+            runCatching { audio.release() }
             if (recorder === audio) recorder = null
         }
     }

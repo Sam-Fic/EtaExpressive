@@ -91,7 +91,8 @@ internal object DoubaoAsrSession {
                 lastText.isNotBlank()
             }
         } finally {
-            runCatching { recorder?.stop() }; recorder?.release()
+            // release 与 stop 同为收尾兜底，失败不得吞掉 finally 里其余清理或冒充业务异常。
+            runCatching { recorder?.stop() }; runCatching { recorder?.release() }
             socket.cancel(); results.cancel()
             DoubaoDiagnostics.mark("asr.closed")
         }

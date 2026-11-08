@@ -4,8 +4,10 @@ import android.Manifest
 import android.app.Service
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.PixelFormat
 import android.os.Build
@@ -172,6 +174,14 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     /** 语音入口控制器：通用语音对话 / 豆包实时通话都由它驱动。 */
     private lateinit var voiceController: VoiceModeController
 
+    /**
+     * 熄屏收声接收器。浮窗不经过 Activity 生命周期，没有 ON_STOP 可挂：锁屏 / 亮屏唤起的
+     * 语音输入在用户再按电源键（或自动熄屏）后没有任何自然收尾路径，麦克风会一直占用。
+     * 只停语音、不动窗口与运行——锁屏唤起场景屏幕仍亮，不受影响；语音自身持有的播报也随
+     * stop() 一并结束。
+     */
+    private var screenOffReceiver: BroadcastReceiver? = null
+
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
@@ -185,6 +195,22 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         voiceController = VoiceModeController(this, scope) { text ->
             // 语音回调来自后台协程；提交会操作 WindowManager / Compose 状态，统一切回主线程。
             scope.launch(Dispatchers.Main.immediate) { submitInput(text) }
+        }
+        val screenOffReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_SCREEN_OFF && ::voiceController.isInitialized) {
+                    voiceController.stop()
+                }
+            }
+        }
+        // 系统广播（熄屏）按本仓惯例注册为 NOT_EXPORTED；注册失败不阻断浮窗，只失去这条兜底。
+        runCatching {
+            registerReceiver(
+                screenOffReceiver,
+                IntentFilter(Intent.ACTION_SCREEN_OFF),
+                Context.RECEIVER_NOT_EXPORTED,
+            )
+            this.screenOffReceiver = screenOffReceiver
         }
         activeService = this
         // 浮窗生命周期内对外暴露结果注册表，供透明跳板 Activity 回灌选择器 / 权限结果。
@@ -207,6 +233,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        screenOffReceiver?.let { runCatching { unregisterReceiver(it) } }
+        screenOffReceiver = null
         entryGeneration++
         entryCaptureJob?.cancel()
         entryCaptureJob = null
@@ -1230,6 +1258,12 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     }
 
     private fun removeWindow(onComplete: ((Boolean) -> Unit)? = null) {
+        // 浮窗是语音条唯一的可见承载：任何一条拆窗路径（用户关闭 dismissAndStop / 让位前台
+        // 操作 hideForForegroundOperation / 重复唤起重整入口 showEntry / 服务销毁 onDestroy）
+        // 都必须连带结束语音。否则浮窗不可见后麦克风继续被占用，且没有任何 UI 能停掉它——
+        // hideForForegroundOperation 只拆窗不 stopSelf，服务继续存活，是最典型的漏停路径。
+        // stop() 幂等，onDestroy 等处已有的显式停止不受影响。
+        if (::voiceController.isInitialized) voiceController.stop()
         unregisterSystemBackCallback()
         detachingWindowView?.let { detachingView ->
             onComplete?.let(windowDetachCallbacks::add)

@@ -11,6 +11,21 @@ import kotlinx.coroutines.flow.first
 
 internal object SpeechInputSession {
     private val microphone = Mutex()
+
+    /**
+     * 实时通话（DoubaoDuplexSession）不经 [recognize]，而是整个会话期间直接持有 AudioRecord；
+     * 这里把同一把麦克风互斥锁开放给它，保证应用内语音对话与浮窗实时通话两条链路（各持一个
+     * VoiceModeController）不会同时占麦。锁是进程级单例，两条链路都跑在主进程。
+     */
+    internal fun lockMicrophoneOrThrow() {
+        check(microphone.tryLock()) { "语音输入正在使用麦克风" }
+    }
+
+    /** 与 [lockMicrophoneOrThrow] 成对调用；只在成功获锁后调用。 */
+    internal fun unlockMicrophone() {
+        microphone.unlock()
+    }
+
     fun configFor(mode: VoiceEntryMode, config: DoubaoVoiceConfig.Config = DoubaoVoiceConfig.state.value): DoubaoVoiceConfig.Config =
         if (mode == VoiceEntryMode.UNIVERSAL) config.copy(
             cloudAsr = config.conversationCloudAsr,
