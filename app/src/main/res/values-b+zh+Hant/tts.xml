@@ -6,7 +6,8 @@
     <string name="tts_stream_synth">串流合成朗讀</string>
     <string name="tts_stream_synth_hint">回覆輸出的同時按已完成的整句開始朗讀，而不是等回覆全部結束</string>
     <string name="tts_cloud">使用雲端朗讀</string>
-    <string name="tts_mode_hint">關閉時使用系統已安裝的本機音色</string>
+    <string name="tts_mode_hint">使用雲端合成</string>
+    <string name="tts_mode_hint_off">使用系統本機音色</string>
     <string name="tts_model">朗讀模型</string>
     <string name="tts_select_model">選擇支援 Speech 介面的模型</string>
     <string name="tts_voice">音色 ID</string>
@@ -25,5 +26,6 @@
   <string name="tts_search_voice">搜尋音色</string>
   <string name="tts_no_matching_voice">沒有符合的音色</string>
     <string name="tts_auto_read_background">切換到背景後繼續朗讀</string>
-    <string name="tts_auto_read_background_hint">離開應用程式後仍繼續朗讀；關閉後進入背景立即停止自動朗讀</string>
+    <string name="tts_auto_read_background_hint">離開應用程式後仍繼續朗讀</string>
+    <string name="tts_auto_read_background_hint_off">進入背景立即停止自動朗讀</string>
 </resources>

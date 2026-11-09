@@ -106,10 +106,11 @@ internal fun AgentMemoryOverviewScreen(
                 title = stringResource(R.string.memory_global_group),
             ) {
                 item {
-                    EtaSwitchRow(
-                        title = stringResource(R.string.memory_global_switch_title),
-                        summary = stringResource(R.string.memory_global_switch_summary),
-                        checked = globalEnabled,
+                EtaSwitchRow(
+                    title = stringResource(R.string.memory_global_switch_title),
+                    summary = stringResource(R.string.memory_global_switch_summary),
+                    summaryOff = stringResource(R.string.memory_global_switch_summary_off),
+                    checked = globalEnabled,
                         leading = {
                             // 官方默认几何（24dp + ItemBetweenSpace 12dp）；着色统一设置页 onSurfaceVariant。
                             Icon(

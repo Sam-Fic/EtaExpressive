@@ -471,10 +471,11 @@ internal fun DecisionModelSettingsScreen(
                     )
                 }
                 item(key = "shadow") {
-                    EtaSwitchRow(
-                        title = stringResource(R.string.decision_model_shadow_title),
-                        summary = stringResource(R.string.decision_model_shadow_summary),
-                        checked = shadow,
+                EtaSwitchRow(
+                    title = stringResource(R.string.decision_model_shadow_title),
+                    summary = stringResource(R.string.decision_model_shadow_summary),
+                    summaryOff = stringResource(R.string.decision_model_shadow_summary_off),
+                    checked = shadow,
                         enabled = controlsEnabled,
                         leading = { PreferenceIcon(icon = Icons.Rounded.Visibility, enabled = controlsEnabled) },
                         modifier = Modifier.semantics {

@@ -65,6 +65,9 @@ fun EtaSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     summary: String? = null,
+    // 关闭态摘要：仅在该开关关闭且提供了此值时显示，用以取代 summary（开启态主描述）。
+    // 这样开/关两态的 supporting text 互斥显示，文案不必把两种状态写进同一条。
+    summaryOff: String? = null,
     enabled: Boolean = true,
     dense: Boolean = false,
     leading: (@Composable () -> Unit)? = null,
@@ -87,7 +90,11 @@ fun EtaSwitchRow(
         // 标题 / 摘要不再显式覆盖排版，直接用官方 SegmentedListItem 令牌
         // （ItemLabelTextFont = bodyLarge、ItemSupportingTextFont = bodyMedium + onSurfaceVariant）。
         content = { Text(text = title) },
-        supportingContent = summary?.let { { Text(text = it) } },
+        supportingContent = when {
+            !checked && summaryOff != null -> ({ Text(text = summaryOff) })
+            summary != null -> ({ Text(text = summary) })
+            else -> null
+        },
         trailingContent = {
             EtaSwitch(
                 checked = checked,

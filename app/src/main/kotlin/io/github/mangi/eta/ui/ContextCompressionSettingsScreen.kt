@@ -188,10 +188,11 @@ internal fun ContextCompressionSettingsScreen(
                 modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
             ) {
                 item {
-                    EtaSwitchRow(
-                        title = stringResource(R.string.ui_custom_compress_model_title),
-                        summary = stringResource(R.string.ui_custom_compress_model_summary),
-                        checked = customModelEnabled,
+                EtaSwitchRow(
+                    title = stringResource(R.string.ui_custom_compress_model_title),
+                    summary = stringResource(R.string.ui_custom_compress_model_summary),
+                    summaryOff = stringResource(R.string.ui_custom_compress_model_summary_off),
+                    checked = customModelEnabled,
                         leading = { PreferenceIcon(icon = Icons.Rounded.SmartToy) },
                         onCheckedChange = { value ->
                             prefs?.edit()?.putBoolean(

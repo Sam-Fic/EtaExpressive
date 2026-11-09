@@ -6,7 +6,8 @@
     <string name="tts_stream_synth">Streaming synthesis</string>
     <string name="tts_stream_synth_hint">Start reading committed sentences while the reply is still streaming, instead of waiting for it to finish</string>
     <string name="tts_cloud">Use cloud speech</string>
-    <string name="tts_mode_hint">When off, use an installed local system voice</string>
+    <string name="tts_mode_hint">Use cloud synthesis</string>
+    <string name="tts_mode_hint_off">Use the system\'s local voice</string>
     <string name="tts_model">Speech model</string>
     <string name="tts_select_model">Choose a model supporting the Speech API</string>
     <string name="tts_voice">Voice ID</string>
@@ -25,5 +26,6 @@
   <string name="tts_search_voice">Search voice</string>
   <string name="tts_no_matching_voice">No matching voices</string>
     <string name="tts_auto_read_background">Continue reading in background</string>
-    <string name="tts_auto_read_background_hint">Keep reading aloud after leaving the app; when off, auto reading stops as soon as the app goes to the background</string>
+    <string name="tts_auto_read_background_hint">Keep reading aloud after leaving the app</string>
+    <string name="tts_auto_read_background_hint_off">Auto reading stops as soon as the app goes to the background</string>
 </resources>

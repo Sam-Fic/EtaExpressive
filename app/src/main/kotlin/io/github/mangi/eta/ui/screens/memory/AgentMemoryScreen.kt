@@ -113,10 +113,11 @@ internal fun AgentMemoryScreen(
                             }
                         }
                         item {
-                            EtaSwitchRow(
-                                title = stringResource(R.string.ui_enable_memory_4b69b7),
-                                summary = stringResource(R.string.assistant_memory_summary),
-                                checked = state.enabled,
+                        EtaSwitchRow(
+                            title = stringResource(R.string.ui_enable_memory_4b69b7),
+                            summary = stringResource(R.string.assistant_memory_summary),
+                            summaryOff = stringResource(R.string.assistant_memory_summary_off),
+                            checked = state.enabled,
                                 enabled = !state.isLoading,
                                 onCheckedChange = { onAction(AgentMemoryAction.ToggleEnabled(it)) },
                             )

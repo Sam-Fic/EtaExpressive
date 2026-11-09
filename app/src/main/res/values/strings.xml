@@ -82,7 +82,8 @@
   <string name="haptics_background_summary_reasoning">In the background, output, reasoning and tool steps vibrate</string>
   <string name="haptics_background_summary_tools">In the background, output and tool steps vibrate; reasoning ticks once when done</string>
   <string name="haptics_background_reasoning">Reasoning haptics</string>
-  <string name="haptics_background_reasoning_summary">Vibrate during reasoning in the background. When off, only tool labels and finished reasoning tick once</string>
+  <string name="haptics_background_reasoning_summary">Vibrate during reasoning in the background</string>
+  <string name="haptics_background_reasoning_summary_off">Only tool labels and finished reasoning tick once</string>
   <string name="route_skills">Skills</string>
   <string name="route_permissions">Permissions</string>
   <string name="route_system_enhancements">System enhancements</string>
@@ -189,7 +190,7 @@
   <string name="settings_diagnostics">Diagnostics</string>
   <string name="settings_file_logging">Record diagnostic logs</string>
   <string name="settings_file_logging_summary">On-device runtime logs and redacted tool-call diagnostics are saved (not commands, argument values or keys)</string>
-  <string name="settings_file_logging_summary_off">Off: no new logs are recorded, existing logs are kept</string>
+  <string name="settings_file_logging_summary_off">No new logs are recorded; existing logs are kept</string>
   <string name="settings_export_logs">Export logs</string>
   <string name="settings_search_hint">Search settings</string>
   <string name="settings_search_no_matches">No matching settings</string>
@@ -738,7 +739,7 @@
   <string name="tools_loading_mode_off_hint">Send the full catalog</string>
   <string name="tools_mcp_deferred_title">Load MCP tools on demand</string>
   <string name="tools_mcp_deferred_summary">Each MCP server loads as a deferred group like built-in tools</string>
-  <string name="tools_mcp_deferred_summary_off">Turn off to always send every server\'s tool schemas</string>
+  <string name="tools_mcp_deferred_summary_off">Always send every server\'s tool schemas</string>
   <string name="tool_ui_ask_user">Ask you a question</string>
   <string name="tool_ui_ask_user_summary">Pause and ask one focused question with options when a decision would change the result</string>
   <string name="tool_ui_skills_list">List Skills</string>
@@ -805,7 +806,7 @@
   <string name="settings_shell_tools">Allow command execution</string>
   <string name="tools_row_blocked_by_setting">Turned off by the "%1$s" switch in Settings</string>
   <string name="settings_shell_tools_summary">Let the model run shell commands</string>
-  <string name="settings_shell_tools_summary_off">Turn this off to keep file reading and writing but block run_command and terminal</string>
+  <string name="settings_shell_tools_summary_off">File reading and writing still work, but commands and the terminal are blocked</string>
   <string name="settings_self_settings_tools">Eta self-configuration tools</string>
   <string name="settings_self_settings_tools_summary">Let the model read and change Eta\'s own settings, models and providers</string>
   <string name="tool_status_running">Running</string>
@@ -1979,7 +1980,8 @@
   <string name="decision_model_mode_advise">Advise</string>
   <string name="decision_model_shadow_inline_note">shadow mode is on, so this mode is logged only</string>
   <string name="decision_model_shadow_title">Shadow mode</string>
-  <string name="decision_model_shadow_summary">When on, only logs are written and nothing changes; when off, the result takes effect: control narrows tool groups, advise only logs suggestions</string>
+  <string name="decision_model_shadow_summary">Only logs are written and nothing changes</string>
+  <string name="decision_model_shadow_summary_off">The result takes effect: control narrows tool groups, advise only logs suggestions</string>
   <string name="decision_model_dropdown_description">%1$s, currently %2$s</string>
   <string name="decision_model_model_title">Decision model</string>
   <string name="decision_model_picker_title">Decision model</string>
@@ -2066,7 +2068,8 @@
   <string name="ui_compress_endpoint_description">Used for summarization only. Defaults to Chat Completions; choose Responses when the model requires it. Anthropic / Codex are unaffected</string>
   <string name="ui_compress_model_title">Compression model</string>
   <string name="ui_custom_compress_model_title">Custom compression model</string>
-  <string name="ui_custom_compress_model_summary">When off, the conversation model is used</string>
+  <string name="ui_custom_compress_model_summary">Use the specified model to compress context</string>
+  <string name="ui_custom_compress_model_summary_off">Falls back to the conversation model</string>
   <string name="compress_model_missing_window_title">Context window not set</string>
   <string name="compress_model_missing_window_summary">This compression model has no context window yet, so the input budget cannot be estimated. Fill it in on the model edit page first</string>
 
@@ -2153,7 +2156,8 @@
   <string name="assistant_change_avatar">Change avatar</string>
   <string name="assistant_crop_title">Crop avatar</string>
   <string name="assistant_selector">Assistant</string>
-  <string name="assistant_memory_summary">Only affects this assistant. Turning this off skips injection and memory tools, but keeps its MEMORY.md content</string>
+  <string name="assistant_memory_summary">Only affects this assistant</string>
+  <string name="assistant_memory_summary_off">No injection and no memory tools; its MEMORY.md content is kept</string>
   <string name="assistant_skills_summary">Only affects this assistant. The three built-in skills start on; newly installed skills stay off until you enable them here</string>
   <string name="settings_assistants">Assistants</string>
 
@@ -2384,7 +2388,8 @@
   <string name="memory_overview_note">The global switch controls all assistants. Each assistant still keeps its own MEMORY.md</string>
   <string name="memory_global_group">Global memory</string>
   <string name="memory_global_switch_title">Enable memory globally</string>
-  <string name="memory_global_switch_summary">Turns memory on or off for every assistant. When off, no memory is injected and memory tools are disabled; saved content and per-assistant switches are kept</string>
+  <string name="memory_global_switch_summary">Turns memory on or off for every assistant</string>
+  <string name="memory_global_switch_summary_off">No memory is injected and memory tools are disabled; saved content and per-assistant switches are kept</string>
   <string name="memory_assistants_group">Per-assistant memory</string>
   <string name="memory_assistant_row_enabled">Enabled · Edit MEMORY.md</string>
   <string name="memory_assistant_row_disabled">Disabled · Edit MEMORY.md</string>

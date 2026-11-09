@@ -69,7 +69,8 @@
   <string name="context_budget_stop">结束任务</string>
   <string name="context_budget_stop_summary">停止后可换更大窗口的模型</string>
   <string name="ui_custom_compress_model_title">自定义压缩模型</string>
-  <string name="ui_custom_compress_model_summary">关闭时沿用对话模型</string>
+  <string name="ui_custom_compress_model_summary">使用指定模型压缩上下文</string>
+  <string name="ui_custom_compress_model_summary_off">沿用对话模型</string>
   <string name="ui_compress_endpoint_title">Endpoint 模式</string>
   <string name="ui_compress_endpoint_description">仅用于摘要。默认 Chat Completions；模型需要时选 Responses。Anthropic / Codex 不受此项影响</string>
   <string name="compress_model_missing_window_title">未设置上下文窗口</string>
@@ -110,7 +111,8 @@
   <string name="haptics_background_summary_reasoning">回到后台后，输出、推理和工具步骤都会震动</string>
   <string name="haptics_background_summary_tools">回到后台后，输出和工具步骤会震动，推理完成时震一下</string>
   <string name="haptics_background_reasoning">推理过程震动</string>
-  <string name="haptics_background_reasoning_summary">在后台时推理输出也震动；关闭后只在工具标签出现和推理完成时震一下</string>
+  <string name="haptics_background_reasoning_summary">在后台时推理输出也震动</string>
+  <string name="haptics_background_reasoning_summary_off">只在工具标签出现和推理完成时震一下</string>
   <string name="route_skills">Skills</string>
   <string name="route_permissions">权限</string>
   <string name="route_system_enhancements">系统增强</string>
@@ -217,7 +219,7 @@
   <string name="settings_diagnostics">诊断</string>
   <string name="settings_file_logging">记录诊断日志</string>
   <string name="settings_file_logging_summary">在本机记录运行与脱敏诊断日志（不含命令、参数与密钥）</string>
-  <string name="settings_file_logging_summary_off">已关闭，不记录新日志；已有日志保留</string>
+  <string name="settings_file_logging_summary_off">不记录新日志；已有日志保留</string>
   <string name="settings_export_logs">导出日志</string>
   <string name="settings_search_hint">搜索设置项</string>
   <string name="settings_search_no_matches">没有匹配的设置项</string>
@@ -741,7 +743,7 @@
   <string name="tools_loading_mode_off_hint">发送完整工具目录</string>
   <string name="tools_mcp_deferred_title">MCP 工具按需加载</string>
   <string name="tools_mcp_deferred_summary">按需加载每个 MCP 服务器的工具</string>
-  <string name="tools_mcp_deferred_summary_off">关闭后一次性全部预载</string>
+  <string name="tools_mcp_deferred_summary_off">一次性全部预载</string>
   <string name="tool_ui_ask_user">向你提问</string>
   <string name="tool_ui_ask_user_summary">当某个决定会改变执行结果时，暂停并向你提一个带选项的关键问题</string>
   <string name="tool_ui_skills_list">列出 Skills</string>
@@ -808,7 +810,7 @@
   <string name="settings_shell_tools">允许执行命令</string>
   <string name="tools_row_blocked_by_setting">已被设置中的「%1$s」关闭</string>
   <string name="settings_shell_tools_summary">允许模型运行命令</string>
-  <string name="settings_shell_tools_summary_off">关闭后仍可读写文件，但无法执行命令或使用终端</string>
+  <string name="settings_shell_tools_summary_off">仍可读写文件，但无法执行命令或使用终端</string>
   <string name="settings_self_settings_tools">应用自身配置工具</string>
   <string name="settings_self_settings_tools_summary">允许模型读取并修改 Eta 自身的设置、模型与供应商</string>
   <string name="tool_status_running">执行中</string>
@@ -2022,7 +2024,8 @@
   <string name="assistant_change_avatar">更换头像</string>
   <string name="assistant_crop_title">裁切头像</string>
   <string name="assistant_selector">助手</string>
-  <string name="assistant_memory_summary">只对当前助手生效。关闭后不注入、不允许读写，该助手已有的 MEMORY.md 内容会保留</string>
+  <string name="assistant_memory_summary">只对当前助手生效</string>
+  <string name="assistant_memory_summary_off">不注入、不允许读写；已有的 MEMORY.md 内容保留</string>
   <string name="assistant_skills_summary">只对当前助手生效。三个内置 Skills 默认开启，新安装的需要在这里手动打开</string>
   <string name="settings_assistants">助手</string>
 
@@ -2219,7 +2222,8 @@
   <string name="memory_overview_note">全局总开关控制所有助手；具体记忆内容仍按助手分别保存在各自的 MEMORY.md</string>
   <string name="memory_global_group">全局记忆</string>
   <string name="memory_global_switch_title">全局启用记忆</string>
-  <string name="memory_global_switch_summary">统一控制所有助手。关闭后所有助手都不注入记忆、也不能使用记忆工具；已保存的内容和各助手的开关会保留</string>
+  <string name="memory_global_switch_summary">统一控制所有助手</string>
+  <string name="memory_global_switch_summary_off">所有助手都不注入记忆、也不能使用记忆工具；已保存内容和各助手开关保留</string>
   <string name="memory_assistants_group">按助手配置</string>
   <string name="memory_assistant_row_enabled">已启用 · 编辑 MEMORY.md</string>
   <string name="memory_assistant_row_disabled">未启用 · 编辑 MEMORY.md</string>
@@ -2371,7 +2375,8 @@
   <string name="decision_model_mode_advise">建议模式</string>
   <string name="decision_model_shadow_inline_note">影子模式已开启，本项仅记录日志</string>
   <string name="decision_model_shadow_title">影子模式</string>
-  <string name="decision_model_shadow_summary">开启后只写日志，不改变任何行为；关闭则判断结果会实际生效：控制模式收窄工具组，建议模式只把建议写入日志</string>
+  <string name="decision_model_shadow_summary">只写日志，不改变任何行为</string>
+  <string name="decision_model_shadow_summary_off">判断结果实际生效：控制模式收窄工具组，建议模式只把建议写入日志</string>
   <string name="decision_model_dropdown_description">%1$s，当前 %2$s</string>
   <string name="decision_model_model_title">判断模型</string>
   <string name="decision_model_picker_title">判断模型</string>

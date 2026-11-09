@@ -216,10 +216,11 @@ internal fun HapticsSettingsScreen(onBack: () -> Unit) {
                     )
                 }
                 item(key = "haptics_background_reasoning") {
-                    EtaSwitchRow(
-                        title = stringResource(R.string.haptics_background_reasoning),
-                        summary = stringResource(R.string.haptics_background_reasoning_summary),
-                        checked = on(Prefs.Keys.HAPTIC_BACKGROUND_REASONING),
+                EtaSwitchRow(
+                    title = stringResource(R.string.haptics_background_reasoning),
+                    summary = stringResource(R.string.haptics_background_reasoning_summary),
+                    summaryOff = stringResource(R.string.haptics_background_reasoning_summary_off),
+                    checked = on(Prefs.Keys.HAPTIC_BACKGROUND_REASONING),
                         enabled = backgroundOn,
                         onCheckedChange = { value ->
                             onToggle(Prefs.Keys.HAPTIC_BACKGROUND_REASONING, value)

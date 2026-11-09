@@ -109,6 +109,7 @@ internal fun TtsSettingsScreen(onBack: () -> Unit, conversation: Boolean = false
                 EtaSwitchRow(
                     title = stringResource(R.string.tts_auto_read_background),
                     summary = stringResource(R.string.tts_auto_read_background_hint),
+                    summaryOff = stringResource(R.string.tts_auto_read_background_hint_off),
                     checked = backgroundContinue,
                     enabled = autoRead,
                     onCheckedChange = {
@@ -121,6 +122,7 @@ internal fun TtsSettingsScreen(onBack: () -> Unit, conversation: Boolean = false
                 EtaSwitchRow(
                     title = stringResource(R.string.tts_cloud),
                     summary = stringResource(R.string.tts_mode_hint),
+                    summaryOff = stringResource(R.string.tts_mode_hint_off),
                     checked = cloud,
                     onCheckedChange = {
                         SpeechPlayback.stopOwned("settings") { it == previewOwner }

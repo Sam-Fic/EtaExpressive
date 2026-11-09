@@ -71,7 +71,8 @@
   <string name="context_budget_stop">結束任務</string>
   <string name="context_budget_stop_summary">停止後可改用更大視窗的模型</string>
   <string name="ui_custom_compress_model_title">自訂壓縮模型</string>
-  <string name="ui_custom_compress_model_summary">關閉時沿用對話模型</string>
+  <string name="ui_custom_compress_model_summary">使用指定模型壓縮上下文</string>
+  <string name="ui_custom_compress_model_summary_off">沿用對話模型</string>
   <string name="ui_compress_endpoint_title">Endpoint 模式</string>
   <string name="ui_compress_endpoint_description">僅用於摘要。預設 Chat Completions；模型需要時選 Responses。Anthropic / Codex 不受此項影響</string>
   <string name="compress_model_missing_window_title">未設定上下文視窗</string>
@@ -97,7 +98,8 @@
   <string name="decision_model_mode_advise">建議模式</string>
   <string name="decision_model_shadow_inline_note">影子模式已開啟，本項僅記錄日誌</string>
   <string name="decision_model_shadow_title">影子模式</string>
-  <string name="decision_model_shadow_summary">開啟後只寫日誌，不改變任何行為；關閉則判斷結果會實際生效：控制模式收窄工具組，建議模式只把建議寫入日誌</string>
+  <string name="decision_model_shadow_summary">只寫日誌，不改變任何行為</string>
+  <string name="decision_model_shadow_summary_off">判斷結果會實際生效：控制模式收窄工具組，建議模式只把建議寫入日誌</string>
   <string name="decision_model_dropdown_description">%1$s，目前 %2$s</string>
   <string name="decision_model_model_title">判斷模型</string>
   <string name="decision_model_picker_title">判斷模型</string>
@@ -217,7 +219,8 @@
   <string name="haptics_background_summary_reasoning">回到背景後，輸出、推理和工具步驟都會震動</string>
   <string name="haptics_background_summary_tools">回到背景後，輸出和工具步驟會震動，推理完成時震一下</string>
   <string name="haptics_background_reasoning">推理過程震動</string>
-  <string name="haptics_background_reasoning_summary">在背景時推理輸出也震動；關閉後只在工具標籤出現和推理完成時震一下</string>
+  <string name="haptics_background_reasoning_summary">在背景時推理輸出也震動</string>
+  <string name="haptics_background_reasoning_summary_off">只在工具標籤出現和推理完成時震一下</string>
   <string name="route_skills">Skills</string>
   <string name="route_permissions">權限</string>
   <string name="route_system_enhancements">系統增強</string>
@@ -324,7 +327,7 @@
   <string name="settings_diagnostics">診斷</string>
   <string name="settings_file_logging">記錄診斷日誌</string>
   <string name="settings_file_logging_summary">在本機記錄執行與去識別化診斷日誌（不含命令、參數與金鑰）</string>
-  <string name="settings_file_logging_summary_off">已關閉，不記錄新日誌；既有日誌保留</string>
+  <string name="settings_file_logging_summary_off">不記錄新日誌；既有日誌保留</string>
   <string name="settings_export_logs">匯出日誌</string>
   <string name="settings_search_hint">搜尋設定項</string>
   <string name="settings_search_no_matches">沒有符合的設定項</string>
@@ -849,7 +852,7 @@
   <string name="tools_loading_mode_off_hint">傳送完整工具目錄</string>
   <string name="tools_mcp_deferred_title">MCP 工具按需載入</string>
   <string name="tools_mcp_deferred_summary">依需求載入每個 MCP 伺服器的工具</string>
-  <string name="tools_mcp_deferred_summary_off">關閉後一次全部預載</string>
+  <string name="tools_mcp_deferred_summary_off">一次全部預載</string>
   <string name="tools_per_tool_switch_hint">單獨關掉某個工具後，即使所在分組已啟用也不會下發它</string>
   <string name="tool_ui_ask_user">向你提問</string>
   <string name="tool_ui_ask_user_summary">當某個決定會改變執行結果時，暫停並向你提一個帶選項的關鍵問題</string>
@@ -917,7 +920,7 @@
   <string name="settings_shell_tools">允許執行命令</string>
   <string name="tools_row_blocked_by_setting">已被設定中的「%1$s」關閉</string>
   <string name="settings_shell_tools_summary">允許模型執行命令</string>
-  <string name="settings_shell_tools_summary_off">關閉後仍可分讀寫檔案，但無法執行命令或使用終端</string>
+  <string name="settings_shell_tools_summary_off">仍可分讀寫檔案，但無法執行命令或使用終端</string>
   <string name="settings_self_settings_tools">應用自身配置工具</string>
   <string name="settings_self_settings_tools_summary">允許模型讀取並修改 Eta 自身的設定、模型與供應商</string>
   <string name="tool_status_running">執行中</string>
@@ -2131,7 +2134,8 @@
   <string name="assistant_change_avatar">更換頭像</string>
   <string name="assistant_crop_title">裁切頭像</string>
   <string name="assistant_selector">助手</string>
-  <string name="assistant_memory_summary">只對目前助手生效。關閉後不注入、不允許讀寫，該助手既有的 MEMORY.md 內容會保留</string>
+  <string name="assistant_memory_summary">只對目前助手生效</string>
+  <string name="assistant_memory_summary_off">不注入、不允許讀寫；既有的 MEMORY.md 內容保留</string>
   <string name="assistant_skills_summary">只對目前助手生效。三個內建 Skills 預設開啟，新安裝的需要在這裡手動打開</string>
   <string name="settings_assistants">助手</string>
 
@@ -2328,7 +2332,8 @@
   <string name="memory_overview_note">全域總開關控制所有助手；具體記憶內容仍依助手分別儲存在各自的 MEMORY.md</string>
   <string name="memory_global_group">全域記憶</string>
   <string name="memory_global_switch_title">全域啟用記憶</string>
-  <string name="memory_global_switch_summary">統一控制所有助手。關閉後所有助手都不注入記憶、也不能使用記憶工具；已儲存的內容和各助手的開關會保留</string>
+  <string name="memory_global_switch_summary">統一控制所有助手</string>
+  <string name="memory_global_switch_summary_off">所有助手都不注入記憶、也不能使用記憶工具；已儲存的內容和各助手開關保留</string>
   <string name="memory_assistants_group">依助手設定</string>
   <string name="memory_assistant_row_enabled">已啟用 · 編輯 MEMORY.md</string>
   <string name="memory_assistant_row_disabled">未啟用 · 編輯 MEMORY.md</string>
