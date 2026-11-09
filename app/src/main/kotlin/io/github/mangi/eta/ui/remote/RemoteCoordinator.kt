@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.remote
 
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -267,6 +268,27 @@ internal class RemoteCoordinator(
         return drafts.getOrPut(key) { TextFieldState() }
     }
 
+    /**
+     * 远程会话的输入草稿归本类所有（[draftFieldFor]），Composer 只把正文随 action 交上来，
+     * 自己不会改 TextFieldState。本地路径是 AgentAppState.sendCurrentMessage 清草稿，
+     * 远程必须在这里同样清一次：否则正文已经进了乐观气泡，输入框还留着同一段字，
+     * 再点一次发送就是重复发同一条。
+     *
+     * 没送出去的原文由 holder 回调填回来（连接未就绪 / 帧发出去失败都会回调），
+     * 且只在草稿仍为空时填，不覆盖用户在这段时间里新敲的字。
+     *
+     * 清空用 `TextFieldState.setTextAndPlaceCursorAtEnd(String)`（foundation 扩展，签名
+     * `text: String`），与 ConversationDrafts.replace 清本地草稿同款；传空串即正文归零、光标归零。
+     */
+    private fun submitText(target: ChatTarget.Remote, text: String) {
+        val connection = connections[target.serverId] ?: return
+        val field = draftFieldFor(target)
+        val accepted = connection.holder.sendMessage(text) { undelivered ->
+            if (field.text.isEmpty()) field.setTextAndPlaceCursorAtEnd(undelivered)
+        }
+        if (accepted) field.setTextAndPlaceCursorAtEnd("")
+    }
+
     fun conversationKey(target: ChatTarget.Remote): String = "remote:${target.serverId}:${target.path}"
 
     /**
@@ -331,7 +353,7 @@ internal class RemoteCoordinator(
     fun handleChatAction(target: ChatTarget.Remote, action: AgentChatAction) {
         val connection = connections[target.serverId] ?: return
         when (action) {
-            is AgentChatAction.SubmitMessage -> connection.holder.sendMessage(action.text)
+            is AgentChatAction.SubmitMessage -> submitText(target, action.text)
             AgentChatAction.StopRun -> scope.launch { connection.session.interrupt() }
             is AgentChatAction.QuestionDraftChanged -> connection.holder.updatePromptDraft(action.answer)
             is AgentChatAction.SubmitQuestionAnswer -> {
@@ -355,7 +377,7 @@ internal class RemoteCoordinator(
     fun handleHomeAction(target: ChatTarget.Remote, action: AgentHomeAction) {
         val connection = connections[target.serverId] ?: return
         when (action) {
-            is AgentHomeAction.SubmitMessage -> connection.holder.sendMessage(action.text)
+            is AgentHomeAction.SubmitMessage -> submitText(target, action.text)
             AgentHomeAction.StopRun -> scope.launch { connection.session.interrupt() }
             is AgentHomeAction.QuestionDraftChanged -> connection.holder.updatePromptDraft(action.answer)
             is AgentHomeAction.SubmitQuestionAnswer -> {

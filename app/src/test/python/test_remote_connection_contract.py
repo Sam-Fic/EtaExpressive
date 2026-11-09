@@ -419,5 +419,29 @@ class RemoteConnectionContractTest(unittest.TestCase):
                 self.assertNotIn("'", text, f"{locale}: {key}")
 
 
+class RemoteDraftContractTest(unittest.TestCase):
+    """远程输入草稿的归属：Composer 只交正文，清空与失败回填都在 coordinator。"""
+
+    def test_remote_send_clears_draft_and_restores_undelivered_text(self):
+        coordinator = read_code(KOTLIN / "ui/remote/RemoteCoordinator.kt")
+        holder = read_code(KOTLIN / "ui/remote/RemoteSessionStateHolder.kt")
+        # 首页与对话页两个 action 入口必须走同一个提交函数：漏一个就漏一页。
+        self.assertIn("private fun submitText(target: ChatTarget.Remote, text: String)", coordinator)
+        self.assertEqual(coordinator.count("submitText(target, action.text)"), 2)
+        self.assertNotIn("connection.holder.sendMessage(action.text)", coordinator)
+        # 只有 holder 接下这次提交才清输入框：连接没就绪时不该让用户白敲一遍。
+        self.assertIn(
+            "fun sendMessage(text: String, onDeliveryFailed: (String) -> Unit = {}): Boolean",
+            holder,
+        )
+        self.assertIn('if (accepted) field.setTextAndPlaceCursorAtEnd("")', coordinator)
+        # 同步判死与异步帧没发出去都要把原文还回去，且不覆盖期间新敲的字。
+        self.assertEqual(holder.count("onDeliveryFailed(text)"), 2)
+        self.assertIn(
+            "if (field.text.isEmpty()) field.setTextAndPlaceCursorAtEnd(undelivered)",
+            coordinator,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

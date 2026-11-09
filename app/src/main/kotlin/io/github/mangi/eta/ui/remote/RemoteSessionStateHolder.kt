@@ -202,11 +202,15 @@ internal class RemoteSessionStateHolder(
      * the socket. A false delivery (disconnected) rolls the bubble back and restores any
      * staged images; a real `user_message` echo replaces it in place (see [reconcileOptimistic]).
      * Staged image ids travel with the frame and are cleared on success.
+     *
+     * 返回值只表示「这次提交被接下了」：调用方据此决定要不要清空输入草稿。
+     * 同步判死（连接没就绪）与异步帧没发出去都会走 [onDeliveryFailed]，把原文交回草稿持有者；
+     * 附件的图片由这里自行恢复，回调只负责文字。
      */
-    fun sendMessage(text: String) {
+    fun sendMessage(text: String, onDeliveryFailed: (String) -> Unit = {}): Boolean {
         val body = text.trim()
         val images = pendingImages
-        if (body.isEmpty() && images.isEmpty()) return
+        if (body.isEmpty() && images.isEmpty()) return false
         val attachmentIds = images.map { it.id }
         val pendingId = nextId("pending")
         committed += UserMessageUi(id = pendingId, content = text, images = images.map { it.dataUrl })
@@ -218,7 +222,8 @@ internal class RemoteSessionStateHolder(
             pendingImages = images
             _notices.tryEmit("发送失败：连接尚未就绪")
             emit()
-            return
+            onDeliveryFailed(text)
+            return false
         }
         scope.launch {
             val delivered = runCatching { target.sendMessage(text, attachmentIds) }.getOrDefault(false)
@@ -227,8 +232,10 @@ internal class RemoteSessionStateHolder(
                 pendingImages = images
                 _notices.tryEmit("发送失败：与远程服务器的连接不可用")
                 emit()
+                onDeliveryFailed(text)
             }
         }
+        return true
     }
 
     /** Stage an already-uploaded image (server id) for the next send; the composer renders it. */
