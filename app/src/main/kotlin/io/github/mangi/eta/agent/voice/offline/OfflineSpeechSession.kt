@@ -27,6 +27,13 @@ internal object OfflineSpeechSession {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var idleJob: Job? = null
 
+    /**
+     * 开麦限时。AudioRecord 构造/startRecording 是 native 调用，MIUI 麦克风仲裁
+     * （语音键盘等前台麦克风服务占用时）会让它阻塞等待而非失败，实测可挂 30s+；
+     * 超时后放弃等待并给出可行动的错误，锁由 finally 立即释放。
+     */
+    private const val MicOpenTimeoutMillis = 5_000L
+
     @SuppressLint("MissingPermission") // Permission is requested by the user-initiated UI entry.
     suspend fun recognize(
         context: Context,
@@ -37,7 +44,12 @@ internal object OfflineSpeechSession {
     ): Boolean {
         check(microphone.tryLock()) { "Speech input is already active" }
         var audio: AudioRecord? = null
+        // 会话通过 await 成功认领的录音器；finally 只对它负责。
+        var micSlot: CompletableDeferred<AudioRecord>? = null
+        // 会话通过 await 成功认领的租约；finally 只对它负责。
         var acquired: AcquiredSpeechEngine? = null
+        // 引擎装载的落定槽位：装载任务挂在对象级 scope 上，不随会话取消。
+        var leaseSlot: CompletableDeferred<AcquiredSpeechEngine>? = null
         // 取消/用户主动停止不算引擎损坏：下一轮 reset() 会清理残留流，模型继续常驻。
         var healthy = true
         cancelIdleRelease()
@@ -51,15 +63,60 @@ internal object OfflineSpeechSession {
             // Recheck sizes before passing paths to native code; full hashes were verified at startup/download.
             check(model.assets.all { File(dir, it.name).length() == it.bytes })
 
-            // Start recording first: the model load must never hold the microphone hostage.
-            val recorder = withContext(Dispatchers.IO) {
-                val opened = openRecorder()
-                // Publish before starting so a failed start is still released by the outer finally.
-                audio = opened
-                opened.startRecording()
-                check(opened.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone cannot start" }
-                opened
+            // 开麦与装载同样挪出会话协程（2026-11-08 设备实测：MIUI 麦克风仲裁下
+            // AudioRecord 构造/startRecording 可 native 阻塞 30s+ 且取消打不断，曾把
+            // 两把麦克风互斥锁一起拖住，之后浮窗/应用内的任何语音入口都报占麦）。
+            // 开麦任务挂对象级 scope；会话只 await 槽位——可取消、限时。
+            val mic = CompletableDeferred<AudioRecord>()
+            micSlot = mic
+            scope.launch {
+                val outcome = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val opened = openRecorder()
+                        try {
+                            opened.startRecording()
+                            check(opened.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone cannot start" }
+                        } catch (startError: Throwable) {
+                            runCatching { opened.stop() }
+                            runCatching { opened.release() }
+                            throw startError
+                        }
+                        opened
+                    }
+                }
+                outcome.fold(mic::complete, mic::completeExceptionally)
             }
+
+            // 引擎装载挪出会话协程：预热/冷载可能占住 native 单线程十几秒（2026-11-08 用户
+            // 实测 loadMs=15706，期间点停止时协程卡在 native 队列里取消不动，麦克风与
+            // SpeechInputSession 互斥锁一起被拖住，浮窗唤起与应用内重试全部报
+            // 「语音输入正在使用麦克风」）。装载任务挂对象级 scope 不随会话取消；
+            // 会话只 await 独立槽位，取消立即打断等待。
+            val slot = CompletableDeferred<AcquiredSpeechEngine>()
+            leaseSlot = slot
+            scope.launch {
+                val outcome = runCatching {
+                    withContext(native) {
+                        val next = OfflineSpeechEngineCache.acquire(model, dir)
+                        try {
+                            next.engine.reset()
+                        } catch (resetError: Throwable) {
+                            OfflineSpeechEngineCache.release(next.engine, healthy = false)
+                            throw resetError
+                        }
+                        next
+                    }
+                }
+                outcome.fold(slot::complete, slot::completeExceptionally)
+            }
+
+            // 先录音后装载：开麦等待与模型装载并行，两边都可被取消立即打断。
+            val recorder = try {
+                withTimeout(MicOpenTimeoutMillis) { mic.await() }
+            } catch (timeout: TimeoutCancellationException) {
+                error("麦克风暂时无法打开，可能被其他应用占用，请稍后重试")
+            }
+            audio = recorder
             val recordStart = SystemClock.elapsedRealtime()
 
             return coroutineScope {
@@ -76,30 +133,20 @@ internal object OfflineSpeechSession {
 
                     // If a launch prewarm is already loading on the native worker, this waits behind it
                     // while capture keeps buffering; a warm cache returns without touching the model files.
-                    val lease = withContext(native) {
-                        val next = OfflineSpeechEngineCache.acquire(model, dir)
-                        // Publish the lease before reset so cancellation on the way back still releases it.
-                        acquired = next
-                        runCatching { next.engine.reset() }.onFailure { error ->
-                            OfflineSpeechEngineCache.release(next.engine, healthy = false)
-                            acquired = null
-                            throw error
-                        }
-                        next
-                    }
+                    val lease = slot.await()
+                    acquired = lease
                     diagnostic?.mark(
                         "recognition.engine",
                         "warm" to if (lease.warm) 1 else 0,
                         "loadMs" to lease.loadMs,
                     )
 
-                    val heard = withContext(native) {
+                    withContext(native) {
                         when (val engine = lease.engine) {
                             is CachedStreamingEngine -> runStreaming(engine, chunks, recordStart, onText, diagnostic)
                             is CachedBatchEngine -> runBatch(engine, chunks, recordStart, onText, diagnostic)
                         }
                     }
-                    heard
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Throwable) {
@@ -111,13 +158,41 @@ internal object OfflineSpeechSession {
                 }
             }
         } finally {
-            withContext(NonCancellable + Dispatchers.IO) {
-                runCatching { audio?.stop() }
-                runCatching { audio?.release() }
+            // 录音器释放转后台：stop/release 同样可能被麦克风仲裁拖住（见上方开麦注释），
+            // 在这里同步等 native 会把麦克风互斥锁一起拖住，下一次语音就会报占麦。
+            audio?.let { claimed ->
+                scope.launch {
+                    withContext(NonCancellable + Dispatchers.IO) {
+                        runCatching { claimed.stop() }
+                        runCatching { claimed.release() }
+                    }
+                }
             }
+            micSlot?.takeIf { audio == null }?.let { slot ->
+                // 超时/取消时开麦可能仍在后台阻塞：落定后由一次性回收者释放构造出的录音器。
+                scope.launch {
+                    runCatching { slot.await() }.getOrNull()?.let { late ->
+                        withContext(NonCancellable + Dispatchers.IO) {
+                            runCatching { late.stop() }
+                            runCatching { late.release() }
+                        }
+                    }
+                }
+            }
+            // 引擎租约回收全部转交后台：在这里同步等 native 会把麦克风互斥锁一起拖住
+            // （见上方装载注释里的实测时间线），下一次语音（浮窗/应用内）就会报占麦。
             acquired?.let { lease ->
-                withContext(NonCancellable + native) {
-                    OfflineSpeechEngineCache.release(lease.engine, healthy)
+                scope.launch {
+                    withContext(native) { OfflineSpeechEngineCache.release(lease.engine, healthy) }
+                }
+            }
+            leaseSlot?.takeIf { acquired == null }?.let { slot ->
+                // 会话取消时装载可能仍在后台排队：装载落定后由一次性回收者处理，
+                // healthy 释放会让模型继续常驻，这次装载成果留给下一次识别。
+                scope.launch {
+                    runCatching { slot.await() }.getOrNull()?.let { late ->
+                        withContext(native) { OfflineSpeechEngineCache.release(late.engine, healthy) }
+                    }
                 }
             }
             scheduleIdleRelease()
