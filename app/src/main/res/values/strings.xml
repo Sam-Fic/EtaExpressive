@@ -3036,7 +3036,7 @@
   <string name="media_search_title">Media search</string>
   <string name="media_search_placeholder">Describe what to look for</string>
   <string name="media_action_search">Search</string>
-  <string name="media_search_hint">Describe what you want to find, then tap Search. Everything stays on this device</string>
+  <string name="media_search_hint">Describe what you want to find, then tap Search</string>
   <string name="media_filter_all">All</string>
   <string name="media_filter_image">Images</string>
   <string name="media_filter_video">Videos</string>

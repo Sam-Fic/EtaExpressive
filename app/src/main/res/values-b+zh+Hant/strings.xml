@@ -3002,7 +3002,7 @@
   <string name="media_search_title">媒體搜尋</string>
   <string name="media_search_placeholder">描述你要找的內容</string>
   <string name="media_action_search">搜尋</string>
-  <string name="media_search_hint">用自然語言描述你要找的內容，點「搜尋」開始。全程離線，資料不離開本機</string>
+  <string name="media_search_hint">用自然語言描述你要找的內容，點「搜尋」開始</string>
   <string name="media_filter_all">全部</string>
   <string name="media_filter_image">圖片</string>
   <string name="media_filter_video">影片</string>
