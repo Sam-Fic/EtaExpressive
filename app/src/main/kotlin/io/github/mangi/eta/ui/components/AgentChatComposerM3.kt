@@ -186,8 +186,9 @@ internal fun rememberImeVisible(): Boolean {
  * 3. 「助手与模型」二合一入口（官方 Standard 图标按钮）→ 合并选择弹窗
  *    （助手 / 模型两个页签，底部为思考档位与上下文用量）。
  * 4. 胶囊输入框（官方 Filled 文本框，`surfaceContainer` 容器、固定 `extraLarge` 28dp 圆角），
- *    单行时 56dp 高即胶囊；多行时是圆角矩形（圆角不变），语音 / 发送按钮固定在右下角，
- *    与内层圆角保持同心（端距 8dp = 28 − 20）。键盘弹出且已有输入内容（文字 / 图片 / 文件 / 引用）时
+ *    单行时 56dp 高即胶囊；多行时是圆角矩形（圆角不变），语音 / 发送按钮固定在右下角、
+ *    生成中的加载指示器固定在左下角，两者同基线并与内层圆角保持同心（端距 8dp = 28 − 20）。
+ *    键盘弹出且已有输入内容（文字 / 图片 / 文件 / 引用）时
  *    左侧动作组按官方 Expressive 弹簧规格收起、输入框展开占满，发送 / 停止按钮替代语音按钮的位置；
  *    键盘收起（未进入输入焦点）时动作组始终保持展开可见，方便随时再加号、再选图或切换助手与模型。
  *
@@ -202,7 +203,7 @@ internal fun rememberImeVisible(): Boolean {
  * `DropdownMenuItem`），尺寸取 `IconButtonDefaults` 令牌，
  * 进出场动效一律取 `MaterialTheme.motionScheme` 的 Expressive 弹簧规格。
  *
- * 编辑态：左侧取消按钮替代整组入口，尾部仍为发送按钮。
+ * 编辑态：胶囊左下角出现取消按钮（与右下发送按钮同心对称），左侧动作组整组收起。
  */
 @Composable
 internal fun Material3ComposerBody(
@@ -427,26 +428,19 @@ internal fun Material3ComposerBody(
                 .fillMaxWidth()
                 .onSizeChanged { onToolbarHeightPx(it.height) },
         ) {
-            // 左侧动作组：编辑态由取消按钮占据；其余情况在“有输入内容”或“语音进行中”时整组收起。
-            // 关键：语音态不能像编辑态那样硬切换分支——否则开始 / 结束语音时动作组会瞬间消失 / 出现，
+            // 左侧动作组：编辑态整组不组合——取消按钮已挪进胶囊左下角的共享槽
+            // （见 composer_leading），胶囊直接撑满工具栏，不再由按钮占一段宽度。
+            // 关键：语音态不能硬切换分支——否则开始 / 结束语音时动作组会瞬间消失 / 出现，
             // 胶囊宽度发生跳变，这正是“无输入框 → 聆听条”过渡不正确的原因。
             // 这里让语音态与“输入内容时动作组收起”共用同一条 AnimatedVisibility 弹簧：动作组向左收起、
             // 聆听条以右端为锚连续变宽，两段过渡完全同款（结束后反向展开）。
-            if (isEditingMessage && !voiceActive) {
-                // 编辑态：取消按钮占据左侧入口位置（与发送按钮对称），尾部仍为发送按钮。
-                Spacer(modifier = Modifier.width(ComposerConcentricGap))
-                M3ComposerCancelButton(
-                    onClick = onCancelMessageEdit,
-                    // 官方工具栏的内容 Row 是顶对齐（Row 默认 Alignment.Top），必须显式对齐。
-                    // 40dp 圆钮贴底：与尾部发送按钮共用同一条基线（距输入框底端 8dp 的同心端距）。
-                    // 单行（56dp）时上下各 8dp，与竖直居中等价；多行输入框长高后按钮跟随下沉贴底，
-                    // 不再停在中间。
-                    modifier = Modifier
-                        .align(Alignment.Bottom)
-                        .padding(bottom = ComposerConcentricGap),
-                )
-                Spacer(modifier = Modifier.width(ComposerToolbarGap))
-            } else {
+            //
+            // 取消按钮原来放这里时踩了两个坑：① `align(Alignment.Bottom)` 传给
+            // M3ComposerCancelButton 里的 EtaTooltip 内容，parentData 落在 Tooltip 内部布局上，
+            // 对工具栏 Row 完全不生效，按钮于是停在上方、不与发送按钮同基线；
+            // ② 水平端距按外层 36dp 圆角取 16dp、垂直却按内层 28dp 圆角取 8dp，混了两套同心规则。
+            // 挪进胶囊共享槽后，start / bottom 都用 8dp，双层同心（8 + 28 = 36）由同一个 Box 保证。
+            if (!isEditingMessage || voiceActive) {
                 // 语音进行中时左侧动作组收起；键盘弹出且已有输入内容（文字 / 图片 / 文件 / 引用）时
                 // 也收起，把宽度让给胶囊；键盘收起（未进入输入焦点）时动作组始终展开可见。
                 AnimatedVisibility(
@@ -567,9 +561,54 @@ internal fun Material3ComposerBody(
                             textFieldState = textFieldState,
                             focusRequester = focusRequester,
                             isStreaming = isStreaming,
-                            showMorphLoading = showMorphLoading,
+                            // 左下角有 40dp 圆钮（编辑态取消 / 生成中加载）时留 48dp 起始占位。
+                            reserveLeadingSlot = showMorphLoading || isEditingMessage,
                             assistantName = assistantName,
                         )
+                    }
+                }
+
+                // 起始侧槽：编辑态「取消编辑」圆钮 / 生成中形变加载指示器，共用胶囊左下角。
+                // 与尾部发送 / 停止圆钮完全对称：40dp 圆钮贴住胶囊左下角，start / bottom 各让出
+                // 8dp 同心端距（内层 28dp 圆角 − 圆钮半径 20dp = 8dp；再加外层工具栏 8dp 内边距，
+                // 圆心距最外端盖 8 + 28 = 36dp = 外层圆角半径，内外两层圆角同时同心）。
+                //
+                // 两者原先都不在这里：取消按钮在工具栏 Row 里被 EtaTooltip 吃掉了 align，
+                // 加载指示器在官方 leadingIcon 槽里只跟第一行、垂直顶对齐，多行长高后都停在
+                // 左上角。挪到本共享容器后用 BottomStart 对齐，无论输入框多高都跟随下沉贴底。
+                // 语音进行中胶囊换成聆听条（起始侧是麦克风状态圆钮），两者都必须让位。
+                // 编辑态优先：取消编辑必须一眼可见、一键可点，不能被加载指示器盖住。
+                // 用 AnimatedContent 而不是 AnimatedVisibility：外层工具栏内容是 RowScope，
+                // 在 Box 里直接调 AnimatedVisibility 会被解析成 RowScope 的成员重载并触发
+                // DSL_SCOPE_VIOLATION；与尾部槽同款写法还能共用同一条交叉淡化规格。
+                // `.using(null)` 关掉默认尺寸动画：出现 / 消失时只做淡入淡出，
+                // 不让 0 → 40dp 的尺寸变化把胶囊端盖裁一刀。
+                val leadingState = when {
+                    voiceActive -> ComposerLeading.NONE
+                    isEditingMessage -> ComposerLeading.CANCEL
+                    showMorphLoading -> ComposerLeading.LOADING
+                    else -> ComposerLeading.NONE
+                }
+                AnimatedContent(
+                    targetState = leadingState,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = ComposerConcentricGap, bottom = ComposerConcentricGap),
+                    transitionSpec = {
+                        (fadeIn(enterSpec).togetherWith(fadeOut(exitSpec))).using(null)
+                    },
+                    label = "composer_leading",
+                ) { leading ->
+                    when (leading) {
+                        ComposerLeading.CANCEL -> M3ComposerCancelButton(
+                            onClick = onCancelMessageEdit,
+                            modifier = Modifier.testTag("composer-cancel-slot"),
+                        )
+                        ComposerLeading.LOADING -> ContainedMorphLoadingIndicator(
+                            indicatorSize = IconButtonDefaults.smallContainerSize().width,
+                            modifier = Modifier.testTag("composer-leading-slot"),
+                        )
+                        ComposerLeading.NONE -> Unit
                     }
                 }
 
@@ -729,11 +768,27 @@ internal fun Material3ComposerBody(
  */
 private enum class ComposerTrailing { VOICE_ENTRY, SEND, VOICE_STOP }
 
+/** 胶囊左下角起始侧槽的三种状态：空 / 编辑态取消 / 生成中加载。同一位置互斥，编辑态优先。 */
+private enum class ComposerLeading { NONE, CANCEL, LOADING }
+
 /**
- * 断线期间的状态胶囊（远程重连 / 失败）：与正常输入框同一外形——[ComposerOuterCornerRadius]
- * 外圆、官方 ContainerSize 高——整颗换成状态色（重连中 secondaryContainer、失败 errorContainer）。
- * 提示语占输入框的位置；尾部圆位与麦克风圆钮同位同径（40dp 圆 + [ComposerConcentricGap] 内缩）：
- * 重连中放官方 ContainedLoadingIndicator（圆容器转圈），失败换重试圆钮、左端盖给「服务器设置」入口。
+ * 断线期间的状态胶囊（远程重连 / 失败）：与正常输入框外层**同一外形**——
+ * [ComposerOuterCornerRadius] 圆角、直径（72dp）高——整颗换成状态色（重连中
+ * secondaryContainer、失败 errorContainer）。提示语占输入框的位置；两端圆位同径（40dp）：
+ * 重连中放官方 ContainedLoadingIndicator（圆容器转圈），失败换重试圆钮、
+ * 左端盖给「服务器设置」入口。
+ *
+ * 高度不能用官方 `FloatingToolbarDefaults.ContainerSize`（64dp）：正常态外层是
+ * 56dp 内层输入框 + 上下各 8dp 内容内边距 = 72dp，取 64dp 会让整块矮 8dp、
+ * 36dp 圆角被短边裁到 32dp，切换时输入栏占位跳一下、圆位也跟着横移 4dp。
+ *
+ * 圆位的同心规则与正常输入框**不同**：正常态是双层（外层 36dp 圆角 + 8dp 内边距 →
+ * 内层 28dp 输入框），40dp 圆钮在内层里按 [ComposerConcentricGap]（28 − 20 = 8dp）内缩，
+ * 圆心距最外层端盖 8 + 8 + 20 = 36dp。本胶囊是单层，没有那一层内边距，
+ * 端距必须是 36 − 20 = 16dp；照搬内层的 8dp 会让圆心只距端盖 28dp。
+ * 圆位垂直居中：圆心距上下左右端盖都是 36dp，四个圆角同时同心、左右两枚圆位同基线，
+ * 重试 / 转圈圆钮与正常态发送圆钮落在同一个绝对位置。
+ *
  * 测量回调（[onPositionedTopPx] / [onToolbarHeightPx]）照常上报，布局消费方不感知这次替换。
  */
 @Composable
@@ -757,6 +812,16 @@ private fun RemoteStatusComposerPill(
         // 供应处已按重连/失败过滤；真到达这里就别渲染状态胶囊（防御性空退出）。
         else -> return
     }
+    // 与正常输入框外层同形：72dp 高、36dp 圆角（不用官方 ContainerSize = 64dp，
+    // 那会把圆角裁到 32dp 并让整块矮 8dp）。
+    val pillHeight = ComposerOuterCornerRadius * 2
+    val buttonSize = IconButtonDefaults.smallContainerSize().width
+    val pillRadius = minOf(ComposerOuterCornerRadius, pillHeight / 2f)
+    // 端盖同心端距 = 36 − 20 = 16dp，与正常态发送圆钮相对最外层端盖的
+    // 8dp 外框内边距 + 8dp 内层内缩 + 20dp 半径 = 36dp 完全同位。
+    // 不能换成 ComposerConcentricGap：那是双层结构里「内层 28 − 20」的值，
+    // 单层胶囊套用它就会少一层 8dp，圆钮贴到端盖外圈去。
+    val concentricInset = pillRadius - buttonSize / 2f
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -777,15 +842,15 @@ private fun RemoteStatusComposerPill(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(FloatingToolbarDefaults.ContainerSize),
+                .height(pillHeight),
         ) {
             Row(
                 modifier = Modifier.fillMaxSize(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(modifier = Modifier.width(ComposerConcentricGap))
+                Spacer(modifier = Modifier.width(concentricInset))
                 if (failed) {
-                    // 左端盖同心：40dp 图标钮 + 8dp 内缩，与右侧圆位同一套几何。
+                    // 左端盖同心：40dp 图标钮 + 16dp 内缩，与右侧圆位同一套几何、同一条中线。
                     val settingsDescription = stringResource(R.string.remote_banner_settings)
                     EtaTooltip(text = settingsDescription) {
                         IconButton(
@@ -802,8 +867,9 @@ private fun RemoteStatusComposerPill(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        // 尾部给 40dp 圆位 + 两侧 8dp 同心内缩让位。
-                        .padding(end = ComposerConcentricGap * 2 + IconButtonDefaults.smallContainerSize().width),
+                        // 尾部给 40dp 圆位 + 同心端距 + 4dp 文字间隙让位（16 + 40 + 4 = 60dp）。
+                        // 圆钮左缘距右端 16 + 40 = 56dp，文字右缘再退 4dp 才不贴上去。
+                        .padding(end = concentricInset + buttonSize + ComposerToolbarGap),
                 ) {
                     Text(
                         text = title,
@@ -821,11 +887,14 @@ private fun RemoteStatusComposerPill(
                     }
                 }
             }
-            // 尾部同心圆位：与麦克风圆钮完全同位同径（40dp 圆 + 8dp 内缩）。
+            // 状态胶囊尾部同心圆位：与左端盖的设置图标共用垂直中线（CenterEnd），
+            // 端距按 36dp 圆角算 = 16dp。原先用 BottomEnd + 8dp 贴底：上留白 16dp /
+            // 下留白 8dp，按钮明显偏下、与左端盖错开基线，圆心也够不到端盖弧心。
+            // 重连中的转圈指示器与重试钮共用这个槽，切换状态时圆位不跳动。
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = ComposerConcentricGap, bottom = ComposerConcentricGap),
+                    .align(Alignment.CenterEnd)
+                    .padding(end = concentricInset),
             ) {
                 if (failed) {
                     val retryDescription = stringResource(R.string.remote_banner_retry)
@@ -862,7 +931,7 @@ private val ComposerToolbarGap = 4.dp
  *
  * 同心规则：内层圆角半径 = 外层圆角半径 − 间距。外层取固定 36dp（见 [ComposerOuterCornerRadius]）、
  * 内层取官方 `extraLarge` 28dp，单行时外层 72dp 高 ⇒ 36dp 恰为胶囊；多行长高后两者半径不变，
- * 依旧满足 36 − 28 = 8dp；尾部 40dp 圆形按钮同理需要 8dp 端距。
+ * 依旧满足 36 − 28 = 8dp；尾部与起始侧的 40dp 圆钮同理都需要 8dp 端距。
  */
 private val ComposerConcentricGap = 8.dp
 
@@ -897,19 +966,22 @@ private fun composerHintText(
 
 /**
  * 胶囊输入框：官方 Filled 文本框（无 label，仅 placeholder，容器 `surfaceContainer`，
- * 指示线透明，圆角固定 28dp＝官方 `extraLarge`，不改大小），起始侧内嵌生成中的形变加载指示器；
- * 语音／发送按钮叠放在输入框右下角。
+ * 指示线透明，圆角固定 28dp＝官方 `extraLarge`，不改大小）。
+ * 生成中的形变加载指示器叠在输入框左下角、语音／发送按钮叠在右下角，两枚 40dp 圆钮
+ * 同基线、同端距，关于输入框两端对称；本体都在共享容器里，不放进官方图标槽。
  *
- * 按钮位置：单行（56dp）时右下角与竖直居中重合，端距都是 (56 − 40)/2 = 8dp；
- * 多行长高后按钮固定在右下角，与内层 28dp 圆角保持同心（40dp 圆形半径 20dp，
- * 28 − 20 = 8dp 即为端距），文本仍由官方 trailingIcon 槽预留横向空间。
+ * 圆钮位置：单行（56dp）时贴底与竖直居中重合，端距都是 (56 − 40)/2 = 8dp；
+ * 多行长高后两枚圆钮随 BottomStart / BottomEnd 一起下沉贴底，与内层 28dp 圆角保持同心
+ * （40dp 圆形半径 20dp，28 − 20 = 8dp 即为端距）。文本不压到圆钮：左下有圆钮时起始侧
+ * 由官方 leadingIcon 槽留 48dp 占位、尾部由 trailingIcon 槽预留同宽横向空间。
  */
 @Composable
 private fun M3ComposerTextField(
     textFieldState: TextFieldState,
     focusRequester: FocusRequester,
     isStreaming: Boolean,
-    showMorphLoading: Boolean,
+    /** 胶囊左下角是否有 40dp 圆钮；有则起始侧留同宽占位，避免多行文字压到圆钮上。 */
+    reserveLeadingSlot: Boolean,
     /** 本机会话当前助手的名字；远程会话由 `LocalRemoteAgentName` 覆盖它。 */
     assistantName: String,
 ) {
@@ -938,20 +1010,17 @@ private fun M3ComposerTextField(
         // 圆角固定为官方 extraLarge（28dp），单行 56dp 高即胶囊；多行时是圆角矩形，
         // 与外层固定 36dp 仍满足“半径差 = 间距”（36 − 28 = 8dp）。
         shape = MaterialTheme.shapes.extraLarge,
-        // 生成中的形变加载指示器（“生成时显示加载指示”设置项）：放在胶囊内部起始侧，
-        // 不占用尾部的语音 / 发送按钮位置。
-        leadingIcon = if (showMorphLoading) {
+        // 胶囊左下角的共享槽（composer_leading）里放的是编辑态取消钮或生成中加载指示器，
+        // 与右下发送 / 停止圆钮同一条基线、同一套同心端距。这里只在官方 leadingIcon 槽留
+        // 同宽占位：圆钮是「8dp 同心间距 + 40dp 圆钮」＝48dp，正好等于官方槽的
+        // minimumInteractiveComponentSize；占位保持整列宽度不变，多行文本的每一行都不会
+        // 伸进左下角圆钮的区域，文字起始位置也与改动前完全一致。
+        leadingIcon = if (reserveLeadingSlot) {
             {
-                // 与尾部圆钮同尺寸（40dp），并与胶囊端盖同心。
-                // 官方 leadingIcon 槽会用 minimumInteractiveComponentSize() 把内容居中到 48dp：
-                // 若直接放 40dp 圆钮，它会被居中成 4dp 端距、看着偏心。这里在圆钮起始侧补一个
-                // 同心间距（8dp），48dp 槽内圆钮恰好落在距内胶囊端盖 8dp 处
-                // （内层圆角 28dp − 圆钮半径 20dp = 8dp），与右侧发送 / 停止钮的 8dp 端距对称；
-                // 再加外层工具栏 8dp 内边距，圆心距最外端盖 8 + 28 = 36dp = 外层圆角半径，
-                // 内外两层圆角同时同心。
-                ContainedMorphLoadingIndicator(
-                    indicatorSize = IconButtonDefaults.smallContainerSize().width,
-                    modifier = Modifier.padding(start = ComposerConcentricGap),
+                Spacer(
+                    modifier = Modifier.width(
+                        ComposerConcentricGap + IconButtonDefaults.smallContainerSize().width,
+                    ),
                 )
             }
         } else {
@@ -1195,13 +1264,13 @@ private fun voicePhaseText(state: VoiceModeState): String = when {
 }
 
 /**
- * 编辑态下的“取消编辑”按钮：占据工具栏左侧入口位置（与发送按钮对称），官方
+ * 编辑态下的“取消编辑”按钮：位于胶囊左下角的共享起始侧槽，与右下发送按钮对称同心，官方
  * 色调图标按钮（尺寸/图标/水波纹/按压形变均为官方默认），容器色取官方
  * `tertiaryContainer` / `onTertiaryContainer` 角色（覆盖官方 tonal 默认的 secondaryContainer）。
  *
- * [modifier] 供调用方传入 `Modifier.align(Alignment.Bottom)`（配 8dp 底内边距）：
- * 官方工具栏内容 Row 是顶对齐，不显式对齐会相对输入框偏高；贴底后与尾部发送按钮同一条基线，
- * 多行输入框长高时按钮随之下沉。
+ * 位置由调用方的 `Alignment.BottomStart` + 8dp 端距决定，[modifier] 只用于挂测试标签等
+ * 附加修饰：不要再往里传 `align`——本按钮外面包着 [EtaTooltip]，parentData 会落在
+ * Tooltip 的内部布局上，对上层 Row / Box 不生效，按钮会停在左上角。
  */
 @Composable
 private fun M3ComposerCancelButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
