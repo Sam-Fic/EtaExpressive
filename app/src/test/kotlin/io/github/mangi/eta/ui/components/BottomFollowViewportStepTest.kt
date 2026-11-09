@@ -187,6 +187,31 @@ class BottomFollowViewportStepTest {
         assertEquals(0f, composerRestLinePx(100f, 140f), 0f)
     }
 
+    @Test fun strictFollowTargetPrefersFreshMeasuredOverflow() {
+        // 严格贴底：本帧实测差额就是唯一目标，队列里的过时估算一律作废。
+        assertEquals(37f, resolveStrictBottomFollowTarget(900f, 37), 0f)
+        assertEquals(37f, resolveStrictBottomFollowTarget(0f, 37), 0f)
+        // 已经贴住就不再滚，避免在同一个亚像素残量上逐帧空转。
+        assertEquals(0f, resolveStrictBottomFollowTarget(900f, 0), 0f)
+        // 尾部测不到（哨兵被挤出测量窗口）才沿用队列里的整屏估算。
+        assertEquals(900f, resolveStrictBottomFollowTarget(900f, null), 0f)
+        assertEquals(0f, resolveStrictBottomFollowTarget(-12f, null), 0f)
+        assertEquals(0f, resolveStrictBottomFollowTarget(0f, -8), 0f)
+    }
+
+    @Test fun strictAnchorLiftCompensatesTheWholeDeficitInOneFrame() {
+        // 不传逐帧预算时一帧补满；旧缓动会在这里只走几像素，让列表「追」底部。
+        assertEquals(60, nextHeldTailLift(true, 60, 0))
+        assertEquals(60, nextHeldTailLift(true, 60, 47))
+        assertEquals(120, nextHeldTailLift(true, 120, 60))
+        // 滚动一次吃满差额后 overflow 归零，上提同步归零，两者之和不超过真实溢出。
+        assertEquals(0, nextHeldTailLift(true, 0, 60))
+        assertEquals(30, nextHeldTailLift(true, 30, 60))
+        // 只有真实用户滚动/导航才冻结，单纯手指按着不停补偿。
+        assertEquals(60, nextHeldTailLift(true, 60, 0, pointerDown = false))
+        assertEquals(0, nextHeldTailLift(true, 60, 0, pointerDown = true))
+    }
+
     @Test fun missingTailMeasurementKeepsThePreviousLift() {
         assertEquals(47, nextHeldTailLift(shouldLift = true, overflowPx = null, heldPx = 47))
         assertEquals(12, nextHeldTailLift(shouldLift = true, overflowPx = 12, heldPx = 47))

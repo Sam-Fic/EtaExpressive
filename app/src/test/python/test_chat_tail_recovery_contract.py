@@ -17,32 +17,53 @@ class ChatTailRecoveryContractTest(unittest.TestCase):
     def test_recovery_uses_fresh_uncapped_layout_before_real_scroll(self):
         code = self.controller
         anchors = ['withFrameNanos', 'val layout = scrollState.layoutInfo',
-                   'layout.measuredTailOverflow()', 'snapFollowScrollStep(',
-                   'scrollState.scroll {', 'scrollBy(currentStep)']
+                   'layout.measuredTailOverflow()', 'resolveStrictBottomFollowTarget(',
+                   'snapFollowScrollStep(', 'scrollState.scroll {', 'scrollBy(currentStep)']
         positions = [code.index(anchor) for anchor in anchors]
         self.assertEqual(sorted(positions), positions)
-        # 超出绘制缓冲的差额并进同一条速度曲线，追赶本身也是先加速后减速。
-        self.assertIn('catchUpPx = latestOverflow', code)
-        self.assertIn('(it - layout.afterContentPadding).coerceAtLeast(0)', code)
-        self.assertIn('val followDistancePx = maxOf(remainingDistancePx, catchUpPx.toFloat())', code)
-        self.assertIn('motion.step(followDistancePx, frameNanos, densityScale)', code)
+        # 严格贴底：本帧实测差额就是唯一目标，一次滚满，不留跨帧速度曲线。
+        self.assertIn(
+            'remainingDistancePx = resolveStrictBottomFollowTarget(remainingDistancePx, latestOverflow)', code)
+        self.assertIn('val step = snapFollowScrollStep(remainingDistancePx, remainingDistancePx)', code)
+        self.assertNotIn('motion.step(', code)
+        self.assertNotIn('catchUpPx', code)
+        self.assertNotIn('BottomFollowMotion()', code)
         self.assertNotIn('followTailOverflow()', code)
+        # 亚像素残量必须归零，否则控制器会在同一个不到 1px 的差额上逐帧空转。
+        self.assertIn('if (step <= 0f) {', code)
+        self.assertIn('remainingDistancePx = 0f', code)
 
     def test_recovery_keeps_user_and_navigation_interrupt_guards(self):
         code = self.controller
         self.assertEqual(2, code.count(
-            'if (!shouldFollowBottom || pointerDown.value || isUserScrolling || messageNavigationJob != null)'))
+            'if (!shouldFollowBottom || isUserScrolling || messageNavigationJob != null)'))
         scroll = code.split('scrollState.scroll {', 1)[1]
         self.assertLess(scroll.index(
-            'if (!pointerDown.value && !isUserScrolling && messageNavigationJob == null && shouldFollowBottom)'),
+            'if (!isUserScrolling && messageNavigationJob == null && shouldFollowBottom)'),
             scroll.index('scrollBy(currentStep)'))
+        # 纯按住手指不再算中断：按住期间补偿停摆会让上提累积到超过尾部留白。
+        self.assertNotIn('pointerDown.value', code)
 
-    def test_touch_hold_is_observable_and_freezes_only_follow_motion(self):
+    def test_touch_hold_no_longer_pauses_strict_bottom_anchor(self):
         self.assertIn('val pointerDown = remember { mutableStateOf(false) }', self.body)
-        self.assertIn('if (!shouldFollowBottom || pointerDown.value) return@snapshotFlow InactiveBottomFollowLayout', self.body)
+        self.assertIn('if (!shouldFollowBottom) return@snapshotFlow InactiveBottomFollowLayout', self.body)
+        self.assertNotIn('if (!shouldFollowBottom || pointerDown.value) return@snapshotFlow', self.body)
         self.assertIn('pointerDown = pointerDown.value,', self.body)
         self.assertIn('pointerDown -> heldPx.coerceAtLeast(0)', self.body)
         self.assertIn('finally {\n                        pointerDown.value = false', self.body)
+        # 绘制层一次补满，冻结条件换成「真实滚动 / 导航」，不再有缓动预算。
+        lift = self.body.split('.then(if (shouldLiftTail) {', 1)[1].split('} else {', 1)[0]
+        self.assertIn('val overflow = scrollState.followTailOverflow()', lift)
+        self.assertIn('nextHeldTailLift(', lift)
+        self.assertIn('pointerDown = isUserScrolling || messageNavigationJob != null', lift)
+        self.assertNotIn('maxRisePx', lift)
+        self.assertNotIn('tailLiftMotion', lift)
+
+    def test_easing_motion_is_not_used_by_the_follow_pipeline(self):
+        self.assertNotIn('val tailLiftMotion = remember { createTailLiftMotion() }', self.body)
+        self.assertNotIn('bottomSnapUntilNanos', self.body)
+        self.assertNotIn('EXPANSION_BOTTOM_SNAP_NANOS', self.body)
+        self.assertNotIn('motion.step(followDistancePx, frameNanos, densityScale)', self.body)
 
     def test_drawing_stays_capped_but_recovery_measurement_does_not(self):
         drawing = self.body.split('private fun LazyListState.followTailOverflow(): Int? {', 1)[1]

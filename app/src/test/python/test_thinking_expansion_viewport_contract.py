@@ -44,12 +44,14 @@ class ThinkingExpansionViewportContractTest(unittest.TestCase):
         self.assertNotIn("scrollBy(step)", scroll)
 
     def test_active_capture_not_snap_timer_owns_unknown_tail_and_parent_close_cancels_children(self):
-        consumer = BODY.split("val expansionOwnsViewport =", 1)[1].split("val step = if (snapping)", 1)[0]
+        consumer = BODY.split("val expansionOwnsViewport =", 1)[1].split("val step = snapFollowScrollStep(", 1)[0]
         self.assertIn("viewportRecovery.hasActiveExpansion(canOwnWorkExpansionViewport())", consumer)
         self.assertIn("expansionOwnsViewport && latestOverflow == null", consumer)
         self.assertIn("continue", consumer)
         self.assertNotIn("\n                reset()", consumer)
-        self.assertIn("remainingDistancePx = latestOverflow.coerceAtLeast(0).toFloat()", consumer)
+        # 严格贴底：展开恢复结束后同样一次吃满实测差额，不回退到速度曲线。
+        self.assertIn("resolveStrictBottomFollowTarget(remainingDistancePx, latestOverflow)", consumer)
+        self.assertNotIn("motion.step(", consumer)
         self.assertIn("fun hasActiveExpansion(canOwnViewport: Boolean)", RECOVERY)
         self.assertIn("canOwnViewport && System.nanoTime() < expansion.expiresAtNanos", RECOVERY)
 

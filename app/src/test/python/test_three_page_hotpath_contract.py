@@ -6,8 +6,11 @@ MAIN = ROOT / 'app/src/main/kotlin/io/github/mangi/eta'
 class ThreePageHotpathContract(unittest.TestCase):
     def test_disabled_follow_does_not_read_layout_and_keeps_two_frame_drain(self):
         s = (MAIN / 'ui/components/AgentChatBody.kt').read_text()
-        gate = s.index('if (!shouldFollowBottom || pointerDown.value) return@snapshotFlow InactiveBottomFollowLayout')
+        # 严格贴底：禁用时仍然不发布局读取；单纯手指按着不再算中断，
+        # 否则按住期间补偿停摆，上提会累积到超过尾部留白后整列掉下去。
+        gate = s.index('if (!shouldFollowBottom) return@snapshotFlow InactiveBottomFollowLayout')
         self.assertLess(gate, s.index('val layoutInfo = scrollState.layoutInfo', gate))
+        self.assertNotIn('if (!shouldFollowBottom || pointerDown.value) return@snapshotFlow', s)
         settling = s[s.index('var isBottomSettling'):s.index('var initialBottomPositionPending')]
         self.assertEqual(2, settling.count('withFrameNanos { }'))
         self.assertIn('snapshotFlow { !scrollState.canScrollForward }.first { it }', settling)

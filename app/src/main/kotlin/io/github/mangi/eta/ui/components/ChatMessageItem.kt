@@ -446,8 +446,9 @@ internal val LocalExpansionHoldsBottom = staticCompositionLocalOf<() -> Boolean>
 /**
  * 展开前由宿主解除底部锚定。展开/收起一律钉住标题，面板向屏幕下方生长，
  * 因此展开动作必须先释放跟底/静止线裁剪，否则面板会被裁掉不可见。
+ * 参数为「本次是展开还是收起」：收起时宿主会在用户没滑走的前提下恢复贴底。
  */
-internal val LocalChatAnchorRelease = staticCompositionLocalOf<() -> Unit> { {} }
+internal val LocalChatAnchorRelease = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
 
 
 @Composable
@@ -1309,7 +1310,7 @@ private fun UserMessageBubble(
                                 TextButton(
                                     onClick = {
                                         TouchHaptics.click(view)
-                                        if (!userTextExpanded) releaseAnchor()
+                                        releaseAnchor(!userTextExpanded)
                                         userTextExpanded = !userTextExpanded
                                     },
                                 ) {
@@ -3774,7 +3775,7 @@ private fun ToolActivityInline(
     val toolRowSettled = message.status != ToolActivityStatusUi.Running
     val releaseAnchor = LocalChatAnchorRelease.current
     val toggle: () -> Unit = {
-        if (!isExpanded) releaseAnchor()
+        releaseAnchor(!isExpanded)
         expandedByTap = !isExpanded
         isExpanded = !isExpanded
         toggleProbeRef.token = StreamPerformanceDiagnostics.markToggle("tool", isExpanded)

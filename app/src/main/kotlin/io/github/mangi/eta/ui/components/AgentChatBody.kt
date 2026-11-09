@@ -50,7 +50,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -146,7 +145,6 @@ import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.layout.MaxChatSuggestionWidth
 import io.github.mangi.eta.ui.layout.rememberPageContentSidePadding
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -1021,7 +1019,9 @@ internal fun AgentConversationMessages(
         val index = timelineRows.indexOfFirst { it.containsMessageId(target) }
         if (index >= 0) {
             onBottomAnchorChanged(false)
-            scrollState.animateScrollToItem(index)
+            // 搜索命中旧消息同属「跳到很远的一条」：走与上一轮/跳顶跳底同一套
+            // 总时长封顶的动画，不再用系统默认 spring 在长会话里滚很久。
+            scrollState.animateToConversationTurn(index)
             onScrollToMessageConsumed()
         } else if (timelineRows.isNotEmpty()) {
             onScrollToMessageConsumed()
@@ -1181,12 +1181,20 @@ internal fun AgentConversationMessages(
             if (messageNavigationJob != null) {
                 null
             } else {
-                // 手指压在列表上同样算拖动：onPreScroll 的 pointerDown 判定偶尔收不到
-                // （例如手势从输入区边缘起手），只靠 isUserScrolling 会让跟底逻辑
-                // 把已经翻到旧消息的列表又拽回底部，表现为「只能往一个方向滑」。
+                // 尾部几何要分三态：流式长字、工具卡片折叠/展开会让哨兵暂时掉到静止线
+                // 下方（Lagging），这恰恰是跟底正在追的状态；只有尾部彻底离开测量窗口
+                // （Detached）才是用户翻到了上方。旧实现只用一个 atBottom 布尔，
+                // 把前者也算成「不在底部」，再叠加「手指按着就算拖动」，一次轻触即可
+                // 在输出途中关掉锚定并置位 hasLeftBottom；此后尾部一路落后、再也不会
+                // 出现 atBottom=true，跟底就此永久停在中途。
+                val gesture = resolveChatBottomAnchorGesture(
+                    proximity = scrollState.chatBottomProximity(),
+                    isUserScrolling = isUserScrolling,
+                    pointerDown = pointerDown.value,
+                )
                 ChatListFollowState(
-                    dragging = isUserScrolling || pointerDown.value,
-                    atBottom = scrollState.isConversationAtBottom(),
+                    dragging = gesture.dragging,
+                    atBottom = gesture.atBottom,
                     anchored = currentAnchor.value,
                 )
             }
@@ -1245,11 +1253,10 @@ internal fun AgentConversationMessages(
             isBottomSettling = isBottomSettling,
         )
     )
-    // 跟底时上提让尾部停在静止线附近：列表变高多少，上提就按缓动补多少，
-    // 新行从静止线下方慢慢滑入，由跟底滚动接力收尾，下沿不会整行跳。
-    // 以前点开最底部一行时先暂停上提，让内容从上沿往下长过静止线、再由跟底滚动追回来，
-    // 标签会先不动、再被推上去，看起来像折了两次。现在展开从下沿长出（见 tailDetailsEnter），
-    // 上提照常，标签随动画一帧一帧往上让开。
+    // 严格贴底：列表变高多少，本帧整列就上提多少，新内容把旧内容往上顶，
+    // 而不是让新行从静止线下方慢慢滑入。滚动控制器下一帧把同一差额一次滚满，
+    // 上提随即归零，尾部底边全程不动。展开卡片时锚定已解除，标题依旧由展开
+    // 动画逐帧往上让开；收起后锚定还回来，下一帧重新贴住。
     val shouldLiftTail = shouldFollowBottom
     val markdownViewport = remember { io.github.mangi.eta.ui.markdown.MarkdownDrawViewport() }
     val markdownTransitionActive = LocalChatTransitionActive.current
@@ -1307,11 +1314,8 @@ internal fun AgentConversationMessages(
             )
         }
     }
-    // 下沿被钉住的展开期间，跟底滚动每帧把新增高度一次吃掉，不走平滑加速。
-    // 平滑跟底第一帧不动、之后慢慢加速，其余全靠绘制上提；上提一旦超过列表尾部留白，
-    // 尾部哨兵被挤出可视区，上提归零，内容一帧掉下去三百多像素。展开动画本身已经是平滑的，
-    // 这段时间里标签随动画逐帧上移即可。只在协程里读，写入不触发重组。
-    var bottomSnapUntilNanos by remember { mutableLongStateOf(0L) }
+    // 严格贴底后不再有「展开窗口内临时切成瞬跳」的特例：所有跟底帧都一次吃满。
+    // 展开动画本身逐帧给高度，标题随动画逐帧上移，不需要另一套速度曲线。
     val expansionHoldsBottom: () -> Boolean = remember(scrollState) {
         {
             expansionPinnedNow().also {
@@ -1342,7 +1346,7 @@ internal fun AgentConversationMessages(
                         val lift = if (liftingNow) {
                             resolveFollowTailLag(true, scrollState.followTailOverflow()).liftPx.toInt()
                         } else 0
-                        "follow=$shouldFollowBottom lift=$liftingNow liftPx=$lift pinned=${expansionPinnedNow()} snap=${System.nanoTime() < bottomSnapUntilNanos} " +
+                        "follow=$shouldFollowBottom lift=$liftingNow liftPx=$lift pinned=${expansionPinnedNow()} strict=true " +
                             "userScroll=$isUserScrolling overflowPx=${scrollState.followTailOverflow()} " +
                             "first=${scrollState.firstVisibleItemIndex}:${scrollState.firstVisibleItemScrollOffset} " +
                             "visible=${info.visibleItemsInfo.size} total=${info.totalItemsCount}"
@@ -1480,12 +1484,15 @@ internal fun AgentConversationMessages(
         }
     }
 
-    // 流式输出及渲染收尾期间发布最新的跟底距离。历史消息中的步骤/思考展开同样会改变
-    // 列表高度，但那是用户主动查看内容，不能被误判成尾部文字增长。
+    // 流式输出及渲染收尾期间发布最新的跟底距离（只是唤醒信号：真正滚多少由控制器
+    // 在滚动所有权内按本帧实测差额决定）。历史消息中的步骤/思考展开同样会改变列表高度，
+    // 但那是用户主动查看内容，不能被误判成尾部文字增长。
     LaunchedEffect(scrollState) {
         snapshotFlow {
-            // Preserve the existing gate; disabling must still send a zero target.
-            if (!shouldFollowBottom || pointerDown.value) return@snapshotFlow InactiveBottomFollowLayout
+            // 只有真实用户滚动/导航才停跟底。单纯「手指按在列表上」（点卡片、长按选字）
+            // 不暂停：旧实现会在按住期间冻结滚动补偿，绘制上提一路累积到超过尾部留白，
+            // 松手后整列掉下去——流式输出时表现为突然失底。
+            if (!shouldFollowBottom) return@snapshotFlow InactiveBottomFollowLayout
             val layoutInfo = scrollState.layoutInfo
             val sentinel = layoutInfo.visibleItemsInfo.firstOrNull { item ->
                 item.key == ChatBottomSentinelKey
@@ -1526,30 +1533,23 @@ internal fun AgentConversationMessages(
             }
     }
 
-    // One controller retains velocity across layout targets, including line-height
-    // steps. Neither a missing sentinel nor stream completion may bypass it.
+    // 严格贴底：跟底不再「追」。布局当帧由绘制层按实测差额把整列一次顶上去
+    // （strictBottomAnchorLift），这里下一帧把同一差额一次滚满，上提随即归零。
+    // 两者之和恒等于真实溢出，尾部底边全程钉在静止线上；没有加速度曲线、没有滞后，
+    // 快速输出和卡片折叠展开都不会出现「列表在往底部滑」的过程。
     LaunchedEffect(scrollState, bottomFollowDecisions, densityScale) {
-        val motion = BottomFollowMotion()
         var remainingDistancePx = 0f
         var previousFrameNanos: Long? = null
-        fun reset() {
-            remainingDistancePx = 0f
-            previousFrameNanos = null
-            motion.reset()
-        }
         fun accept(decision: BottomFollowDecision) {
             remainingDistancePx = decision.scrollByPx.coerceAtLeast(0).toFloat()
         }
         while (currentCoroutineContext().isActive) {
-            if (remainingDistancePx <= 0f) {
-                reset()
-                accept(bottomFollowDecisions.receive())
-            }
+            if (remainingDistancePx <= 0f) accept(bottomFollowDecisions.receive())
             while (true) {
                 accept(bottomFollowDecisions.tryReceive().getOrNull() ?: break)
             }
-            if (!shouldFollowBottom || pointerDown.value || isUserScrolling || messageNavigationJob != null) {
-                reset()
+            if (!shouldFollowBottom || isUserScrolling || messageNavigationJob != null) {
+                remainingDistancePx = 0f
                 continue
             }
             if (remainingDistancePx <= 0f) continue
@@ -1561,49 +1561,30 @@ internal fun AgentConversationMessages(
             while (true) {
                 accept(bottomFollowDecisions.tryReceive().getOrNull() ?: break)
             }
-            if (!shouldFollowBottom || pointerDown.value || isUserScrolling || messageNavigationJob != null) {
-                reset()
+            if (!shouldFollowBottom || isUserScrolling || messageNavigationJob != null) {
+                remainingDistancePx = 0f
                 continue
             }
-            val snapping = System.nanoTime() < bottomSnapUntilNanos
             val layout = scrollState.layoutInfo
             val latestOverflow = layout.measuredTailOverflow()
             val expansionOwnsViewport = viewportRecovery.hasActiveExpansion(canOwnWorkExpansionViewport())
             if (expansionOwnsViewport && latestOverflow == null) {
                 // The measured-anchor owner recovers unknown-tail expansion. Do not let the
                 // ordinary one-viewport fallback race it; retain the pending target for expiry.
-                motion.reset()
-                previousFrameNanos = null
                 continue
             }
-            if ((snapping || expansionOwnsViewport) && latestOverflow != null) {
-                remainingDistancePx = latestOverflow.coerceAtLeast(0).toFloat()
+            // 实测差额是唯一目标：队列里的旧决策一律作废，本帧一次滚满，不留残量。
+            remainingDistancePx = resolveStrictBottomFollowTarget(remainingDistancePx, latestOverflow)
+            val step = snapFollowScrollStep(remainingDistancePx, remainingDistancePx)
+            // 亚像素残量收敛不了，归零后回到 receive() 等下一次真正的布局变化。
+            if (step <= 0f) {
+                remainingDistancePx = 0f
+                continue
             }
-            val step = if (snapping) {
-                motion.reset()
-                remainingDistancePx
-            } else {
-                // 超出绘制缓冲的差额也并进同一个速度控制器：一次性长高（工具卡片、
-                // 整段正文）同样从静止起步、按加速度先快后慢地追上，收尾时速度随
-                // 剩余距离一起回落。以前这段按固定速度逐帧推，长得越多越像匀速硬推。
-                val catchUpPx = latestOverflow
-                    ?.let { (it - layout.afterContentPadding).coerceAtLeast(0) }
-                    ?: 0
-                val followDistancePx = maxOf(remainingDistancePx, catchUpPx.toFloat())
-                val smoothStep = motion.step(followDistancePx, frameNanos, densityScale)
-                snapFollowScrollStep(
-                    // 实测溢出优先：追赶永远不滚过尾部的真实差额。
-                    latestOverflow?.let { minOf(smoothStep, it.coerceAtLeast(0).toFloat()) }
-                        ?: smoothStep,
-                    followDistancePx,
-                )
-            }
-            // Within the draw buffer, the first frame still only establishes timing.
-            if (step <= 0f) continue
             var consumedStep = 0f
             try {
                 scrollState.scroll {
-                    if (!pointerDown.value && !isUserScrolling && messageNavigationJob == null && shouldFollowBottom) {
+                    if (!isUserScrolling && messageNavigationJob == null && shouldFollowBottom) {
                         // Post-layout expansion recovery may already have consumed this target.
                         // Recheck fresh geometry inside the scroll owner, not the queued decision.
                         val currentStep = resolveFollowScrollStepAfterRecovery(
@@ -1611,37 +1592,31 @@ internal fun AgentConversationMessages(
                             expansionOwnsViewport = viewportRecovery.hasActiveExpansion(canOwnWorkExpansionViewport()),
                         )
                         consumedStep = StreamPerformanceDiagnostics.measure("follow.scroll") { scrollBy(currentStep) }
-                        if (StreamPerformanceDiagnostics.probing) {
-                            StreamPerformanceDiagnostics.probeNote("follow") {
-                                "stepPx=${"%.1f".format(step)} consumedPx=${"%.1f".format(consumedStep)} " +
-                                    "remainingPx=${"%.1f".format(remainingDistancePx - consumedStep)}"
-                            }
-                        }
                         StreamPerformanceDiagnostics.record("follow.step", value = (consumedStep * 1000).toLong())
                     }
                 }
-                if (consumedStep > 0f) {
-                    remainingDistancePx = (remainingDistancePx - consumedStep).coerceAtLeast(0f)
-                } else reset()
+                remainingDistancePx = if (consumedStep > 0f) {
+                    (remainingDistancePx - consumedStep).coerceAtLeast(0f)
+                } else 0f
             } catch (cancelled: CancellationException) {
                 StreamPerformanceDiagnostics.record("follow.cancelled")
                 if (!currentCoroutineContext().isActive) throw cancelled
-                reset()
+                remainingDistancePx = 0f
             }
         }
     }
 
     // 输入器悬浮在会话之上：视口铺满到屏幕底，输入框四周透明、能看到后面的消息。
-    // 跟底输出期间（思考/正文生成、未手动滑动），卡片/正文每长一行，跟底滚动要晚几帧
-    // 才追上。绘制阶段会把已经量到的尾部上提；输出及渲染收尾时才裁在输入框上方的静止线，
-    // 覆盖超快输出在 isStreaming 结束后、列表滚动尚未完成的过渡帧。
+    // 跟底输出期间（思考/正文生成、未手动滑动），布局当帧就把已经量到的尾部一次顶到
+    // 静止线，滚动下一帧接力，不存在「滚动晚几帧才追上」。静止线裁剪只兜底超快输出时
+    // 本帧还没量到的那一截，以及 isStreaming 结束后、列表滚动尚未落地的过渡帧。
     // 静态锚定只用于尾部停靠，不是永久绘制遮挡；无需先滑动，透明周边也能透出消息。
     // 用户一拖动或跳转消息，输出保护也立即解除。
     val restClip = remember(bottomInset) { ComposerRestClip(bottomInset + ConversationComposerGap) }
     // 尾部这一帧量不到时不能把上提清零，否则卡片会掉进输入框再弹回来。
     val heldTailLift = remember { intArrayOf(0) }
-    // 上提自身的缓动：起步/收尾都比滚动更慢，避免每行一次“硬”上跳。
-    val tailLiftMotion = remember { createTailLiftMotion() }
+    // 严格贴底不再给上提加缓动：缓动本身就是「追」，会让新行从静止线下方慢慢滑入。
+    // 现在布局当帧一次补满真实溢出，滚动下一帧接力，底部一像素都不动。
     // The callback reports message.id, but a work step's lazy key is work-step:<id>.
     // ThinkingRow reports the message id; only the anchor release matters here.
     val onThinkingRowToggle: (String, Boolean) -> Unit = { _, willExpand ->
@@ -1649,6 +1624,9 @@ internal fun AgentConversationMessages(
         // 屏幕下方生长（超出静止线的部分由用户滚动查看）；不再回收视口、不做底部
         // 快照——这两者都会把整列上提，正是标题位移的根源。
         if (willExpand) onBottomAnchorChanged(false)
+        // 收起后把锚定还回来。旧实现只有「解除」没有「恢复」，一次折叠展开就把
+        // 后续的流式跟底永久留在半路；用户若已滑到中间段则保持停在原处。
+        else if (!hasLeftBottom && !isUserScrolling) onBottomAnchorChanged(true)
     }
     Box(
         modifier = modifier
@@ -1776,31 +1754,20 @@ internal fun AgentConversationMessages(
                     Modifier.graphicsLayer {
                         val overflow = scrollState.followTailOverflow()
                         val held = heldTailLift[0]
-                        // 上提按缓动曲线逐帧追赶溢出：新行缓慢滑入，而不是匀速冲到目标后硬停；
-                        // 目标回落时仍由 nextHeldTailLift 立即让位，尾部不会越过静止线。
-                        val risePx = if (pointerDown.value || overflow == null) {
-                            tailLiftMotion.reset()
-                            0f
-                        } else {
-                            tailLiftMotion.step(
-                                distancePx = (overflow - held).coerceAtLeast(0).toFloat(),
-                                frameTimeNanos = System.nanoTime(),
-                                density = densityScale,
-                            )
-                        }
+                        // 严格贴底：内容长高多少，本帧整列就上提多少，不传逐帧预算
+                        // （默认一次补满），没有缓动、没有「追」。滚动控制器下一帧把同一
+                        // 差额一次滚满，overflow 归零时上提同步归零，尾部底边始终在线上。
+                        // 只有真实用户滚动/消息导航才冻结；单纯手指按着不冻结，否则按住
+                        // 期间补偿停摆、上提累积超过尾部留白，松手就会整列掉下去。
                         translationY = -nextHeldTailLift(
                             shouldLift = true,
                             overflowPx = overflow,
                             heldPx = held,
-                            pointerDown = pointerDown.value,
-                            maxRisePx = ceil(risePx).toInt().coerceAtLeast(1),
+                            pointerDown = isUserScrolling || messageNavigationJob != null,
                         ).also { heldTailLift[0] = it }.toFloat()
                     }
                 } else {
-                    Modifier.also {
-                        heldTailLift[0] = 0
-                        tailLiftMotion.reset()
-                    }
+                    Modifier.also { heldTailLift[0] = 0 }
                 })
                 .onGloballyPositioned {
                     StreamPerformanceDiagnostics.recordListGeometry(diagnosticList, scrollState, visibleMessages.size)
@@ -1891,9 +1858,11 @@ internal fun AgentConversationMessages(
                 // Keep the row key/index and animate its root, including its footer.
                 androidx.compose.runtime.CompositionLocalProvider(
                     LocalExpansionHoldsBottom provides expansionHoldsBottom,
-                    LocalChatAnchorRelease provides {
-                        // 展开前解除底部锚定（标题钉住、面板向下生长）。
-                        onBottomAnchorChanged(false)
+                    LocalChatAnchorRelease provides { willExpand ->
+                        // 展开前解除底部锚定（标题钉住、面板向下生长）；收起后在用户
+                        // 没滑走的前提下恢复贴底，避免折叠展开把跟底留在半路。
+                        if (willExpand) onBottomAnchorChanged(false)
+                        else if (!hasLeftBottom && !isUserScrolling) onBottomAnchorChanged(true)
                     },
                     LocalCompletedMarkdownCache provides completedMarkdownCache,
                     LocalStreamDiagnosticRow provides StreamPerformanceDiagnostics.rowAttribution(
@@ -2646,13 +2615,50 @@ private fun ContextCompressingIndicator(waiting: Boolean = false, modelName: Str
     }
 }
 
+/**
+ * 底部邻近三态。流式输出、工具卡片折叠/展开都会让尾部暂时落到静止线下方，
+ * 那是跟底还没追上（Lagging），不是用户翻到了历史段（Detached）。
+ * @param tailOverflowPx 尾部下沿减静止线；null 表示哨兵和紧邻的最后一段内容都不在
+ *   测量窗口里，即列表已经翻到了更靠上的位置。
+ */
+internal enum class ChatBottomProximity { Anchored, Lagging, Detached }
+
+internal fun resolveChatBottomProximity(
+    isAtBottom: Boolean,
+    tailOverflowPx: Int?,
+): ChatBottomProximity = when {
+    isAtBottom -> ChatBottomProximity.Anchored
+    tailOverflowPx != null -> ChatBottomProximity.Lagging
+    else -> ChatBottomProximity.Detached
+}
+
+/** 传给锚定策略的两个布尔。锚定只在「用户手势 + 确实翻到上方」时解除。 */
+internal data class ChatBottomAnchorGesture(val dragging: Boolean, val atBottom: Boolean)
+
+internal fun resolveChatBottomAnchorGesture(
+    proximity: ChatBottomProximity,
+    isUserScrolling: Boolean,
+    pointerDown: Boolean,
+): ChatBottomAnchorGesture {
+    val detached = proximity == ChatBottomProximity.Detached
+    return ChatBottomAnchorGesture(
+        // 单纯把手指按在列表上（点卡片、长按选字）不算拖动；但手势从输入区边缘
+        // 起手、onPreScroll 收不到时，只要列表已经翻到上方，pointerDown 仍要兜底，
+        // 否则跟底会把用户正在看的旧消息拽回底部。
+        dragging = detached && (isUserScrolling || pointerDown),
+        // Lagging 仍算「在底部」：拖动结束就立刻恢复跟底，也让历史遗留的
+        // hasLeftBottom 误置在这一帧被消费掉，解开「停在半路」的死锁。
+        atBottom = !detached,
+    )
+}
+
 internal fun resolveKeepBottomAnchored(
     current: Boolean,
     isUserDragging: Boolean,
     isAtBottom: Boolean,
     hasLeftBottom: Boolean = false,
 ): Boolean = when {
-    // 手指一开始拖就停跟底；流式长高让 sentinel 离开视口时不能当成用户上滑。
+    // 用户真的翻到上方时停跟底；流式长高让 sentinel 离开视口时不能当成用户上滑。
     isUserDragging -> false
     // 只有真正滑离过底部再回来，才重新贴底，避免轻触后被跟底拽回去。
     isAtBottom && (current || hasLeftBottom) -> true
@@ -2912,8 +2918,6 @@ internal fun resolveExpansionHoldsBottom(
 
 // Preserve the measured recovery budget; it is NOT an entrance admission window.
 private const val WORK_EXPANSION_RECOVERY_NANOS = 680_000_000L
-// 180ms 展开动画加淡入，再留一点给最后一帧布局。
-private const val EXPANSION_BOTTOM_SNAP_NANOS = 400_000_000L
 
 internal fun resolveFollowTailLag(following: Boolean, tailOverflowPx: Int?): FollowTailLag = when {
     !following -> FollowTailLag.None
@@ -2925,10 +2929,12 @@ internal fun resolveFollowTailLag(following: Boolean, tailOverflowPx: Int?): Fol
 /**
  * 测量暂时缺失时保留上一帧上提，避免卡片底边在输入框附近来回跳。
  *
- * 上提只限制增长：新长出一行时整列不再一帧内上跳一个行高，而是按 [maxRisePx]
- * （由 [createTailLiftMotion] 给出的缓动增量）从静止线下方滑入。
- * 回落不限速——滚动追上后上提立即让位，
- * 「滚动量 + 上提量」始终不超过真实溢出，尾部不会被抬到静止线上方。
+ * 严格贴底默认 [maxRisePx] 不限速：新长出一行就整列一帧上提一个行高，旧内容被
+ * 往上顶、尾部底边不动；回落同样立即让位——滚动一次吃满差额后 overflow 归零，
+ * 上提同步归零。「滚动量 + 上提量」始终不超过真实溢出，尾部不会被抬到静止线上方。
+ * [maxRisePx] 只保留给测试与旧缓动路径，主链路不再传它。
+ * [pointerDown] 在主链路传入的是「真实用户滚动或消息导航」：只冻结这两种，
+ * 单纯手指按着不停补偿。
  */
 internal fun nextHeldTailLift(
     shouldLift: Boolean,
@@ -2948,6 +2954,33 @@ internal fun nextHeldTailLift(
     }
 }
 
+/** 静止线附近的像素容差：贴底判定与底部邻近三态共用，避免两处口径漂移。 */
+private const val BottomAnchorTolerancePx = 8
+
+/**
+ * 一次布局遍历同时拿到「是否精确贴底」和「尾部还测不测得到」。
+ * 流式期间每个 token 都会出新布局，这里不能重复扫两遍可见项。
+ */
+private fun LazyListState.chatBottomProximity(): ChatBottomProximity {
+    val info = layoutInfo
+    val items = info.visibleItemsInfo
+    val sentinel = items.firstOrNull { it.key == ChatBottomSentinelKey }
+    val viewportEnd = info.viewportEndOffset - info.afterContentPadding
+    val atBottom = if (sentinel == null) {
+        !canScrollForward
+    } else {
+        sentinel.offset + sentinel.size <= viewportEnd + BottomAnchorTolerancePx
+    }
+    val last = items.lastOrNull()
+    val tailBottom = resolveTailBottomPx(
+        sentinelBottom = sentinel?.let { it.offset + it.size },
+        lastVisibleIndex = last?.index,
+        lastVisibleBottom = last?.let { it.offset + it.size },
+        totalItems = info.totalItemsCount,
+    )
+    return resolveChatBottomProximity(atBottom, tailBottom?.minus(viewportEnd))
+}
+
 private fun LazyListState.isConversationAtBottom(): Boolean {
     val info = layoutInfo
     val sentinel = info.visibleItemsInfo.firstOrNull { it.key == ChatBottomSentinelKey }
@@ -2955,7 +2988,7 @@ private fun LazyListState.isConversationAtBottom(): Boolean {
         !canScrollForward
     } else {
         val viewportEnd = info.viewportEndOffset - info.afterContentPadding
-        sentinel.offset + sentinel.size <= viewportEnd + 8
+        sentinel.offset + sentinel.size <= viewportEnd + BottomAnchorTolerancePx
     }
 }
 

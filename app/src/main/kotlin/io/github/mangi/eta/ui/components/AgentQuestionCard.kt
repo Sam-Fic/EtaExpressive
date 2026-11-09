@@ -91,7 +91,7 @@ private fun AgentQuestionCardContent(
     // 展开/收起方向本身由标准气泡统一，不再按锚定状态分方向）。
     val releaseAnchor = LocalChatAnchorRelease.current
     val toggle: () -> Unit = {
-        if (!expanded) releaseAnchor()
+        releaseAnchor(!expanded)
         expanded = !expanded
     }
     // 展开后的详情子条目：标题、问题正文与表单/只读回执。与思考/工具行同款——

@@ -46,6 +46,20 @@ internal fun resolveWorkExpansionViewportOwnership(
     !isUserDragging && !isUserScrolling && !navigationActive
 
 /**
+ * 严格贴底的滚动目标：以本帧实测的尾部差额为唯一依据，一次滚满，不留跨帧残量。
+ *
+ * 旧实现把队列目标交给加速度曲线逐帧消化，快速输出时滚动常年落后一截，只能靠绘制层
+ * 上提掩盖；上提累积超过尾部留白就会整列掉下去，也就是肉眼看到的「列表在追底部」。
+ * 现在实测差额优先，只有尾部暂时测不到（哨兵被挤出测量窗口）才沿用队列里的整屏估算。
+ * 实测为 0 表示已经贴住，返回 0 让控制器回到等待下一次布局变化。
+ */
+internal fun resolveStrictBottomFollowTarget(
+    queuedPx: Float,
+    measuredOverflowPx: Int?,
+): Float = measuredOverflowPx?.coerceAtLeast(0)?.toFloat()
+    ?: queuedPx.coerceAtLeast(0f)
+
+/**
  * Resolves how far the auto-follow controller should scroll the chat viewport for a single step.
  *
  * The controller already glides the viewport by [smoothStepPx]. That smooth motion is sized for

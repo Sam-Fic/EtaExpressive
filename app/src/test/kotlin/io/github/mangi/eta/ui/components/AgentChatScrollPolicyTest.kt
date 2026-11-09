@@ -507,4 +507,83 @@ class AgentChatScrollPolicyTest {
         assertFalse(resolveExpansionHoldsBottom(following = false, arrangedToBottom = true, listScrollable = true))
         assertFalse(resolveExpansionHoldsBottom(following = false, arrangedToBottom = false, listScrollable = false))
     }
+
+    @Test
+    fun tailLaggingIsNotDetachedFromBottom() {
+        assertEquals(ChatBottomProximity.Anchored, resolveChatBottomProximity(true, null))
+        // 工具卡片展开 / 快速输出：尾部还在测量窗口里，只是落到静止线下方。
+        assertEquals(ChatBottomProximity.Lagging, resolveChatBottomProximity(false, 240))
+        assertEquals(ChatBottomProximity.Lagging, resolveChatBottomProximity(false, -40))
+        // 尾部彻底离开测量窗口：用户翻到了上方。
+        assertEquals(ChatBottomProximity.Detached, resolveChatBottomProximity(false, null))
+    }
+
+    @Test
+    fun touchWhileTailIsLaggingKeepsTheBottomAnchor() {
+        // 旧实现把 pointerDown 当拖动：流式时尾部常年落后，点一下工具卡片就会
+        // 关掉锚定并置位 hasLeftBottom，之后再也不会出现 atBottom=true。
+        val gesture = resolveChatBottomAnchorGesture(
+            proximity = ChatBottomProximity.Lagging,
+            isUserScrolling = false,
+            pointerDown = true,
+        )
+        assertFalse(gesture.dragging)
+        assertTrue(gesture.atBottom)
+        assertTrue(
+            resolveKeepBottomAnchored(
+                current = true,
+                isUserDragging = gesture.dragging,
+                isAtBottom = gesture.atBottom,
+            ),
+        )
+    }
+
+    @Test
+    fun fastStreamingWithoutGestureNeverReleasesTheAnchor() {
+        val gesture = resolveChatBottomAnchorGesture(ChatBottomProximity.Lagging, false, false)
+        assertTrue(
+            resolveKeepBottomAnchored(true, gesture.dragging, gesture.atBottom),
+        )
+    }
+
+    @Test
+    fun scrollingIntoHistoryDetachesAndStaysDetached() {
+        val dragging = resolveChatBottomAnchorGesture(ChatBottomProximity.Detached, true, true)
+        assertTrue(dragging.dragging)
+        assertFalse(dragging.atBottom)
+        assertFalse(
+            resolveKeepBottomAnchored(true, dragging.dragging, dragging.atBottom, hasLeftBottom = true),
+        )
+        // 松手后停在中间段：跟底不能把用户拽回去。
+        val idle = resolveChatBottomAnchorGesture(ChatBottomProximity.Detached, false, false)
+        assertFalse(
+            resolveKeepBottomAnchored(false, idle.dragging, idle.atBottom, hasLeftBottom = true),
+        )
+        // 用户自己滑回底部才恢复。
+        val back = resolveChatBottomAnchorGesture(ChatBottomProximity.Anchored, false, false)
+        assertTrue(
+            resolveKeepBottomAnchored(false, back.dragging, back.atBottom, hasLeftBottom = true),
+        )
+    }
+
+    @Test
+    fun staleLeftBottomFlagRecoversWhenTailIsOnlyLagging() {
+        // 旧实现误置 hasLeftBottom 后永久停在半路；Lagging 现在算在底部，这一帧即自愈。
+        assertTrue(resolveKeepBottomAnchored(false, false, true, hasLeftBottom = true))
+        assertFalse(resolveKeepBottomAnchored(false, false, false, hasLeftBottom = true))
+    }
+
+    @Test
+    fun expansionReleaseIsNotOverruledByLagging() {
+        // 用户主动展开卡片（钉住标题）：没有 hasLeftBottom，Lagging 不该把锚定拉回来。
+        assertFalse(resolveKeepBottomAnchored(false, false, true, hasLeftBottom = false))
+    }
+
+    @Test
+    fun edgeGestureStillDetachesWithoutPreScroll() {
+        // 手势从输入区边缘起手时 onPreScroll 可能收不到，pointerDown 兜底仍要生效。
+        val gesture = resolveChatBottomAnchorGesture(ChatBottomProximity.Detached, false, true)
+        assertTrue(gesture.dragging)
+        assertFalse(gesture.atBottom)
+    }
 }
