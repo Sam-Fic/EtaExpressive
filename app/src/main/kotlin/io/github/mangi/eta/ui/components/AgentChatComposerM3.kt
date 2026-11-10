@@ -130,7 +130,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -1831,13 +1830,15 @@ private fun M3DictationCancelSlot(
  * 高度用 tween 而不是 Spatial 弹簧：弹簧的收尾过冲会让 56dp 的按钮瞬间高过输入胶囊，
  * 把整条工具栏撑高 1~2dp；原型这段 morph 本来就是无过冲的 emphasized 曲线。
  *
- * 按压形状 morph 走官方 expressive 重载（`shapes` 为第二参数）+ `IconButtonDefaults.shapes()`。
- * 取证 material3 1.5.0-alpha29 sources（IconButton.kt / IconButtonDefaults.kt / ShapeTokens.kt）：
- * 默认对 = CornerFull → pressed CornerSmall（`RoundedCornerShape(8dp)`，
- * `SmallIconButtonTokens.PressedContainerShape = ShapeKeyTokens.CornerSmall`）；按下经
- * `collectIsPressedAsState` + `rememberAnimatedShape`（MotionScheme DefaultEffects，无回弹）
- * 在两个 CornerBasedShape 间 morph。静息 `filledShape` 同为 CornerFull，外观不变；
- * 40×56 竖直胶囊按下整体压向 8dp 圆角是官方令牌行为（plain 重载无 morph）。
+ * 按压形状 morph 只在 ✓ 竖直胶囊态启用，走官方 expressive 重载（`shapes` 为第二参数）+
+ * `IconButtonDefaults.shapes()`。取证 material3 1.5.0-alpha29 sources（IconButton.kt /
+ * IconButtonDefaults.kt / ShapeTokens.kt）：默认对 = CornerFull → pressed CornerSmall
+ * （`RoundedCornerShape(8dp)`，`SmallIconButtonTokens.PressedContainerShape =
+ * ShapeKeyTokens.CornerSmall`）；按下经 `collectIsPressedAsState` + `rememberAnimatedShape`
+ * （MotionScheme DefaultEffects，无回弹）在两个 CornerBasedShape 间 morph；静息
+ * `filledShape` 同为 CornerFull，外观不变（plain 重载无 morph）。
+ * mic 圆形态（触发语音入口）按用户 2026-11-11 决定**不要** morph：走 plain 重载保持全圆，
+ * 与 composer 圆钮同心豁免（RULES §2.5.3）一致。
  */
 @Composable
 private fun M3DictationMorphButton(
@@ -1875,16 +1876,14 @@ private fun M3DictationMorphButton(
         if (committing) R.string.voice_mode_dictation_commit else R.string.voice_mode_dictation,
     )
     EtaTooltip(text = description) {
-        FilledIconButton(
-            onClick = {
-                TouchHaptics.click(view)
-                if (committing) onCommit() else onRecord()
-            },
-            shapes = IconButtonDefaults.shapes(),
-            modifier = Modifier
-                .size(width = ComposerVoiceButtonSize.width, height = height)
-                .semantics { contentDescription = description },
-        ) {
+        val onClickAction = {
+            TouchHaptics.click(view)
+            if (committing) onCommit() else onRecord()
+        }
+        val buttonModifier = Modifier
+            .size(width = ComposerVoiceButtonSize.width, height = height)
+            .semantics { contentDescription = description }
+        val morphContent: @Composable () -> Unit = {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Rounded.Mic,
@@ -1910,6 +1909,26 @@ private fun M3DictationMorphButton(
                             rotationZ = -45f * (1f - checkProgress)
                         },
                 )
+            }
+        }
+        if (committing) {
+            // ✓ 竖直胶囊态：官方 expressive 重载 + 官方 shapes 对，按下有 CornerFull →
+            // CornerSmall 的形状 morph（取证结论见本函数 KDoc）。
+            FilledIconButton(
+                onClick = onClickAction,
+                shapes = IconButtonDefaults.shapes(),
+                modifier = buttonModifier,
+            ) {
+                morphContent()
+            }
+        } else {
+            // mic 圆形态（触发语音入口）：plain 重载静态全圆、无按压形状 morph——
+            // composer 圆钮同心豁免（RULES §2.5.3，用户 2026-11-11 决定）。
+            FilledIconButton(
+                onClick = onClickAction,
+                modifier = buttonModifier,
+            ) {
+                morphContent()
             }
         }
     }
@@ -2159,15 +2178,13 @@ private data class ComposerMenuEntry(
     val action: () -> Unit,
 )
 
-/** 发送按钮按下时的绘制缩放：只收视觉，不缩触控区。 */
-private const val ComposerSendPressScale = 0.9f
-
 /**
  * 发送 / 停止 / 继续 按钮：按状态直接选用官方图标按钮
  * （停止＝`FilledTonalIconButton`、发送/继续＝`FilledIconButton`、
  * 上下文已满＝`OutlinedIconButton`、空闲＝禁用的 `IconButton`）。
  *
- * 形状、容器色、内容色、水波纹与按压形变全部使用各组件的官方默认值，不传 `shape` / `colors`。
+ * 形状、容器色、内容色与水波纹全部使用各组件的官方默认值，不传 `shape` / `colors`；
+ * 按下不做任何自制视觉——按压缩放（0.9）已按用户 2026-11-11 决定移除，只留官方涟漪。
  * 官方图标按钮没有长按槽位（M3 仅 `ListItem` 暴露 `onLongClick`），因此“长按中止暂停中的运行”
  * 通过官方 `Modifier.semantics` 的 `onLongClick` 动作提供。
  */
@@ -2187,15 +2204,6 @@ private fun M3ComposerSendButton(
         "continue" -> stringResource(R.string.chat_continue)
         else -> stringResource(R.string.chat_send)
     }
-    // 按压收缩：只叠一层绘制期缩放，交出去时有「按下去」的手感；
-    // 形状、容器色、水波纹与按压形变仍取官方默认值。
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) ComposerSendPressScale else 1f,
-        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "composer_send_press_scale",
-    )
     val content: @Composable () -> Unit = {
         Icon(
             imageVector = when (sendMode) {
@@ -2229,36 +2237,28 @@ private fun M3ComposerSendButton(
     }
     val modifier = Modifier
         .size(IconButtonDefaults.smallContainerSize())
-        .graphicsLayer {
-            scaleX = pressScale
-            scaleY = pressScale
-        }
         .then(abortModifier)
 
     when (sendMode) {
         "stop" -> FilledTonalIconButton(
             onClick = click,
             modifier = modifier,
-            interactionSource = interactionSource,
             content = content,
         )
         "continue", "send" -> FilledIconButton(
             onClick = click,
             modifier = modifier,
-            interactionSource = interactionSource,
             content = content,
         )
         "blocked" -> OutlinedIconButton(
             onClick = click,
             modifier = modifier,
-            interactionSource = interactionSource,
             content = content,
         )
         else -> IconButton(
             onClick = click,
             modifier = modifier,
             enabled = false,
-            interactionSource = interactionSource,
             content = content,
         )
     }

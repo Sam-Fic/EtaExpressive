@@ -104,7 +104,7 @@ R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改�
 
 1. **容器型按钮直用时必须传官方 `shapes`**：Button / FilledTonalButton / OutlinedButton / ElevatedButton → `ButtonDefaults.shapes()`；IconButton 家族 → `IconButtonDefaults.shapes()`；ToggleButton / IconToggleButton → `ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight)`；相连位置 → `ButtonGroupDefaults.connected*ButtonShapes()` 或 `etaConnectedButtonShapes(position)`。
 2. **TextButton 豁免**：无容器，morph 不可见，plain 重载即规范。
-3. **聊天输入区豁免**（用户决定）：composer 全家圆形钮保持全圆不 morph——圆角同心设计依赖全圆形。例外（用户 2026-11-11 决定）：口述态 × / ✓ 传官方 `IconButtonDefaults.shapes()` 参与按压 morph——听写态为 40×56 竖直胶囊（非圆钮），失败提示态 × 为 40×40 同心圆钮也保留 morph（用户点名 ×/✓）；静息 CornerFull 不变，按下压向 CornerSmall。其余 composer 圆钮（含提示态齿轮）仍豁免不 morph。
+3. **聊天输入区豁免**（用户决定）：composer 全家圆形钮保持全圆不 morph——圆角同心设计依赖全圆形。例外（用户 2026-11-11 决定）：口述态 × / ✓ 传官方 `IconButtonDefaults.shapes()` 参与按压 morph——听写态为 40×56 竖直胶囊（非圆钮），失败提示态 × 为 40×40 同心圆钮也保留 morph（用户点名 ×/✓）；静息 CornerFull 不变，按下压向 CornerSmall。morph 钮自身的 mic 圆形态（触发语音入口，40×40 圆）不例外：plain 重载、无按压 morph。其余 composer 圆钮（含提示态齿轮）仍豁免不 morph。豁免同时涵盖自制按压视觉：发送/停止/继续圆钮的 0.9 按压缩放已按用户同日决定移除，按下只留官方涟漪。
 4. 相连 toggle 的选中态形状由 `connected*ButtonShapes()` 的 `checkedShape` 自带，勿自行拼装。
 
 ### 2.6 资源文案末尾标点
