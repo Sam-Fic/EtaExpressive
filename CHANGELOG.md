@@ -48,6 +48,12 @@ All notable changes to **EtaExpressive** are documented here. Entries are groupe
 
 ### Fixes
 
+- fix(agent): 会话恢复后第 1 轮目录重新并入调用方给出的已打开延迟组，修复恢复会话首轮工具调用被拒
+
+- fix(ui): 长按选字期间冻结严格跟底与上提，选中不会再被自动滚动打断；松手后按实测差额一次追平
+
+- fix(media): 高分屏截图 PNG 超附件字节闸门时退回位图解码路径，不再把截图工具炸成异常
+
 - fix(db): 修复 v39 结构漂移导致的冷启动闪退，并收紧迁移失败策略
 
 - fix(voice): 浮窗拆窗与熄屏必收声，实时通话纳入进程级麦克风锁；开麦 native 阻塞与离线引擎装载不再拖住互斥锁/取消
