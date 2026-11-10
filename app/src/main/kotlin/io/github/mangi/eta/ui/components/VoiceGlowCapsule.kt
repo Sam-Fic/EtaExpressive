@@ -8,6 +8,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
+import android.graphics.RuntimeShader
 import android.graphics.Shader
 import androidx.compose.foundation.Canvas
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +62,7 @@ private const val LightDotWhiteMix = 0.7f
  * 1. metaball 层：9 颗骑在胶囊下轮廓上的光团，径向贝尔衰减叠加（深色 + 相加、浅色 + 普通叠加），
  *    邻团自然熔成一体；
  * 2. 受光层：metaball 与沿下轮廓起伏的波浪主体一起做一次高斯扩散（RenderEffect 模糊），
+ *    再过一层 AGSL「微微色散」（红/蓝通道沿径向错开几 px，见 DISPERSION_AGSL）；
  *    浅色额外叠一层横向色相水洗（SRC_ATOP 只染已有光的像素）；
  * 3. 点阵层：透视三角点阵被光推起（整列抬升 + 局部抬升），近处大、远处小，
  *    常驻铺满整颗胶囊（「整张网」，透明度只由顶/底渐隐带、光挖空、左右边缘淡出与
@@ -250,6 +252,14 @@ private class VoiceGlowEngine {
     private var gridHeight = -1f
 
     private val lightNode = RenderNode("eta-voice-glow")
+    // 微微色散：lightNode 的包装层——高斯在 lightNode 上先跑，AGSL 色散在本层后跑
+    // （顺序反了彩边会被 46u 糊平）。RuntimeShader(AGSL) 需 API 33，minSdk 34 直接用、
+    // 无需降级分支；RuntimeShader(String) / setFloatUniform(String,float,float) /
+    // setFloatUniform(String,float) / createRuntimeShaderEffect(RuntimeShader,String)
+    // 均已对 android-37.0 android.jar javap 核证（createRuntimeShaderEffect 无 input
+    // 重载，所以必须包一层节点，不能把两个 effect 直接串起来）。
+    private val dispersedNode = RenderNode("eta-voice-dispersed")
+    private val dispersionShader = RuntimeShader(DISPERSION_AGSL)
     // 点层单独离屏：4x 超采样后再缩回，亚像素点不会在光栅化时被吃掉（原型 DOT_SS）。
     private val dotNode = RenderNode("eta-voice-dots")
     private var dotBlurAppliedFor: Boolean? = null
@@ -335,11 +345,11 @@ private class VoiceGlowEngine {
         configureDotNode(lightMode)
         recordLightLayer(palette, lightMode)
 
-        // 主画布：胶囊底 → 模糊受光层 → 点阵，全部裁在胶囊内。
+        // 主画布：胶囊底 → 模糊+微微色散的受光层 → 点阵，全部裁在胶囊内。
         val saveCount = canvas.save()
         canvas.clipPath(capsulePath)
         canvas.drawColor(capsuleFill.toArgb())
-        canvas.drawRenderNode(lightNode)
+        canvas.drawRenderNode(dispersedNode)
         drawDots(canvas, palette, lightMode)
         canvas.restoreToCount(saveCount)
     }
@@ -360,6 +370,20 @@ private class VoiceGlowEngine {
         lightNode.setRenderEffect(
             RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP),
         )
+        // 微微色散层：与 lightNode 同尺寸（含 bottomPad 缓冲），内容 = lightNode
+        // （子节点是实时引用，这里只需随尺寸变化重录一次，光层逐帧重录自动透传）。
+        // 色散中心锚在平底中点，红通道离心外推、蓝通道向心内拉，量级 [DispersionAmount]。
+        val nodeWidth = ceil(width).toInt().coerceAtLeast(1)
+        val nodeHeight = ceil(height + bottomPad).toInt().coerceAtLeast(1)
+        dispersedNode.setPosition(0, 0, nodeWidth, nodeHeight)
+        dispersedNode.setRenderEffect(
+            RenderEffect.createRuntimeShaderEffect(dispersionShader, "content"),
+        )
+        dispersionShader.setFloatUniform("uCenter", width / 2f, capsuleBottom)
+        dispersionShader.setFloatUniform("uAmount", DispersionAmount * u)
+        val dispersed = dispersedNode.beginRecording(nodeWidth, nodeHeight)
+        dispersed.drawRenderNode(lightNode)
+        dispersedNode.endRecording()
         // 点层 backing 尺寸 = 画布 × DOT_SS；缩回时亚像素点仍有足够像素能量。
         dotNode.setPosition(
             0,
@@ -746,6 +770,10 @@ private class VoiceGlowEngine {
         /** 点层超采样倍率（原型 DOT_SS）。 */
         const val DotSupersample = 4f
 
+        /** 微微色散：红/蓝通道沿径向错开的像素量（u 缩放，6u ≈ 2.6px @56dp 胶囊）。
+         *  0 = 关闭。2026-11-11 用户定稿「微微色散的感觉可以来一点」；嫌彩边重就调小。 */
+        const val DispersionAmount = 6f
+
         /** 点阵顶部渐隐带（占胶囊高度比例）：整张网常驻铺满，带内从满亮渐隐到顶缘 0，
          *  曲线套 baseBrightness 同款 1.4 幂（见绘制处）。带宽 0.65：渐变覆盖上半段，
          *  与旧模型「60% 高度以上无点」的长渐变观感对齐——首版 0.15 太窄，顶几乎铺满
@@ -765,5 +793,27 @@ private class VoiceGlowEngine {
         val AddXfermode = PorterDuffXfermode(PorterDuff.Mode.ADD)
         val ScreenXfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
         val TintXfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+
+        /**
+         * 微微色散（AGSL，API 33+，minSdk 34 直用）：以平底中点为色散中心，
+         * 红通道沿离心方向外推、蓝通道向心内拉、绿通道原位，alpha 取三采样最大——
+         * 让彩边能越过光晕轮廓（预乘空间下边缘略暗属正常，量级只有几 px 不显）。
+         * 入参：content = 光层内容（已过 46u 高斯），uCenter = 平底中点 px，
+         * uAmount = 通道错位 px（[DispersionAmount]·u）。
+         */
+        private const val DISPERSION_AGSL = """
+            uniform shader content;
+            uniform float2 uCenter;
+            uniform float uAmount;
+            half4 main(float2 p) {
+                half4 center = content.eval(p);
+                float2 d = p - uCenter;
+                float len = length(d) + 0.0001;
+                float2 dir = d / len;
+                half4 sr = content.eval(p + dir * uAmount);
+                half4 sb = content.eval(p - dir * uAmount);
+                return half4(sr.r, center.g, sb.b, max(center.a, max(sr.a, sb.a)));
+            }
+        """
     }
 }
