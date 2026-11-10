@@ -4,6 +4,94 @@ All notable changes to **EtaExpressive** are documented here. Entries are groupe
 
 <!-- Ordered newest-first; generated from git tag history. -->
 
+## [v5.4.0] - 2026-11-11
+
+### Features
+
+- feat(xiaoai): 接入小爱 8.x 系统桥三线与 HyperOS 电源键终态接管
+
+- feat(dispatch): 调度智能体内核——工单派发、债权回报与调度台主页；派发回报落成工具卡与回执卡，支持暂停后积压、恢复再并入，并为调度台添加独立全量会话池
+
+- feat(live): Agent 后台运行时上岛显示进度并支持完成横幅，新增实时活动设置页
+
+- feat(agent): 工具调用审查模式——只读/严格/标准/智能/自动档位取代旧布尔开关，智能档支持 LLM 与决策模型双引擎逐次裁决
+
+- feat(agent): 工具渐进加载三档 + tools_search 关键词搜索 + MCP 按 server 延迟成组
+
+- feat(agent): 判断模型决策内核与运行入口决策路由、不匹配追踪、提示词关段与工具目录收窄；新增判断模型设置页与连通性测试
+
+- feat(agent): 虚拟屏实时视窗与顶部胶囊，动画无缝、触控焦点形状 morph；补焦点见证与 owner 交接闭环，副屏恢复入口按 root 放行并新增三级强制重置
+
+- feat(agent): 语音屏幕快捷功能与日程任务运行级工具直发
+
+- feat(security): 为危险操作增加分级风险判定与确认闸门
+
+- feat(voice): 语音入口全面转口述听写——流光胶囊接实时音量与启动预热、说完停顿自动发送、AGSL 微色散；系统语音助手弹窗接入新版听写，助手弹窗落座自动开录
+
+- feat(voice): 本机识别模型常驻并支持先录音后加载；离线语音包断点续传，断网或取消后从断点继续下载
+
+- feat(media): 媒体语义搜索结果新增宫格视图并落盘视图偏好；「添加到会话」+ composer「去搜索」入口；视频命中行预览图改用命中时刻帧
+
+- feat(ui): 全屏图片预览新增照片浏览器式缩略图条
+
+- feat(tts): 新增后台继续朗读偏好与开关
+
+- feat(folders): 管理文件夹升级为管理分类，并聚合远程设备入口
+
+- feat(memory): 支持按标题读写章节、合并多段核心记忆、分页续读提示与写入 changed 确认机制
+
+- feat(diagnostics): 导出/备份补齐完整性，并收紧凭据与敏感工具明细
+
+- feat(appearance): 主题模式改为四态按钮组，用量热力图改用表达式形状阶梯
+
+- feat(overlay): 悬浮胶囊改用官方漂浮容器阴影，支持甩出越界并按物理回弹到边缘
+
+### Fixes
+
+- fix(db): 修复 v39 结构漂移导致的冷启动闪退，并收紧迁移失败策略
+
+- fix(voice): 浮窗拆窗与熄屏必收声，实时通话纳入进程级麦克风锁；开麦 native 阻塞与离线引擎装载不再拖住互斥锁/取消
+
+- fix(agent): 只有「先跑后断」才标注重连；归一化工具调用参数中的字符串化 JSON；决策请求改用 provider 的 API 模型名
+
+- fix(dispatch): 补上忙时队列的终态排空，早失败路径不再悬挂债权
+
+- fix(vd): 副屏恢复屏障终结终态残留 owner 后重建；可见性屏障子任务 id 0 不再视为非法；owner 交接按 presentIds 精确判定
+
+- fix(overlay): 修复胶囊窗口逐帧缩水与展开窄于按钮组闪退，甩出期间冻结窗口尺寸收拢
+
+- fix(composer): 修复弹簧动画负值导致的崩溃；口述自动发送门禁现算，空框口述不再误退回编辑
+
+- fix(ui): 对话流严格贴底，跳转动画改总时长封顶并采用官方缓动曲线；侧栏松手收敛改恒定减速度梯形
+
+- fix: 修复纯黑模式在非深色主题下仍生效的问题
+
+- fix(remote): 发送后清空远程会话输入草稿，交付失败回填原文
+
+- fix(backup): 记忆导入失败时补偿恢复旧快照
+
+- fix(i18n): 补齐繁体缺失文案与续传百分比占位符；屏幕预设提示词改为指向随消息附带的截图
+
+### Performance
+
+- perf(media): 检索流式分片首屏即渲染 + 视频时刻异步精排 + 引擎预热
+
+### Refactor
+
+- refactor(nav): 导航容器从 NavHost 换到 miuix NavDisplay，移除 androidx.navigation 依赖并为 miuix 补 keep 规则
+
+- refactor(ui): 颜色/透明度令牌单源化、弹窗面板按钮收敛项目唯一实现、状态色收敛 EtaStatus 单源、加载指示收口 EtaLoading
+
+- refactor(ui): 弹层/浮窗/页面过渡统一到官方 MotionScheme
+
+- refactor(overlay): 胶囊形变与物理并入单一帧循环，展开动画布局轴并到单一主轴消除收尾抽搐
+
+### Build
+
+- chore(build): 升级 Kotlin Gradle 插件至 2.4.20；收敛 Compose 与 ui-test 版本到版本目录，避免传递依赖静默抬版
+
+- fix(ci): 提高单测 worker 堆，消除 Robolectric 与进程类用例共用 512MB 堆的停滞
+
 ## [v5.3.20] - 2026-11-02
 
 ### Features
