@@ -97,6 +97,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -136,6 +137,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
@@ -508,22 +510,36 @@ internal fun Material3ComposerBody(
             animationSpec = tween(250, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f)),
             label = "composer_toolbar_container",
         )
-        // 胶囊左右各让出（40dp 圆钮 + 8dp 间距）给 × / ✓（失败提示时是 × / 设置）。
-        // 语音态两枚钮移出胶囊、各自贴住工具栏内容区两端（端距 8dp → 0，见 × 槽与 trailingEnd），
-        // 所以胶囊让出 48dp 后，胶囊到按钮正好是原型 --gap-voice 的 8dp。
-        val pillInset by animateDpAsState(
-            targetValue = if (dictating || dictationNotice) {
+        // 胶囊让位分左右两端（0 → 让位值 弹簧，两端连续收窄，与原型 `.field` 语音态 margin 一致）：
+        // - 听写态：× / ✓ 两枚 40×56 胶囊贴住内容区两端（0 端距），胶囊两端各让 40 + 8 = 48dp，
+        //   胶囊到按钮正好是原型 --gap-voice 的 8dp。
+        // - 失败提示态：× 是 40×40 同心圆钮，胶囊左端让 8 + 40 + 8 = 56dp（外距 16dp 同心）；
+        //   右端**右伸包住齿轮**——右缘贴内容区末端（距外层 8dp，条 28 + 8 = 外 36 端盖同心），
+        //   齿轮叠在胶囊右端内（trailingEnd 8dp：齿轮 20 −8− 条 28 同心，距外层 16dp）。
+        val pillInsetStart by animateDpAsState(
+            targetValue = when {
+                dictating -> ComposerVoiceButtonSize.width + ComposerVoiceGap
+                dictationNotice ->
+                    ComposerConcentricGap + ComposerVoiceButtonSize.width + ComposerVoiceGap
+                else -> 0.dp
+            },
+            animationSpec = ComposerMorphDpSpec,
+            label = "composer_pill_inset_start",
+        )
+        val pillInsetEnd by animateDpAsState(
+            targetValue = if (dictating) {
                 ComposerVoiceButtonSize.width + ComposerVoiceGap
             } else {
                 0.dp
             },
             animationSpec = ComposerMorphDpSpec,
-            label = "composer_pill_inset",
+            label = "composer_pill_inset_end",
         )
         // Spatial 弹簧在收尾阶段会过冲：往回缩（48dp → 0dp）时会短暂冲到负值，
         // 而 `Modifier.padding` 对负值直接抛 IllegalArgumentException（release 包上表现为闪退），
         // 所以进 padding 前先收敛到非负，过冲段视觉上等价于 0。
-        val pillInsetSafe = pillInset.coerceAtLeast(0.dp)
+        val pillInsetStartSafe = pillInsetStart.coerceAtLeast(0.dp)
+        val pillInsetEndSafe = pillInsetEnd.coerceAtLeast(0.dp)
 
         M3ComposerQueueStrip(
             items = queuedMessages,
@@ -678,9 +694,10 @@ internal fun Material3ComposerBody(
                     targetState = pillMode,
                     modifier = Modifier
                         .fillMaxWidth()
-                        // 口述时左右让出 × / ✓ 的宽度（0 → 48dp 弹簧）：胶囊两端连续收窄，
-                        // 与原型 `.field` 语音态 margin 的 morph 一致。
-                        .padding(horizontal = pillInsetSafe)
+                        // 口述时两端让出 × / ✓ 的宽度（0 → 让位值 弹簧）：胶囊两端连续收窄，
+                        // 与原型 `.field` 语音态 margin 的 morph 一致；失败提示态右端 0——胶囊
+                        // 右伸包住齿轮（见 pillInsetStart/End 注释）。
+                        .padding(start = pillInsetStartSafe, end = pillInsetEndSafe)
                         .background(pillBackdropColor, MaterialTheme.shapes.extraLarge)
                         // 供回归测试对“胶囊衔接”期间的像素取样（见 M3ComposerToolbarLayoutTest）。
                         .testTag("composer-pill-slot"),
@@ -785,10 +802,15 @@ internal fun Material3ComposerBody(
                 // 口述失败提示同样用它关掉（提示不是会话，× 即清除）。
                 // 交给独立 composable：本槽位在 RowScope 里的 BoxScope 中，直接调
                 // AnimatedVisibility 会解析到 RowScope 重载并触发 DSL_SCOPE_VIOLATION。
+                // zIndex(-1)：画在本 Box 里胶囊槽（默认 0）之下——× 的滑入起点在胶囊区域内，
+                // 压到下层后即「从流光胶囊身后平移出来」；胶囊背景不透明，身后部分被完全遮住。
+                // leading / trailing 槽保持默认 0，与胶囊互不重叠，不受影响。
                 M3DictationCancelSlot(
                     visible = dictating || dictationNotice,
                     onCancel = dictation::cancel,
-                    modifier = Modifier.align(Alignment.BottomStart),
+                    // 失败提示态 × 是 40×40 同心圆钮（与齿轮对称）；听写态保持 40×56 胶囊与 ✓ 同形。
+                    circular = dictationNotice,
+                    modifier = Modifier.align(Alignment.BottomStart).zIndex(-1f),
                 )
 
                 // 尾部按钮槽：Call（语音入口）⇄ 发送 / 停止 / 继续 ⇄ 停止（语音进行中）。
@@ -820,25 +842,27 @@ internal fun Material3ComposerBody(
                 }
                 // 口述时 ✓ 长到 56dp：下端不再让出 8dp 端距，右端也从胶囊内缩位置移到工具栏内容区
                 // 末端（端距 8dp → 0），与 × 对称——原型 #voiceBtn 的 right/bottom 16 → 8 同款。
+                // 失败提示态齿轮保持 8dp 同心端距：齿轮叠在被胶囊右伸包住的右端内
+                // （齿轮 20 −8− 条 28），距外层 16dp，见 pillInsetStart/End 注释。
                 val trailingBottom by animateDpAsState(
                     targetValue = if (dictating) 0.dp else ComposerConcentricGap,
                     animationSpec = ComposerMorphDpSpec,
                     label = "composer_trailing_bottom",
                 )
                 val trailingEnd by animateDpAsState(
-                    targetValue = if (dictating || dictationNotice) 0.dp else ComposerConcentricGap,
+                    targetValue = if (dictating) 0.dp else ComposerConcentricGap,
                     animationSpec = ComposerMorphDpSpec,
                     label = "composer_trailing_end",
                 )
-                // 同 pillInsetSafe：0dp 与 8dp 之间来回过冲会产生负 padding，
+                // 同 pillInsetStartSafe / pillInsetEndSafe：0dp 与 8dp 之间来回过冲会产生负 padding，
                 // 而 padding 负值会直接抛 IllegalArgumentException，必须先收敛。
                 val trailingBottomSafe = trailingBottom.coerceAtLeast(0.dp)
                 val trailingEndSafe = trailingEnd.coerceAtLeast(0.dp)
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        // 正常态：40dp 圆钮半径 20dp 与内层 28dp 圆角相差 8dp，端距 8dp 同心。
-                        // 听写态：圆钮已移出胶囊，贴住工具栏内容区末端。
+                        // 正常态 / 失败提示态：40dp 圆钮半径 20dp 与内层 28dp 圆角相差 8dp，端距 8dp 同心。
+                        // 听写态：✓ 胶囊已移出胶囊，贴住工具栏内容区末端。
                         .padding(end = trailingEndSafe, bottom = trailingBottomSafe)
                         // 供回归测试对“尾部按钮形变”期间的像素取样（见 M3ComposerToolbarLayoutTest）。
                         .testTag("composer-trailing-slot"),
@@ -1597,13 +1621,16 @@ private fun M3DictationNoticeBar(message: String) {
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        // 为共享的「去配置」圆钮预留同宽空间（圆钮本体在 composer_trailing 里叠放在右下角）。
+        // 为叠在胶囊右端内的「去配置」圆钮预留同宽空间（圆钮本体在 composer_trailing 槽，
+        // 失败提示态胶囊右伸包住它，见 pillInsetEnd 注释；文字到此止步，不压齿轮）。
         Spacer(modifier = Modifier.size(IconButtonDefaults.smallContainerSize()))
     }
 }
 
 /**
- * 口述未配置时的「去配置」圆钮：官方 tonal 圆钮 + 设置图标，与麦克风同尺寸、同槽位。
+ * 口述未配置时的「去配置」圆钮：官方填充圆钮 + 设置图标，与口述触发麦克风钮
+ * （[M3DictationMorphButton]）同组件、同官方默认配色（primary / onPrimary，同配色由
+ * 构造保证）。composer 圆钮豁免，不传 shapes（无按压 morph）。
  * 点击后由调用方清除提示，再通过 [LocalOpenVoiceSettings] 打开语音设置页。
  */
 @Composable
@@ -1611,7 +1638,7 @@ private fun M3DictationSettingsButton(onClick: () -> Unit) {
     val view = LocalView.current
     val description = stringResource(R.string.voice_mode_dictation_configure)
     EtaTooltip(text = description) {
-        FilledTonalIconButton(
+        FilledIconButton(
             onClick = {
                 TouchHaptics.click(view)
                 onClick()
@@ -1681,11 +1708,20 @@ private fun M3DictationVoiceBar(
  * 单独包一层 composable：调用点位于外层工具栏 RowScope 内的 BoxScope，
  * 直接在那里调 `AnimatedVisibility` 会被解析成 RowScope 的成员重载并触发 DSL_SCOPE_VIOLATION；
  * 在无接收者的顶层函数里调用则解析到普通的非作用域重载。
+ *
+ * z 序：调用点挂 `zIndex(-1f)`，本槽画在流光胶囊槽之下——滑入 / 滑出穿过胶囊区域时
+ * × 从胶囊身后露出 / 缩回，而不是盖在流光上面（见调用点注释）。
+ *
+ * [circular] 仅在失败提示态为 true：× 缩成 40×40 同心圆钮（与齿轮对称）；听写态保持
+ * 40×56 竖直胶囊与 ✓ 同形——两形态同用 CornerFull，随容器尺寸自适应，无需换形状。
+ * 退出动画期间冻结消失瞬间的 [circular]：点 × 先清 notice 再播退出动画，不冻结的话
+ * × 会在滑出途中变回胶囊形状。
  */
 @Composable
 private fun M3DictationCancelSlot(
     visible: Boolean,
     onCancel: () -> Unit,
+    circular: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // 原型 #cancelBtn：`opacity .25s ease .06s` + `transform .35s ease-emph .06s`，
@@ -1697,14 +1733,31 @@ private fun M3DictationCancelSlot(
         easing = ComposerMorphEasing,
     )
     val slideOffset = with(LocalDensity.current) { 48.dp.roundToPx() }
+    // 收回瞬间冻结形态：点 × 会先清掉 notice，circular 立刻翻回 false，而退出动画还要
+    // 滑 60ms + 350ms——不冻结的话，收回去的 × 会在滑出途中变回 40×56 胶囊。冻结
+    // 「最后一次可见时的形态」，退出全程沿用；重新可见时由 SideEffect 立即同步。
+    var lastVisibleCircular by remember { mutableStateOf(circular) }
+    SideEffect {
+        if (visible) lastVisibleCircular = circular
+    }
+    val slotCircular = if (visible) circular else lastVisibleCircular
     AnimatedVisibility(
         visible = visible,
-        modifier = modifier,
+        // 失败提示态：圆钮按同心规则让出 start/bottom 各 8dp 内容端距（外距 16dp，与右侧齿轮
+        // 对称）；听写态胶囊贴住内容区两端（0 端距，与 ✓ 同形）。端距随形态一起用冻结值，
+        // 退出滑出途中不会跳位。
+        modifier = modifier.then(
+            if (slotCircular) {
+                Modifier.padding(start = ComposerConcentricGap, bottom = ComposerConcentricGap)
+            } else {
+                Modifier
+            },
+        ),
         enter = fadeIn(fadeSpec) + slideInHorizontally(slideSpec) { slideOffset },
         exit = fadeOut(fadeSpec) + slideOutHorizontally(slideSpec) { slideOffset },
         label = "composer_dictation_cancel",
     ) {
-        M3DictationCancelButton(onClick = onCancel)
+        M3DictationCancelButton(onClick = onCancel, circular = slotCircular)
     }
 }
 
@@ -1717,6 +1770,14 @@ private fun M3DictationCancelSlot(
  *
  * 高度用 tween 而不是 Spatial 弹簧：弹簧的收尾过冲会让 56dp 的按钮瞬间高过输入胶囊，
  * 把整条工具栏撑高 1~2dp；原型这段 morph 本来就是无过冲的 emphasized 曲线。
+ *
+ * 按压形状 morph 走官方 expressive 重载（`shapes` 为第二参数）+ `IconButtonDefaults.shapes()`。
+ * 取证 material3 1.5.0-alpha29 sources（IconButton.kt / IconButtonDefaults.kt / ShapeTokens.kt）：
+ * 默认对 = CornerFull → pressed CornerSmall（`RoundedCornerShape(8dp)`，
+ * `SmallIconButtonTokens.PressedContainerShape = ShapeKeyTokens.CornerSmall`）；按下经
+ * `collectIsPressedAsState` + `rememberAnimatedShape`（MotionScheme DefaultEffects，无回弹）
+ * 在两个 CornerBasedShape 间 morph。静息 `filledShape` 同为 CornerFull，外观不变；
+ * 40×56 竖直胶囊按下整体压向 8dp 圆角是官方令牌行为（plain 重载无 morph）。
  */
 @Composable
 private fun M3DictationMorphButton(
@@ -1759,6 +1820,7 @@ private fun M3DictationMorphButton(
                 TouchHaptics.click(view)
                 if (committing) onCommit() else onRecord()
             },
+            shapes = IconButtonDefaults.shapes(),
             modifier = Modifier
                 .size(width = ComposerVoiceButtonSize.width, height = height)
                 .semantics { contentDescription = description },
@@ -1794,11 +1856,16 @@ private fun M3DictationMorphButton(
 }
 
 /**
- * 口述取消 ×：与 ✓ 同形（40×56 竖直胶囊），容器取中性的 `surfaceContainerHighest` /
- * `onSurfaceVariant` 灰阶（原型的「灰底取消」，不用主题强调色抢确认钮的视线）。
+ * 口述取消 ×：听写态与 ✓ 同形（40×56 竖直胶囊），失败提示态为 40×40 同心圆钮（与齿轮
+ * 对称，见 [M3DictationCancelSlot]）——两形态同用 CornerFull，随容器尺寸自适应。
+ * 容器取中性的 `surfaceContainerHighest` / `onSurfaceVariant` 灰阶（原型的「灰底取消」，
+ * 不用主题强调色抢确认钮的视线）。
+ *
+ * 按压形状 morph 与 [M3DictationMorphButton] 同款：官方 expressive 重载 +
+ * `IconButtonDefaults.shapes()`（取证结论见它的 KDoc），静息 CornerFull 外观不变。
  */
 @Composable
-private fun M3DictationCancelButton(onClick: () -> Unit) {
+private fun M3DictationCancelButton(onClick: () -> Unit, circular: Boolean = false) {
     val view = LocalView.current
     val description = stringResource(R.string.voice_mode_dictation_cancel)
     EtaTooltip(text = description) {
@@ -1807,9 +1874,10 @@ private fun M3DictationCancelButton(onClick: () -> Unit) {
                 TouchHaptics.click(view)
                 onClick()
             },
+            shapes = IconButtonDefaults.shapes(),
             modifier = Modifier.size(
                 width = ComposerVoiceButtonSize.width,
-                height = ComposerVoiceButtonHeight,
+                height = if (circular) ComposerVoiceButtonSize.height else ComposerVoiceButtonHeight,
             ),
             colors = IconButtonDefaults.filledTonalIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,

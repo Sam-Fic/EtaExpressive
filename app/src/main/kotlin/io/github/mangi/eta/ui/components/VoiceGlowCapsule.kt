@@ -41,6 +41,13 @@ import kotlin.random.Random
 import kotlinx.coroutines.isActive
 
 /**
+ * 浅色点阵的混白比例：点阵走「发光发白」路线——比底亮的点半透明混合只会更亮、
+ * 不会发灰（发灰的是比底暗的低饱和色斑）。原设计档 0.55 在带色相的新底色上偏弱，
+ * 2026-11-11 用户定稿「发光发白」后起步 0.7；嫌不够白调大、想更跟主题色调小。
+ */
+private const val LightDotWhiteMix = 0.7f
+
+/**
  * 口述语音条里的「流光胶囊」，逐项移植自语音条原型 `index.html` 的 `createVoiceCapsule`。
  * 该原型已不在参考仓库 D:\gemini-voice-light 里（在案只剩纯灯效 demo
  * `capsule_light_triangular_dot_matrix.html`，效果层与它逐项一致）；数值以本文件各处注释为准。
@@ -54,14 +61,16 @@ import kotlinx.coroutines.isActive
  * 2. 受光层：metaball 与沿下轮廓起伏的波浪主体一起做一次高斯扩散（RenderEffect 模糊），
  *    浅色额外叠一层横向色相水洗（SRC_ATOP 只染已有光的像素）；
  * 3. 点阵层：透视三角点阵被光推起（整列抬升 + 局部抬升），近处大、远处小，
- *    深色 additive 提亮、浅色按最近光团取色。
+ *    常驻铺满整颗胶囊（「整张网」，透明度只由顶/底渐隐带、光挖空、左右边缘淡出与
+ *    闪烁调制）；深色 additive 提亮、浅色发白（palette.dots 混白点色）。
  *
  * 所有几何按胶囊高度纯等比缩放：基准 337（参考预览图的胶囊高度），
  * `u = 高度px / 337`——不做任何下限，等价于把参考胶囊等比缩到本胶囊的高度。
  *
- * 配色跟随 M3 主题：光效与点阵的主取色，浅色用 `colorScheme.tertiaryContainer`、
- * 深色由 `colorScheme.primary` / `inversePrimary` 派生（偏薰衣草白）；胶囊底色取
- * 表面角色，不写任何颜色字面量。
+ * 配色跟随 M3 主题：浅色光效纯从 `tertiaryContainer` 派生（White 只做提亮高光，
+ * 不混黑、不引 tertiary——2026-11-11 用户定稿）；胶囊底色浅色取 `surfaceBright`
+ * （与工具调用卡片同档表面）、深色取 `surfaceContainerLowest`。深色光效由
+ * `colorScheme.primary` / `inversePrimary` 派生（偏薰衣草白），不写任何颜色字面量。
  */
 @Composable
 internal fun VoiceGlowCapsule(level: () -> Float, modifier: Modifier = Modifier) {
@@ -76,12 +85,19 @@ internal fun VoiceGlowCapsule(level: () -> Float, modifier: Modifier = Modifier)
     ) {
         glowPalette(
             base = if (lightMode) colorScheme.tertiaryContainer else colorScheme.primary,
+            // 深一档的锚色只服务深色模式（inversePrimary = 暗色 scheme 里主色的深端）；
+            // 浅色纯从 tertiaryContainer 取、不引 tertiary（2026-11-11 用户定稿），不用此参数。
             deeper = colorScheme.inversePrimary,
             lightMode = lightMode,
         )
     }
+    // 浅色底取 surfaceBright：与工具调用卡片同一档表面（从页面背景浮出一档），
+    // 2026-11-11 用户定稿（此前短暂用过输入框同色 surfaceContainer）。
+    // 低 alpha 光残尾叠浅底会更淡、色相仍纯（光效纯从 tertiaryContainer 取）；
+    // 实机嫌顶部太淡的杠杆是光团贝尔包络 0.62 提档，不是给底色回填染色。
+    // 深色底近黑维持表面角色不动（近黑上低 alpha 光读作发光）。
     val capsuleFill = if (lightMode) {
-        colorScheme.surfaceContainerHigh
+        colorScheme.surfaceBright
     } else {
         colorScheme.surfaceContainerLowest
     }
@@ -115,17 +131,20 @@ internal fun VoiceGlowCapsule(level: () -> Float, modifier: Modifier = Modifier)
 private class GlowPalette(val blobs: List<Color>, val dots: Color, val core: Color)
 
 private fun glowPalette(base: Color, deeper: Color, lightMode: Boolean): GlowPalette = if (lightMode) {
-    // 浅色：基准 tertiaryContainer；浅底胶囊上要读作「发光」，光团比基准更深、
-    // 提亮的几档混在一起（深色压饱和、白色提亮，避免浅底上糊成一团）。
+    // 浅色：纯从 tertiaryContainer 取、不引 tertiary（2026-11-11 用户定稿，取代上一版
+    // 「tertiary 全彩度锚」方案）；饱和度上限即 tertiaryContainer 本色。深浅变化只用
+    // White 提亮档表达、不混黑——混黑在浅底低 alpha 区就是发灰的来源。底色
+    // （surfaceContainer，与输入框同色）不在本调色板内，由调用方给定。
     GlowPalette(
         blobs = listOf(
-            base,
-            lerp(base, Color.Black, 0.16f),
-            lerp(base, Color.White, 0.16f),
-            lerp(base, Color.White, 0.34f),
-            lerp(base, Color.Black, 0.08f),
+            base,                           // 0 主体：波浪底档与光团本色
+            lerp(base, Color.White, 0.20f), // 1 波浪上段渐隐档：明显浅一档
+            lerp(base, Color.White, 0.16f), // 2 光团变体 / 水洗
+            lerp(base, Color.White, 0.34f), // 3 高光档：水洗两端 + 最亮变体
+            lerp(base, Color.White, 0.08f), // 4 微提亮变体
         ),
-        dots = lerp(base, Color.White, 0.55f),
+        // 点阵发白（见 [LightDotWhiteMix]）：比底亮的点半透明混合只会更亮、不会发灰。
+        dots = lerp(base, Color.White, LightDotWhiteMix),
         // 浅色不点白热核心：核心就是光团本色，否则底部会像在发白光。
         core = base,
     )
@@ -335,7 +354,10 @@ private class VoiceGlowEngine {
      */
     private fun buildTriangularGrid() {
         dots.clear()
-        val spacing = 25f * u
+        // 列距故意偏离原型（25）：等比缩到 ~56dp 胶囊后只有 ~4dp，整片糊成纹理、
+        // 单点几乎不可见（2026-11-11 用户定稿调疏）。48u ≈ 底行列距 8dp、行距 ~7dp，
+        // 浅深两色共用同一套网格；其余透视/交错结构照旧。
+        val spacing = 48f * u
         val baseRowH = spacing * (sqrt(3f) / 2f)
         val perspective = 2.2f
         val centerX = width / 2f
@@ -509,7 +531,7 @@ private class VoiceGlowEngine {
         wavePath.close()
 
         // 渐变锚在平底：中段最亮，沿两端弧线自然变暗、消失。
-        // 两端色取调色板前两档（浅色基准 = tertiaryContainer，深色 = primary）。
+        // 两端色取调色板前两档（浅色：全彩度主体 + 向底色浅端退的一档；深色：primary 两档）。
         val baseColor = palette.blobs[0]
         val deeperColor = palette.blobs[1]
         waveColors[0] = if (lightMode) argb(baseColor, 0.95f) else argb(Color.White, 0.95f)
@@ -546,7 +568,10 @@ private class VoiceGlowEngine {
 
         // 弹性插值按帧率折算：原型每帧 0.12，这里保证 120Hz 与 60Hz 手感一致。
         val elastic = 1f - (1f - 0.12f).pow(frameScale)
-        val dotBase = 1.8f * u
+        // 点径同样故意偏离原型（1.8）：缩放后底行直径 ~0.75dp（2px@3x）几乎看不见。
+        // 4.0u → 底行半径 ~0.85dp、直径 ~1.7dp，配上 48u 列距单点清晰可辨
+        // （2026-11-11 用户定稿；深度衰减 0.15+1.1·depth 照旧，顶部仍渐隐归零）。
+        val dotBase = 4f * u
         val nodeWidth = ceil(width * DotSupersample).toInt().coerceAtLeast(1)
         val nodeHeight = ceil(height * DotSupersample).toInt().coerceAtLeast(1)
         val dotCanvas = dotNode.beginRecording(nodeWidth, nodeHeight)
@@ -570,15 +595,26 @@ private class VoiceGlowEngine {
             val targetY = dot.baseY - (columnPush * vertFade + localPush)
             dot.y += (targetY - dot.y) * elastic
 
+            // 整张网模型（2026-11-11 用户定稿，故意偏离草稿的 baseBrightness 60% 硬截断
+            // ——勿对齐回去）：点常驻铺满整颗胶囊，透明度由五件事调制——顶部渐隐带
+            // 与底部淡入带（均随光抬升）、光挖空（越亮越淡，草稿的通透感设计，保留）、
+            // 左右边缘淡出与闪烁。
             val yProgress = ((capsuleBottom - dot.baseY) / height).coerceIn(0f, 1f)
-            val adjustedYProgress = max(0f, yProgress - light * 0.3f)
-            var baseBrightness = max(0f, 1f - adjustedYProgress / 0.6f)
-            baseBrightness = baseBrightness.pow(1.4f)
-            val bottomFadeFactor = min(1f, yProgress / 0.333f)
+            // 光抬升（草稿同款 yProgress - light·0.3）：光晕越亮，点的有效高度越低。
+            // 顶部：亮柱上方的点被渐隐带压得更少，淡出位置随光往上推；
+            // 底部：淡入起点随光往上移——光晕越强，点出现得越远（2026-11-11 用户定稿；
+            // 草稿底部用原始 yProgress，系故意偏离）。一个系数喂两条带，调档两处同步。
+            val litYProgress = max(0f, yProgress - light * 0.3f)
+            // 顶部渐隐带：带底满亮 → 顶缘 0（带宽 [DotTopFadeBand]，1.4 幂曲线与
+            // 草稿 baseBrightness 同形——顶部读得出长渐变，而不是几乎铺满）。
+            val topFade = ((1f - litYProgress) / DotTopFadeBand).coerceIn(0f, 1f).pow(1.4f)
+            // 底部淡入带：底缘 0 → 带顶 1。带宽从草稿的 1/3 拉长到 1/2——48u 疏网格下
+            // 1/3 带内只剩 3~4 行，渐变读不出来（[DotBottomFadeBand]）。
+            val bottomFadeFactor = min(1f, litYProgress / DotBottomFadeBand)
             val lightCutout = min(1f, light * MaskForce)
             val maskDepth = (dot.baseY / height).coerceIn(0f, 1f).pow(2f)
             val cutout = if (lightMode) lightCutout * 0.4f else lightCutout
-            var opacity = baseBrightness * bottomFadeFactor *
+            var opacity = topFade * bottomFadeFactor *
                 (1f - cutout * 0.85f * maskDepth) * shimmer * pushEdge
             if (lightMode) opacity *= 1.6f
             // 启动预热：点阵亮度随光一起从全灭升起。
@@ -589,7 +625,9 @@ private class VoiceGlowEngine {
             if (opacity <= 0.01f || dot.y > capsuleBottom + 1f) continue
 
             val radius = dotBase * (0.15f + 1.1f * dot.depth)
-            val color = if (lightMode) nearestBlobColor(dot.baseX, palette) else palette.dots
+            // 浅深两色同一发白点阵色（palette.dots）：浅色不再按最近光团取鲜艳色——
+            // 混黑档光团色与低 opacity 叠浅底正是中段点阵发灰的来源（2026-11-11 定稿）。
+            val color = palette.dots
             dotPaint.color = android.graphics.Color.argb(
                 (opacity * 255f).roundToInt().coerceIn(0, 255),
                 (color.red * 255f).roundToInt().coerceIn(0, 255),
@@ -614,20 +652,6 @@ private class VoiceGlowEngine {
             canvas.drawRenderNode(dotNode)
             canvas.restoreToCount(layer)
         }
-    }
-
-    /** 浅色点阵取最近光团的鲜艳色：点阵跟着流光的多色一起变。 */
-    private fun nearestBlobColor(x: Float, palette: GlowPalette): Color {
-        var best = 0
-        var bestDistance = Float.MAX_VALUE
-        for (i in blobs.indices) {
-            val distance = abs(x - blobX[i])
-            if (distance < bestDistance) {
-                bestDistance = distance
-                best = i
-            }
-        }
-        return palette.blobs[best % palette.blobs.size]
     }
 
     /**
@@ -685,6 +709,16 @@ private class VoiceGlowEngine {
 
         /** 点层超采样倍率（原型 DOT_SS）。 */
         const val DotSupersample = 4f
+
+        /** 点阵顶部渐隐带（占胶囊高度比例）：整张网常驻铺满，带内从满亮渐隐到顶缘 0，
+         *  曲线套 baseBrightness 同款 1.4 幂（见绘制处）。带宽 0.65：渐变覆盖上半段，
+         *  与旧模型「60% 高度以上无点」的长渐变观感对齐——首版 0.15 太窄，顶几乎铺满
+         *  （2026-11-11 用户看截图后定稿）。故意偏离草稿的硬截断模型，勿对齐回去。 */
+        const val DotTopFadeBand = 0.65f
+
+        /** 点阵底部淡入带（占胶囊高度比例）：底缘 0 → 带顶 1。故意偏离草稿的 1/3——
+         *  48u 疏网格下 1/3 带内只剩 3~4 行读不出渐变，2026-11-11 用户定稿拉长到 1/2。 */
+        const val DotBottomFadeBand = 0.5f
 
         /** 启动预热的时长（60fps 帧数，约 600ms）：会话开始时光效从全灭升到实际强度。 */
         const val WarmupFrames = 36f
