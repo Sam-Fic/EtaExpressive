@@ -75,7 +75,9 @@ internal object AgentToolRequirements {
         )
         register(
             RootRequirement.REQUIRED,
-            "start_virtual_session", "finish_virtual_session", "inspect_virtual_backend", "top_memory_apps", "top_storage_apps", "wifi_credentials", "read_sms_code",
+            // inspect_virtual_backend 已不对模型下发（7ef000614），不再注册，避免注册表
+            // 出现永远不下发的工具；执行器与工具页保留仅作本地诊断入口。
+            "start_virtual_session", "finish_virtual_session", "top_memory_apps", "top_storage_apps", "wifi_credentials", "read_sms_code",
             "get_logcat", "app_state_control",
             "list_alarms", "list_active_timers", "get_health_summary", "search_clipboard_history",
             "search_media", "search_audio", "search_recordings", "search_files",
@@ -151,7 +153,8 @@ internal object AgentToolRequirements {
         "swipe", "scroll", "scroll_element", "type_text", "input_text", "replace_text",
         "clear_text", "set_clipboard", "get_clipboard", "paste_text", "press_key", "wait",
         "wait_for_text", "wait_for_package", "open_system_panel",
-        "start_virtual_session", "finish_virtual_session", "keep_virtual_result", "inspect_virtual_backend",
+        // inspect_virtual_backend 已不对模型下发，不再属于 GUI 家族（注册表同步摘除）。
+        "start_virtual_session", "finish_virtual_session", "keep_virtual_result",
     )
 
     fun isScreenTool(name: String): Boolean = name in SCREEN_TOOL_NAMES

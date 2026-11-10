@@ -14,24 +14,14 @@ class VirtualDisplayToolContractTest {
     @Test
     fun inspectVirtualBackendIsDiagnosticOnlyAndNotAdvertised() {
         // 只读探针固定返回 ready=false / session_authenticated=false，模型曾把它误当成
-        // 当前虚拟会话状态。保留 Root 分类与手动调用能力，但不再向模型宣传。
+        // 当前虚拟会话状态。不再向模型宣传，且注册表已整体摘除（everyRegisteredTool
+        // 契约要求注册表=目录并集）；本地诊断入口走 AgentLocalTools 的直接分发与工具页。
         val rooted = catalog(rootAvailable = true)
         assertFalse("inspect_virtual_backend" in rooted.names())
         assertFalse("inspect_virtual_backend" in AgentToolGroups.SCREEN_GROUP.toolNames)
-        assertEquals(
-            RootRequirement.REQUIRED,
-            AgentToolRequirements.rootRequirement("inspect_virtual_backend"),
-        )
+        assertFalse("inspect_virtual_backend" in AgentToolRequirements.toolNames)
         val rootless = AgentToolRequirements.project(rooted, rootAvailable = false)
         assertFalse("inspect_virtual_backend" in rootless.names())
-        assertEquals(
-            "ROOT_REQUIRED",
-            AgentToolCapabilities(rootAvailable = false).unavailableCode("inspect_virtual_backend"),
-        )
-        assertEquals(
-            null,
-            AgentToolCapabilities(rootAvailable = true).unavailableCode("inspect_virtual_backend"),
-        )
     }
 
     @Test
