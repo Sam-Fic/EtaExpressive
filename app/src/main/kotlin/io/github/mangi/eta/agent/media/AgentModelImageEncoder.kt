@@ -299,6 +299,11 @@ internal object AgentModelImageEncoder {
         mimeHint: String = "image/png",
     ): AgentModelClient.ModelImage? {
         if (!bytes.hasSupportedImageMagic()) return null
+        // 高分屏的 PNG 原始字节常超 [MAX_AGENT_IMAGE_BYTES]（4K 截图轻松 13MB+）：
+        // 这类帧不做字节级转码，返回 null 让 [AgentImageCodec.fromScreenBytes] 落回
+        // 位图解码路径按 1080p 缩放，而不是把整个截图工具炸成 IllegalArgumentException
+        // （inspectBounds 的体积闸门是为「用户附件」设的，屏幕帧的尺寸自有合约约束）。
+        if (bytes.size > MAX_AGENT_IMAGE_BYTES) return null
         val bounds = inspectBounds(bytes, mimeHint)
         return transcodeWithinBudget(bytes, source, bounds, screenToolProfile)
             ?: transcodeWithinBudget(bytes, source, bounds, toolVisionProfile)

@@ -325,10 +325,12 @@ class AgentImageCodecTest {
     @Test
     fun attachmentModelReencodesFromOriginalAtVisionBudget() {
         val context = RuntimeEnvironment.getApplication()
-        val sourceFile = File(context.cacheDir, "attachment-model-${System.nanoTime()}.png")
+        // 源文件用 JPEG：1440×3200 的图案 PNG 在 Robolectric 编码下约 18MB，
+        // 必超 inspectFile 的 12MB 附件闸门（视为不可读），测试就无从谈起重编码了。
+        val sourceFile = File(context.cacheDir, "attachment-model-${System.nanoTime()}.jpg")
         val bitmap = patternedBitmap(width = 1_440, height = 3_200)
         FileOutputStream(sourceFile).use { output ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output)
         }
         bitmap.recycle()
         try {
