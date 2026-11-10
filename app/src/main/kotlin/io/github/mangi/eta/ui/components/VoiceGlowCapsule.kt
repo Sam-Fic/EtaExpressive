@@ -668,8 +668,9 @@ private class VoiceGlowEngine {
             // 顶部渐隐带：带底满亮 → 顶缘 0（带宽 [DotTopFadeBand]，1.4 幂曲线与
             // 草稿 baseBrightness 同形——顶部读得出长渐变，而不是几乎铺满）。
             val topFade = ((1f - litYProgress) / DotTopFadeBand).coerceIn(0f, 1f).pow(1.4f)
-            // 底部淡入带：底缘 0 → 带顶 1。带宽从草稿的 1/3 拉长到 1/2——48u 疏网格下
-            // 1/3 带内只剩 3~4 行，渐变读不出来（[DotBottomFadeBand]）。
+            // 底部淡入带：底缘 0 → 带顶 1。带宽 0.4：草稿 1/3 在疏网格下读不出渐变、
+            // 1/2 又让低区全是半透点（不透明的点下不去）——两轮实机定稿
+            // 0.4（[DotBottomFadeBand]）。
             val bottomFadeFactor = min(1f, litYProgress / DotBottomFadeBand)
             val lightCutout = min(1f, light * MaskForce)
             val maskDepth = (dot.baseY / height).coerceIn(0f, 1f).pow(2f)
@@ -780,9 +781,11 @@ private class VoiceGlowEngine {
          *  （2026-11-11 用户看截图后定稿）。故意偏离草稿的硬截断模型，勿对齐回去。 */
         const val DotTopFadeBand = 0.65f
 
-        /** 点阵底部淡入带（占胶囊高度比例）：底缘 0 → 带顶 1。故意偏离草稿的 1/3——
-         *  48u 疏网格下 1/3 带内只剩 3~4 行读不出渐变，2026-11-11 用户定稿拉长到 1/2。 */
-        const val DotBottomFadeBand = 0.5f
+        /** 点阵底部淡入带（占胶囊高度比例）：底缘 0 → 带顶 1。带宽 0.4 的两轮迭代：
+         *  草稿 1/3 在 48u 疏网格下只剩 3~4 行读不出渐变 → 拉到 1/2 后低区全是半透点、
+         *  不透明的点下不去（2026-11-11 用户反馈）→ 定稿 0.4。还嫌低区稀就再收
+         *  （0.35/0.3）；亮柱附近无点是 litYProgress 底部光抬升与挖空的叠加，非本带所控。 */
+        const val DotBottomFadeBand = 0.4f
 
         /** 启动预热的时长（60fps 帧数，约 600ms）：会话开始时光效从全灭升到实际强度。 */
         const val WarmupFrames = 36f
