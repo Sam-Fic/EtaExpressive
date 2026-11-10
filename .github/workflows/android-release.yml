@@ -19,7 +19,9 @@ jobs:
   verify:
     name: Lint 与单元测试
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # 套件随迭代增长：lint 约 7 分钟 + 全量单测实测已超 33 分钟（v5.4.0 在 40 分钟
+    # 上限处被 runner 强制取消），给足余量避免正常通过轮被砍。
+    timeout-minutes: 75
 
     steps:
       - name: 检出代码
