@@ -8,6 +8,7 @@ import io.github.mangi.eta.agent.voice.offline.OfflineSpeechSession
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlin.math.sqrt
 
 internal object SpeechInputSession {
     private val microphone = Mutex()
@@ -44,6 +45,11 @@ internal object SpeechInputSession {
         mode: VoiceEntryMode = VoiceEntryMode.DICTATION,
         settings: DoubaoVoiceConfig.Config? = null,
         diagnostic: VoiceDiagnostics? = null,
+        /**
+         * 录音期间逐帧上报 0..1 的瞬时音量（音频线程回调，禁止在其中做 Compose 状态写入）。
+         * 只用于驱动声波/流光动画，识别结果与它无关。
+         */
+        onLevel: ((Float) -> Unit)? = null,
     ): Boolean {
         check(microphone.tryLock()) { "语音输入正在使用麦克风" }
         try {
@@ -58,10 +64,40 @@ internal object SpeechInputSession {
                     owner.cancel(CancellationException("对应语音功能已关闭或识别引擎已切换"))
                 }
                 try {
-                    if (selected) DoubaoAsrSession.recognize(onListening, onText, selectedConfig)
-                    else OfflineSpeechSession.recognize(context, onListening, onText, mode, diagnostic)
+                    if (selected) DoubaoAsrSession.recognize(onListening, onText, selectedConfig, onLevel)
+                    else OfflineSpeechSession.recognize(context, onListening, onText, mode, diagnostic, onLevel)
                 } finally { watcher.cancel() }
             }
         } finally { microphone.unlock() }
     }
+}
+
+/**
+ * 一帧 16-bit PCM 的音量，归一到 0..1。
+ *
+ * 取 RMS 后放大 8 倍：正常说话大约落在 0.2~0.8，与原型的
+ * `average / 96`（分析器频域平均值）同一量级，直接喂给流光的
+ * `activeSpeed` / `glowIntensity` 混合即可。
+ */
+internal fun pcmLevel(samples: ShortArray, count: Int = samples.size): Float {
+    if (count <= 0) return 0f
+    var sum = 0.0
+    for (i in 0 until count) {
+        val v = samples[i] / 32768.0
+        sum += v * v
+    }
+    return ((sqrt(sum / count) * 8.0).toFloat()).coerceIn(0f, 1f)
+}
+
+/** 同 [pcmLevel]，输入为小端序 16-bit PCM 字节流（豆包 ASR 的发送缓冲）。 */
+internal fun pcmLevel(bytes: ByteArray, count: Int): Float {
+    val frames = count / 2
+    if (frames <= 0) return 0f
+    var sum = 0.0
+    for (frame in 0 until frames) {
+        val i = frame * 2
+        val v = (((bytes[i + 1].toInt() shl 8) or (bytes[i].toInt() and 0xFF)).toShort()) / 32768.0
+        sum += v * v
+    }
+    return ((sqrt(sum / frames) * 8.0).toFloat()).coerceIn(0f, 1f)
 }

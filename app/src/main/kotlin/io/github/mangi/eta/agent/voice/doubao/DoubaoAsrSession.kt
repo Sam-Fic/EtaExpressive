@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit
 internal object DoubaoAsrSession {
     @SuppressLint("MissingPermission")
     suspend fun recognize(onListening: suspend () -> Unit, onText: suspend (String) -> Unit,
-        config: DoubaoVoiceConfig.Config = DoubaoVoiceConfig.state.value): Boolean = withContext(Dispatchers.IO) {
+        config: DoubaoVoiceConfig.Config = DoubaoVoiceConfig.state.value,
+        onLevel: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
         check(config.asrKey.isNotBlank()) { "请配置豆包 ASR API Key" }
         val opened = CompletableDeferred<Unit>()
         val results = Channel<DoubaoAsrProtocol.Result>(32)
@@ -78,6 +79,7 @@ internal object DoubaoAsrSession {
                     val n = audio.read(packet, filled, packet.size - filled, AudioRecord.READ_NON_BLOCKING)
                     check(n >= 0) { "麦克风读取失败" }
                     filled += n
+                    if (n > 0) onLevel?.invoke(io.github.mangi.eta.agent.voice.pcmLevel(packet, filled))
                     if (filled == packet.size) {
                         check(socket.queueSize() < 256_000) { "ASR 网络发送积压，请重试" }
                         check(socket.send(DoubaoAsrProtocol.frame(2, packet).toByteString()))

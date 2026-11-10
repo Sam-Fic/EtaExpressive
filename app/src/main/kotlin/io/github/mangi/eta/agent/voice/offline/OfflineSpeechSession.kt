@@ -41,6 +41,8 @@ internal object OfflineSpeechSession {
         onText: suspend (String) -> Unit,
         mode: VoiceEntryMode = VoiceEntryMode.DICTATION,
         diagnostic: VoiceDiagnostics? = null,
+        /** 逐帧音量（音频线程回调，只驱动动画）。 */
+        onLevel: ((Float) -> Unit)? = null,
     ): Boolean {
         check(microphone.tryLock()) { "Speech input is already active" }
         var audio: AudioRecord? = null
@@ -123,7 +125,7 @@ internal object OfflineSpeechSession {
                 val chunks = Channel<FloatArray>(Channel.UNLIMITED)
                 val reader = launch(Dispatchers.IO) {
                     try {
-                        readAudio(recorder, chunks)
+                        readAudio(recorder, chunks, onLevel)
                     } finally {
                         chunks.close()
                     }
@@ -202,7 +204,11 @@ internal object OfflineSpeechSession {
         }
     }
 
-    private suspend fun readAudio(audio: AudioRecord, chunks: Channel<FloatArray>) {
+    private suspend fun readAudio(
+        audio: AudioRecord,
+        chunks: Channel<FloatArray>,
+        onLevel: ((Float) -> Unit)? = null,
+    ) {
         val samples = ShortArray(ReadSamples)
         while (true) {
             currentCoroutineContext().ensureActive()
@@ -212,6 +218,7 @@ internal object OfflineSpeechSession {
                 delay(10)
                 continue
             }
+            onLevel?.invoke(io.github.mangi.eta.agent.voice.pcmLevel(samples, count))
             chunks.send(FloatArray(count) { samples[it] / 32768f })
         }
     }

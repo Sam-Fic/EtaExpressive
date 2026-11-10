@@ -53,6 +53,12 @@ internal class ComposerDictation(private val context: Context) {
     var notice by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * 麦克风瞬时音量（0..1）。音频线程每 10ms 写一次，流光画布逐帧读取并自行平滑——
+     * 不走 Compose 状态，避免每个音频帧都触发整棵听写条重组。麦克风关闭时归零。
+     */
+    val micLevel = VoiceMicLevel()
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
 
@@ -73,6 +79,7 @@ internal class ComposerDictation(private val context: Context) {
             return
         }
         notice = null
+        micLevel.reset()
         val id = ++session
         active = true
         listening = false
@@ -86,6 +93,7 @@ internal class ComposerDictation(private val context: Context) {
                     onText = { next -> transcript = next },
                     mode = VoiceEntryMode.UNIVERSAL,
                     settings = SpeechInputSession.configFor(VoiceEntryMode.UNIVERSAL),
+                    onLevel = { level -> micLevel.value = level },
                 )
                 // 一句话结束但一个字都没识别出来：给出提示并退出听写条。
                 if (!heard && session == id) outcome = ComposerDictationOutcome.Empty
@@ -97,6 +105,7 @@ internal class ComposerDictation(private val context: Context) {
                 if (session == id) {
                     active = false
                     listening = false
+                    micLevel.reset()
                 }
             }
         }
@@ -112,6 +121,7 @@ internal class ComposerDictation(private val context: Context) {
         transcript = ""
         outcome = null
         notice = null
+        micLevel.reset()
     }
 
     /** ✓ ：结束听写并把当前转写交回输入框；没有识别到文字时返回 null。 */
@@ -125,6 +135,7 @@ internal class ComposerDictation(private val context: Context) {
         transcript = ""
         outcome = null
         notice = null
+        micLevel.reset()
         return text.takeIf { it.isNotBlank() }
     }
 
@@ -143,6 +154,20 @@ internal class ComposerDictation(private val context: Context) {
 internal sealed interface ComposerDictationOutcome {
     data class Failed(val error: Throwable) : ComposerDictationOutcome
     data object Empty : ComposerDictationOutcome
+}
+
+/**
+ * 跨线程的音量槽：音频线程只写 [value]，UI 帧循环只读，不需要快照状态。
+ *
+ * @Volatile 足够——单个 float 的可见性只需 volatile，动画侧每帧还会再做一次指数平滑。
+ */
+internal class VoiceMicLevel {
+    @Volatile
+    var value: Float = 0f
+
+    fun reset() {
+        value = 0f
+    }
 }
 
 /** 记住一个听写会话，并在退出组合（切会话、关浮层、页面销毁）时释放麦克风。 */
