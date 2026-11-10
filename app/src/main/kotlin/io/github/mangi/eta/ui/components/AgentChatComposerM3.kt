@@ -852,6 +852,13 @@ internal fun Material3ComposerBody(
                 // 说完停顿：识别自然结束（未按 ✓ / ×）→ 直接发送。转写先落进输入框（与 ✓
                 // 同一条路径），再按发送钮的同款门禁分流：能发就走 sendDraft（生成中 = 排队，
                 // 与发送钮语义完全一致）；发不出去（压缩中 / 无法新发）退回「继续编辑」并归位键盘。
+                //
+                // 门禁必须现算、不能用 canSend 参数：canSend 把「输入框有内容」也算在内，
+                // 而识别结束的那次重组发生在本 effect 落字之前（框还空着，canSend 必为 false），
+                // 捕获值会把本该发送的情形误判成 idle。这里只取与输入内容无关的前置条件
+                // （模型选择器两项、压缩态都不随框内文本变化，重组捕获值即为最新；
+                // contextSendBlocked 的预算含草稿文本——用落字前捕获值，转写几个 token
+                // 恰好触顶的概率可忽略），内容则用落字后的现值。
                 LaunchedEffect(dictation.autoCommit) {
                     val text = dictation.autoCommit ?: return@LaunchedEffect
                     dictation.consumeAutoCommit()
@@ -860,11 +867,15 @@ internal fun Material3ComposerBody(
                         pendingImages.isNotEmpty() ||
                         pendingFileReferences.isNotEmpty() ||
                         conversationMentions.pending.isNotEmpty()
+                    val canStartNow = !modelPickerState.isChanging &&
+                        modelPickerState.selectedModel != null &&
+                        !contextSendBlocked &&
+                        !isCompressingContext
                     val modeNow = resolveChatComposerSendMode(
                         isStreaming = isStreaming,
                         isPaused = isPaused,
                         hasSteerContent = hasContentNow,
-                        canStartNewSend = canSend,
+                        canStartNewSend = canStartNow,
                         isCompressingContext = isCompressingContext,
                         canContinueDisconnected = canContinueDisconnected,
                     )
