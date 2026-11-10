@@ -26,6 +26,8 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var assistantConversationKey by mutableStateOf<String?>(null)
+    /** 助手浮窗口述「去配置」请求令牌；AgentAppRoot 落地语音设置页后复位。 */
+    private var openVoiceSettingsRequest by mutableStateOf(0)
     /** 完成横幅点击直达的会话 id；AgentAppRoot 消费后复位。 */
     private var liveTargetConversationId by mutableStateOf<String?>(null)
     private var inboundShareUris by mutableStateOf<List<String>>(emptyList())
@@ -44,6 +46,7 @@ class MainActivity : ComponentActivity() {
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED,
         )
         updateAssistantHandoff(intent)
+        updateAssistantVoiceSettingsRequest(intent)
         updateLiveTarget(intent)
         consumeShareIntent(intent)
         lifecycleScope.launch {
@@ -70,6 +73,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AgentAppRoot(
                         assistantConversationKey = assistantConversationKey,
+                        openVoiceSettingsRequest = openVoiceSettingsRequest,
                         liveTargetConversationId = liveTargetConversationId,
                         inboundShareUris = inboundShareUris,
                         onAssistantConversationOpened = { opened ->
@@ -80,6 +84,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onInboundShareConsumed = { inboundShareUris = emptyList() },
                         onLiveTargetConsumed = { liveTargetConversationId = null },
+                        onVoiceSettingsRequestConsumed = { openVoiceSettingsRequest = 0 },
                         // 与主题共用同一份 DataStore 快照：开关一改就重组 NavDisplay 的 builder，
                         // 不需要像预测性返回那样 recreate Activity。
                         swipeBackEnabled = appearance.swipeBackEnabled,
@@ -116,6 +121,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         updateAssistantHandoff(intent)
+        updateAssistantVoiceSettingsRequest(intent)
         updateLiveTarget(intent)
         consumeShareIntent(intent)
     }
@@ -200,6 +206,12 @@ class MainActivity : ComponentActivity() {
         assistantConversationKey = intent.getStringExtra(
             EtaAssistantOverlayService.EXTRA_CONVERSATION_KEY,
         )?.takeIf(String::isNotBlank)
+    }
+
+    /** 助手浮窗口述「去配置」：请求令牌自增，AgentAppRoot 据此落地语音设置页。 */
+    private fun updateAssistantVoiceSettingsRequest(intent: Intent?) {
+        if (intent?.action != EtaAssistantOverlayService.ACTION_OPEN_VOICE_SETTINGS) return
+        openVoiceSettingsRequest++
     }
 
     /** 完成横幅点击直达：读会话 extra 后立即清除，避免 recreate 时重复触发。 */

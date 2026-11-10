@@ -168,10 +168,13 @@ fun AgentAppRoot(
     assistantConversationKey: String? = null,
     /** 完成横幅点击直达的会话 id；路由落地后由 [onLiveTargetConsumed] 复位。 */
     liveTargetConversationId: String? = null,
+    /** 助手浮窗口述「去配置」请求令牌；语音设置页落地后由 [onVoiceSettingsRequestConsumed] 复位。 */
+    openVoiceSettingsRequest: Int = 0,
     inboundShareUris: List<String> = emptyList(),
     onAssistantConversationOpened: (Boolean) -> Unit = {},
     onInboundShareConsumed: () -> Unit = {},
     onLiveTargetConsumed: () -> Unit = {},
+    onVoiceSettingsRequestConsumed: () -> Unit = {},
     /** 边缘横移返回开关；关闭时所有路由的 swipeDismiss 方向为 [NavSwipeDirection.None]。 */
     swipeBackEnabled: Boolean = true,
 ) {
@@ -512,6 +515,15 @@ fun AgentAppRoot(
         agentState.selectConversation(conversationId)
         navigator.replace(AppRoute.Chat)
         onLiveTargetConsumed()
+    }
+
+    // 助手浮窗口述「去配置」：落地语音设置页（push，回退仍回原页），随后复位请求令牌。
+    // 直接走 navigator.push：pushRoute 是下方才声明的局部函数，不能前向引用，
+    // 且 VoiceSettings 不需要 pushRoute 里 Browser 的失焦特判。
+    LaunchedEffect(openVoiceSettingsRequest) {
+        if (openVoiceSettingsRequest == 0) return@LaunchedEffect
+        navigator.push(AppRoute.VoiceSettings)
+        onVoiceSettingsRequestConsumed()
     }
 
     LaunchedEffect(inboundShareUris) {

@@ -58,6 +58,7 @@ import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.question.AgentQuestionAnswer
 import io.github.mangi.eta.agent.question.AgentQuestionCodec
 import io.github.mangi.eta.agent.question.AgentQuestionStatus
+import io.github.mangi.eta.ui.components.LocalOpenVoiceSettings
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
 import io.github.mangi.eta.ui.app.AgentQuestionProjection
 import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
@@ -451,6 +452,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     // 系统选择器 / 权限请求要拿到注册表 owner：官方组件会用
                     // `rememberLauncherForActivityResult`，没有 owner 会直接抛异常。
                     LocalActivityResultRegistryOwner provides overlayResultRegistry,
+                    // 口述未配置的「去配置」圆钮：跳到主程序语音设置页，浮层随跳转收起。
+                    LocalOpenVoiceSettings provides ::openVoiceSettings,
                 ) {
                     // 语音会话快照：把浮窗当前的流式状态与最新助手消息同步给
                     // [VoiceModeController]，「通用语音对话」说完后才能读到回复。
@@ -1398,6 +1401,44 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         }
     }
 
+    /**
+     * 口述「去配置」：跳到主程序的语音设置页，浮层随跳转收起。
+     * 后台启动放行与交接同款（浮窗可见时 ALLOW_IF_VISIBLE）；先发意图再收浮层。
+     */
+    private fun openVoiceSettings() {
+        val intent = Intent(this, MainActivity::class.java)
+            .setAction(ACTION_OPEN_VOICE_SETTINGS)
+            .addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION,
+            )
+        val creatorOptions = ActivityOptions.makeBasic().apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                pendingIntentCreatorBackgroundActivityStartMode =
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            }
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            VOICE_SETTINGS_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            creatorOptions.toBundle(),
+        )
+        val senderOptions = ActivityOptions.makeBasic().apply {
+            pendingIntentBackgroundActivityStartMode =
+                if (Build.VERSION.SDK_INT >= 36) {
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE
+                } else {
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                }
+        }
+        runCatching { pendingIntent.send(senderOptions.toBundle()) }
+        dismissAndStop()
+    }
+
     private fun finishHandoff() {
         if (!handoffInProgress) return
         if (exitAnimationRequested) return
@@ -1414,6 +1455,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     internal companion object {
         const val ACTION_SHOW = "io.github.mangi.eta.agent.voice.SHOW"
         const val ACTION_OPEN_CONVERSATION = "io.github.mangi.eta.agent.voice.OPEN_CONVERSATION"
+        const val ACTION_OPEN_VOICE_SETTINGS = "io.github.mangi.eta.agent.voice.OPEN_VOICE_SETTINGS"
         const val EXTRA_CONVERSATION_KEY = "io.github.mangi.eta.agent.voice.extra.CONVERSATION_KEY"
         private const val ACTION_HANDOFF_READY = "io.github.mangi.eta.agent.voice.HANDOFF_READY"
         private const val HANDOFF_TIMEOUT_MS = 5_000L
@@ -1431,6 +1473,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
          */
         private const val WAKE_ENTRY_DEDUPE_MS = 1_000L
         private const val HANDOFF_REQUEST_CODE = 0x455441
+        private const val VOICE_SETTINGS_REQUEST_CODE = 0x455442
         private const val LEGACY_STOPPED_ERROR = "已停止"
         private const val SYNTHETIC_STOPPED = "eta_status:stopped"
         private const val SYNTHETIC_RUNTIME_FAILED = "eta_status:runtime_failed"
