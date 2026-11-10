@@ -230,7 +230,11 @@ internal object AgentModelClient {
                 }
         }
         // 预设运行由 Runtime 显式给出组状态：不读历史/决策推出来的组，避免把无关组带进来。
-        var initialOpenedGroups = presetOpenedGroups ?: historyOpenedGroups()
+        // 常规 run 必须并上 openedToolGroupsProvider()：调用方（会话恢复）在第 1 轮就依赖它
+        // 下发延迟组工具——只读 historyOpenedGroups 会让第 1 轮目录缺组，模型调用即被拒，
+        // 第 2 轮才恢复（toolsForRound 里 provider 与 initial 的并集就是这个教训，见下）。
+        var initialOpenedGroups =
+            presetOpenedGroups ?: (openedToolGroupsProvider() + historyOpenedGroups())
         // control 成功/fail-closed 时限制 tools_use_group 的枚举；null 表示不接管。
         val decisionOpenableLimit = decision?.openableGroupLimit
         // 闲聊态关段只在 control 成功时由 router 置位，prompt builder 直接据此裁剪。
@@ -300,7 +304,7 @@ internal object AgentModelClient {
             // 命中日程但日历组在能力投影后实际为空（权限/开关/单工具禁用）：
             // 退回普通对话——正常目录、正常渐进加载与判断模型，而不是零工具纯对话。
             effectivePresetTools = null
-            initialOpenedGroups = historyOpenedGroups()
+            initialOpenedGroups = openedToolGroupsProvider() + historyOpenedGroups()
             initialTools = toolsFor(
                 initialCapabilities,
                 recipeTools = recipeToolsProvider(),
