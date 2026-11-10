@@ -21,10 +21,12 @@ import kotlinx.coroutines.launch
 /**
  * 输入区「口述」的单次听写会话。
  *
- * 与语音对话（`VoiceModeController`）的区别：听写只录一句话，识别结果**不自动发送**——
- * 用户按 ✓ 才把文字交回输入框继续编辑，按 × 直接丢弃。识别引擎复用语音对话的配置
- * （[VoiceEntryMode.UNIVERSAL] 的识别设置）：听写本身不再是独立入口（见 `VoiceEntryPolicy`），
- * 而 [SpeechInputSession.recognize] 只看所选模式的识别开关与引擎配置。
+ * 与语音对话（`VoiceModeController`）的区别：听写只录一句话——说完停顿（识别自然结束）
+ * 内容**直接发送**（[autoCommit] 一次性交给 UI，走发送钮同一条门禁；发不出去时退回
+ * 「继续编辑」）；按 ✓ 把文字交回输入框继续编辑（不发送），按 × 直接丢弃。识别引擎复用
+ * 语音对话的配置（[VoiceEntryMode.UNIVERSAL] 的识别设置）：听写本身不再是独立入口
+ * （见 `VoiceEntryPolicy`），而 [SpeechInputSession.recognize] 只看所选模式的识别开关
+ * 与引擎配置。
  */
 internal class ComposerDictation(private val context: Context) {
 
@@ -42,6 +44,14 @@ internal class ComposerDictation(private val context: Context) {
 
     /** 结束原因，供 UI 弹出一次性提示后清空（[consumeOutcome]）。正常取消 / 确认不产生结果。 */
     var outcome by mutableStateOf<ComposerDictationOutcome?>(null)
+        private set
+
+    /**
+     * 自然说完（未按 ✓ / ×，识别自己结束）产生的最终转写：UI 一次性消费（[consumeAutoCommit]）
+     * 后清空。这里只负责把内容交出去——发送与否由 UI 按发送钮同款门禁决定，门禁不通时
+     * 退回「继续编辑」路径。
+     */
+    var autoCommit by mutableStateOf<String?>(null)
         private set
 
     /**
@@ -85,6 +95,7 @@ internal class ComposerDictation(private val context: Context) {
         listening = false
         transcript = ""
         outcome = null
+        autoCommit = null
         job = scope.launch {
             try {
                 val heard = SpeechInputSession.recognize(
@@ -95,8 +106,17 @@ internal class ComposerDictation(private val context: Context) {
                     settings = SpeechInputSession.configFor(VoiceEntryMode.UNIVERSAL),
                     onLevel = { level -> micLevel.value = level },
                 )
-                // 一句话结束但一个字都没识别出来：给出提示并退出听写条。
-                if (!heard && session == id) outcome = ComposerDictationOutcome.Empty
+                if (session == id) {
+                    if (!heard) {
+                        // 一句话结束但一个字都没识别出来：给出提示并退出听写条。
+                        outcome = ComposerDictationOutcome.Empty
+                    } else {
+                        // 说完停顿、识别自然结束（未按 ✓ / ×）：把最终转写交给 UI 直接发送
+                        // （发送门禁不通时 UI 退回「继续编辑」）。在 finally 收摊前先放好。
+                        val text = transcript.trim()
+                        if (text.isNotBlank()) autoCommit = text
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -120,6 +140,8 @@ internal class ComposerDictation(private val context: Context) {
         listening = false
         transcript = ""
         outcome = null
+        // 用户显式取消：即使识别恰好同时自然结束，也不该再自动发送。
+        autoCommit = null
         notice = null
         micLevel.reset()
     }
@@ -134,6 +156,8 @@ internal class ComposerDictation(private val context: Context) {
         listening = false
         transcript = ""
         outcome = null
+        // 用户显式确认：内容交回输入框即为止，自然结束的自动发送作废。
+        autoCommit = null
         notice = null
         micLevel.reset()
         return text.takeIf { it.isNotBlank() }
@@ -141,6 +165,11 @@ internal class ComposerDictation(private val context: Context) {
 
     fun consumeOutcome() {
         outcome = null
+    }
+
+    /** 消费掉一次自然结束的转写（UI 处理完发送 / 退回编辑后调用）。 */
+    fun consumeAutoCommit() {
+        autoCommit = null
     }
 
     private companion object {

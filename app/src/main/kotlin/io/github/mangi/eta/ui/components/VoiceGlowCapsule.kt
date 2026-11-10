@@ -54,6 +54,8 @@ private const val LightDotWhiteMix = 0.7f
  * 与在案示例的已知刻意差异：光层模糊 46u（示例为 blur(30px)），系刻意设计，勿当作偏差对齐。
  * 本仓新增「启动预热」动画：口述会话开始时光效从全灭在约 600ms 内缓升到实际强度
  * （easeOutCubic），光团、波浪、色相水洗与点阵一起升，暗示启动过程；每个会话只播一次。
+ * 退场对称：退出听写时（pill 槽淡出转场期间）光效按镜像曲线在约 350ms 内缓降到全灭，
+ * 强度与透明度一起收——转场结束时光恰好熄灭，不会闪断。
  *
  * 三层结构（与原型同序）：
  * 1. metaball 层：9 颗骑在胶囊下轮廓上的光团，径向贝尔衰减叠加（深色 + 相加、浅色 + 普通叠加），
@@ -73,7 +75,11 @@ private const val LightDotWhiteMix = 0.7f
  * `colorScheme.primary` / `inversePrimary` 派生（偏薰衣草白），不写任何颜色字面量。
  */
 @Composable
-internal fun VoiceGlowCapsule(level: () -> Float, modifier: Modifier = Modifier) {
+internal fun VoiceGlowCapsule(
+    level: () -> Float,
+    exiting: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
     val colorScheme = MaterialTheme.colorScheme
     // 与 EtaStatus 等现有代码同一判据：surface 亮 → 浅色，暗 → 深色。
     val lightMode = colorScheme.surface.luminance() > 0.5f
@@ -121,6 +127,11 @@ internal fun VoiceGlowCapsule(level: () -> Float, modifier: Modifier = Modifier)
                 frame++
             }
         }
+    }
+    // 退场冷却：口述退出时本内容仍在 pill 槽转场里组合，通知引擎点燃冷却——光效随
+    // 转场淡出同步缓降到全灭；冷却期内若重新开始听写，撤销冷却、光效原地复燃。
+    LaunchedEffect(engine, exiting) {
+        engine.setExiting(exiting)
     }
     Canvas(modifier) {
         if (frame >= 0L) engine.draw(this, palette, capsuleFill, lightMode)
@@ -211,6 +222,9 @@ private class VoiceGlowEngine {
     // 启动预热：会话开始时光效从全灭缓升到实际强度（已推进的 60fps 帧数与缓出后的系数）。
     private var warmupFrames = 0f
     private var warmupEase = 0f
+    // 退场冷却：退出听写时光效从当前强度缓降到全灭（<0 = 未启动；已推进帧数与剩余系数）。
+    private var cooldownFrames = -1f
+    private var cooldownEase = 1f
 
     // 与原型一一对应的 9 颗光团（基准轴、半径、漂移相位/速度/振幅）。
     private val blobs = arrayOf(
@@ -258,11 +272,25 @@ private class VoiceGlowEngine {
     private var pushField = FloatArray(0)
 
     /**
+     * 退场信号：[exiting] 为 true 时点燃冷却（一次性），光效随后在 [CooldownFrames] 内
+     * 缓降到全灭；冷却期内若重新开始听写，传 false 撤销冷却、光效原地复燃。
+     */
+    fun setExiting(exiting: Boolean) {
+        if (exiting) {
+            if (cooldownFrames < 0f) cooldownFrames = 0f
+        } else {
+            cooldownFrames = -1f
+            cooldownEase = 1f
+        }
+    }
+
+    /**
      * 推进所有相位；[frames] 是以 60fps 为 1 的帧倍率，[level] 是本帧麦克风音量（0..1）。
      *
      * 与原型的音频惯性一致：音量先做 0.18/帧的指数平滑，再同时驱动速度与发光强度——
      * 说话越响，流光漂移越快、光团与点阵抬得越高。麦克风关闭时音量归零，平滑回落。
      * 会话刚开始还有一段启动预热：光效从全灭在约 600ms 内缓升到实际强度，暗示启动过程。
+     * 退出会话则相反：冷却期内光效缓降到全灭，与 pill 槽的退场淡出同步。
      */
     fun advance(frames: Float, level: Float) {
         frameScale = frames
@@ -273,8 +301,15 @@ private class VoiceGlowEngine {
         warmupFrames = min(warmupFrames + frames, WarmupFrames)
         val warmupT = (warmupFrames / WarmupFrames).coerceIn(0f, 1f)
         warmupEase = 1f - (1f - warmupT).pow(3f)
+        // 退场冷却：预热曲线的镜像（(1-t)³，先快后缓）——按下 ✓ / × 光效立刻开始收拢，
+        // 残光随转场淡出慢慢收尾；时长与 pill 槽的退场淡出同长（约 350ms）。
+        if (cooldownFrames >= 0f) {
+            cooldownFrames = min(cooldownFrames + frames, CooldownFrames)
+            val cooldownT = (cooldownFrames / CooldownFrames).coerceIn(0f, 1f)
+            cooldownEase = (1f - cooldownT).pow(3f)
+        }
         val activeSpeed = BaseSpeed + smoothedLevel * 2.6f
-        glowIntensity = BaseGlowIntensity * (1f + smoothedLevel * 1.4f) * warmupEase
+        glowIntensity = BaseGlowIntensity * (1f + smoothedLevel * 1.4f) * warmupEase * cooldownEase
         time += 0.019f * activeSpeed * frames
         for (blob in blobs) blob.phase += blob.speed * activeSpeed * frames
         for (dot in dots) dot.phase += dot.pulseSpeed * activeSpeed * frames
@@ -436,8 +471,9 @@ private class VoiceGlowEngine {
         canvas.save()
         // 深色：相加累积，邻团熔成一体；浅色：普通叠加，底部保持主题色而不是发白。
         metaballPaint.xfermode = if (lightMode) null else AddXfermode
-        // 启动预热：光团透明度随预热缓升，避免开场就是小而烫的光点。
-        metaballPaint.alpha = (warmupEase * 255f).roundToInt()
+        // 启动预热升、退场冷却降：光团透明度随两者乘积缓升 / 缓降——开场不会突然出现
+        // 小而烫的光点，退场也不会留下缩成一点仍在烧的光团。
+        metaballPaint.alpha = (warmupEase * cooldownEase * 255f).roundToInt()
         for (i in blobs.indices) {
             if (blobRadius[i] < 0.05f) continue
             val fuseRadius = blobRadius[i] * 2.9f
@@ -475,8 +511,8 @@ private class VoiceGlowEngine {
             // 横向色相水洗：SRC_ATOP 只染已有光的像素，亮度与透明度都不动。
             val save = canvas.save()
             tintPaint.xfermode = TintXfermode
-            // 预热期色相水洗随光一起淡入。
-            tintPaint.alpha = (warmupEase * 255f).roundToInt()
+            // 预热 / 冷却期色相水洗随光一起淡入、淡出。
+            tintPaint.alpha = (warmupEase * cooldownEase * 255f).roundToInt()
             tintColors[0] = argb(palette.blobs[3], 0.26f)
             tintColors[1] = argb(palette.blobs[4], 0.06f)
             tintColors[2] = argb(palette.blobs[2], 0.26f)
@@ -541,8 +577,8 @@ private class VoiceGlowEngine {
         waveColors[4] = argb(deeperColor, 0.06f)
         waveColors[5] = 0
         wavePaint.xfermode = null
-        // 预热期波浪主体随光一起淡入（paint alpha 直接调制渐变透明度）。
-        wavePaint.alpha = (warmupEase * 255f).roundToInt()
+        // 预热 / 冷却期波浪主体随光一起淡入、淡出（paint alpha 直接调制渐变透明度）。
+        wavePaint.alpha = (warmupEase * cooldownEase * 255f).roundToInt()
         wavePaint.shader = LinearGradient(
             0f, capsuleBottom, 0f, 0f, waveColors, waveStops, Shader.TileMode.CLAMP,
         )
@@ -617,8 +653,8 @@ private class VoiceGlowEngine {
             var opacity = topFade * bottomFadeFactor *
                 (1f - cutout * 0.85f * maskDepth) * shimmer * pushEdge
             if (lightMode) opacity *= 1.6f
-            // 启动预热：点阵亮度随光一起从全灭升起。
-            opacity *= warmupEase
+            // 启动预热升、退场冷却降：点阵亮度随光一起升 / 降。
+            opacity *= warmupEase * cooldownEase
             opacity = opacity.coerceIn(0f, if (lightMode) 1f else 0.95f)
 
             // 胶囊外的点本来就会被裁掉，直接跳过省一次绘制。
@@ -722,6 +758,9 @@ private class VoiceGlowEngine {
 
         /** 启动预热的时长（60fps 帧数，约 600ms）：会话开始时光效从全灭升到实际强度。 */
         const val WarmupFrames = 36f
+
+        /** 退场冷却的时长（60fps 帧数，约 350ms）：退出听写时光效缓降到全灭，与 pill 槽退场淡出同长。 */
+        const val CooldownFrames = 21f
 
         val AddXfermode = PorterDuffXfermode(PorterDuff.Mode.ADD)
         val ScreenXfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)

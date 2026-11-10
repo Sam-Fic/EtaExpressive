@@ -705,7 +705,13 @@ internal fun Material3ComposerBody(
                     // 也保持右端对齐，与“以右端为锚”的方向一致。
                     contentAlignment = Alignment.CenterEnd,
                     transitionSpec = {
-                        (fadeIn(enterSpec).togetherWith(fadeOut(exitSpec))).using(null)
+                        // 口述退出：光效要有一段熄灭退场——淡出拉长到与引擎冷却同长（约 350ms），
+                        // 强度（引擎冷却）与透明度（本淡出）一起收；其余形态切换维持默认快淡出。
+                        if (initialState == ComposerPill.DICTATION) {
+                            (fadeIn(enterSpec).togetherWith(fadeOut(ComposerDictationExitFadeSpec))).using(null)
+                        } else {
+                            (fadeIn(enterSpec).togetherWith(fadeOut(exitSpec))).using(null)
+                        }
                     },
                     label = "composer_pill",
                 ) { mode ->
@@ -718,6 +724,9 @@ internal fun Material3ComposerBody(
                             listening = dictation.listening,
                             // 每帧现读音频线程写入的音量：流光随说话忽快忽慢、忽明忽暗。
                             level = { dictation.micLevel.value },
+                            // 退出转场期间本内容仍被组合（captured dictating 已翻 false）：
+                            // 通知流光引擎点燃熄灭冷却，与上面拉长的退场淡出同步收场。
+                            exiting = !dictating,
                         )
                         ComposerPill.VOICE_BAR -> {
                             // 聆听条：麦克风状态圆钮 + 实时转写与阶段文案（末端停止圆钮由下面的
@@ -839,6 +848,32 @@ internal fun Material3ComposerBody(
                         context.getString(R.string.context_window_send_blocked),
                         Toast.LENGTH_SHORT,
                     ).show()
+                }
+                // 说完停顿：识别自然结束（未按 ✓ / ×）→ 直接发送。转写先落进输入框（与 ✓
+                // 同一条路径），再按发送钮的同款门禁分流：能发就走 sendDraft（生成中 = 排队，
+                // 与发送钮语义完全一致）；发不出去（压缩中 / 无法新发）退回「继续编辑」并归位键盘。
+                LaunchedEffect(dictation.autoCommit) {
+                    val text = dictation.autoCommit ?: return@LaunchedEffect
+                    dictation.consumeAutoCommit()
+                    textFieldState.setTextAndPlaceCursorAtEnd(text)
+                    val hasContentNow = textFieldState.text.isNotBlank() ||
+                        pendingImages.isNotEmpty() ||
+                        pendingFileReferences.isNotEmpty() ||
+                        conversationMentions.pending.isNotEmpty()
+                    val modeNow = resolveChatComposerSendMode(
+                        isStreaming = isStreaming,
+                        isPaused = isPaused,
+                        hasSteerContent = hasContentNow,
+                        canStartNewSend = canSend,
+                        isCompressingContext = isCompressingContext,
+                        canContinueDisconnected = canContinueDisconnected,
+                    )
+                    if (modeNow == "send") {
+                        sendDraft()
+                    } else {
+                        transcriptTakeOverAwaitingIme = true
+                        transcriptTakeOverToken++
+                    }
                 }
                 // 口述时 ✓ 长到 56dp：下端不再让出 8dp 端距，右端也从胶囊内缩位置移到工具栏内容区
                 // 末端（端距 8dp → 0），与 × 对称——原型 #voiceBtn 的 right/bottom 16 → 8 同款。
@@ -1248,6 +1283,10 @@ private val ComposerMorphDpSpec: FiniteAnimationSpec<Dp> = tween(350, easing = C
 /** 图标透明度：原型 `transition: opacity .2s ease`（不是 emphasized，起势更快）。 */
 private val ComposerMorphFadeSpec: FiniteAnimationSpec<Float> =
     tween(200, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f))
+
+/** 口述退场淡出：比常规交叉淡化长（约 350ms），与流光引擎的熄灭冷却（CooldownFrames）同步。 */
+private val ComposerDictationExitFadeSpec: FiniteAnimationSpec<Float> =
+    tween(350, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f))
 
 /** 图标缩放 / 旋转：原型 `transition: transform .25s var(--ease-emph)`。 */
 private val ComposerMorphIconSpec: FiniteAnimationSpec<Float> = tween(250, easing = ComposerMorphEasing)
@@ -1661,12 +1700,15 @@ private fun M3DictationSettingsButton(onClick: () -> Unit) {
  * 与取消槽提供）；底色不是 `surfaceContainer`，而是 [VoiceGlowCapsule] 现场绘制的流光，
  * 等于输入框的「表面色」在这里 morph 成胶囊底色（深浅随主题），文字是压在底色上的
  * `onSurface`。转写仍沿用 [VoiceLiveTranscript] 的「跟随尾部滚动」，长句看得到最后说出的字。
+ *
+ * [exiting]：口述退出转场期间为 true，透传给 [VoiceGlowCapsule] 点燃熄灭冷却（光效缓降到全灭）。
  */
 @Composable
 private fun M3DictationVoiceBar(
     transcript: String,
     listening: Boolean,
     level: () -> Float,
+    exiting: Boolean,
 ) {
     Box(
         modifier = Modifier
@@ -1677,7 +1719,7 @@ private fun M3DictationVoiceBar(
         contentAlignment = Alignment.CenterStart,
     ) {
         // 流光铺满整颗胶囊；圆角与输入框同为 extraLarge，交接时外形不变。
-        VoiceGlowCapsule(level = level, modifier = Modifier.matchParentSize())
+        VoiceGlowCapsule(level = level, exiting = exiting, modifier = Modifier.matchParentSize())
         val hasTranscript = transcript.isNotBlank()
         VoiceLiveTranscript(
             text = transcript.ifBlank {
