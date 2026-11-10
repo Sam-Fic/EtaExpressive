@@ -1548,7 +1548,7 @@ internal fun AgentConversationMessages(
             while (true) {
                 accept(bottomFollowDecisions.tryReceive().getOrNull() ?: break)
             }
-            if (!shouldFollowBottom || isUserScrolling || messageNavigationJob != null) {
+            if (!shouldFollowBottom || isUserScrolling || pointerDown.value || messageNavigationJob != null) {
                 remainingDistancePx = 0f
                 continue
             }
@@ -1561,7 +1561,9 @@ internal fun AgentConversationMessages(
             while (true) {
                 accept(bottomFollowDecisions.tryReceive().getOrNull() ?: break)
             }
-            if (!shouldFollowBottom || isUserScrolling || messageNavigationJob != null) {
+            // 手指按在列表上（长按选字）同样冻结：按住期间被选中的文本不能动，
+            // 松手后由下一轮布局决策追赶（流式内容继续长高必然产生新决策）。
+            if (!shouldFollowBottom || isUserScrolling || pointerDown.value || messageNavigationJob != null) {
                 remainingDistancePx = 0f
                 continue
             }
@@ -1757,13 +1759,14 @@ internal fun AgentConversationMessages(
                         // 严格贴底：内容长高多少，本帧整列就上提多少，不传逐帧预算
                         // （默认一次补满），没有缓动、没有「追」。滚动控制器下一帧把同一
                         // 差额一次滚满，overflow 归零时上提同步归零，尾部底边始终在线上。
-                        // 只有真实用户滚动/消息导航才冻结；单纯手指按着不冻结，否则按住
-                        // 期间补偿停摆、上提累积超过尾部留白，松手就会整列掉下去。
+                        // 真实用户滚动/消息导航/手指按住（长按选字）都要冻结：按住期间
+                        // 被选中的文本不能动；冻结期间溢出由裁剪层兜住，松手后滚动控制
+                        // 器按实测差额一次追平。
                         translationY = -nextHeldTailLift(
                             shouldLift = true,
                             overflowPx = overflow,
                             heldPx = held,
-                            pointerDown = isUserScrolling || messageNavigationJob != null,
+                            pointerDown = isUserScrolling || pointerDown.value || messageNavigationJob != null,
                         ).also { heldTailLift[0] = it }.toFloat()
                     }
                 } else {
