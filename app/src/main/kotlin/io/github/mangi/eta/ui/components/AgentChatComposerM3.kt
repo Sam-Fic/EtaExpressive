@@ -1,14 +1,19 @@
 package io.github.mangi.eta.ui.components
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
@@ -19,6 +24,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +54,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -94,6 +102,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -122,8 +131,10 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
 import io.github.mangi.eta.agent.voice.VoiceEntryMode
@@ -205,6 +216,15 @@ internal fun rememberImeVisible(): Boolean {
  *
  * 编辑态：胶囊左下角出现取消按钮（与右下发送按钮同心对称），左侧动作组整组收起。
  */
+
+/**
+ * 「去配置」入口：口述因未配置识别引擎而失败时，提示条右侧的设置圆钮用它跳到语音设置页。
+ *
+ * 默认空实现——入口浮层等宿主没有设置路由；`AgentAppRoot` 在聊天路由提供真实跳转
+ * （与顶栏「语音」同一目标页）。
+ */
+internal val LocalOpenVoiceSettings = staticCompositionLocalOf<() -> Unit> { {} }
+
 @Composable
 internal fun Material3ComposerBody(
     textFieldState: TextFieldState,
@@ -254,6 +274,15 @@ internal fun Material3ComposerBody(
      */
     showModelPicker: Boolean = true,
     voiceState: VoiceModeState,
+    /**
+     * 尾部语音入口的语义。
+     *
+     * - [ComposerVoiceEntry.CONVERSATION]（默认）：原来的「语音对话」入口——聆听条 + 停止圆钮，
+     *   语音浮层（`EtaVoicePanel`）仍用它；
+     * - [ComposerVoiceEntry.DICTATION]：聊天输入区的「口述」——麦克风开始单次听写，胶囊化作
+     *   流光胶囊，× 丢弃、✓ 把识别文字交回输入框（不自动发送）。
+     */
+    voiceEntry: ComposerVoiceEntry = ComposerVoiceEntry.CONVERSATION,
     showMorphLoading: Boolean,
     pendingImages: List<PendingImageUi>,
     pendingFileReferences: List<PendingFileReferenceUi>,
@@ -400,7 +429,89 @@ internal fun Material3ComposerBody(
             .fillMaxWidth()
             .onGloballyPositioned { onPositionedTopPx(it.positionInWindow().y.toInt()) },
     ) {
+        // 语音对话态（入口浮层等仍保留「语音对话」语义的调用方）：聆听条 + 停止圆钮。
         val voiceActive = voiceState.active || voiceState.error != null
+        val conversationActive = voiceEntry == ComposerVoiceEntry.CONVERSATION && voiceActive
+
+        // 口述（聊天输入区）：麦克风 → 单次听写 → 流光胶囊；✓ 把文字交回输入框、× 丢弃。
+        // 会话随组合记住，切会话 / 关页面时由 DisposableEffect 释放麦克风。
+        val dictation = rememberComposerDictation()
+        val dictating = voiceEntry == ComposerVoiceEntry.DICTATION && dictation.active
+        // 未配置识别引擎：沿用旧语音入口的失败提示（同一句文案），原位展示在胶囊槽位，
+        // 尾部圆钮改成「去配置」。它不是一个会话：不占麦克风，也不再弹 toast。
+        val dictationNotice = voiceEntry == ComposerVoiceEntry.DICTATION && dictation.notice != null
+
+        // 麦克风权限：与 VoiceEntryButton 同一套「先申请、授权后再开始」的流程。
+        var startDictationAfterPermission by remember { mutableStateOf(false) }
+        val recordAudioPermission = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            val resume = startDictationAfterPermission
+            startDictationAfterPermission = false
+            if (granted && resume) {
+                dictation.start()
+            } else if (!granted) {
+                Toast.makeText(context, R.string.speech_permission_denied, Toast.LENGTH_LONG).show()
+            }
+        }
+        val startDictation: () -> Unit = {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                dictation.start()
+            } else {
+                startDictationAfterPermission = true
+                recordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+
+        // 听写结束的异常结果只提示一次：识别出错给原因，没识别到内容提示重说。
+        LaunchedEffect(dictation.outcome) {
+            when (val outcome = dictation.outcome) {
+                is ComposerDictationOutcome.Failed -> {
+                    dictation.consumeOutcome()
+                    Toast.makeText(
+                        context,
+                        outcome.error.message
+                            ?: context.getString(R.string.voice_mode_dictation_failed),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+                ComposerDictationOutcome.Empty -> {
+                    dictation.consumeOutcome()
+                    Toast.makeText(
+                        context,
+                        R.string.voice_mode_dictation_empty,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+                null -> Unit
+            }
+        }
+
+        // 口述时外层工具条淡出：只留 × / 流光胶囊 / ✓ 三件（原型 `.toolbar.voice` 的同款 morph）。
+        // 官方 vibrant 工具栏默认无阴影（elevation = Level0），所以只需要让容器色走完这段过渡。
+        val toolbarContainer by animateColorAsState(
+            targetValue = if (dictating) {
+                Color.Transparent
+            } else {
+                MaterialTheme.colorScheme.primaryContainer
+            },
+            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+            label = "composer_toolbar_container",
+        )
+        // 胶囊左右各让出（40dp 圆钮 + 8dp 间距）给 × / ✓（失败提示时是 × / 设置），
+        // 与原型 `.field` 的语音态 margin 同值。
+        val pillInset by animateDpAsState(
+            targetValue = if (dictating || dictationNotice) {
+                ComposerVoiceButtonSize.width + ComposerVoiceGap
+            } else {
+                0.dp
+            },
+            animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            label = "composer_pill_inset",
+        )
+
         M3ComposerQueueStrip(
             items = queuedMessages,
             canSteerNow = isStreaming && !isPaused,
@@ -412,8 +523,10 @@ internal fun Material3ComposerBody(
         HorizontalFloatingToolbar(
             expanded = true,
             // 官方 vibrant 变体：容器 primaryContainer、内容 onPrimaryContainer
-            // （与参考稿“淡色底 + 深色图标”的关系一致）。
-            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
+            // （与参考稿“淡色底 + 深色图标”的关系一致）。口述时容器色动画到透明。
+            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(
+                toolbarContainerColor = toolbarContainer,
+            ),
             // 同心圆角：外层固定半径 = 内层 28dp（extraLarge）+ 8dp 间距 = 36dp。
             // 不能用官方 CornerFull：输入框多行长高后 CornerFull 会把外壳拉成巨型胶囊，
             // 内外圆角就不再满足“半径差 = 间距”。单行（72dp 高）时 36dp 恰是胶囊，外观不变。
@@ -440,11 +553,14 @@ internal fun Material3ComposerBody(
             // 对工具栏 Row 完全不生效，按钮于是停在上方、不与发送按钮同基线；
             // ② 水平端距按外层 36dp 圆角取 16dp、垂直却按内层 28dp 圆角取 8dp，混了两套同心规则。
             // 挪进胶囊共享槽后，start / bottom 都用 8dp，双层同心（8 + 28 = 36）由同一个 Box 保证。
-            if (!isEditingMessage || voiceActive) {
-                // 语音进行中时左侧动作组收起；键盘弹出且已有输入内容（文字 / 图片 / 文件 / 引用）时
-                // 也收起，把宽度让给胶囊；键盘收起（未进入输入焦点）时动作组始终展开可见。
+            if (!isEditingMessage || conversationActive || dictating) {
+                // 语音进行中 / 口述中 / 口述失败提示时左侧动作组收起；键盘弹出且已有输入内容
+                // （文字 / 图片 / 文件 / 引用）时也收起，把宽度让给胶囊；键盘收起（未进入输入焦点）
+                // 时动作组始终展开可见。
                 AnimatedVisibility(
-                    visible = !voiceActive &&
+                    visible = !conversationActive &&
+                        !dictating &&
+                        !dictationNotice &&
                         !transcriptTakeOverAwaitingIme &&
                         (!hasContent || !imeVisible),
                     // 同上：整组圆钮贴底，与尾部发送按钮同一条基线（距底端 8dp）。
@@ -520,10 +636,21 @@ internal fun Material3ComposerBody(
             // 胶囊与尾部按钮的共享容器：胶囊内容（输入框 ⇄ 聆听条）只做交叉淡化，
             // 尾部按钮（Call ⇄ 发送 ⇄ 停止）单独用同一条弹簧形变——两者互不牵连。
             Box(modifier = Modifier.weight(1f)) {
+                // 胶囊四种形态共用同一块交叉淡化槽位：
+                // 输入框 ⇄ 语音对话聆听条 ⇄ 口述流光胶囊 ⇄ 口述失败提示。
+                val pillMode = when {
+                    dictationNotice -> ComposerPill.DICTATION_NOTICE
+                    dictating -> ComposerPill.DICTATION
+                    conversationActive -> ComposerPill.VOICE_BAR
+                    else -> ComposerPill.TEXT
+                }
                 AnimatedContent(
-                    targetState = voiceActive,
+                    targetState = pillMode,
                     modifier = Modifier
                         .fillMaxWidth()
+                        // 口述时左右让出 × / ✓ 的宽度（0 → 48dp 弹簧）：胶囊两端连续收窄，
+                        // 与原型 `.field` 语音态 margin 的 morph 一致。
+                        .padding(horizontal = pillInset)
                         .background(pillBackdropColor, MaterialTheme.shapes.extraLarge)
                         // 供回归测试对“胶囊衔接”期间的像素取样（见 M3ComposerToolbarLayoutTest）。
                         .testTag("composer-pill-slot"),
@@ -534,30 +661,38 @@ internal fun Material3ComposerBody(
                         (fadeIn(enterSpec).togetherWith(fadeOut(exitSpec))).using(null)
                     },
                     label = "composer_pill",
-                ) { listening ->
-                    if (listening) {
-                        // 聆听条：麦克风状态圆钮 + 实时转写与阶段文案（末端停止圆钮由下面的
-                        // 尾部按钮槽提供，见 composer_trailing）。
-                        // 转写可点按：识别出文字但还没提交时，一点就退出语音、把这段话原样放进
-                        // 输入框并拉起键盘，用户可以在识别结果上接着改，而不是重新说一遍。
-                        // 只在 Listening 阶段放行：进入 Thinking / Speaking 后这句话已经送给模型
-                        // （实时语音模式的转写还会挂到本轮结束），再点回输入框会变成重复发送。
-                        M3VoiceBar(
-                            state = voiceState,
-                            onTranscriptTap = if (voiceState.phase == VoiceModePhase.Listening) {
-                                {
-                                    textFieldState.setTextAndPlaceCursorAtEnd(voiceState.transcript)
-                                    // 先按输入态排版，等键盘真正可见再恢复常规判据（见上方 awaiting 标记）。
-                                    transcriptTakeOverAwaitingIme = true
-                                    onStopVoiceMode()
-                                    transcriptTakeOverToken++
-                                }
-                            } else {
-                                null
-                            },
+                ) { mode ->
+                    when (mode) {
+                        ComposerPill.DICTATION_NOTICE -> M3DictationNoticeBar(
+                            message = dictation.notice.orEmpty(),
                         )
-                    } else {
-                        M3ComposerTextField(
+                        ComposerPill.DICTATION -> M3DictationVoiceBar(
+                            transcript = dictation.transcript,
+                            listening = dictation.listening,
+                        )
+                        ComposerPill.VOICE_BAR -> {
+                            // 聆听条：麦克风状态圆钮 + 实时转写与阶段文案（末端停止圆钮由下面的
+                            // 尾部按钮槽提供，见 composer_trailing）。
+                            // 转写可点按：识别出文字但还没提交时，一点就退出语音、把这段话原样放进
+                            // 输入框并拉起键盘，用户可以在识别结果上接着改，而不是重新说一遍。
+                            // 只在 Listening 阶段放行：进入 Thinking / Speaking 后这句话已经送给模型
+                            // （实时语音模式的转写还会挂到本轮结束），再点回输入框会变成重复发送。
+                            M3VoiceBar(
+                                state = voiceState,
+                                onTranscriptTap = if (voiceState.phase == VoiceModePhase.Listening) {
+                                    {
+                                        textFieldState.setTextAndPlaceCursorAtEnd(voiceState.transcript)
+                                        // 先按输入态排版，等键盘真正可见再恢复常规判据（见上方 awaiting 标记）。
+                                        transcriptTakeOverAwaitingIme = true
+                                        onStopVoiceMode()
+                                        transcriptTakeOverToken++
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
+                        }
+                        ComposerPill.TEXT -> M3ComposerTextField(
                             textFieldState = textFieldState,
                             focusRequester = focusRequester,
                             isStreaming = isStreaming,
@@ -584,7 +719,7 @@ internal fun Material3ComposerBody(
                 // `.using(null)` 关掉默认尺寸动画：出现 / 消失时只做淡入淡出，
                 // 不让 0 → 40dp 的尺寸变化把胶囊端盖裁一刀。
                 val leadingState = when {
-                    voiceActive -> ComposerLeading.NONE
+                    conversationActive || dictating || dictationNotice -> ComposerLeading.NONE
                     isEditingMessage -> ComposerLeading.CANCEL
                     showMorphLoading -> ComposerLeading.LOADING
                     else -> ComposerLeading.NONE
@@ -612,12 +747,28 @@ internal fun Material3ComposerBody(
                     }
                 }
 
+                // 口述取消钮 ×：贴在槽位最左端（胶囊已让出 48dp，两者之间正好 8dp 间距），
+                // 与尾部 ✓ 同形（40×56 竖直胶囊）；原型是「淡入 + 自右向左飞入」，这里用同一条
+                // Expressive 弹簧做横向滑入。口述失败提示同样用它关掉（提示不是会话，× 即清除）。
+                // 交给独立 composable：本槽位在 RowScope 里的 BoxScope 中，直接调
+                // AnimatedVisibility 会解析到 RowScope 重载并触发 DSL_SCOPE_VIOLATION。
+                M3DictationCancelSlot(
+                    visible = dictating || dictationNotice,
+                    onCancel = dictation::cancel,
+                    modifier = Modifier.align(Alignment.BottomStart),
+                )
+
                 // 尾部按钮槽：Call（语音入口）⇄ 发送 / 停止 / 继续 ⇄ 停止（语音进行中）。
                 // 关键：必须放在上面 AnimatedContent 之外。若留在胶囊内容里，进入语音时它只会跟着
                 // 整块胶囊一起交叉淡化，“通话按钮 → 停止按钮”就退化成简单渐变；移到这里后它与
                 // “输入文字 Call→Send”共用同一条官方 Expressive 缩放 + 淡入淡出弹簧，形变一致。
                 val trailingState = when {
-                    voiceActive -> ComposerTrailing.VOICE_STOP
+                    // 未配置：尾部圆钮直接变成「去配置」，一键跳到语音设置。
+                    dictationNotice -> ComposerTrailing.DICTATION_SETTINGS
+                    // 口述：麦克风原位变形成 ✓（40×40 圆 → 40×56 竖直胶囊，同色）——原型里是
+                    // 同一枚 #voiceBtn 的 morph，这里同样由同一个尾部槽位承担。
+                    dictating -> ComposerTrailing.DICTATION_COMMIT
+                    conversationActive -> ComposerTrailing.VOICE_STOP
                     trailingShowsSend -> ComposerTrailing.SEND
                     else -> ComposerTrailing.VOICE_ENTRY
                 }
@@ -634,11 +785,17 @@ internal fun Material3ComposerBody(
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
+                // 口述时 ✓ 长到 56dp：下端不再让出 8dp 端距，与 × 同高、同形（原型 #voiceBtn 的 morph）。
+                val trailingBottom by animateDpAsState(
+                    targetValue = if (dictating) 0.dp else ComposerConcentricGap,
+                    animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                    label = "composer_trailing_bottom",
+                )
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         // 同心端距：40dp 圆钮半径 20dp 与内层 28dp 圆角相差 8dp。
-                        .padding(end = ComposerConcentricGap, bottom = ComposerConcentricGap)
+                        .padding(end = ComposerConcentricGap, bottom = trailingBottom)
                         // 供回归测试对“尾部按钮形变”期间的像素取样（见 M3ComposerToolbarLayoutTest）。
                         .testTag("composer-trailing-slot"),
                 ) {
@@ -652,10 +809,37 @@ internal fun Material3ComposerBody(
                                     fadeOut(trailingFadeSpec) +
                                         scaleOut(trailingScaleSpec, targetScale = 0.8f),
                                 )
+                                // 口述 ✓ 的高度 40 → 56 由容器尺寸动画承担，且不裁切：
+                                // 同一枚按钮原位长高，而不是换了一枚。
+                                .using(SizeTransform(clip = false))
                         },
                         label = "composer_trailing",
                     ) { trailing ->
                         when (trailing) {
+                            // 未配置：提示条右侧的设置圆钮。跳转前先清掉提示——
+                            // 用户从设置页回来时提示不应继续挂着旧结论，重新点麦克风再判一次。
+                            ComposerTrailing.DICTATION_SETTINGS -> {
+                                val openVoiceSettings = LocalOpenVoiceSettings.current
+                                M3DictationSettingsButton(
+                                    onClick = {
+                                        dictation.cancel()
+                                        openVoiceSettings()
+                                    },
+                                )
+                            }
+                            // 口述确认：✓ 与麦克风同色（官方 FilledIconButton 默认 primary / onPrimary），
+                            // 把识别文字放回输入框（不自动发送），随后交还键盘继续编辑。
+                            ComposerTrailing.DICTATION_COMMIT -> M3DictationCommitButton(
+                                onCommit = {
+                                    val text = dictation.commit()
+                                    if (!text.isNullOrBlank()) {
+                                        textFieldState.setTextAndPlaceCursorAtEnd(text)
+                                        // 与转写点按接管同一条路径：先按输入态排版，等键盘可见后归还常规判据。
+                                        transcriptTakeOverAwaitingIme = true
+                                        transcriptTakeOverToken++
+                                    }
+                                },
+                            )
                             // 语音进行中：参考稿的粉色圆钮取官方 tertiaryContainer 角色。
                             ComposerTrailing.VOICE_STOP -> M3VoiceStopButton(onStop = onStopVoiceMode)
                             // 生成中发送：正文先排入上方队列，结束后自动发出；
@@ -669,19 +853,30 @@ internal fun Material3ComposerBody(
                                 onAbortPausedRun = onAbortPausedRun,
                                 onBlocked = blockedNotice,
                             )
-                            ComposerTrailing.VOICE_ENTRY -> VoiceEntryButton(
-                                resetKey = isStreaming to isEditingMessage,
-                                voiceState = voiceState,
-                                onStartVoiceMode = onStartVoiceMode,
-                                onStopVoiceMode = onStopVoiceMode,
-                                // 尾部是麦克风图标的填充圆形按钮，直接对应「语音对话」入口。
-                                icon = Icons.Rounded.Mic,
-                                idleFilled = true,
-                                // 进入语音时本入口会被换成上面的停止钮（同一槽位形变）；形变期间
-                                // 它仍以麦克风外观缩放淡出。若跟着 voiceState.active 换成挂断图标，
-                                // 退场瞬间会先闪一下“躺平的电话”。点击行为不受影响。
-                                swapIconWhenActive = false,
-                            )
+                            ComposerTrailing.VOICE_ENTRY -> if (voiceEntry == ComposerVoiceEntry.DICTATION) {
+                                // 口述入口：填充麦克风（same 40dp 圆钮、primary 底），点击前先收起键盘，
+                                // 听写条接管胶囊位置。
+                                M3DictationMicButton(
+                                    onClick = {
+                                        keyboard?.hide()
+                                        startDictation()
+                                    },
+                                )
+                            } else {
+                                VoiceEntryButton(
+                                    resetKey = isStreaming to isEditingMessage,
+                                    voiceState = voiceState,
+                                    onStartVoiceMode = onStartVoiceMode,
+                                    onStopVoiceMode = onStopVoiceMode,
+                                    // 尾部是麦克风图标的填充圆形按钮，直接对应「语音对话」入口。
+                                    icon = Icons.Rounded.Mic,
+                                    idleFilled = true,
+                                    // 进入语音时本入口会被换成上面的停止钮（同一槽位形变）；形变期间
+                                    // 它仍以麦克风外观缩放淡出。若跟着 voiceState.active 换成挂断图标，
+                                    // 退场瞬间会先闪一下“躺平的电话”。点击行为不受影响。
+                                    swapIconWhenActive = false,
+                                )
+                            }
                         }
                     }
                 }
@@ -760,13 +955,32 @@ internal fun Material3ComposerBody(
 }
 
 /**
- * 胶囊尾部按钮的三种形态：语音入口（`Call`）⇄ 发送 / 停止 / 继续 ⇄ 语音进行中的停止。
+ * 尾部按钮的形态：语音入口（`Call`）⇄ 发送 / 停止 / 继续 ⇄ 语音进行中的停止 ⇄ 口述确认
+ * ⇄ 口述未配置时的「去配置」。
  *
- * 三者共用同一枚叠放在胶囊右下角的按钮槽位，切换走同一条官方 Expressive 弹簧的
- * 缩放 + 淡入淡出形变——这样“通话按钮 → 发送按钮”（输入文字）与“通话按钮 → 停止按钮”
- * （进入语音）就是同一套动效，而不是让整块胶囊各自淡入淡出。
+ * 它们共用同一枚叠放在胶囊右下角的按钮槽位，切换走同一条官方 Expressive 弹簧的
+ * 缩放 + 淡入淡出形变——这样“通话按钮 → 发送按钮”（输入文字）、“通话按钮 → 停止按钮”
+ * （进入语音）、“麦克风 → ✓”（口述）与“麦克风 → 设置”（未配置）就是同一套动效，
+ * 而不是让整块胶囊各自淡入淡出。
  */
-private enum class ComposerTrailing { VOICE_ENTRY, SEND, VOICE_STOP }
+private enum class ComposerTrailing {
+    VOICE_ENTRY,
+    SEND,
+    VOICE_STOP,
+    DICTATION_COMMIT,
+    DICTATION_SETTINGS,
+}
+
+/**
+ * 尾部语音入口的语义（见 [Material3ComposerBody] 的同名参数）。
+ *
+ * - [CONVERSATION]：语音对话——聆听条 + 停止圆钮，识别结果由语音控制器直接提交；
+ * - [DICTATION]：口述——单次听写，✓ 把文字交回输入框，× 丢弃。
+ */
+internal enum class ComposerVoiceEntry { CONVERSATION, DICTATION }
+
+/** 胶囊槽位的内容：输入框 / 语音对话聆听条 / 口述流光胶囊 / 口述失败提示。 */
+private enum class ComposerPill { TEXT, VOICE_BAR, DICTATION, DICTATION_NOTICE }
 
 /** 胶囊左下角起始侧槽的三种状态：空 / 编辑态取消 / 生成中加载。同一位置互斥，编辑态优先。 */
 private enum class ComposerLeading { NONE, CANCEL, LOADING }
@@ -937,6 +1151,15 @@ private val ComposerConcentricGap = 8.dp
 
 /** 外层浮动工具栏的固定圆角半径：内层 28dp（官方 extraLarge）+ 同心间距 8dp。 */
 private val ComposerOuterCornerRadius = 36.dp
+
+/** 口述时 × / ✓ 的宽度：官方 Small 图标按钮的容器宽（40dp）。 */
+private val ComposerVoiceButtonSize = IconButtonDefaults.smallContainerSize()
+
+/** 口述时 × / ✓ 与胶囊之间的间距（官方标准组件间距 8dp，与原型 `--gap-voice` 同值）。 */
+private val ComposerVoiceGap = 8.dp
+
+/** 口述 ✓ / × 的高度：与输入胶囊最小高一致（官方 TextField MinHeight，56dp）。 */
+private val ComposerVoiceButtonHeight = TextFieldDefaults.MinHeight
 
 /**
  * 空输入框的提示语：名字跟着「当前这个会话到底是谁在干活」走。
@@ -1261,6 +1484,241 @@ private fun voicePhaseText(state: VoiceModeState): String = when {
     state.phase == VoiceModePhase.Thinking -> stringResource(R.string.voice_mode_thinking)
     state.phase == VoiceModePhase.Speaking -> stringResource(R.string.voice_mode_speaking)
     else -> stringResource(R.string.voice_mode_open)
+}
+
+/**
+ * 口述失败提示条（未配置识别引擎）：沿用旧语音入口的失败呈现——胶囊内 error 色文案，
+ * 起始侧一枚红底状态圆；右侧「去配置」圆钮由共享尾部槽位提供，这里只预留同宽空间。
+ *
+ * 文案直接取 [ComposerDictation] 的提示（与 `VoiceModeController` 未配置时同一句），
+ * 不再走 toast：提示条在输入区原位显示，用户可以一键去配置，也可以按 × 关掉。
+ */
+@Composable
+private fun M3DictationNoticeBar(message: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TextFieldDefaults.MinHeight)
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = ComposerConcentricGap)
+            .testTag("composer-dictation-notice"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.RecordVoiceOver,
+                    contentDescription = null,
+                    modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                    tint = MaterialTheme.colorScheme.onError,
+                )
+            }
+        }
+        Text(
+            text = message,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp),
+            style = etaTextStyle(EtaType.Body),
+            color = MaterialTheme.colorScheme.error,
+            // 旧提示是单行省略；这里给两行，完整露出“去哪里配置”，右侧圆钮再负责一键跳转。
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // 为共享的「去配置」圆钮预留同宽空间（圆钮本体在 composer_trailing 里叠放在右下角）。
+        Spacer(modifier = Modifier.size(IconButtonDefaults.smallContainerSize()))
+    }
+}
+
+/**
+ * 口述未配置时的「去配置」圆钮：官方 tonal 圆钮 + 设置图标，与麦克风同尺寸、同槽位。
+ * 点击后由调用方清除提示，再通过 [LocalOpenVoiceSettings] 打开语音设置页。
+ */
+@Composable
+private fun M3DictationSettingsButton(onClick: () -> Unit) {
+    val view = LocalView.current
+    val description = stringResource(R.string.voice_mode_dictation_configure)
+    EtaTooltip(text = description) {
+        FilledTonalIconButton(
+            onClick = {
+                TouchHaptics.click(view)
+                onClick()
+            },
+            modifier = Modifier.size(ComposerVoiceButtonSize),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Settings,
+                contentDescription = description,
+                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            )
+        }
+    }
+}
+
+/**
+ * 口述听写条：流光胶囊 + 单行实时转写。
+ *
+ * 与 [M3VoiceBar] 的差别：没有麦克风状态圆钮——确认 / 取消挪到胶囊两端（由 composer_trailing
+ * 与取消槽提供）；底色不是 `surfaceContainer`，而是 [VoiceGlowCapsule] 现场绘制的流光，
+ * 等于输入框的「表面色」在这里 morph 成胶囊底色（深浅随主题），文字是压在底色上的
+ * `onSurface`。转写仍沿用 [VoiceLiveTranscript] 的「跟随尾部滚动」，长句看得到最后说出的字。
+ */
+@Composable
+private fun M3DictationVoiceBar(transcript: String, listening: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = TextFieldDefaults.MinHeight)
+            .clip(MaterialTheme.shapes.extraLarge)
+            .testTag("composer-dictation-bar"),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        // 流光铺满整颗胶囊；圆角与输入框同为 extraLarge，交接时外形不变。
+        VoiceGlowCapsule(modifier = Modifier.matchParentSize())
+        val hasTranscript = transcript.isNotBlank()
+        VoiceLiveTranscript(
+            text = transcript.ifBlank {
+                stringResource(
+                    if (listening) {
+                        R.string.voice_mode_dictation_listening
+                    } else {
+                        R.string.voice_mode_connecting
+                    },
+                )
+            },
+            color = if (hasTranscript) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            // 上下各 16dp + 单行 24dp = 56dp：与输入框单行高度一致，胶囊高度不跳。
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+        )
+    }
+}
+
+/**
+ * 口述取消槽：× 原位淡入、并以 Expressive 弹簧自右向左飞入（原型取消钮的入场方向）。
+ *
+ * 单独包一层 composable：调用点位于外层工具栏 RowScope 内的 BoxScope，
+ * 直接在那里调 `AnimatedVisibility` 会被解析成 RowScope 的成员重载并触发 DSL_SCOPE_VIOLATION；
+ * 在无接收者的顶层函数里调用则解析到普通的非作用域重载。
+ */
+@Composable
+private fun M3DictationCancelSlot(
+    visible: Boolean,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val fadeSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.defaultEffectsSpec()
+    val exitFadeSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.fastEffectsSpec()
+    val slideSpec: FiniteAnimationSpec<IntOffset> = MaterialTheme.motionScheme.defaultSpatialSpec()
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(fadeSpec) + slideInHorizontally(slideSpec) { it },
+        exit = fadeOut(exitFadeSpec) + slideOutHorizontally(slideSpec) { it },
+        label = "composer_dictation_cancel",
+    ) {
+        M3DictationCancelButton(onClick = onCancel)
+    }
+}
+
+/**
+ * 口述入口：官方填充圆形麦克风按钮（primary / onPrimary，与发送钮同尺寸、同槽位）。
+ *
+ * 权限申请放在调用方（composer 里与 [VoiceEntryButton] 同一套流程），本按钮只负责命中区、
+ * 触感与无障碍文案。
+ */
+@Composable
+private fun M3DictationMicButton(onClick: () -> Unit) {
+    val view = LocalView.current
+    val description = stringResource(R.string.voice_mode_dictation)
+    EtaTooltip(text = description) {
+        FilledIconButton(
+            onClick = {
+                TouchHaptics.click(view)
+                onClick()
+            },
+            modifier = Modifier.size(ComposerVoiceButtonSize),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Mic,
+                contentDescription = description,
+                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            )
+        }
+    }
+}
+
+/**
+ * 口述确认 ✓：与麦克风同一枚按钮的 morph 目标——同色（官方 FilledIconButton 默认
+ * primary / onPrimary）、同宽，只在高度上从 40dp 长到 56dp（竖直胶囊，圆角 CornerFull）。
+ *
+ * 尺寸写死而不是 fillMaxSize：尾部槽位用 `SizeTransform` 动画容器高度，
+ * 按钮自身必须是确定尺寸，槽位才有东西可量。
+ */
+@Composable
+private fun M3DictationCommitButton(onCommit: () -> Unit) {
+    val view = LocalView.current
+    val description = stringResource(R.string.voice_mode_dictation_commit)
+    EtaTooltip(text = description) {
+        FilledIconButton(
+            onClick = {
+                TouchHaptics.click(view)
+                onCommit()
+            },
+            modifier = Modifier.size(
+                width = ComposerVoiceButtonSize.width,
+                height = ComposerVoiceButtonHeight,
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = description,
+                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            )
+        }
+    }
+}
+
+/**
+ * 口述取消 ×：与 ✓ 同形（40×56 竖直胶囊），容器取中性的 `surfaceContainerHighest` /
+ * `onSurfaceVariant` 灰阶（原型的「灰底取消」，不用主题强调色抢确认钮的视线）。
+ */
+@Composable
+private fun M3DictationCancelButton(onClick: () -> Unit) {
+    val view = LocalView.current
+    val description = stringResource(R.string.voice_mode_dictation_cancel)
+    EtaTooltip(text = description) {
+        FilledTonalIconButton(
+            onClick = {
+                TouchHaptics.click(view)
+                onClick()
+            },
+            modifier = Modifier.size(
+                width = ComposerVoiceButtonSize.width,
+                height = ComposerVoiceButtonHeight,
+            ),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = description,
+                modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+            )
+        }
+    }
 }
 
 /**

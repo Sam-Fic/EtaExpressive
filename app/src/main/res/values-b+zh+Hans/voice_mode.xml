@@ -27,4 +27,10 @@
     <string name="voice_mode_doubao_enable">启用豆包实时通话</string>
     <string name="voice_conversation_cloud_asr">豆包语音识别</string>
     <string name="voice_conversation_asr_resource">识别服务</string>
+    <string name="voice_mode_dictation_listening">正在听写…</string>
+    <string name="voice_mode_dictation_commit">完成语音输入</string>
+    <string name="voice_mode_dictation_cancel">取消语音输入</string>
+    <string name="voice_mode_dictation_empty">没有听清，请再说一次</string>
+    <string name="voice_mode_dictation_failed">语音输入失败</string>
+    <string name="voice_mode_dictation_configure">语音设置</string>
 </resources>

@@ -500,6 +500,9 @@ internal fun AgentChatInputBar(
             gptSpeedMode = gptSpeedMode,
             gptSpeedSupported = gptSpeedSupported,
             voiceState = voiceState,
+            // 聊天输入区的语音入口改为「口述」：单次听写，✓ 把文字放回输入框、× 丢弃。
+            // 语音对话仍可从语音浮层 / 悬浮窗等其它入口进入（那里沿用默认的 CONVERSATION）。
+            voiceEntry = ComposerVoiceEntry.DICTATION,
             showMorphLoading = showMorphLoading,
             pendingImages = pendingImages,
             pendingFileReferences = pendingFileReferences,

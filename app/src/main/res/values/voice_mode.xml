@@ -27,4 +27,10 @@
     <string name="voice_mode_doubao_enable">Enable Doubao realtime calls</string>
     <string name="voice_conversation_cloud_asr">Doubao speech recognition</string>
     <string name="voice_conversation_asr_resource">Recognition service</string>
+    <string name="voice_mode_dictation_listening">Dictating…</string>
+    <string name="voice_mode_dictation_commit">Finish voice input</string>
+    <string name="voice_mode_dictation_cancel">Cancel voice input</string>
+    <string name="voice_mode_dictation_empty">Didn't catch that. Please try again.</string>
+    <string name="voice_mode_dictation_failed">Voice input failed</string>
+    <string name="voice_mode_dictation_configure">Voice settings</string>
 </resources>

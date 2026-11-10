@@ -83,6 +83,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
+import io.github.mangi.eta.ui.components.LocalOpenVoiceSettings
 import io.github.mangi.eta.ui.components.LocalShellTopBarInset
 import io.github.mangi.eta.ui.screens.virtualdisplay.VirtualDisplayScreen
 import io.github.mangi.eta.ui.HapticsSettingsScreen
@@ -660,6 +661,8 @@ fun AgentAppRoot(
             // 完全盖住后的冻结由 LocalChatRouteCovered + LocalChatTransitionActive 负责。
             LocalChatUiActive provides true,
             LocalChatRouteCovered provides (currentRoute != route),
+            // 输入区口述未配置时的「去配置」圆钮：与顶栏「语音」同一目标页。
+            LocalOpenVoiceSettings provides { pushRoute(AppRoute.VoiceSettings) },
         ) {
         // 顶栏标题与右槽都以「当前聊天目标」为判据：远程目标走远程侧栏同一份投影，
         // paneSection 每次重组从可观察 map 现算，切会话 / 新建落位 / 服务端改名都会即时反映。
