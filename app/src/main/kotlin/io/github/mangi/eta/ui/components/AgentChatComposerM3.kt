@@ -511,6 +511,10 @@ internal fun Material3ComposerBody(
             animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
             label = "composer_pill_inset",
         )
+        // Spatial 弹簧在收尾阶段会过冲：往回缩（48dp → 0dp）时会短暂冲到负值，
+        // 而 `Modifier.padding` 对负值直接抛 IllegalArgumentException（release 包上表现为闪退），
+        // 所以进 padding 前先收敛到非负，过冲段视觉上等价于 0。
+        val pillInsetSafe = pillInset.coerceAtLeast(0.dp)
 
         M3ComposerQueueStrip(
             items = queuedMessages,
@@ -650,7 +654,7 @@ internal fun Material3ComposerBody(
                         .fillMaxWidth()
                         // 口述时左右让出 × / ✓ 的宽度（0 → 48dp 弹簧）：胶囊两端连续收窄，
                         // 与原型 `.field` 语音态 margin 的 morph 一致。
-                        .padding(horizontal = pillInset)
+                        .padding(horizontal = pillInsetSafe)
                         .background(pillBackdropColor, MaterialTheme.shapes.extraLarge)
                         // 供回归测试对“胶囊衔接”期间的像素取样（见 M3ComposerToolbarLayoutTest）。
                         .testTag("composer-pill-slot"),
@@ -791,11 +795,14 @@ internal fun Material3ComposerBody(
                     animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                     label = "composer_trailing_bottom",
                 )
+                // 同 pillInsetSafe：0dp 与 8dp 之间来回过冲会产生负 padding，
+                // 而 padding 负值会直接抛 IllegalArgumentException，必须先收敛。
+                val trailingBottomSafe = trailingBottom.coerceAtLeast(0.dp)
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         // 同心端距：40dp 圆钮半径 20dp 与内层 28dp 圆角相差 8dp。
-                        .padding(end = ComposerConcentricGap, bottom = trailingBottom)
+                        .padding(end = ComposerConcentricGap, bottom = trailingBottomSafe)
                         // 供回归测试对“尾部按钮形变”期间的像素取样（见 M3ComposerToolbarLayoutTest）。
                         .testTag("composer-trailing-slot"),
                 ) {
