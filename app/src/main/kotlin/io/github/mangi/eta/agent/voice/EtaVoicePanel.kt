@@ -294,6 +294,7 @@ internal fun EtaVoicePanel(
     composerConversationId: String?,
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
     onStopVoiceMode: () -> Unit,
+    autoStartDictation: Boolean,
     onScreenContextSelect: () -> Unit,
     onScreenContextRemove: () -> Unit,
     onScreenContextPreset: (ScreenContextPreset) -> Unit,
@@ -422,6 +423,7 @@ internal fun EtaVoicePanel(
                     textFieldState = textFieldState,
                     composer = composer,
                     voiceState = voiceState,
+                    autoStartDictation = autoStartDictation,
                     focusRequester = focusRequester,
                     canOpenConversation = canOpenConversation,
                     maxContentHeightPx = maxContentHeightPx,
@@ -486,6 +488,7 @@ private fun BoxScope.AssistantPanel(
     textFieldState: TextFieldState,
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
+    autoStartDictation: Boolean,
     focusRequester: FocusRequester,
     canOpenConversation: Boolean,
     maxContentHeightPx: Float,
@@ -964,6 +967,7 @@ private fun AssistantComposer(
             // 入口浮层不放「助手与模型」按钮：这里没有模型切换的上下文，发送走当前全局默认选择。
             showModelPicker = false,
             voiceState = voiceState,
+            autoStartDictation = autoStartDictation,
             // 口述入口与聊天输入区同一套：mic → 流光听写条（× 丢弃 / ✓ 回填输入框 /
             // 说完停顿直接发送）。语音对话仍从主程序语音浮层进入，浮窗不再承载对话聆听条。
             voiceEntry = ComposerVoiceEntry.DICTATION,

@@ -281,12 +281,14 @@ internal fun Material3ComposerBody(
     /**
      * 尾部语音入口的语义。
      *
-     * - [ComposerVoiceEntry.CONVERSATION]（默认）：原来的「语音对话」入口——聆听条 + 停止圆钮，
-     *   语音浮层（`EtaVoicePanel`）仍用它；
-     * - [ComposerVoiceEntry.DICTATION]：聊天输入区的「口述」——麦克风开始单次听写，胶囊化作
-     *   流光胶囊，× 丢弃、✓ 把识别文字交回输入框（不自动发送）。
+     * - [ComposerVoiceEntry.CONVERSATION]（默认）：原来的「语音对话」入口——聆听条 + 停止圆钮
+     *   （当前无调用方传入；语音对话统一走主程序语音浮层，入口保留供回切）；
+     * - [ComposerVoiceEntry.DICTATION]：聊天输入区与助手弹窗的「口述」——麦克风开始单次听写，
+     *   胶囊化作流光胶囊，× 丢弃、✓ 回填输入框继续编辑、说完停顿自动发送。
      */
     voiceEntry: ComposerVoiceEntry = ComposerVoiceEntry.CONVERSATION,
+    /** 唤起方式=语音识别（助手弹窗）：组合落座即自动开录，无需手点 mic（服务侧已过麦克风权限）。 */
+    autoStartDictation: Boolean = false,
     showMorphLoading: Boolean,
     pendingImages: List<PendingImageUi>,
     pendingFileReferences: List<PendingFileReferenceUi>,
@@ -441,6 +443,11 @@ internal fun Material3ComposerBody(
         // 会话随组合记住，切会话 / 关页面时由 DisposableEffect 释放麦克风。
         val dictation = rememberComposerDictation()
         val dictating = voiceEntry == ComposerVoiceEntry.DICTATION && dictation.active
+        // 唤起方式=语音识别（助手弹窗）：弹窗落座即自动开录，无需手点 mic。
+        // 服务侧已过麦克风权限；识别方式未配置时 start() 会原位给出「去配置」提示条。
+        LaunchedEffect(autoStartDictation) {
+            if (autoStartDictation && voiceEntry == ComposerVoiceEntry.DICTATION) dictation.start()
+        }
         // 未配置识别引擎：沿用旧语音入口的失败提示（同一句文案），原位展示在胶囊槽位，
         // 尾部圆钮改成「去配置」。它不是一个会话：不占麦克风，也不再弹 toast。
         val dictationNotice = voiceEntry == ComposerVoiceEntry.DICTATION && dictation.notice != null

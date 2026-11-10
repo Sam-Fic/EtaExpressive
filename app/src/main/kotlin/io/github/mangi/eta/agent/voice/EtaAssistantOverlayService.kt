@@ -67,7 +67,6 @@ import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.agent.runtime.AgentExternalArchivePayload
 import io.github.mangi.eta.agent.runtime.AgentRuntimeClient
 import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
-import io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig
 import io.github.mangi.eta.config.AssistantEntryMode
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
@@ -279,6 +278,10 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             return
         }
         cancelCurrentRun()
+        // 浮窗已不再承载语音对话 UI（入口恒为口述）：残留的浮窗实时通话只会隐形占着
+        // 进程级麦克风互斥锁（DoubaoDuplexSession 全会话持锁），让唤醒即开录的听写
+        // 撞上「语音输入正在使用麦克风」。空闲态 stop() 是空操作，代价为零。
+        voiceController.stop()
         entryCaptureJob?.cancel()
         removeWindow()
         val generation = ++entryGeneration
@@ -381,28 +384,29 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             withContext(Dispatchers.Main.immediate) {
                 // 等待期间可能被重复 SHOW 重置或被关闭：过期的一代不再挂窗。
                 if (generation != entryGeneration || exitAnimationRequested) return@withContext
-                showWindow(appearance)
+                // 语音入口（唤起方式=语音识别）：过权限后由听写条自动开录、不弹键盘——
+                // 两者同时出现会把系统 IME 的入场动画和语音条打架；权限缺失 toast 后退回键盘。
+                val startDictation = Prefs.assistantEntryMode() == AssistantEntryMode.VOICE &&
+                    startVoiceEntry()
+                showWindow(appearance, startDictation)
                 if (windowView == null) {
                     stopSelf()
                     return@withContext
                 }
                 // 记录入口浮窗展示时刻，供 [showEntry] 忽略紧随其后的重复 SHOW（入场弹簧还没播完）。
                 lastEntryPresentedAt = SystemClock.uptimeMillis()
-                // 语音入口不弹键盘：两者同时出现会把系统 IME 的入场动画和语音条打架。
-                if (Prefs.assistantEntryMode() == AssistantEntryMode.VOICE && startVoiceEntry()) {
-                    return@withContext
-                }
+                if (startDictation) return@withContext
                 showKeyboard()
             }
         }
     }
 
     /**
-     * 唤起时直接开始语音识别。
+     * 唤起方式=语音识别时的入口前置检查。
      *
-     * 只在 App 进程的入口浮窗消费（配置存本地 Agent 偏好）。麦克风权限或语音配置缺失时
-     * 弹一条提示并返回 false，由调用方退回键盘输入；识别引擎的细节错误（云端凭据 /
-     * 离线包尚未就绪）交给 [VoiceModeController] 在语音条里呈现，不在入口上二次判断。
+     * 只查麦克风权限：缺失时提示并返回 false，由调用方退回键盘输入。识别本身由
+     * 弹窗里 `Material3ComposerBody` 的听写会话在落座时自动开录（autoStartDictation）；
+     * 识别方式未配置不再走 toast——听写条会原位给出「去配置」提示（与聊天输入区同一套）。
      */
     private fun startVoiceEntry(): Boolean {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) !=
@@ -411,17 +415,6 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             Toast.makeText(this, R.string.assistant_entry_voice_permission_missing, Toast.LENGTH_SHORT).show()
             return false
         }
-        val config = DoubaoVoiceConfig.state.value
-        // 同时可用两种模式且没有历史选择时 directMode 为 null，此时按入口顺序取第一个（语音对话）。
-        val mode = VoiceEntryPolicy.directMode(
-            config,
-            Prefs.getString(Prefs.Keys.AGENT_VOICE_LAST_ENTRY),
-        ) ?: VoiceEntryPolicy.modes(config).firstOrNull()
-        if (mode == null) {
-            Toast.makeText(this, R.string.assistant_entry_voice_unavailable, Toast.LENGTH_SHORT).show()
-            return false
-        }
-        voiceController.start(mode)
         return true
     }
 
@@ -436,7 +429,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.ASSISTANT_WAKE)
     }
 
-    private fun showWindow(initialAppearance: AppearanceSettings) {
+    private fun showWindow(initialAppearance: AppearanceSettings, autoStartDictation: Boolean) {
         if (windowView != null) return
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         val view = createComposeView {
@@ -478,6 +471,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                         textFieldState = composerTextFieldState,
                         composer = composerState,
                         voiceState = voiceState,
+                        autoStartDictation = autoStartDictation,
                         inputFocusRequestKey = inputFocusRequestKey,
                         onScreenContextSelect = ::selectScreenContext,
                         onScreenContextRemove = ::removeScreenContext,
