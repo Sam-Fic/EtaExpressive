@@ -91,11 +91,11 @@ class AgentVirtualRunOverlayServiceTest {
                 assertTrue(session.complete(result))
                 val terminal = session.terminalResult!!
                 if (index == 2) assertEquals("已停止", terminal.error)
-                call(service, "postTerminalOverlay", session, terminal, null, null)
+                call(service, "postTerminalOverlay", session, terminal, null, null, "")
                 idle()
                 assertFalse(registry(service).contains(session))
                 // A duplicate worker callback after removal must not surface a popup either.
-                call(service, "postTerminalOverlay", session, terminal, null, null)
+                call(service, "postTerminalOverlay", session, terminal, null, null, "")
                 idle()
                 assertNoWindows(service)
                 assertNull(field(service, "overlaySession"))
@@ -144,7 +144,7 @@ class AgentVirtualRunOverlayServiceTest {
             for (event in events()) call(service, "handleAcceptedRunEvent", background, event, null)
             val result = AgentRuntimeWire.RunResult(background.runId, error == null, "done", error)
             assertTrue(background.complete(result))
-            call(service, "postTerminalOverlay", background, result, null, null)
+            call(service, "postTerminalOverlay", background, result, null, null, "")
             idle()
             assertSame(foreground, field(service, "overlaySession"))
             assertSame(orb, field(service, "orbView"))
@@ -157,7 +157,7 @@ class AgentVirtualRunOverlayServiceTest {
         // Also preserve a foreground result card after its session has been removed.
         val result = AgentRuntimeWire.RunResult(foreground.runId, true, "foreground result")
         assertTrue(foreground.complete(result))
-        call(service, "postTerminalOverlay", foreground, result, null, null)
+        call(service, "postTerminalOverlay", foreground, result, null, null, "")
         idle()
         val card = field(service, "resultCardView")
         assertNotNull(card)
@@ -168,7 +168,7 @@ class AgentVirtualRunOverlayServiceTest {
         registry(service).put(background)
         val backgroundResult = AgentRuntimeWire.RunResult(background.runId, false, "", "failed")
         assertTrue(background.complete(backgroundResult))
-        call(service, "postTerminalOverlay", background, backgroundResult, null, null)
+        call(service, "postTerminalOverlay", background, backgroundResult, null, null, "")
         idle()
         assertSame(card, field(service, "resultCardView"))
         assertSame(completedState, overlayState(service))
@@ -195,7 +195,7 @@ class AgentVirtualRunOverlayServiceTest {
         val replacementSupplements = supplements[replacement.runId]
         assertNotNull(replacementSupplements)
 
-        call(service, "postTerminalOverlay", old, oldResult, null, null)
+        call(service, "postTerminalOverlay", old, oldResult, null, null, "")
         idle()
         assertSame(replacement, registry(service).get("same"))
         assertSame(replacement, field(service, "overlaySession"))
@@ -232,7 +232,7 @@ class AgentVirtualRunOverlayServiceTest {
             assertSame(orb, field(service, "orbView"))
             val result = AgentRuntimeWire.RunResult(session.runId, true, "foreground result")
             assertTrue(session.complete(result))
-            call(service, "postTerminalOverlay", session, result, guard, null)
+            call(service, "postTerminalOverlay", session, result, guard, null, "")
             idle()
             assertFalse(registry(service).contains(session))
             assertEquals(AgentTaskSurfaceMode.FOREGROUND, session.taskSurfaceMode)
@@ -247,7 +247,7 @@ class AgentVirtualRunOverlayServiceTest {
             // Removed sessions cannot reopen a dismissed result card via a duplicate callback.
             call(service, "dismissAndStop")
             val addsBefore = windows.added.size
-            call(service, "postTerminalOverlay", session, result, guard, null)
+            call(service, "postTerminalOverlay", session, result, guard, null, "")
             idle()
             assertNoWindows(service)
             assertEquals(addsBefore, windows.added.size)

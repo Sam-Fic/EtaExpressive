@@ -39,11 +39,13 @@ class AgentDeviceToolCatalogTest {
         ).toolNames()
         // 日程组的工具本体被延迟，但个人数据开关开着，所以目录里留一个 tools_use_group
         // 供模型打开它。少了这个入口，日程能力就永远开不出来。
+        // tools_search（按工具渐进加载档）与 tools_use_group 同一门面：有可打开组即常驻下发。
         assertEquals(
             AgentDeviceToolCatalog.personalReadToolNames() +
                 AgentDeviceToolCatalog.deviceStateReadToolNames() +
                 setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
-                AgentToolGroupCatalog.USE_GROUP,
+                AgentToolGroupCatalog.USE_GROUP +
+                AgentToolSearchCatalog.SEARCH,
             personalOnly,
         )
 
@@ -88,11 +90,12 @@ class AgentDeviceToolCatalogTest {
             openedToolGroups = setOf(AgentToolGroups.PERSONAL_GROUP.id),
         ).toolNames()
         // 设备状态组的工具本体被延迟，但个人数据开关开着，所以目录里留一个 tools_use_group
-        // 供模型打开它（枚举此时应只剩 device_state）。
+        // 供模型打开它（枚举此时应只剩 device_state）；tools_search 随按工具档常驻下发。
         assertEquals(
             AgentDeviceToolCatalog.personalReadToolNames() +
                 setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
-                AgentToolGroupCatalog.USE_GROUP,
+                AgentToolGroupCatalog.USE_GROUP +
+                AgentToolSearchCatalog.SEARCH,
             withheld,
         )
 

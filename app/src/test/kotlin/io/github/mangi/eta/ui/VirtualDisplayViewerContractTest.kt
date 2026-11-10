@@ -11,6 +11,8 @@ class VirtualDisplayViewerContractTest {
     private val ui = File("src/main/kotlin/io/github/mangi/eta/ui")
     private val screen = File(ui, "screens/virtualdisplay/VirtualDisplayScreen.kt").readText()
     private val stage = File(ui, "screens/virtualdisplay/VirtualDisplayStage.kt").readText()
+    // 触控焦点的 M3E 奇异形状绘制已收敛到独立层组件（原内联在 Stage 里）。
+    private val touchFocus = File(ui, "components/VirtualTouchFocus.kt").readText()
 
     @Test fun viewerOwnsLifecycleHandoffCloseAndASingleBackHandler() {
         for (text in listOf(
@@ -32,11 +34,14 @@ class VirtualDisplayViewerContractTest {
             "awaitEachGesture",
             "ContentScale.FillBounds",
             "aspectRatio(",
-            "MaterialShapes.",
-            "toPath(",
+            "VirtualTouchFocusLayer",
             "ExperimentalMaterial3ExpressiveApi",
         )) {
             assertTrue("missing $text", stage.contains(text))
+        }
+        // 奇异形状的预计算与绘制（MaterialShapes + toPath）在触控焦点层组件里。
+        for (text in listOf("MaterialShapes.", "toPath(")) {
+            assertTrue("missing $text", touchFocus.contains(text))
         }
         assertFalse(stage.contains("Color(0x"))
         assertFalse(stage.contains("CircularProgressIndicator()"))

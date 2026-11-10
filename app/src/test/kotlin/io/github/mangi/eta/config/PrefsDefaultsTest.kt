@@ -53,6 +53,12 @@ class PrefsDefaultsTest {
                 Prefs.Keys.AGENT_THINKING_ENABLED to true,
                 Prefs.Keys.AGENT_AUTO_COMPRESS_ENABLED to false,
                 Prefs.Keys.AGENT_COMPRESS_CUSTOM_MODEL_ENABLED to false,
+                Prefs.Keys.AGENT_DECISION_MODEL_ENABLED to false,
+                // 影子模式默认开：即使总开关被打开，也先只记录不生效。
+                Prefs.Keys.AGENT_DECISION_SHADOW to true,
+                Prefs.Keys.AGENT_DECISION_ESCALATION_ENABLED to false,
+                // 默认开：control 漏选时保留 tools_use_group，让模型拿到解释性错误而不是死胡同。
+                Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE to true,
                 Prefs.Keys.AGENT_TTS_AUTO_READ to false,
                 Prefs.Keys.AGENT_TTS_STREAM_SYNTH to true,
                 Prefs.Keys.AGENT_TTS_AUTO_READ_BACKGROUND to false,
@@ -66,6 +72,10 @@ class PrefsDefaultsTest {
                 Prefs.Keys.HAPTIC_REASONING_DONE to true,
                 Prefs.Keys.HAPTIC_BACKGROUND to true,
                 Prefs.Keys.HAPTIC_BACKGROUND_REASONING to true,
+                Prefs.Keys.LIVE_ACTIVITY_ENABLE to true,
+                Prefs.Keys.LIVE_ACTIVITY_COMPLETION_BANNER to true,
+                // 前台收起常驻运行卡改变了现有视觉基线，默认关。
+                Prefs.Keys.LIVE_ACTIVITY_FOREGROUND_SUPPRESS to false,
             ),
             Prefs.Keys.BOOLEAN_DEFAULTS,
         )
@@ -102,6 +112,10 @@ class PrefsDefaultsTest {
                 Prefs.Keys.AGENT_THINKING_ENABLED,
                 Prefs.Keys.AGENT_AUTO_COMPRESS_ENABLED,
                 Prefs.Keys.AGENT_COMPRESS_CUSTOM_MODEL_ENABLED,
+                Prefs.Keys.AGENT_DECISION_MODEL_ENABLED,
+                Prefs.Keys.AGENT_DECISION_SHADOW,
+                Prefs.Keys.AGENT_DECISION_ESCALATION_ENABLED,
+                Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE,
                 Prefs.Keys.AGENT_TTS_AUTO_READ,
                 Prefs.Keys.AGENT_TTS_STREAM_SYNTH,
                 Prefs.Keys.AGENT_TTS_AUTO_READ_BACKGROUND,
@@ -115,6 +129,9 @@ class PrefsDefaultsTest {
                 Prefs.Keys.HAPTIC_REASONING_DONE,
                 Prefs.Keys.HAPTIC_BACKGROUND,
                 Prefs.Keys.HAPTIC_BACKGROUND_REASONING,
+                Prefs.Keys.LIVE_ACTIVITY_ENABLE,
+                Prefs.Keys.LIVE_ACTIVITY_COMPLETION_BANNER,
+                Prefs.Keys.LIVE_ACTIVITY_FOREGROUND_SUPPRESS,
             ),
             Prefs.Keys.LOCAL_AGENT_KEYS,
         )

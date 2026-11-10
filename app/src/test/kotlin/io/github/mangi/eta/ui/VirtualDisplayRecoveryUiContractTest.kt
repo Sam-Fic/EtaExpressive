@@ -23,7 +23,7 @@ class VirtualDisplayRecoveryUiContractTest {
 
     @Test fun inlineRecoveryHasWrappingActionsAndExplicitWebRevocation() {
         val source = sections.readText()
-        assertEquals(4, Regex("""TouchHaptics\.click\(view\)""").findAll(source).count())
+        assertEquals(5, Regex("""TouchHaptics\.click\(view\)""").findAll(source).count())
         assertEquals(2, Regex("""FlowRow\(""").findAll(source).count())
         assertEquals(4, Regex("""maxLines = 1""").findAll(source).count())
         assertTrue(source.contains("EtaSegmentedColumn("))

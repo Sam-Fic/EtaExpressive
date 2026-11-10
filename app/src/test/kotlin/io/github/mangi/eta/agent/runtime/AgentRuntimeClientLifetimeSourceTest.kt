@@ -98,6 +98,10 @@ class AgentRuntimeClientLifetimeSourceTest {
             """
                 preparedImagesRef.getAndSet(null)?.close()
                 preparedHistoryRef.getAndSet(null)?.close()
+                entryToolPool?.shutdownNow()
+                serviceMessengerRef.set(null)
+                hostExecutor?.shutdownNow()
+                runCatching { hostBridge?.close() }
                 runCatching { lease.binder.unlinkToDeath(deathRecipient, 0) }
                 lease.close()
             """,

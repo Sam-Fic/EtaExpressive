@@ -122,7 +122,9 @@ class AgentMemoryStoreTest {
                 content = "",
             ),
         ) as AgentMemoryWriteResult.Success
-        assertEquals("# 核心记忆\n新偏好\n# 其他\n保留", deleted.snapshot.content)
+        // 第一个 ReplaceSection 只动了「## 项目」节，「旧偏好」从未被改写，
+        // 删除该节后应原样保留（此前误写作「新偏好」）。
+        assertEquals("# 核心记忆\n旧偏好\n# 其他\n保留", deleted.snapshot.content)
     }
 
     @Test

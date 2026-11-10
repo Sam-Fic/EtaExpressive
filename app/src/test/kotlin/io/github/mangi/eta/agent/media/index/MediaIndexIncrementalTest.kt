@@ -18,6 +18,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * 媒体索引的增量判断与清理逻辑单测。
@@ -33,6 +34,10 @@ import org.robolectric.annotation.Config
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
+// 显式钉 NATIVE：缩略图自愈用例依赖「垃圾字节解码必然失败」；同 JVM 内其他测试类
+// 若把图形模式切到 shadow，BitmapFactory 会对垃圾字节返回 100×100 占位图，
+// 自愈分支就会被误判为重建成功（全量套件下才复现的顺序污染）。
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MediaIndexIncrementalTest {
 
     private val context: Context get() = RuntimeEnvironment.getApplication()

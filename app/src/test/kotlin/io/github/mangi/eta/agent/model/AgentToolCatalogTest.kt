@@ -223,7 +223,8 @@ class AgentToolCatalogTest {
         val properties = write.getJSONObject("parameters").getJSONObject("properties")
         assertEquals(3_500, properties.getJSONObject("content").getInt("maxLength"))
         assertEquals(
-            listOf("replace_range", "append", "clear"),
+            // replace_section（按标题整节替换）随章节读写一并加入模式枚举。
+            listOf("replace_section", "replace_range", "append", "clear"),
             properties.getJSONObject("mode").getJSONArray("enum").stringValues(),
         )
     }

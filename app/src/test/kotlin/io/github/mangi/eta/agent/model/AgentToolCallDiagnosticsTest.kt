@@ -48,7 +48,9 @@ class AgentToolCallDiagnosticsTest {
         listOf("PRIVATE_SENTINEL", "Bearer_sensitive", "你好", "Authorization", "api_key", "session_id", "cwd", "stdout", "stderr", "reasoning_content")
             .forEach { assertFalse("Unexpected plaintext: $it", all.contains(it)) }
         val parsed = capture.stage("parsed").single()
-        assertEquals("other", parsed.getString("tool"))
+        // 工具名只放行短标识字符集：敌意名字进不了日志，落 "unknown" 桶
+        // （"other" 留给合法但未识别的工具名）。
+        assertEquals("unknown", parsed.getString("tool"))
         assertEquals("other", parsed.getString("requested_environment"))
         assertEquals("other", parsed.getString("requested_action"))
         assertEquals(9, parsed.getInt("argument_key_count"))
