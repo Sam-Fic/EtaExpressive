@@ -189,6 +189,7 @@
             android:noHistory="true"
             android:process=":voice"
             android:showWhenLocked="true"
+            android:taskAffinity="${applicationId}.task_voice_assist"
             android:theme="@style/Theme.EtaVoiceAssistBridge">
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
