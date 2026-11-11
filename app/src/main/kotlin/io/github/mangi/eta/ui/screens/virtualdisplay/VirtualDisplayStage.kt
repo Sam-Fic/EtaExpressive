@@ -20,7 +20,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -125,7 +124,9 @@ internal fun VirtualDisplayLiveStage(
         shape = RoundedCornerShape(EtaSegmentedOuterCornerRadius),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        BoxWithConstraints(
+        // 这里不需要读取约束（尺寸一律 fillMaxSize），用 Box 避免 BoxWithConstraints
+        // 白白付出一次子组合开销；UnusedBoxWithConstraintsScope 把它判为 Error。
+        Box(
             modifier = Modifier.fillMaxSize().padding(EtaDimens.SpaceMd),
             contentAlignment = Alignment.Center,
         ) {

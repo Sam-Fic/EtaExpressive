@@ -315,6 +315,14 @@ internal class UserTerminalController(
             // 尚未冲出的 stdout 文本。状态行残片可能跨轮到达（50ms 轮询会随机截断），扣在这里。
             val pending = StringBuilder()
             while (true) {
+                // 输出缓冲越过上限后，读取线程仍会排空管道、但把后续字节全部丢掉，
+                // 状态行也在其中：exec 就会永远等一个不可能到达的 marker（CI 上表现为
+                // 整个 verify job 被超时取消）。主动腾空缓冲并重置水位，让截断之后
+                // 到达的字节（含状态行）重新可收集；正文允许丢失，协议不能死。
+                if (session.stdout.isTruncated()) {
+                    session.stdout.clear()
+                    stdoutOffset = 0
+                }
                 val stdoutDelta = session.stdout.newTextSince(stdoutOffset)
                 if (stdoutDelta.second.isNotEmpty()) {
                     stdoutOffset = stdoutDelta.first
@@ -355,6 +363,13 @@ internal class UserTerminalController(
                         onDelta?.invoke(pending.toString(), false)
                         pending.setLength(0)
                     }
+                    return InternalResult(null, session.cwd, timedOut = false, sessionClosed = true)
+                }
+                // stdout 读到 EOF 后读取线程结束，管道不可能再产出状态行；此时进程对象
+                // 仍可能报 alive（setsid 包装层尚未回收），继续轮询就是死等。按会话结束返回，
+                // 让调用方能走"停止/重开"路径，而不是把 exec 线程永久钉住。
+                if (!session.stdoutThread.isAlive) {
+                    if (pending.isNotEmpty()) onDelta?.invoke(pending.toString(), false)
                     return InternalResult(null, session.cwd, timedOut = false, sessionClosed = true)
                 }
                 if (deadline != null && System.currentTimeMillis() >= deadline) {

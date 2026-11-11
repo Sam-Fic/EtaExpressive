@@ -11,6 +11,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,8 +36,6 @@ import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.WithoutPressRipple
 import io.github.mangi.eta.ui.components.etaRippleConfiguration
 import io.github.mangi.eta.ui.haptics.TouchHaptics
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 
 /** 二级页骨架（EtaScaffoldPage）：大标题顶栏 + 执行位置单选组 + 虚拟屏实时画面入口。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,15 +47,13 @@ internal fun AgentTaskPreferenceScreen(
     val view = LocalView.current
     var selected by remember { mutableStateOf(AgentTaskSurface.stored()) }
     // 只订阅去重后的「运行中 / 应用名 / 显示 ID」：实时帧以 6fps 更新时本页不跟着重组。
+    // collectAsStateWithLifecycle() 的 StateFlow 重载自行读取当前快照作为初始值，
+    // 组合期不直接调 StateFlow.value（会触发 StateFlowValueCalledInComposition）；
+    // derivedStateOf 只在三个字段有变化时才产出新值，等价于原来的 map + distinctUntilChanged。
+    val snapshot by VirtualDisplayController.snapshots.collectAsStateWithLifecycle()
     val display by remember {
-        VirtualDisplayController.snapshots
-            .map { Triple(it.active, it.appName, it.displayId) }
-            .distinctUntilChanged()
-    }.collectAsStateWithLifecycle(
-        initialValue = VirtualDisplayController.snapshots.value.let {
-            Triple(it.active, it.appName, it.displayId)
-        },
-    )
+        derivedStateOf { Triple(snapshot.active, snapshot.appName, snapshot.displayId) }
+    }
     val (displayActive, displayApp, _) = display
     // 实时画面走进程内 VirtualDisplayController，不依赖 Magisk 后端模块；
     // 模块只影响虚拟屏页里的网页预览与副屏恢复，因此入口摘要只反映真实运行状态。

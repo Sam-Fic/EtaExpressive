@@ -3169,6 +3169,7 @@
   <string name="mobile_actions_token_dialog_hint">先在模型頁同意 Gemma 授權，再貼上 huggingface.co/settings/tokens 的存取權杖；ModelScope 無需權杖</string>
   <string name="mobile_actions_token_field">存取權杖</string>
   <string name="mobile_actions_download">下載模型</string>
+  <string name="mobile_actions_continue_download">繼續下載</string>
   <string name="mobile_actions_cancel_download">取消下載</string>
   <string name="mobile_actions_delete">刪除模型</string>
   <string name="mobile_actions_delete_summary">釋放 %1$s</string>

@@ -15,12 +15,18 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
+/**
+ * 这些用例会真的起常驻 shell 会话（setsid + sh）。CI runner 上偶发出现会话失联、
+ * 状态行不到达，而 exec 按设计不设命令超时，测试线程会一直等到整个 job 被超时取消。
+ * 每个用例自带 30 秒上限：正常执行只需几十毫秒到 1 秒，超时只会把挂起变成明确的
+ * 失败用例，不会再拖死整条流水线。
+ */
 class UserTerminalControllerTest {
 
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
-    @Test
+    @Test(timeout = 30_000)
     fun startupFailureKeepsDiagnosticStageAndCreatesNoSession() {
         val controller = UserTerminalController(
             NoopLogger,
@@ -40,7 +46,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test fun longSessionCommandRetainsEnvironment() {
+    @Test(timeout = 30_000) fun longSessionCommandRetainsEnvironment() {
         val controller = UserTerminalController(NoopLogger)
         try {
             val open = controller.openSession(TerminalEnvironment.ANDROID, cwd = temporaryFolder.root.path, identity = "user") as UserTerminalController.OpenResult.Ready
@@ -52,7 +58,7 @@ class UserTerminalControllerTest {
         } finally { controller.close() }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun sessionKeepsCwdAndEnvironmentAcrossExec() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -84,7 +90,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun sessionsCoexistAndKeepIndependentState() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -121,7 +127,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun stopSessionOnlyTerminatesTargetSession() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -145,7 +151,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun sessionLimitIsEnforced() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -168,7 +174,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun execStreamsOutputBeforeCompletion() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -198,7 +204,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun statusMarkerIsNotLeakedToOutput() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -215,7 +221,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun nonZeroExitCodeIsReported() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -231,7 +237,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun exitCommandClosesSessionAndReopenWorks() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -257,7 +263,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun stopSessionTerminatesLongCommand() {
         val controller = UserTerminalController(NoopLogger)
         try {
@@ -289,7 +295,7 @@ class UserTerminalControllerTest {
         }
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun interactiveCommandReadsStdinInputWithoutEatingStatusMarker() {
         val controller = UserTerminalController(NoopLogger)
         try {

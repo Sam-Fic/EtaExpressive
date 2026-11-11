@@ -3169,6 +3169,7 @@
   <string name="mobile_actions_token_dialog_hint">先在模型页同意 Gemma 许可，再粘贴 huggingface.co/settings/tokens 的访问令牌；ModelScope 无需令牌</string>
   <string name="mobile_actions_token_field">访问令牌</string>
   <string name="mobile_actions_download">下载模型</string>
+  <string name="mobile_actions_continue_download">继续下载</string>
   <string name="mobile_actions_cancel_download">取消下载</string>
   <string name="mobile_actions_delete">删除模型</string>
   <string name="mobile_actions_delete_summary">释放 %1$s</string>

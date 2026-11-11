@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,8 +48,6 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.rememberTaskBackendInstalled
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -66,14 +65,12 @@ internal fun VirtualDisplayScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val statusFlow = remember {
-        VirtualDisplayController.snapshots
-            .map { VirtualDisplayStatus.from(it) }
-            .distinctUntilChanged()
-    }
-    val status by statusFlow.collectAsStateWithLifecycle(
-        initialValue = VirtualDisplayStatus.from(VirtualDisplayController.snapshots.value),
-    )
+    // 页面只消费轻量状态：实时帧 30fps 更新时本页不跟着重组。
+    // collectAsStateWithLifecycle() 的 StateFlow 重载自行读取当前快照作为初始值，
+    // 组合期不直接调 StateFlow.value（会触发 StateFlowValueCalledInComposition）；
+    // derivedStateOf 用 data class 的相等性去重，等价于原来的 map + distinctUntilChanged。
+    val snapshot by VirtualDisplayController.snapshots.collectAsStateWithLifecycle()
+    val status by remember { derivedStateOf { VirtualDisplayStatus.from(snapshot) } }
 
     var sawActive by remember { mutableStateOf(status.active) }
     var released by remember { mutableStateOf(false) }
