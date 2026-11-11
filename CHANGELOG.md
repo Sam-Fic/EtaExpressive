@@ -4,6 +4,39 @@ All notable changes to **EtaExpressive** are documented here. Entries are groupe
 
 <!-- Ordered newest-first; generated from git tag history. -->
 
+## [v5.4.1] - 2026-11-11
+
+首个实际发布的 5.4.x：`v5.4.0` 标签已推送，但那轮发版 CI 被 75 分钟超时取消，
+草稿都未建成，因此 `releases/latest` 一直停在 v5.3.20。本版含 v5.4.0 的全部变更，
+并在其之上追加 3 个提交；更新检查从 v5.3.20 升到本版。
+
+### Fixes
+
+- fix(chat): 生成期上翻阅读不再被严格贴底拽回——锚定只认真贴底状态（`Anchored`），
+  加 `hasLeftBottom` 闩锁避免松手又被贴回，`ChatListFollowState` 补 `userScrolling`
+  字段以免 Lagging 段起手那一帧被 `distinctUntilChanged` 吞掉
+
+- fix(chat): 悬浮窗补语音唤醒入口与熄屏收起；删掉按消息数强制重锚，重锚改挂提交动作，
+  口述听写按启动令牌延迟开录
+
+- fix(ci): 常驻 shell 用例不再无限期挂死流水线——控制器补输出缓冲截断清空与 stdout
+  读线程 EOF 两处物理退出，13 个用例各带 30 秒上限，job 上限从误加的 75 分钟
+  降回 45 分钟（正常一轮约 16 分钟）
+
+- fix(ui): 清掉 4 项 lint Error——两处组合期读 `StateFlow.value` 改 StateFlow 重载 +
+  `derivedStateOf` 去重，未用作用域的 `BoxWithConstraints` 改 `Box`，简/繁中文补
+  `mobile_actions_continue_download` 翻译
+
+### Build
+
+- fix(ci): 虚拟屏契约断言 `maxLines = 1` 计数与源码同步（4→5），其余断言全量复核
+
+- fix(ci): 数据库上古 v5 降级用例清理改走 `Context.deleteDatabase`，种子 helper 补
+  `onDowngrade` 重建，消除同 worker 里 WAL 把 v40 写回的偶发失败
+
+- fix(ci): 常驻 shell 在 runner 上偶发失联，加仅对 `TestTimedOutException` 生效的
+  3 次重试，`RuleChain` 把临时目录放内层保证每次重建
+
 ## [v5.4.0] - 2026-11-11
 
 ### Features
