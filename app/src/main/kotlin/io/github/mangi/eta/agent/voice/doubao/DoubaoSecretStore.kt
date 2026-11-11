@@ -33,20 +33,30 @@ internal class DoubaoSecretStore(context: Context) {
     @Synchronized
     fun read(slot: String): String? {
         val encoded = preferences.getString(slot, null) ?: return null
-        if (!encoded.startsWith(PREFIX)) return encoded.takeIf { it.isNotBlank() }
-        return runCatching {
-            val payload = Base64.decode(encoded.substring(PREFIX.length), Base64.NO_WRAP)
-            require(payload.size > GCM_IV_BYTES)
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(
-                Cipher.DECRYPT_MODE,
-                secretKey(),
-                GCMParameterSpec(GCM_TAG_BITS, payload, 0, GCM_IV_BYTES),
-            )
-            cipher.updateAAD(slot.toByteArray(Charsets.UTF_8))
-            cipher.doFinal(payload, GCM_IV_BYTES, payload.size - GCM_IV_BYTES)
-                .toString(Charsets.UTF_8)
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+        // 解密 memo（键含密文）：密文不变即命中。AndroidKeyStore 解密 + secretKey() 现取
+        // 每次都是几十毫秒级，唤醒路径上 load() 会在首帧组合的主线程里连跑两次——memo
+        // 让重复 load 退化为纯 prefs 读。备份恢复换密文 → 键不同 → miss → 重解密。
+        val memoKey = "$slot\u0000$encoded"
+        decryptMemo[memoKey]?.let { return it.ifEmpty { null } }
+        val value = if (!encoded.startsWith(PREFIX)) {
+            encoded.takeIf { it.isNotBlank() }
+        } else {
+            runCatching {
+                val payload = Base64.decode(encoded.substring(PREFIX.length), Base64.NO_WRAP)
+                require(payload.size > GCM_IV_BYTES)
+                val cipher = Cipher.getInstance(TRANSFORMATION)
+                cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    secretKey(),
+                    GCMParameterSpec(GCM_TAG_BITS, payload, 0, GCM_IV_BYTES),
+                )
+                cipher.updateAAD(slot.toByteArray(Charsets.UTF_8))
+                cipher.doFinal(payload, GCM_IV_BYTES, payload.size - GCM_IV_BYTES)
+                    .toString(Charsets.UTF_8)
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
+        decryptMemo[memoKey] = value.orEmpty()
+        return value
     }
 
     /** 写入一个槽位；blank 等价删除（与旧版「存空串即清除」语义一致）。
@@ -74,6 +84,7 @@ internal class DoubaoSecretStore(context: Context) {
             .putString(slot, encoded)
             .commit()
         ) { "语音凭据保存失败" }
+        decryptMemo["$slot\u0000$encoded"] = normalized
     }
 
     @Synchronized
@@ -137,5 +148,13 @@ internal class DoubaoSecretStore(context: Context) {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_BYTES = 12
         private const val GCM_TAG_BITS = 128
+
+        /**
+         * 解密 memo（键 = "槽位\u0000密文" → 明文；null 存空串）。ConcurrentHashMap：
+         * 实例方法虽 @Synchronized 但实例按 load() 现建，跨实例并发（IO 预热 × 主线程
+         * 组合期 load）的线程安全靠它自身。clear() 不清 memo——槽位删除后 prefs 读不到
+         * encoded，旧键永远不可达，无碍。
+         */
+        private val decryptMemo = java.util.concurrent.ConcurrentHashMap<String, String>()
     }
 }

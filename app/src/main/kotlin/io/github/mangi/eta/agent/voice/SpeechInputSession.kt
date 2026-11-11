@@ -53,7 +53,9 @@ internal object SpeechInputSession {
     ): Boolean {
         check(microphone.tryLock()) { "语音输入正在使用麦克风" }
         try {
-            DoubaoVoiceConfig.load(context)
+            // 调用方显式传入 settings 时已经加载过配置（听写 start() 刚 load 完）：再 load
+            // 一次会把 AndroidKeyStore 解密重付一遍，唤醒路径上这段落在首帧组合的主线程里。
+            if (settings == null) DoubaoVoiceConfig.load(context)
             val selectedConfig = settings ?: configFor(mode)
             check(ready(mode, selectedConfig)) { "请启用对应语音功能，并配置所选识别引擎" }
             val selected = selectedConfig.cloudAsr

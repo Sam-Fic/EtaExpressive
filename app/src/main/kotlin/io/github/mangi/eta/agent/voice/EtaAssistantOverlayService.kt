@@ -67,6 +67,7 @@ import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.agent.runtime.AgentExternalArchivePayload
 import io.github.mangi.eta.agent.runtime.AgentRuntimeClient
 import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
+import io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig
 import io.github.mangi.eta.config.AssistantEntryMode
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
@@ -266,6 +267,10 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             return
         }
         performWakeHaptic()
+        // 唤起即听写的预热：配置里 3 个槽位是 AndroidKeyStore 解密，进程内首次成本可观。
+        // 放到截图采集窗口内（IO 线程）先跑，首帧组合里听写 start() 的同步 load 就是纯缓存命中，
+        // 不给上浮弹簧的起步帧添主线程负担。
+        scope.launch { DoubaoVoiceConfig.load(applicationContext) }
         // 唤起方式=语音识别：本次唤起要让听写开录/重开。令牌 ++ 后——面板在屏时经重组
         // 触发重开，面板重建时随首次组合触发；start() 幂等（在录时空操作）。
         // 麦克风权限缺失时 toast 并整体退回键盘路径；识别方式未配置由听写条原位提示。
