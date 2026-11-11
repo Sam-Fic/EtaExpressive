@@ -18,7 +18,9 @@ internal object DoubaoAsrSession {
     @SuppressLint("MissingPermission")
     suspend fun recognize(onListening: suspend () -> Unit, onText: suspend (String) -> Unit,
         config: DoubaoVoiceConfig.Config = DoubaoVoiceConfig.state.value,
-        onLevel: ((Float) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
+        onLevel: ((Float) -> Unit)? = null,
+        /** 停录信号：complete 后停止采集，走下方既有的「发末包 → 等最终结果」收尾，不丢尾段。 */
+        stop: CompletableDeferred<Unit>? = null): Boolean = withContext(Dispatchers.IO) {
         check(config.asrKey.isNotBlank()) { "请配置豆包 ASR API Key" }
         val opened = CompletableDeferred<Unit>()
         val results = Channel<DoubaoAsrProtocol.Result>(32)
@@ -76,6 +78,9 @@ internal object DoubaoAsrSession {
                 while (!done.isCompleted && SystemClock.elapsedRealtime() - started < 60_000 &&
                     (lastText.isNotBlank() || SystemClock.elapsedRealtime() - started < 10_000)) {
                     ensureActive()
+                    // 停录信号：complete 即跳出采集循环，下方照常停麦、发末包、等最终结果——
+                    // 与「说完停顿自然结束」走同一条收尾路径，尾段不丢。
+                    if (stop != null && stop.isCompleted) break
                     val n = audio.read(packet, filled, packet.size - filled, AudioRecord.READ_NON_BLOCKING)
                     check(n >= 0) { "麦克风读取失败" }
                     filled += n

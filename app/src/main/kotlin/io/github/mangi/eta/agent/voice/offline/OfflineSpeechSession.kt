@@ -43,6 +43,8 @@ internal object OfflineSpeechSession {
         diagnostic: VoiceDiagnostics? = null,
         /** 逐帧音量（音频线程回调，只驱动动画）。 */
         onLevel: ((Float) -> Unit)? = null,
+        /** 停录信号：complete 后停止喂音频，走既有 finish/flush 刷尾段收尾，不丢尾段。 */
+        stop: CompletableDeferred<Unit>? = null,
     ): Boolean {
         check(microphone.tryLock()) { "Speech input is already active" }
         var audio: AudioRecord? = null
@@ -125,7 +127,7 @@ internal object OfflineSpeechSession {
                 val chunks = Channel<FloatArray>(Channel.UNLIMITED)
                 val reader = launch(Dispatchers.IO) {
                     try {
-                        readAudio(recorder, chunks, onLevel)
+                        readAudio(recorder, chunks, onLevel, stop)
                     } finally {
                         chunks.close()
                     }
@@ -208,9 +210,12 @@ internal object OfflineSpeechSession {
         audio: AudioRecord,
         chunks: Channel<FloatArray>,
         onLevel: ((Float) -> Unit)? = null,
+        /** 停录信号：complete 即停止读麦并关流，引擎侧走 finish/flush 刷尾段（不取消会话）。 */
+        stop: CompletableDeferred<Unit>? = null,
     ) {
         val samples = ShortArray(ReadSamples)
         while (true) {
+            if (stop != null && stop.isCompleted) return
             currentCoroutineContext().ensureActive()
             val count = audio.read(samples, 0, samples.size, AudioRecord.READ_NON_BLOCKING)
             check(count >= 0) { "Microphone read failed" }

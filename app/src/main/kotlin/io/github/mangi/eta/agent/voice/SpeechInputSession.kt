@@ -50,6 +50,12 @@ internal object SpeechInputSession {
          * 只用于驱动声波/流光动画，识别结果与它无关。
          */
         onLevel: ((Float) -> Unit)? = null,
+        /**
+         * 停录信号：complete 后停止采集、走各引擎既有的「刷尾段 → 拿最终结果」收尾
+         * （不是取消——取消会把还没识别完的尾段直接丢掉）。null = 保持旧行为，一直录到
+         * 说完停顿 / 超时为止。
+         */
+        stop: CompletableDeferred<Unit>? = null,
     ): Boolean {
         check(microphone.tryLock()) { "语音输入正在使用麦克风" }
         try {
@@ -66,8 +72,8 @@ internal object SpeechInputSession {
                     owner.cancel(CancellationException("对应语音功能已关闭或识别引擎已切换"))
                 }
                 try {
-                    if (selected) DoubaoAsrSession.recognize(onListening, onText, selectedConfig, onLevel)
-                    else OfflineSpeechSession.recognize(context, onListening, onText, mode, diagnostic, onLevel)
+                    if (selected) DoubaoAsrSession.recognize(onListening, onText, selectedConfig, onLevel, stop)
+                    else OfflineSpeechSession.recognize(context, onListening, onText, mode, diagnostic, onLevel, stop)
                 } finally { watcher.cancel() }
             }
         } finally { microphone.unlock() }

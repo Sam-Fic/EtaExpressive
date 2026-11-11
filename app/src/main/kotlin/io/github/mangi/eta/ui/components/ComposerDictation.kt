@@ -15,6 +15,7 @@ import io.github.mangi.eta.agent.voice.SpeechInputSession
 import io.github.mangi.eta.agent.voice.VoiceEntryMode
 import io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,7 +27,8 @@ import kotlinx.coroutines.launch
  *
  * 与语音对话（`VoiceModeController`）的区别：听写只录一句话——说完停顿（识别自然结束）
  * 内容**直接发送**（[autoCommit] 一次性交给 UI，走发送钮同一条门禁；发不出去时退回
- * 「继续编辑」）；按 ✓ 把文字交回输入框继续编辑（不发送），按 × 直接丢弃。识别引擎复用
+ * 「继续编辑」）；按 ✓（[beginCommit]）先停录、等识别引擎把尾段识别完，再经 [onCommitText]
+ * 把最终文字同步交回输入框继续编辑（不发送），按 × 直接丢弃。识别引擎复用
  * 语音对话的配置（[VoiceEntryMode.UNIVERSAL] 的识别设置）：听写本身不再是独立入口
  * （见 `VoiceEntryPolicy`），而 [SpeechInputSession.recognize] 只看所选模式的识别开关
  * 与引擎配置。
@@ -44,6 +46,24 @@ internal class ComposerDictation(private val context: Context) {
     /** 实时（累计）转写；识别结束前一直增长。 */
     var transcript by mutableStateOf("")
         private set
+
+    /**
+     * ✓ 触发的收尾中：麦克风已请求停录，识别引擎正在刷尾段、组织最终文字。
+     * UI 侧 ✓ 钮随本标记原地 morph 成 40dp 正圆加载态、缩进流光胶囊内部右侧同心位
+     * （见 M3DictationMorphButton）；
+     * 收尾完成（或超时/出错）后随 [active] 一起翻 false。
+     */
+    var finalizing by mutableStateOf(false)
+        private set
+
+    /**
+     * ✓ 收尾完成后的交付回调：识别收尾一结束就在主线程同步调用（落进输入框，不发送）。
+     *
+     * 必须同步而不能走一次性状态 + effect：active 翻 false 与落字若不同帧，尾部槽会先
+     * 退回 mic 圆钮、下一帧才切 Send（「hasContent」晚一帧到位），交接闪一下麦克风；
+     * 同帧落字让尾部槽直接从收尾圆 morph 到 Send。
+     */
+    var onCommitText: ((String) -> Unit)? = null
 
     /** 结束原因，供 UI 弹出一次性提示后清空（[consumeOutcome]）。正常取消 / 确认不产生结果。 */
     var outcome by mutableStateOf<ComposerDictationOutcome?>(null)
@@ -75,6 +95,9 @@ internal class ComposerDictation(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
 
+    /** ✓ 的停录信号：complete 后识别停止采集、刷尾段拿最终结果（而不是取消丢尾段）。 */
+    private var stopSignal: CompletableDeferred<Unit>? = null
+
     /**
      * 会话代号：旧会话被取消后它的收尾（finally）可能晚于新会话开始执行，
      * 用一个自增代号把「旧会话的收尾」挡在外面，避免它把新会话的在场状态清掉。
@@ -98,11 +121,14 @@ internal class ComposerDictation(private val context: Context) {
         micLevel.reset()
         val id = ++session
         active = true
+        finalizing = false
         listening = false
         transcript = ""
         outcome = null
         autoCommit = null
         registerScreenOffGuard()
+        val stop = CompletableDeferred<Unit>()
+        stopSignal = stop
         job = scope.launch {
             try {
                 val heard = SpeechInputSession.recognize(
@@ -112,16 +138,21 @@ internal class ComposerDictation(private val context: Context) {
                     mode = VoiceEntryMode.UNIVERSAL,
                     settings = SpeechInputSession.configFor(VoiceEntryMode.UNIVERSAL),
                     onLevel = { level -> micLevel.value = level },
+                    stop = stop,
                 )
                 if (session == id) {
                     if (!heard) {
                         // 一句话结束但一个字都没识别出来：给出提示并退出听写条。
-                        outcome = ComposerDictationOutcome.Empty
+                        // ✓ 收尾期间静音同理——用户按 ✓ 已经表达过「就这样」，不再补空态提示。
+                        if (!finalizing) outcome = ComposerDictationOutcome.Empty
                     } else {
                         // 说完停顿、识别自然结束（未按 ✓ / ×）：把最终转写交给 UI 直接发送
-                        // （发送门禁不通时 UI 退回「继续编辑」）。在 finally 收摊前先放好。
+                        // （发送门禁不通时 UI 退回「继续编辑」）。✓ 收尾走 [onCommitText] 同步
+                        // 交付（交回输入框继续编辑，不自动发送）。在 finally 收摊前先交出。
                         val text = transcript.trim()
-                        if (text.isNotBlank()) autoCommit = text
+                        if (text.isNotBlank()) {
+                            if (finalizing) onCommitText?.invoke(text) else autoCommit = text
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -131,6 +162,7 @@ internal class ComposerDictation(private val context: Context) {
             } finally {
                 if (session == id) {
                     active = false
+                    finalizing = false
                     listening = false
                     micLevel.reset()
                     unregisterScreenOffGuard()
@@ -144,7 +176,9 @@ internal class ComposerDictation(private val context: Context) {
         session++
         job?.cancel()
         job = null
+        stopSignal = null
         active = false
+        finalizing = false
         listening = false
         transcript = ""
         outcome = null
@@ -155,22 +189,44 @@ internal class ComposerDictation(private val context: Context) {
         unregisterScreenOffGuard()
     }
 
-    /** ✓ ：结束听写并把当前转写交回输入框；没有识别到文字时返回 null。 */
-    fun commit(): String? {
-        val text = transcript.trim()
-        session++
-        job?.cancel()
-        job = null
-        active = false
-        listening = false
-        transcript = ""
-        outcome = null
-        // 用户显式确认：内容交回输入框即为止，自然结束的自动发送作废。
-        autoCommit = null
-        notice = null
-        micLevel.reset()
-        unregisterScreenOffGuard()
-        return text.takeIf { it.isNotBlank() }
+    /**
+     * ✓ ：开始收尾提交——结束录音并把「识别引擎的最终转写」交回输入框，不是 [cancel]
+     * 那样的立即取消。
+     *
+     * 立即取消会把麦克风里还没识别完的尾段直接丢掉（用户话音刚落就按 ✓ 时最明显）；
+     * 这里只 complete 停录信号，识别侧照常停麦、刷尾段、组织最终文字（豆包发末包等
+     * final、离线 finish()/flush()），最终文字经 [onCommitText] 同步交回。收尾期间
+     * [finalizing] 置 true：听写条保持在场（转写定格），✓ 钮 morph 成正圆加载态。
+     *
+     * 识别链路自身仍有超时兜底（豆包等 final / 离线刷尾都有界），收尾不会无限等；
+     * 收尾中重复按下是空操作；✓ 落在自然结束之后的窄竞态按「拦截自动发送、同步落字」
+     * 处理（见实现），× 与重新 start 仍可随时打断收尾。
+     * （不叫 finalize()：那会撞上 java.lang.Object.finalize 的 JVM 签名。）
+     */
+    fun beginCommit() {
+        if (!active) {
+            // 自然结束与 ✓ 的窄竞态：识别恰好在 ✓ 生效前收尾（autoCommit 已就位待发、
+            // 听写条正在退场）。✓ 的语义（拿回去改）优先于自动发送——拦下 autoCommit，
+            // 同步落字进编辑框。cancel / 未开始时转写为空，天然空操作。
+            if (transcript.isNotBlank()) {
+                autoCommit = null
+                onCommitText?.invoke(transcript.trim())
+            }
+            return
+        }
+        if (finalizing) return
+        if (!listening) {
+            // 连接阶段（还没开录）：没有任何已捕获的尾段可等，直接按 × 的语义收场——
+            // 停录信号也要等引擎进采集循环才会被看到（连接/模型装载可能挂数秒），不能等。
+            // 开录前的转写必为空（onText 只在 onListening 之后到达），cancel 不丢任何内容。
+            cancel()
+            return
+        }
+        finalizing = true
+        // 说完停顿恰好同时发生：自然结束路径已经接管（autoCommit / outcome 二选一），
+        // complete 停录信号是幂等的，两条路径都会把文字交回，不会双发。
+        stopSignal?.complete(Unit)
+        stopSignal = null
     }
 
     fun consumeOutcome() {

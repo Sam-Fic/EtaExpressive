@@ -441,8 +441,19 @@ internal fun Material3ComposerBody(
         val conversationActive = voiceEntry == ComposerVoiceEntry.CONVERSATION && voiceActive
 
         // 口述（聊天输入区）：麦克风 → 单次听写 → 流光胶囊；✓ 把文字交回输入框、× 丢弃。
-        // 会话随组合记住，切会话 / 关页面时由 DisposableEffect 释放麦克风。
+        // 会话随组合记住，切会话 / 关浮层、页面销毁时由 DisposableEffect 释放麦克风。
         val dictation = rememberComposerDictation()
+        // ✓ 收尾完成：最终转写（含尾段）同步落回输入框继续编辑——**不发送**：按 ✓ 的语义
+        // 就是「这句话拿回去我自己改」。必须同步落字（识别收尾与 active 翻 false 同一轮主
+        // 线程落定）：走一次性状态 + effect 会晚一帧，hasContent 迟到让尾部槽先退回 mic
+        // 圆钮再切 Send，交接闪一下麦克风；同步落字让尾部槽在同一帧从收尾圆直切 Send
+        // （无缝 morph，见下方 finalizingLook）。落字后与转写点按接管同款：先按输入态
+        // 排版，等键盘真正可见再归还常规判据。
+        dictation.onCommitText = { text ->
+            textFieldState.setTextAndPlaceCursorAtEnd(text)
+            transcriptTakeOverAwaitingIme = true
+            transcriptTakeOverToken++
+        }
         // 唤起即听写的首帧桥：令牌未消费的这次组合直接按听写态排版——弹窗第一帧就是流光
         // 胶囊，不再「先弹文本胶囊再交叉淡化」。真实开录在下方 effect；令牌在 effect 里
         // 消费后即交还给 dictation.active 接管（×/✓/自然结束回到文本胶囊，重组合不复活）。
@@ -535,6 +546,9 @@ internal fun Material3ComposerBody(
         //   齿轮叠在胶囊右端内（trailingEnd 8dp：齿轮 20 −8− 条 28 同心，距外层 16dp）。
         val pillInsetStart by animateDpAsState(
             targetValue = when {
+                // ✓ 收尾态：× 已按出场逆动画退场、✓ 圆缩进胶囊内部右侧同心位——
+                // 胶囊两端不再让位，整条铺满工具栏内容区（屏幕上居中）。
+                dictation.finalizing -> 0.dp
                 dictating -> ComposerVoiceButtonSize.width + ComposerVoiceGap
                 dictationNotice ->
                     ComposerConcentricGap + ComposerVoiceButtonSize.width + ComposerVoiceGap
@@ -544,10 +558,12 @@ internal fun Material3ComposerBody(
             label = "composer_pill_inset_start",
         )
         val pillInsetEnd by animateDpAsState(
-            targetValue = if (dictating) {
-                ComposerVoiceButtonSize.width + ComposerVoiceGap
-            } else {
-                0.dp
+            targetValue = when {
+                // ✓ 收尾态：同上，右端也不让位——收尾圆（40dp + 8dp 同心端距）在胶囊
+                // 内部右侧，位于胶囊圆角（28dp）的同心轨迹上。
+                dictation.finalizing -> 0.dp
+                dictating -> ComposerVoiceButtonSize.width + ComposerVoiceGap
+                else -> 0.dp
             },
             animationSpec = ComposerMorphDpSpec,
             label = "composer_pill_inset_end",
@@ -569,16 +585,19 @@ internal fun Material3ComposerBody(
         // 口述时整条工具栏收窄到原型 `--voice-bar-w: 300px` 并水平居中：
         // 内容宽 300 − 2×8 内边距 = 284，扣掉两端 ×/✓（40 + 8 间距）后胶囊正好 188，
         // 比输入态短一截；✓ 与胶囊之间始终是 M3 标准的 8dp。
+        // ✓ 收尾态只有流光胶囊一根（× 已退场、收尾圆在胶囊内部右侧）：胶囊加长到
+        // 236 = 188 + 收尾圆占位 48（40dp 圆 + 8dp 同心端距），转写可用宽度不变；
+        // 工具栏 252 = 236 + 2×8 内边距。全程水平居中（对称让位 + 顶中锚）。
         BoxWithConstraints(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.TopCenter,
         ) {
             val fullBarWidth = maxWidth
             val barWidth by animateDpAsState(
-                targetValue = if (dictating) {
-                    minOf(fullBarWidth, ComposerVoiceBarWidth)
-                } else {
-                    fullBarWidth
+                targetValue = when {
+                    dictation.finalizing -> minOf(fullBarWidth, ComposerVoiceFinalizingBarWidth)
+                    dictating -> minOf(fullBarWidth, ComposerVoiceBarWidth)
+                    else -> fullBarWidth
                 },
                 animationSpec = ComposerMorphDpSpec,
                 label = "composer_voice_bar_width",
@@ -744,6 +763,10 @@ internal fun Material3ComposerBody(
                             // 退出转场期间本内容仍被组合（captured dictating 已翻 false）：
                             // 通知流光引擎点燃熄灭冷却，与上面拉长的退场淡出同步收场。
                             exiting = !dictating,
+                            // ✓ 收尾态：转写右端让出胶囊内同心圆位（40dp 圆 + 8dp 同心端距），
+                            // 不从圆底下穿过。与胶囊加宽共用同一条 morph 曲线，转写可用宽度
+                            // 全程不变，文字不重排。
+                            finalizing = dictation.finalizing,
                         )
                         ComposerPill.VOICE_BAR -> {
                             // 聆听条：麦克风状态圆钮 + 实时转写与阶段文案（末端停止圆钮由下面的
@@ -824,7 +847,9 @@ internal fun Material3ComposerBody(
 
                 // 口述取消钮 ×：语音态移出胶囊、贴住工具栏内容区左端（与右侧 ✓ 对称），
                 // 胶囊已让出 48dp，两者之间正好 8dp 间距；与尾部 ✓ 同形（40×56 竖直胶囊）。
-                // 原型是「淡入 + 自右向左飞入」，这里用同一条 Expressive 弹簧做横向滑入。
+                // 原型是「淡入 + 自右向左飞入」，这里用同一条 Expressive 弹簧做横向滑入；
+                // 退场（✓ 收尾、听写结束）是同一动画的镜像（淡出 + 向右滑回胶囊身后），
+                // 收尾时胶囊左端同步取消让位，× 恰好缩回流光身后消失。
                 // 口述失败提示同样用它关掉（提示不是会话，× 即清除）。
                 // 交给独立 composable：本槽位在 RowScope 里的 BoxScope 中，直接调
                 // AnimatedVisibility 会解析到 RowScope 重载并触发 DSL_SCOPE_VIOLATION。
@@ -832,7 +857,9 @@ internal fun Material3ComposerBody(
                 // 压到下层后即「从流光胶囊身后平移出来」；胶囊背景不透明，身后部分被完全遮住。
                 // leading / trailing 槽保持默认 0，与胶囊互不重叠，不受影响。
                 M3DictationCancelSlot(
-                    visible = dictating || dictationNotice,
+                    // ✓ 收尾态 × 退场（胶囊接管整条宽度）：可见条件去掉收尾帧，
+                    // 让出场逆动画正好播完「缩回胶囊身后」。
+                    visible = dictationNotice || (dictating && !dictation.finalizing),
                     onCancel = dictation::cancel,
                     // 失败提示态 × 是 40×40 同心圆钮（与齿轮对称）；听写态保持 40×56 胶囊与 ✓ 同形。
                     circular = dictationNotice,
@@ -846,12 +873,25 @@ internal fun Material3ComposerBody(
                 val trailingState = when {
                     // 未配置：尾部圆钮直接变成「去配置」，一键跳到语音设置。
                     dictationNotice -> ComposerTrailing.DICTATION_SETTINGS
-                    // 口述中尾部仍是同一枚「语音入口」按钮：mic → ✓ 是真形变（同一元素
-                    // 原地长高、图标旋转缩放交叉淡化），所以这里刻意不换 targetState，
-                    // AnimatedContent 就不会把整枚按钮交叉淡化掉。
+                    // 口述中是独立的 DICTATION 态（渲染的仍是同一枚 morph 钮）：独立成 state
+                    // 才能在 transitionSpec 里单独给「✓ ⇄ send」配 morph 转场，而不动打字时
+                    // Call→Send 的官方缩放转场；它与 VOICE_ENTRY 共享 contentKey（见下），
+                    // mic ⇄ ✓ 的原地形变依旧不会触发交叉淡化。
+                    dictating -> ComposerTrailing.DICTATION
                     conversationActive -> ComposerTrailing.VOICE_STOP
                     trailingShowsSend -> ComposerTrailing.SEND
                     else -> ComposerTrailing.VOICE_ENTRY
+                }
+                // 收尾形态锁存：finalizing 翻 false 与 dictating 翻 false 同帧（识别收尾完成）。
+                // 若此刻尾部槽切去 SEND（✓ 落字后），AnimatedContent 交叉淡化 outgoing 钮的
+                // 几百毫秒里它若跟着 morph 回 mic 会闪一下麦克风——锁存收尾形态（40dp 圆 +
+                // 指示器）直到退场完成（outgoing 钮被 AnimatedContent 移出组合，remember 随之
+                // 丢弃）。尾部槽不切 SEND（× 打断 / 无字落框）或重新进入听写时立即清除。
+                var finalizingLook by remember { mutableStateOf(false) }
+                if (dictation.finalizing) {
+                    finalizingLook = true
+                } else if (dictating || trailingState != ComposerTrailing.SEND) {
+                    finalizingLook = false
                 }
                 // 发送动作与“上下文已满”提示：与旧实现一致，发送成功后清掉本机保存的草稿副本。
                 val sendDraft: () -> Unit = {
@@ -905,15 +945,25 @@ internal fun Material3ComposerBody(
                 }
                 // 口述时 ✓ 长到 56dp：下端不再让出 8dp 端距，右端也从胶囊内缩位置移到工具栏内容区
                 // 末端（端距 8dp → 0），与 × 对称——原型 #voiceBtn 的 right/bottom 16 → 8 同款。
+                // ✓ 收尾态：圆缩回胶囊内部右侧的同心位（端距回到 8dp）——40dp 圆 + 8dp 端距，
+                // 圆心距胶囊右端 28dp = 胶囊圆角，上下 (56−40)/2 = 8dp 与端距相等，双层同心。
                 // 失败提示态齿轮保持 8dp 同心端距：齿轮叠在被胶囊右伸包住的右端内
                 // （齿轮 20 −8− 条 28），距外层 16dp，见 pillInsetStart/End 注释。
                 val trailingBottom by animateDpAsState(
-                    targetValue = if (dictating) 0.dp else ComposerConcentricGap,
+                    targetValue = when {
+                        dictation.finalizing -> ComposerConcentricGap
+                        dictating -> 0.dp
+                        else -> ComposerConcentricGap
+                    },
                     animationSpec = ComposerMorphDpSpec,
                     label = "composer_trailing_bottom",
                 )
                 val trailingEnd by animateDpAsState(
-                    targetValue = if (dictating) 0.dp else ComposerConcentricGap,
+                    targetValue = when {
+                        dictation.finalizing -> ComposerConcentricGap
+                        dictating -> 0.dp
+                        else -> ComposerConcentricGap
+                    },
                     animationSpec = ComposerMorphDpSpec,
                     label = "composer_trailing_end",
                 )
@@ -924,7 +974,8 @@ internal fun Material3ComposerBody(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        // 正常态 / 失败提示态：40dp 圆钮半径 20dp 与内层 28dp 圆角相差 8dp，端距 8dp 同心。
+                        // 正常态 / 失败提示态 / 收尾态：40dp 圆钮半径 20dp 与内层 28dp 圆角相差
+                        // 8dp，端距 8dp 同心（收尾态圆钮在胶囊内部，同一同心规则）。
                         // 听写态：✓ 胶囊已移出胶囊，贴住工具栏内容区末端。
                         .padding(end = trailingEndSafe, bottom = trailingBottomSafe)
                         // 供回归测试对“尾部按钮形变”期间的像素取样（见 M3ComposerToolbarLayoutTest）。
@@ -932,17 +983,50 @@ internal fun Material3ComposerBody(
                 ) {
                     AnimatedContent(
                         targetState = trailingState,
+                        // contentKey：DICTATION 与 VOICE_ENTRY 归并为同一内容——听写开始 /
+                        // 无文字结束（回 mic）时 mic ⇄ ✓ 仍是同一枚按钮原地 morph，不触发
+                        // 交叉淡化（取证 compose-animation 1.13.0-alpha01 AnimatedContent.kt
+                        // :104-110：「no animation when switching between targetStates that
+                        // share the same key」）；而 DICTATION ⇄ SEND key 不同，走下方 morph
+                        // 转场，且不影响打字时 VOICE_ENTRY → SEND 的官方缩放转场。
+                        contentKey = {
+                            if (it == ComposerTrailing.DICTATION) {
+                                ComposerTrailing.VOICE_ENTRY
+                            } else {
+                                it
+                            }
+                        },
+                        // 内容在容器内居中（默认 TopStart 会把 56dp 胶囊与 40dp 圆钮都钉在
+                        // 容器顶缘：容器下锚收缩时顶缘下沉，两枚钮跟着整体下坠——交接的
+                        // Y 轴漂移来源之一）。居中后 ✓/send 的中心都锁在容器中心上。
+                        contentAlignment = Alignment.Center,
                         transitionSpec = {
-                            // 与“输入文字后 Call→Send”同款：淡入淡出 + 0.8 缩放的官方弹簧。
-                            (fadeIn(trailingFadeSpec) +
-                                scaleIn(trailingScaleSpec, initialScale = 0.8f))
-                                .togetherWith(
-                                    fadeOut(trailingFadeSpec) +
-                                        scaleOut(trailingScaleSpec, targetScale = 0.8f),
-                                )
-                                // 口述 ✓ 的 40 → 56 由按钮自身的高度动画承担（同一枚按钮原地长高），
-                                // 这里的尺寸动画只服务于「mic/send/stop」之间的整体替换，且不裁切。
-                                .using(SizeTransform(clip = false))
+                            // 普通换钮（打字 Call→Send、语音对话 Call⇄Stop）：淡入淡出 +
+                            // 0.8 缩放的官方弹簧。
+                            // ✓ ⇄ send 交接（听写确认/再开口）例外：只留交叉淡化——容器本身
+                            // 就是连续形变（CornerFull 胶囊 ⇄ 圆，圆角同为 20dp，仅高宽不同），
+                            // 中心已锁、尺寸曲线已同步（见 SizeTransform），去掉缩放后视觉上
+                            // 就是一枚钮原地变形（mic ⇄ ✓ 的 morph 语言）；0.8 缩放反而把
+                            // 「一枚钮在变形」拆成「一枚缩小离开、一枚放大进来」两个元素。
+                            val iconSwap =
+                                if ((initialState == ComposerTrailing.DICTATION && targetState == ComposerTrailing.SEND) ||
+                                    (initialState == ComposerTrailing.SEND && targetState == ComposerTrailing.DICTATION)
+                                ) {
+                                    fadeIn(trailingFadeSpec).togetherWith(fadeOut(trailingFadeSpec))
+                                } else {
+                                    (fadeIn(trailingFadeSpec) +
+                                        scaleIn(trailingScaleSpec, initialScale = 0.8f))
+                                        .togetherWith(
+                                            fadeOut(trailingFadeSpec) +
+                                                scaleOut(trailingScaleSpec, targetScale = 0.8f),
+                                        )
+                                }
+                            // 口述 ✓ 的 40 → 56 由按钮自身的高度动画承担（同一枚按钮原地长高），
+                            // 这里的尺寸动画只服务于「mic/send/stop」之间的整体替换，且不裁切。
+                            // 尺寸曲线必须与 ComposerMorphDpSpec（外层 padding、胶囊内部高度）
+                            // 同步：padding + height/2 ≡ 28dp 恒等，容器中心不动，交接路径
+                            // 才是纯水平（默认 spring 会与两条 tween 失同步，见 ComposerMorphSizeSpec）。
+                            iconSwap.using(SizeTransform(clip = false) { _, _ -> ComposerMorphSizeSpec })
                         },
                         label = "composer_trailing",
                     ) { trailing ->
@@ -973,40 +1057,45 @@ internal fun Material3ComposerBody(
                                 onAbortPausedRun = onAbortPausedRun,
                                 onBlocked = blockedNotice,
                             )
-                            ComposerTrailing.VOICE_ENTRY -> if (voiceEntry == ComposerVoiceEntry.DICTATION) {
-                                // 口述入口：同一枚填充圆钮在听写中长成 ✓ 竖直胶囊（原型 #voiceBtn），
-                                // 点击前收起键盘；开始后由听写条接管胶囊位置。
+                            // DICTATION 与 VOICE_ENTRY 渲染同一枚入口钮（contentKey 已归并，
+                            // 二者切换不触发转场）：口述中它长成 ✓ 竖直胶囊，其余时候是 mic 圆钮。
+                            ComposerTrailing.VOICE_ENTRY, ComposerTrailing.DICTATION ->
+                                if (voiceEntry == ComposerVoiceEntry.DICTATION) {
+                                    // 口述入口：同一枚填充圆钮在听写中长成 ✓ 竖直胶囊（原型 #voiceBtn），
+                                    // 点击前收起键盘；开始后由听写条接管胶囊位置。
                                 M3DictationMorphButton(
                                     committing = dictating,
+                                    // ✓ 收尾（停录等尾段识别完）：按钮原地 morph 成 40dp 正圆、
+                                    // 端距回到 8dp 同心位缩进胶囊内部右侧（见 trailingEnd/Bottom
+                                    // 与 pillInset 的收尾分支），圆内加载指示器接棒；最终转写经
+                                    // dictation.onCommitText 同步落回输入框（见上方回调挂接）。
+                                    // finalizingLook：退场交叉淡化到 Send 期间锁存收尾形态，
+                                    // 不闪 mic（见上方锁存注释）。
+                                    finalizing = finalizingLook,
                                     onRecord = {
                                         keyboard?.hide()
                                         startDictation()
                                     },
-                                    onCommit = {
-                                        val text = dictation.commit()
-                                        if (!text.isNullOrBlank()) {
-                                            textFieldState.setTextAndPlaceCursorAtEnd(text)
-                                            // 与转写点按接管同一条路径：先按输入态排版，等键盘可见后归还常规判据。
-                                            transcriptTakeOverAwaitingIme = true
-                                            transcriptTakeOverToken++
-                                        }
-                                    },
+                                    // ✓ 不再立即取消识别（会丢掉话音尾段）：先停录，等识别引擎
+                                    // 把尾段识别完，最终转写经 dictation.onCommitText 落回输入框
+                                    // （同步交付，不自动发送）。
+                                    onCommit = dictation::beginCommit,
                                 )
-                            } else {
-                                VoiceEntryButton(
-                                    resetKey = isStreaming to isEditingMessage,
-                                    voiceState = voiceState,
-                                    onStartVoiceMode = onStartVoiceMode,
-                                    onStopVoiceMode = onStopVoiceMode,
-                                    // 尾部是麦克风图标的填充圆形按钮，直接对应「语音对话」入口。
-                                    icon = Icons.Rounded.Mic,
-                                    idleFilled = true,
-                                    // 进入语音时本入口会被换成上面的停止钮（同一槽位形变）；形变期间
-                                    // 它仍以麦克风外观缩放淡出。若跟着 voiceState.active 换成挂断图标，
-                                    // 退场瞬间会先闪一下“躺平的电话”。点击行为不受影响。
-                                    swapIconWhenActive = false,
-                                )
-                            }
+                                } else {
+                                    VoiceEntryButton(
+                                        resetKey = isStreaming to isEditingMessage,
+                                        voiceState = voiceState,
+                                        onStartVoiceMode = onStartVoiceMode,
+                                        onStopVoiceMode = onStopVoiceMode,
+                                        // 尾部是麦克风图标的填充圆形按钮，直接对应「语音对话」入口。
+                                        icon = Icons.Rounded.Mic,
+                                        idleFilled = true,
+                                        // 进入语音时本入口会被换成上面的停止钮（同一槽位形变）；形变期间
+                                        // 它仍以麦克风外观缩放淡出。若跟着 voiceState.active 换成挂断图标，
+                                        // 退场瞬间会先闪一下“躺平的电话”。点击行为不受影响。
+                                        swapIconWhenActive = false,
+                                    )
+                                }
                         }
                     }
                 }
@@ -1096,6 +1185,9 @@ internal fun Material3ComposerBody(
  */
 private enum class ComposerTrailing {
     VOICE_ENTRY,
+
+    /** 听写进行中：与 [VOICE_ENTRY] 渲染同一枚 morph 钮，contentKey 归并（见 AnimatedContent）。 */
+    DICTATION,
     SEND,
     VOICE_STOP,
     DICTATION_SETTINGS,
@@ -1300,6 +1392,15 @@ private val ComposerVoiceButtonHeight = TextFieldDefaults.MinHeight
 private val ComposerVoiceBarWidth = 300.dp
 
 /**
+ * ✓ 收尾态的语音条总宽：× 已退场、收尾圆缩进胶囊内部右侧同心位，只剩流光胶囊一根。
+ *
+ * 胶囊 236 = 听写胶囊 188 + 收尾圆占位 48（40dp 圆 + 8dp 同心端距）；转写可用宽度
+ * （胶囊 − 左 16 − 右 16+48 让位 = 156）与听写态完全一致，morph 途中文字不重排。
+ * 工具栏 252 = 236 + 2×8 内边距。
+ */
+private val ComposerVoiceFinalizingBarWidth = 252.dp
+
+/**
  * 口述 morph 的几何过渡：原型 `.toolbar / .field / #voiceBtn` 全部是
  * `--dur-morph: .35s` + `--ease-emph: cubic-bezier(.2,0,0,1)`（M3 emphasized）。
  * 宽度、胶囊左右让位、✓ 的 right/bottom/height 共用这一条曲线，收尾不过冲，
@@ -1307,6 +1408,18 @@ private val ComposerVoiceBarWidth = 300.dp
  */
 private val ComposerMorphEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private val ComposerMorphDpSpec: FiniteAnimationSpec<Dp> = tween(350, easing = ComposerMorphEasing)
+
+/**
+ * 尾部槽 AnimatedContent 容器尺寸（40×56 ⇄ 40×40）的形变曲线：与 [ComposerMorphDpSpec]
+ * 同时长同缓动。这是「✓ ⇄ send 交接路径必须水平」的几何前提——容器高与外层
+ * bottom/end padding 走同一条曲线时，恒等式 padding(t) + height(t)/2 ≡ 28dp 成立，
+ * 容器（及居中于它的两枚按钮）中心高度全程不变，交接只剩水平位移与原地对称收缩。
+ * 取证 compose-animation 1.13.0-alpha01 AnimatedContent.kt：`SizeTransform` 默认
+ * sizeAnimationSpec 是 spring(StiffnessMediumLow)，与这里的 tween padding、胶囊内部
+ * tween 高度三条曲线互相打架，且内容默认被 contentAlignment=TopStart 钉在容器顶缘
+ * ——正是此前交接出现「左上→右下」Y 轴漂移的来源。
+ */
+private val ComposerMorphSizeSpec: FiniteAnimationSpec<IntSize> = tween(350, easing = ComposerMorphEasing)
 
 /** 图标透明度：原型 `transition: opacity .2s ease`（不是 emphasized，起势更快）。 */
 private val ComposerMorphFadeSpec: FiniteAnimationSpec<Float> =
@@ -1730,6 +1843,10 @@ private fun M3DictationSettingsButton(onClick: () -> Unit) {
  * `onSurface`。转写仍沿用 [VoiceLiveTranscript] 的「跟随尾部滚动」，长句看得到最后说出的字。
  *
  * [exiting]：口述退出转场期间为 true，透传给 [VoiceGlowCapsule] 点燃熄灭冷却（光效缓降到全灭）。
+ *
+ * [finalizing]：✓ 收尾态——收尾圆缩进胶囊内部右侧同心位（40dp 圆 + 8dp 同心端距），
+ * 转写右端让出同宽，不从圆底下穿过。让位与胶囊加宽（barWidth / pillInset 同一条
+ * [ComposerMorphDpSpec]）同步：转写可用宽度全程不变，文字不重排。
  */
 @Composable
 private fun M3DictationVoiceBar(
@@ -1737,7 +1854,14 @@ private fun M3DictationVoiceBar(
     listening: Boolean,
     level: () -> Float,
     exiting: Boolean,
+    finalizing: Boolean,
 ) {
+    // 收尾让位 = 收尾圆占位（40dp 圆 + 8dp 同心端距），与胶囊加宽同一条曲线同步展开。
+    val reservingEnd by animateDpAsState(
+        targetValue = if (finalizing) ComposerVoiceButtonSize.width + ComposerConcentricGap else 0.dp,
+        animationSpec = ComposerMorphDpSpec,
+        label = "dictation_bar_transcript_reserve",
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1765,9 +1889,15 @@ private fun M3DictationVoiceBar(
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
             // 上下各 16dp + 单行 24dp = 56dp：与输入框单行高度一致，胶囊高度不跳。
+            // 收尾态右端追加让位（16 + 48 = 64dp），转写止步于同心圆左侧。
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(
+                    start = 16.dp,
+                    top = 16.dp,
+                    end = 16.dp + reservingEnd,
+                    bottom = 16.dp,
+                ),
         )
     }
 }
@@ -1838,43 +1968,62 @@ private fun M3DictationCancelSlot(
  * （✓ 图标）。高度走 0.35s emphasized 曲线，图标则是「mic 缩到 0.6 淡出、✓ 从 0.6 与
  * -45° 转入」的交叉过渡——不是两枚按钮的淡入淡出。点击行为随形态切换。
  *
+ * 收尾态（[finalizing]，✓ 按下后停录等尾段识别完；调用方传入的是含退场锁存的
+ * `finalizingLook`）：按钮高度原地收回 40dp（40×56 胶囊 → 40×40 正圆），外层端距
+ * 同步回到 8dp 同心位，圆随之缩进流光胶囊内部右侧（见调用点 trailingEnd/Bottom 与
+ * pillInset 的收尾分支）；✓ 淡出、加载指示器淡入——[ContainedMorphLoadingIndicator]
+ * （官方 ContainedLoadingIndicator 同款形变），指示器与被替换按钮同尺寸、圆底取钮
+ * 自身 primary（视觉上就是「圆钮里在转」），形变块 onPrimary；与 leading / 状态胶囊槽
+ * 的存量用法同一比例（块径/圆径 0.8）。锁存期间形态保持，退场交叉淡化到 Send 时
+ * outgoing 仍是这颗收尾圆，不会闪 mic。
+ * 淡入淡出走 alpha：finalizing 翻真时指示器才开始组合（此刻 alpha 尚为 0，淡入有
+ * 真实起点），退出随 alpha 落 0 移出组合，不留常驻动画。
+ *
  * 高度用 tween 而不是 Spatial 弹簧：弹簧的收尾过冲会让 56dp 的按钮瞬间高过输入胶囊，
  * 把整条工具栏撑高 1~2dp；原型这段 morph 本来就是无过冲的 emphasized 曲线。
  *
- * 按压形状 morph 只在 ✓ 竖直胶囊态启用，走官方 expressive 重载（`shapes` 为第二参数）+
- * `IconButtonDefaults.shapes()`。取证 material3 1.5.0-alpha29 sources（IconButton.kt /
- * IconButtonDefaults.kt / ShapeTokens.kt）：默认对 = CornerFull → pressed CornerSmall
- * （`RoundedCornerShape(8dp)`，`SmallIconButtonTokens.PressedContainerShape =
- * ShapeKeyTokens.CornerSmall`）；按下经 `collectIsPressedAsState` + `rememberAnimatedShape`
- * （MotionScheme DefaultEffects，无回弹）在两个 CornerBasedShape 间 morph；静息
- * `filledShape` 同为 CornerFull，外观不变（plain 重载无 morph）。
+ * 按压形状 morph 只在 ✓ 态（胶囊/收尾正圆）启用，走官方 expressive 重载（`shapes` 为
+ * 第二参数）+ `IconButtonDefaults.shapes()`。取证 material3 1.5.0-alpha29 sources
+ * （IconButton.kt / IconButtonDefaults.kt / ShapeTokens.kt）：默认对 = CornerFull →
+ * pressed CornerSmall（`RoundedCornerShape(8dp)`，`SmallIconButtonTokens.
+ * PressedContainerShape = ShapeKeyTokens.CornerSmall`）；按下经 `collectIsPressedAsState`
+ * + `rememberAnimatedShape`（MotionScheme DefaultEffects，无回弹）在两个 CornerBasedShape
+ * 间 morph；静息 `filledShape` 同为 CornerFull，外观不变（plain 重载无 morph）。收尾
+ * 正圆沿用同一对（静息 CornerFull 圆 → 按下 CornerSmall）。
  * mic 圆形态（触发语音入口）按用户 2026-11-11 决定**不要** morph：走 plain 重载保持全圆，
  * 与 composer 圆钮同心豁免（RULES §2.5.3）一致。
+ * 内部尺寸 coerce 取证：IconButtonImpl 的 `.size(smallContainerSize=40×40)` 收到调用方
+ * modifier 的精确约束（size modifier `enforceIncoming`），实际渲染跟随调用方尺寸——
+ * 40×56 胶囊、40×40 正圆、内部内容槽（Center）随之撑满，40dp 指示器子内容恰好放满。
  */
 @Composable
 private fun M3DictationMorphButton(
     committing: Boolean,
+    finalizing: Boolean,
     onRecord: () -> Unit,
     onCommit: () -> Unit,
 ) {
     val view = LocalView.current
+    // 高度三段 morph：mic 40 → ✓ 胶囊 56 → 收尾正圆 40（宽度不变，只纵向收回）。
     val height by animateDpAsState(
-        targetValue = if (committing) ComposerVoiceButtonHeight else ComposerVoiceButtonSize.height,
+        targetValue = if (committing && !finalizing) ComposerVoiceButtonHeight else ComposerVoiceButtonSize.height,
         animationSpec = ComposerMorphDpSpec,
         label = "dictation_morph_height",
     )
+    // mic 只在彻底空闲（非 ✓、非收尾）时可见：退场锁存期间保持隐藏，不闪 mic。
+    val micVisible = !committing && !finalizing
     val micAlpha by animateFloatAsState(
-        targetValue = if (committing) 0f else 1f,
+        targetValue = if (micVisible) 1f else 0f,
         animationSpec = ComposerMorphFadeSpec,
         label = "dictation_morph_mic_alpha",
     )
     val micScale by animateFloatAsState(
-        targetValue = if (committing) 0.6f else 1f,
+        targetValue = if (micVisible) 1f else 0.6f,
         animationSpec = ComposerMorphIconSpec,
         label = "dictation_morph_mic_scale",
     )
     val checkAlpha by animateFloatAsState(
-        targetValue = if (committing) 1f else 0f,
+        targetValue = if (committing && !finalizing) 1f else 0f,
         animationSpec = ComposerMorphFadeSpec,
         label = "dictation_morph_check_alpha",
     )
@@ -1882,6 +2031,11 @@ private fun M3DictationMorphButton(
         targetValue = if (committing) 1f else 0f,
         animationSpec = ComposerMorphIconSpec,
         label = "dictation_morph_check_transform",
+    )
+    val loadingAlpha by animateFloatAsState(
+        targetValue = if (finalizing) 1f else 0f,
+        animationSpec = ComposerMorphFadeSpec,
+        label = "dictation_morph_loading_alpha",
     )
     val description = stringResource(
         if (committing) R.string.voice_mode_dictation_commit else R.string.voice_mode_dictation,
@@ -1920,6 +2074,18 @@ private fun M3DictationMorphButton(
                             rotationZ = -45f * (1f - checkProgress)
                         },
                 )
+                // 收尾态指示器：与被替换按钮同尺寸（先例见 leading / 状态胶囊槽），
+                // 圆底与钮同色不可见、形变块 onPrimary。finalizing 翻真时才组合
+                // （此刻 alpha 尚为 0，淡入有真实起点）；退场锁存期间保持组合
+                // （alpha 恒 1），彻底退出随 alpha 落 0 移出组合，不在听写全程挂常驻动画。
+                if (finalizing || loadingAlpha > 0f) {
+                    ContainedMorphLoadingIndicator(
+                        indicatorSize = ComposerVoiceButtonSize.width,
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.graphicsLayer { alpha = loadingAlpha },
+                    )
+                }
             }
         }
         if (committing) {
