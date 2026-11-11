@@ -160,6 +160,21 @@ internal object VirtualDisplaySession {
     } catch (ex: android.system.ErrnoException) {
         ex.errno == android.system.OsConstants.ESRCH
     }
+
+    /**
+     * root kill 前的 owner 身份校验。owner 由 `app_process … VirtualDisplayOwnerMain
+     * --socket <socketName> …` 启动（VirtualDisplayOwnerClient.buildStartupScript），
+     * cmdline 逐参数展开后必然含本会话的 socket 名；socket 名缺失时退而求其次认主类名。
+     * PID 被无关进程复用时对不上，据此拦住误杀（与 DetachedTaskSupervisor 的
+     * environ ownership token 同一思路；owner 进程不持环境令牌，cmdline 是其唯一锚点）。
+     */
+    private fun ownerIdentityMatches(pid: Long, socketName: String): Boolean {
+        if (pid <= 0L || pid > Int.MAX_VALUE) return false
+        val needle = socketName.ifBlank { VirtualDisplayOwnerProtocol.MAIN_CLASS }
+        val script = "tr '\\000' '\\n' < /proc/$pid/cmdline 2>/dev/null | grep -Fqx -- " +
+            "'" + needle.replace("'", "'\\''") + "'; "
+        return runCatching { RootSu.process(script).start().waitFor() == 0 }.getOrDefault(false)
+    }
     /** A reused display id remains unconfirmed, so only an absent id proves the display is gone. */
     private fun ownerDisplayGone(context: Context, displayId: Int): Boolean {
         val manager = context.getSystemService(android.hardware.display.DisplayManager::class.java)
@@ -904,8 +919,13 @@ internal object VirtualDisplaySession {
             }
         }
         // 二级：root 终结 owner。ESRCH 才算死；su 失败或权限被撤时按未终结照实上报。
+        // kill 前先验 owner 身份（cmdline 对得上 socket 名）并确认 root 门禁：落盘 pid
+        // 可能已被无关进程复用，盲目 kill 会以 root 打中别人。身份对不上按「owner 已亡」
+        // 处理——记录保留、收尾不进行，恢复路径继续；绝不清记录留下疑似活 owner。
         var killedOwner = false
-        if (!releasedOk && pid > 0 && !ownerProcessGone(pid)) {
+        if (!releasedOk && pid > 0 && !ownerProcessGone(pid) &&
+            RootAccess.isGranted && ownerIdentityMatches(pid, socketName)
+        ) {
             runCatching { RootSu.process("kill $pid").start().waitFor() }
             killedOwner = awaitProcessGone(pid)
         }
