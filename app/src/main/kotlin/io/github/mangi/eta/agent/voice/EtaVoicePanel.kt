@@ -1,7 +1,9 @@
 package io.github.mangi.eta.agent.voice
 
+import android.content.Context
 import android.view.View
 import android.view.ViewTreeObserver
+import android.view.WindowManager
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -17,6 +19,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -98,6 +101,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
@@ -109,6 +113,7 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.components.AgentConversationMessages
 import io.github.mangi.eta.ui.components.ChatImagePreviewHost
 import io.github.mangi.eta.ui.components.ChatInputPopupMargin
+import io.github.mangi.eta.ui.components.ChatSendSettleSpec
 import io.github.mangi.eta.ui.components.ComposerVoiceEntry
 import io.github.mangi.eta.ui.components.Material3ComposerBody
 import io.github.mangi.eta.ui.components.PendingFileReferenceStrip
@@ -117,6 +122,7 @@ import io.github.mangi.eta.ui.components.collectPreviewableChatImages
 import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.components.rememberDataUrlBitmap
 import io.github.mangi.eta.ui.components.rememberImeVisible
+import io.github.mangi.eta.ui.components.settleListToBottom
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.ConversationMentionInputUi
@@ -840,6 +846,20 @@ private fun BoxScope.AssistantPanel(
                     // 末尾；服务注入的新消息不再重锚，上翻阅读不会被拽回去。
                     keepBottomAnchored = true
                     onSubmit(text)
+                    // 只置标志回不了底：用户上翻后 hasLeftBottom 已闩锁，列表状态机下一帧
+                    // 会走 resolveKeepBottomAnchored 的 hasLeftBottom -> false 分支把锚定反杀
+                    // 回 false，跟底控制器随即冻结。主界面靠提交自带的 settleListToBottom 动画
+                    // 回底（动画不读锚定，飞行中锚定被反杀也无妨，反而免掉跟底双驱动）；
+                    // 落底贴住静止线那一帧 when2 自动重锚并清闩锁，之后流式跟底无缝接管。
+                    // 这里镜像主界面提交的同一段（同 ChatSendSettleSpec 软弹簧 + 精修贴底）。
+                    scope.launch {
+                        // 与主界面同构：先掐掉残余惯性，布局落一帧后再锚定并赶路。
+                        listState.scroll(MutatePriority.PreventUserInput) { }
+                        withFrameNanos { }
+                        keepBottomAnchored = true
+                        val last = listState.layoutInfo.totalItemsCount - 1
+                        if (last >= 0) settleListToBottom(listState, last, scrollSpec = ChatSendSettleSpec)
+                    }
                 },
                 onStop = onStop,
                 modifier = Modifier
@@ -882,15 +902,27 @@ private fun AssistantComposer(
         composer.pendingImages.isNotEmpty() ||
         composer.pendingFileReferences.isNotEmpty()
     val density = LocalDensity.current
+    val view = LocalView.current
     // Not snapshot state: the panel reports its position on every layout, and the IME moves
     // it during the keyboard animation. Observing that here would recompose the panel per
     // keyboard frame; the value is read on demand when the popup is composed instead.
     val inputContainerTopPx = remember { intArrayOf(0) }
     // 「助手与模型」选择弹窗向上展开的最大高度：到状态栏为止，与应用内输入区同一套算法
     // （浮窗没有抽屉，直接用窗口内容顶到状态栏的距离）。
-    // 状态栏顶部同样在组合期读取一次：`WindowInsets.statusBars` 是 @Composable getter，
+    // 状态栏顶部在组合期读取一次：`WindowInsets.statusBars` 是 @Composable getter，
     // 不能放进延迟到弹窗组合时才执行的 lambda 里。
-    val statusBarTopPx = WindowInsets.statusBars.getTop(density)
+    // 注意浮窗是 TYPE_APPLICATION_OVERLAY 且不套系统窗内边距，Compose 侧的
+    // `WindowInsets.statusBars` 在这里恒为 0——按它算预算等于不给菜单顶部留任何空间，
+    // 长菜单会顶到屏幕最上沿、盖住悬浮在更高层的运行胶囊窗口。改读当前窗口度量里
+    // 忽略可见性的系统栏顶沿（display 真值，与主应用几何对齐）。
+    val statusBarTopPx = remember {
+        runCatching {
+            val wm = view.context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            wm?.currentWindowMetrics?.windowInsets
+                ?.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars())
+                ?.top
+        }.getOrNull() ?: 0
+    }
     val thinkingPopupMaxHeight: () -> Dp = remember(density, statusBarTopPx) {
         {
             with(density) {
@@ -906,6 +938,12 @@ private fun AssistantComposer(
     val fadeEnterSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.defaultEffectsSpec()
     val fadeExitSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.fastEffectsSpec()
     val shrinkTallSpec: FiniteAnimationSpec<IntSize> = MaterialTheme.motionScheme.defaultSpatialSpec()
+    // 听写进行中收起屏幕上下文快捷行（chips 抢注意力还把胶囊往下挤）。初值直接读唤起
+    // 令牌——语音唤起的首帧就不画 chips；此后由 ComposerBody 的回传保持同步（remember
+    // 以令牌为 key：面板在屏时再次语音唤起会重置回「在场」，听写结束经回传恢复）。
+    var dictationActive by remember(dictationStartRequest) {
+        mutableStateOf(dictationStartRequest > 0)
+    }
     // 快捷预设只在屏幕已采好、且输入区还是空的时候出现：一点即发，不抢用户正在打的草稿。
     // 语音进行中也保留（点预设会先退出语音再发送），与「添加当前屏幕」同排常驻。
     val showScreenPresets = state.screenContext.phase == EtaScreenContextPhase.AVAILABLE &&
@@ -915,11 +953,15 @@ private fun AssistantComposer(
             state = state.screenContext,
             enabled = !processing,
             showPresets = showScreenPresets,
+            showActions = !dictationActive,
             onSelect = onScreenContextSelect,
             onRemove = onScreenContextRemove,
             onPreset = onScreenContextPreset,
         )
-        if (state.screenContext.phase != EtaScreenContextPhase.CONSUMED) {
+        // 间距跟随快捷行的去留：听写中操作行收起且未选屏幕上下文时，整块都没有高度。
+        if (state.screenContext.phase != EtaScreenContextPhase.CONSUMED &&
+            (!dictationActive || state.screenContext.selected)
+        ) {
             Spacer(Modifier.height(8.dp))
         }
         // 附件预览条：与应用内输入区一致，文件引用在上、图片 / 视频在下，都渲染在输入框之上；
@@ -961,6 +1003,8 @@ private fun AssistantComposer(
             canSend = composer.canSend(hasDraftContent),
             usage = composer.usage,
             popupMaxHeight = thinkingPopupMaxHeight,
+            // 助手浮窗不套系统窗内边距（Compose 侧 statusBars 恒 0），地板取 display 真值。
+            popupTopFloorPx = statusBarTopPx,
             onPositionedTopPx = { inputContainerTopPx[0] = it },
             // 传入浮窗会话 key，避免空 key 触发「保存草稿 / 定时发送」的额外副作用。
             conversationId = composerConversationId,
@@ -974,6 +1018,7 @@ private fun AssistantComposer(
             showModelPicker = false,
             voiceState = voiceState,
             dictationStartRequest = dictationStartRequest,
+            onDictationActiveChange = { dictationActive = it },
             // 口述入口与聊天输入区同一套：mic → 流光听写条（× 丢弃 / ✓ 回填输入框 /
             // 说完停顿直接发送）。语音对话仍从主程序语音浮层进入，浮窗不再承载对话聆听条。
             voiceEntry = ComposerVoiceEntry.DICTATION,
@@ -1154,6 +1199,8 @@ private fun ScreenContextAttachment(
     state: EtaScreenContextUiState,
     enabled: Boolean,
     showPresets: Boolean,
+    /** 快捷操作行（添加当前屏幕 / 快捷预设）是否在场：听写进行中由调用方收起。 */
+    showActions: Boolean,
     onSelect: () -> Unit,
     onRemove: () -> Unit,
     onPreset: (ScreenContextPreset) -> Unit,
@@ -1178,15 +1225,23 @@ private fun ScreenContextAttachment(
                 if (showPresets) Spacer(Modifier.height(8.dp))
             }
         }
-        ScreenContextActionRow(
-            state = state,
-            enabled = enabled,
-            showPresets = showPresets,
-            // 选中屏幕后 chip 让位给上面的预览卡，操作行只剩快捷预设。
-            showAddChip = !state.selected,
-            onSelect = onSelect,
-            onPreset = onPreset,
-        )
+        // 听写进行中整行收起（胶囊在录时不让 chips 抢注意力）：纯不透明度淡入淡出
+        // （2026-11-12 用户定稿：不带位移与裁切）——入场走 Effects 平滑档，退场走快速档。
+        AnimatedVisibility(
+            visible = showActions,
+            enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
+            ScreenContextActionRow(
+                state = state,
+                enabled = enabled,
+                showPresets = showPresets,
+                // 选中屏幕后 chip 让位给上面的预览卡，操作行只剩快捷预设。
+                showAddChip = !state.selected,
+                onSelect = onSelect,
+                onPreset = onPreset,
+            )
+        }
     }
 }
 
@@ -1216,7 +1271,9 @@ private fun SelectedScreenContext(
                 bitmap = bitmap,
                 contentDescription = stringResource(R.string.voice_screen_preview),
                 modifier = Modifier
-                    .size(50.dp)
+                    // 52 = 卡片 60 − 上下内边距 4×2：横纵内缩一致，四段弧线才与卡片同圆心
+                    // （旧值 50 在纵向上缩 5dp ≠ 横向 4dp，同心被破坏）。
+                    .size(52.dp)
                     // 同心：图片圆角 = 卡片圆角 15dp − 卡片内边距 4dp = 11dp，
                     // 弧心与卡片圆角圆心重合（与输入条图框同一套「半径差 = 间距」的同心规则）。
                     .clip(RoundedCornerShape(11.dp)),
@@ -1224,19 +1281,25 @@ private fun SelectedScreenContext(
             )
         }
         Column(
-            modifier = Modifier.padding(start = 8.dp, end = 8.dp),
+            // weight(1f) 把 × 钉在卡片右端：无 weight 时长摘要（大字体）按序排布会把
+            // 删除钮顶出卡片边界——「没有删除按钮」的根因。两行文案各占一行、超长省略。
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp, end = 4.dp),
         ) {
             M3Text(
                 text = stringResource(R.string.voice_screen_title),
                 color = titleColor,
                 fontSize = MaterialTheme.typography.bodySmall.fontSize,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             M3Text(
                 text = stringResource(R.string.voice_screen_context_summary),
                 color = summaryColor,
                 fontSize = MaterialTheme.typography.labelSmall.fontSize,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         val removeDescription = stringResource(R.string.voice_screen_remove)

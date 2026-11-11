@@ -489,6 +489,7 @@ internal fun AgentChatInputBar(
             canSend = canSend,
             usage = liveUsage,
             popupMaxHeight = popupMaxHeight,
+            popupTopFloorPx = statusBarTopPx,
             onPositionedTopPx = { inputContainerTopPx[0] = it },
             onToolbarHeightPx = onToolbarHeightPx,
             conversationId = collaborationConversationId,

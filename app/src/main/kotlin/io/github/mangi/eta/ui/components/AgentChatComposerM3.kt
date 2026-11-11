@@ -85,6 +85,7 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MenuAnchorPosition
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
@@ -133,6 +134,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -149,7 +151,7 @@ import io.github.mangi.eta.data.repository.ComposerQueueStore
 import io.github.mangi.eta.ui.adaptive.EtaMenuDivider
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
-import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
+import io.github.mangi.eta.ui.adaptive.EtaMenuGroupSurface
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaType
@@ -167,6 +169,7 @@ import io.github.mangi.eta.ui.model.QueuedMessageUi
 import java.time.LocalTime
 import java.util.Calendar
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -253,6 +256,8 @@ internal fun Material3ComposerBody(
      * at popup-composition time keeps the value current without that cost.
      */
     popupMaxHeight: () -> Dp,
+    /** 「+」菜单顶沿地板（窗口坐标 px，助手浮窗传真实状态栏顶）：见 M3ComposerAddButton。 */
+    popupTopFloorPx: Int = 0,
     onPositionedTopPx: (Int) -> Unit,
     /** 输入工具栏（渐变板的锚点胶囊）每次尺寸变化上报自身高度，供底栏渐变板定位顶盖圆心。 */
     onToolbarHeightPx: (Int) -> Unit = {},
@@ -290,6 +295,8 @@ internal fun Material3ComposerBody(
      *  经令牌重组触发（听写已停时再按电源键的意图就是再录一句）；start() 幂等（在录时空操作），
      *  服务侧已过麦克风权限。 */
     dictationStartRequest: Int = 0,
+    /** 听写会话在场状态回传（助手弹窗用它收起/恢复屏幕上下文快捷行）；首次组合也回传一次。 */
+    onDictationActiveChange: (Boolean) -> Unit = {},
     showMorphLoading: Boolean,
     pendingImages: List<PendingImageUi>,
     pendingFileReferences: List<PendingFileReferenceUi>,
@@ -461,6 +468,8 @@ internal fun Material3ComposerBody(
         val wakeDictationPending = dictationStartRequest > consumedStartToken.intValue
         val dictating = voiceEntry == ComposerVoiceEntry.DICTATION &&
             (dictation.active || wakeDictationPending)
+        // 听写在场状态回传（弹窗收起/恢复屏幕上下文快捷行）：首次组合也回传，语音唤起的首帧就不画快捷行。
+        LaunchedEffect(dictating) { onDictationActiveChange(dictating) }
         // 唤起方式=语音识别（助手弹窗）：弹窗落座即自动开录；面板在屏时再次唤起也经令牌
         // 重开（听写已停时再按电源键的意图就是再录一句）。start() 幂等：在录时空操作。
         // 服务侧已过麦克风权限；识别方式未配置时 start() 会原位给出「去配置」提示条。
@@ -666,6 +675,7 @@ internal fun Material3ComposerBody(
                             expanded = attachMenuExpanded,
                             onExpandedChange = { attachMenuExpanded = it },
                             onScheduleSend = { showScheduleDialog = true },
+                            popupTopFloorPx = popupTopFloorPx,
                             onOpenMediaSearch = onOpenMediaSearch,
                             onSaveDraft = {
                                 scope.launch {
@@ -2205,6 +2215,9 @@ private fun M3ComposerAddButton(
     onSaveDraft: () -> Unit,
     onShare: () -> Unit,
     onOpenMediaSearch: (() -> Unit)? = null,
+    /** 菜单顶沿地板（窗口坐标 px，通常为真实状态栏顶）：菜单高度按「锚顶 − 地板」封顶，
+     *  Above 锚定下首候选（底对齐锚顶）必然放得下，菜单底部恒停在 + 按钮上沿。 */
+    popupTopFloorPx: Int = 0,
 ) {
     // 展开态把「+」转到 45°：视觉上成为「×」，与菜单“关闭”动作一致。
     val iconRotation by animateFloatAsState(
@@ -2214,6 +2227,15 @@ private fun M3ComposerAddButton(
     )
     val view = LocalView.current
     val context = LocalContext.current
+    // 锚（+ 按钮容器）在窗口里的顶沿：菜单高度按它封顶，Above 定位后底部恒停在锚上沿。
+    var anchorTopPx by remember { mutableIntStateOf(0) }
+    val menuMaxHeight = with(LocalDensity.current) {
+        // 菜单底沿经 offset 上移 12dp 停在工具栏行上沿（40dp 圆钮在 64dp 行里垂直居中，
+        // 按钮顶沿比行上沿低 12dp）；顶沿地板之上再留 2·margin 呼吸位。
+        val bottomShift = (12.dp + ChatInputPopupMargin * 2).roundToPx()
+        ((anchorTopPx - popupTopFloorPx).coerceAtLeast(0) - bottomShift)
+            .coerceAtLeast(0).toDp()
+    }.coerceAtLeast(50.dp)
     // 菜单分两段：对话操作 / 附件来源，中间用分割线。条目用「文案资源 + 前置图标 + 动作」描述，
     // 渲染时行形状按官方 `MenuDefaults` 令牌取（首项 leading、末项 trailing）。
     val conversationEntries = listOf(
@@ -2240,6 +2262,7 @@ private fun M3ComposerAddButton(
         Box(
             modifier = Modifier
                 .size(IconButtonDefaults.smallContainerSize())
+                .onGloballyPositioned { anchorTopPx = it.positionInWindow().y.toInt() }
                 .clip(CircleShape)
                 .focusProperties { canFocus = false }
                 .semantics {
@@ -2266,12 +2289,20 @@ private fun M3ComposerAddButton(
         EtaMenuPopup(
             expanded = expanded,
             onDismissRequest = { onExpandedChange(false) },
+            // Above 锚定 + 底沿上移 12dp：菜单底部停在工具栏行上沿（40dp 圆钮在 64dp 行里
+            // 垂直居中的偏移），不再向下铺到屏幕底、压住输入胶囊。高度按「锚顶 − 地板 −
+            // 底沿偏移」封顶，保证首候选必然放得下；助手浮窗的地板是真实状态栏顶
+            // （浮窗不套系统内边距，WindowInsets 读到 0，须由调用方给）。
+            anchorPosition = MenuAnchorPosition.Above,
+            offset = DpOffset(0.dp, -12.dp),
+            maxHeight = menuMaxHeight,
         ) {
             // 整张菜单共用一个圆角容器：对话操作与附件来源之间用分割线分开。
             // 行形状按整张菜单的全局位置取（首行 leading、末行 trailing），
             // 分割线不重新起一段，末行的按下高亮才会和容器底角同心。
+            // 分组容器用可滚动变体：超预算时滚动落在内层 Column，圆角背景不随内容滚走。
             val itemCount = conversationEntries.size + attachmentEntries.size
-            EtaMenuGroup(index = 0, count = 1) {
+            EtaMenuGroupSurface(scrollable = true) {
                 conversationEntries.forEachIndexed { index, entry ->
                     DropdownMenuItem(
                         text = { Text(stringResource(entry.labelRes)) },

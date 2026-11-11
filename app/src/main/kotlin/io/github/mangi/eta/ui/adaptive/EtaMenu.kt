@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -15,6 +16,7 @@ import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MenuAnchorPosition
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
@@ -310,6 +314,13 @@ val EtaMenuMaxWidth: androidx.compose.ui.unit.Dp = 280.dp
  * 弹层宽度完全由内容决定；这里补上 [EtaMenuMinWidth] / [EtaMenuMaxWidth]，
  * 让「图标 + 四字中文」的短菜单也不会缩成一条窄缝。
  *
+ * [anchorPosition] 选展开策略：默认 [MenuAnchorPosition.Below]（锚下展开，放不下时逐候选
+ * 回退）；「向上展开、底部停在锚上沿」传 [MenuAnchorPosition.Above]。
+ *
+ * [maxHeight] 给长菜单封高度预算（如锚顶到状态栏地板的距离扣去边距）：多条目菜单不再
+ * 顶到屏幕最上沿、盖住运行胶囊等更高层的窗口；超预算部分交给
+ * [EtaMenuGroupSurface]（scrollable = true）内滚。空预算（null）保持内容自量高度。
+ *
  * 窗口属性沿用官方默认（`MenuDefaults.DefaultMenuProperties`，即 focusable = true）：
  * 覆盖 `focusable` 会给弹窗加 `FLAG_NOT_FOCUSABLE`，而 `createFlags()` 又无条件带
  * `FLAG_WATCH_OUTSIDE_TOUCH`，点开菜单的那一次抬手会被当成外部点击，菜单刚弹出就被关掉。
@@ -319,12 +330,19 @@ fun EtaMenuPopup(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    anchorPosition: MenuAnchorPosition = MenuAnchorPosition.Below,
+    offset: DpOffset = DpOffset.Zero,
+    maxHeight: Dp? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     DropdownMenuPopup(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
-        modifier = modifier.widthIn(min = EtaMenuMinWidth, max = EtaMenuMaxWidth),
+        popupPositionProvider =
+            MenuDefaults.rememberDropdownMenuPopupPositionProvider(anchorPosition, offset),
+        modifier = modifier
+            .widthIn(min = EtaMenuMinWidth, max = EtaMenuMaxWidth)
+            .then(maxHeight?.let { height -> Modifier.heightIn(max = height) } ?: Modifier),
         content = content,
     )
 }

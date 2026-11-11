@@ -2602,8 +2602,9 @@ private const val ChatContextCompressingKey = "agent-chat-context-compressing"
 /**
  * 发送后回底：差额通常只有一个气泡高，默认 spring() 刚度很高（1500），几十毫秒就顶到位，
  * 和气泡自己的入场节奏对不上，看起来是页面被硬推了一下。这里换成同档位的软弹簧，仍无过冲。
+ * 悬浮窗提交回底（EtaVoicePanel）与主界面共用同一份。
  */
-private val ChatSendSettleSpec = spring<Float>(
+internal val ChatSendSettleSpec = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = 700f,
 )
@@ -2790,9 +2791,9 @@ internal fun AnchorChatTailOnViewportChange(
 /**
  * 平滑收拢到列表底部：先按实测布局量出差额，跨项差额用与翻页一致的动画赶路，
  * 可见范围内的像素差额用弹簧逐像素收拢，最后交给 snapListToBottom 精修到精确贴底。
- * 发送消息回底与打开会话的初始定位共用，替代原来的整段瞬跳。
+ * 发送消息回底（主界面提交与助手悬浮窗提交共用）与打开会话的初始定位共用，替代原来的整段瞬跳。
  */
-private suspend fun settleListToBottom(
+internal suspend fun settleListToBottom(
     scrollState: LazyListState,
     bottomItemIndex: Int,
     scrollSpec: AnimationSpec<Float> = spring(),
