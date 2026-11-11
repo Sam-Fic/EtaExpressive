@@ -520,21 +520,57 @@ class AgentChatScrollPolicyTest {
 
     @Test
     fun touchWhileTailIsLaggingKeepsTheBottomAnchor() {
-        // 旧实现把 pointerDown 当拖动：流式时尾部常年落后，点一下工具卡片就会
-        // 关掉锚定并置位 hasLeftBottom，之后再也不会出现 atBottom=true。
+        // 纯轻触（点工具卡片、长按选字）不产生滚动事件：isUserScrolling 为 false，
+        // 闩锁置不上，锚定也不解除。旧实现把 pointerDown 当拖动才是死锁来源。
+        // 注意 atBottom 现在只认真底部，锚定保持靠的是「else 沿用 current」这一支。
         val gesture = resolveChatBottomAnchorGesture(
             proximity = ChatBottomProximity.Lagging,
             isUserScrolling = false,
             pointerDown = true,
         )
         assertFalse(gesture.dragging)
-        assertTrue(gesture.atBottom)
+        assertFalse(gesture.atBottom)
         assertTrue(
             resolveKeepBottomAnchored(
                 current = true,
                 isUserDragging = gesture.dragging,
                 isAtBottom = gesture.atBottom,
+                // 无滚动事件 → 闩锁不动（保持 false）。
+                hasLeftBottom = false,
             ),
+        )
+    }
+
+    @Test
+    fun userScrollDuringLaggingReleasesTheAnchor() {
+        // 生成中上翻、距离还没超过尾部那一行：几何仍是 Lagging，但滚动事件是真的。
+        val gesture = resolveChatBottomAnchorGesture(
+            proximity = ChatBottomProximity.Lagging,
+            isUserScrolling = true,
+            pointerDown = true,
+        )
+        assertFalse(gesture.dragging)
+        assertFalse(gesture.atBottom)
+        // 闩锁条件：dragging 或真实滚动手势，且不在真底部。
+        val latch = (gesture.dragging || true) && !gesture.atBottom
+        assertTrue(latch)
+        // 手指还按着：解锚定。
+        assertFalse(
+            resolveKeepBottomAnchored(true, gesture.dragging, gesture.atBottom, hasLeftBottom = latch),
+        )
+        // 松手后停在半路（仍是 Lagging）：不能凭 current 一路沿用 true 把人拽回末尾。
+        val released = resolveChatBottomAnchorGesture(
+            proximity = ChatBottomProximity.Lagging,
+            isUserScrolling = false,
+            pointerDown = false,
+        )
+        assertFalse(
+            resolveKeepBottomAnchored(false, released.dragging, released.atBottom, hasLeftBottom = latch),
+        )
+        // 用户自己滑回真底部：重锚并清闩锁。
+        val back = resolveChatBottomAnchorGesture(ChatBottomProximity.Anchored, false, false)
+        assertTrue(
+            resolveKeepBottomAnchored(false, back.dragging, back.atBottom, hasLeftBottom = latch),
         )
     }
 
@@ -568,14 +604,15 @@ class AgentChatScrollPolicyTest {
 
     @Test
     fun staleLeftBottomFlagRecoversWhenTailIsOnlyLagging() {
-        // 旧实现误置 hasLeftBottom 后永久停在半路；Lagging 现在算在底部，这一帧即自愈。
+        // 真底部（Anchored）这一帧即重锚、闩锁清掉；只是 Lagging（尾部还量得到但不在静止线）
+        // 时闩锁继续把人停在半路——这正是「生成中上翻不被拽回」要的行为。
         assertTrue(resolveKeepBottomAnchored(false, false, true, hasLeftBottom = true))
         assertFalse(resolveKeepBottomAnchored(false, false, false, hasLeftBottom = true))
     }
 
     @Test
     fun expansionReleaseIsNotOverruledByLagging() {
-        // 用户主动展开卡片（钉住标题）：没有 hasLeftBottom，Lagging 不该把锚定拉回来。
+        // 用户主动展开卡片（钉住标题）：没有 hasLeftBottom，没在真底部就不该把锚定拉回来。
         assertFalse(resolveKeepBottomAnchored(false, false, true, hasLeftBottom = false))
     }
 

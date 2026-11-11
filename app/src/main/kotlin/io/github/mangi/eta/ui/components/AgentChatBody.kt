@@ -1187,6 +1187,15 @@ internal fun AgentConversationMessages(
                 // 把前者也算成「不在底部」，再叠加「手指按着就算拖动」，一次轻触即可
                 // 在输出途中关掉锚定并置位 hasLeftBottom；此后尾部一路落后、再也不会
                 // 出现 atBottom=true，跟底就此永久停在中途。
+                //
+                // 现在对 Lagging 有两条互相独立的纪律，缺一条就会退化成两种相反的 bug：
+                // ① Lagging 不算 Detached：纯轻触/长按选字不置闩锁、不解锚定，上面那个
+                //    「轻触即永久卡在半路」仍被堵死；
+                // ② Lagging 不算「在底部」：用户上翻距离小于尾部那一行高度时几何还量得到
+                //    尾部，但人已经在读上方内容，此时只要出现真实滚动手势（isUserScrolling）
+                //    就置闩锁、停跟底，不会被下一帧严格贴底拽回末尾。
+                // 恢复贴底仍走原来三路：滑回真底部（8px 容差）、长按「下一轮」跳末尾、
+                // 发送新消息。
                 val gesture = resolveChatBottomAnchorGesture(
                     proximity = scrollState.chatBottomProximity(),
                     isUserScrolling = isUserScrolling,
@@ -1196,13 +1205,20 @@ internal fun AgentConversationMessages(
                     dragging = gesture.dragging,
                     atBottom = gesture.atBottom,
                     anchored = currentAnchor.value,
+                    userScrolling = isUserScrolling,
                 )
             }
         }
             .distinctUntilChanged()
             .collect { state ->
-                val (dragging, atBottom, anchored) = state ?: return@collect
-                if (dragging && !atBottom) hasLeftBottom = true
+                val (dragging, atBottom, anchored, userScrolling) = state ?: return@collect
+                // 闩锁双保险：dragging 兜「Detached 边缘起手」——手势从输入区起手时
+                // onPreScroll 收不到，只能靠 pointerDown 兜底；userScrolling 兜「Lagging
+                // 段真实滚动」——尾部还在测量窗里、上翻距离没超过最后一行高度时 dragging
+                // 恒为 false，只有滚动事件本身能证明用户要走。isUserScrolling 已要求
+                // 「UserInput 滚动事件 + 手指按下」，而 scrollable 只有越过系统触摸斜坡
+                // 才产生滚动事件，纯点触/长按选字天然不触发。
+                if ((dragging || userScrolling) && !atBottom) hasLeftBottom = true
                 val next = resolveKeepBottomAnchored(
                     current = anchored,
                     isUserDragging = dragging,
@@ -2635,7 +2651,7 @@ internal fun resolveChatBottomProximity(
     else -> ChatBottomProximity.Detached
 }
 
-/** 传给锚定策略的两个布尔。锚定只在「用户手势 + 确实翻到上方」时解除。 */
+/** 传给锚定策略的两个布尔。锚定只在「用户手势 + 确实离开静止线」时解除。 */
 internal data class ChatBottomAnchorGesture(val dragging: Boolean, val atBottom: Boolean)
 
 internal fun resolveChatBottomAnchorGesture(
@@ -2649,12 +2665,21 @@ internal fun resolveChatBottomAnchorGesture(
         // 起手、onPreScroll 收不到时，只要列表已经翻到上方，pointerDown 仍要兜底，
         // 否则跟底会把用户正在看的旧消息拽回底部。
         dragging = detached && (isUserScrolling || pointerDown),
-        // Lagging 仍算「在底部」：拖动结束就立刻恢复跟底，也让历史遗留的
-        // hasLeftBottom 误置在这一帧被消费掉，解开「停在半路」的死锁。
-        atBottom = !detached,
+        // 只有停在静止线（Anchored）才算「在底部」。Lagging 是含混区：可能是跟底
+        // 正在追（超高流式 Markdown 还没量完），也可能只是用户上翻的距离还没超过
+        // 尾部那一行的高度。锚定决策取保守一侧——宁可在 Lagging 段就认「不在底部」，
+        // 也不能接着把正在阅读的用户一帧 scrollBy 拽回末尾。轻触/长按选字不会因此
+        // 死锁：闩锁（hasLeftBottom）只认「真实滚动手势」，见 AgentConversationMessages
+        // 的状态机注释。
+        atBottom = proximity == ChatBottomProximity.Anchored,
     )
 }
 
+/**
+ * 底部锚定开关：true 表示继续严格贴底。解除只有两条路——用户正在拖动（Detached），
+ * 或用户真实滚动手势离开过底部且还没滑回来（hasLeftBottom）。
+ * @param hasLeftBottom 用户手势离开过静止线的闩锁；滑回真底部时由调用方清掉。
+ */
 internal fun resolveKeepBottomAnchored(
     current: Boolean,
     isUserDragging: Boolean,
@@ -2665,6 +2690,10 @@ internal fun resolveKeepBottomAnchored(
     isUserDragging -> false
     // 只有真正滑离过底部再回来，才重新贴底，避免轻触后被跟底拽回去。
     isAtBottom && (current || hasLeftBottom) -> true
+    // 用户手势离开过静止线、还没滑回真底部：停跟底（他要读内容）。缺这一支时，
+    // 中途上翻的 current 仍是 true、atBottom 已变 false，锚定一路沿用 current 解不掉，
+    // 下一帧严格贴底控制器就把人拽回末尾。
+    hasLeftBottom -> false
     else -> current
 }
 
@@ -2862,11 +2891,16 @@ private data class TailBreachSample(
 /** UserInput 来源的滚动只有在手指按着时才算用户滑动；惯性走的是 SideEffect 来源，不经过这里。 */
 internal fun isUserScrollGesture(pointerDown: Boolean): Boolean = pointerDown
 
-/** 聊天列表的跟底跟随快照：拖动状态 / 是否在底部 / 当前是否跟底。 */
+/**
+ * 聊天列表的跟底跟随快照：拖动状态 / 是否在底部 / 当前是否跟底 / 有没有真实滚动手势。
+ * [userScrolling] 必须进快照：只读它来置闩锁时，「Lagging 段开始滚动」前后三元组完全
+ * 相同，distinctUntilChanged 会把这一帧吞掉，闩锁永远置不上。
+ */
 private data class ChatListFollowState(
     val dragging: Boolean,
     val atBottom: Boolean,
     val anchored: Boolean,
+    val userScrolling: Boolean,
 )
 
 /** 只保留类名和方法名（与主线程消息日志同一套截断规则），跳过本文件与协程、Compose 调度的帧。 */

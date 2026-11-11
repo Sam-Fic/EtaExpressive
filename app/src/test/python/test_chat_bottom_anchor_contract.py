@@ -21,16 +21,35 @@ class ChatBottomAnchorContractTest(unittest.TestCase):
         self.assertIn('proximity = scrollState.chatBottomProximity()', self.state_machine)
         self.assertIn('dragging = gesture.dragging', self.state_machine)
         self.assertIn('atBottom = gesture.atBottom', self.state_machine)
+        # 闩锁必须同时认真实滚动手势：只有 dragging 时，Lagging 段上翻（dragging 恒 false）
+        # 永远置不上闩锁，松手后严格贴底照旧把人拽回末尾。
+        self.assertIn('(dragging || userScrolling) && !atBottom', self.state_machine)
+        # userScrolling 必须进快照：只读外层状态时「Lagging 段开始滚动」前后三元组不变，
+        # distinctUntilChanged 会吞掉这一帧，闩锁置不上。
+        self.assertIn('userScrolling = isUserScrolling', self.state_machine)
         # 旧判据：手指按着就算拖动 + 只用一个 atBottom 布尔，流式途中一次轻触即死锁。
         self.assertNotIn('dragging = isUserScrolling || pointerDown.value', self.state_machine)
         self.assertNotIn('atBottom = scrollState.isConversationAtBottom()', self.state_machine)
 
-    def test_tail_lagging_is_treated_as_still_at_bottom(self):
+    def test_only_true_bottom_counts_as_at_bottom_for_anchor(self):
         helper = BODY.split('internal fun resolveChatBottomAnchorGesture(', 1)[1].split(
             'internal fun resolveKeepBottomAnchored(', 1)[0]
         self.assertIn('val detached = proximity == ChatBottomProximity.Detached', helper)
+        # 拖动仍只认 Detached：Lagging 段纯轻触不产生滚动手势，不能解锚定（旧 bug 的解）。
         self.assertIn('dragging = detached && (isUserScrolling || pointerDown)', helper)
-        self.assertIn('atBottom = !detached', helper)
+        # 只有停在静止线才算「在底部」：Lagging 可能是用户上翻未出尾部测量窗。
+        self.assertIn('atBottom = proximity == ChatBottomProximity.Anchored', helper)
+        self.assertNotIn('atBottom = !detached', helper)
+
+    def test_leaving_bottom_without_returning_stops_following(self):
+        policy = BODY.split('internal fun resolveKeepBottomAnchored(', 1)[1].split(
+            'internal fun shouldPinConversationToBottom(', 1)[0]
+        # 缺这一支时中途上翻会一路沿用 current（true），锚定解不掉。
+        self.assertIn('hasLeftBottom -> false', policy)
+        # 滑回真底部仍要重锚。
+        self.assertIn('isAtBottom && (current || hasLeftBottom) -> true', policy)
+        self.assertLess(policy.index('isAtBottom && (current || hasLeftBottom) -> true'),
+                        policy.index('hasLeftBottom -> false'))
 
     def test_three_way_policy_separates_lagging_from_detached(self):
         policy = BODY.split('internal enum class ChatBottomProximity', 1)[1].split(
@@ -68,7 +87,8 @@ class ChatBottomAnchorContractTest(unittest.TestCase):
         self.assertIn('val step = snapFollowScrollStep(remainingDistancePx, remainingDistancePx)', controller)
         self.assertNotIn('BottomFollowMotion()', controller)
         self.assertNotIn('motion.step(', controller)
-        self.assertNotIn('pointerDown.value', controller)
+        # 按住冻结（长按选字期间被选中的文本不能动）与速度曲线无关，是允许的。
+        self.assertIn('isUserScrolling || pointerDown.value || messageNavigationJob != null', controller)
         self.assertIn('if (!shouldFollowBottom) return@snapshotFlow InactiveBottomFollowLayout', BODY)
         self.assertNotIn('tailLiftMotion', BODY)
         self.assertNotIn('bottomSnapUntilNanos', BODY)
@@ -77,7 +97,7 @@ class ChatBottomAnchorContractTest(unittest.TestCase):
         lift = BODY.split('.then(if (shouldLiftTail) {', 1)[1].split('} else {', 1)[0]
         self.assertIn('val overflow = scrollState.followTailOverflow()', lift)
         self.assertIn('nextHeldTailLift(', lift)
-        self.assertIn('pointerDown = isUserScrolling || messageNavigationJob != null', lift)
+        self.assertIn('pointerDown = isUserScrolling || pointerDown.value || messageNavigationJob != null', lift)
         self.assertNotIn('maxRisePx', lift)
         self.assertNotIn('tailLiftMotion', lift)
 

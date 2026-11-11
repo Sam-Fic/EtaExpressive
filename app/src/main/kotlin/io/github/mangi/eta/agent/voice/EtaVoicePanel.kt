@@ -294,7 +294,7 @@ internal fun EtaVoicePanel(
     composerConversationId: String?,
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
     onStopVoiceMode: () -> Unit,
-    autoStartDictation: Boolean,
+    dictationStartRequest: Int,
     onScreenContextSelect: () -> Unit,
     onScreenContextRemove: () -> Unit,
     onScreenContextPreset: (ScreenContextPreset) -> Unit,
@@ -423,7 +423,7 @@ internal fun EtaVoicePanel(
                     textFieldState = textFieldState,
                     composer = composer,
                     voiceState = voiceState,
-                    autoStartDictation = autoStartDictation,
+                    dictationStartRequest = dictationStartRequest,
                     focusRequester = focusRequester,
                     canOpenConversation = canOpenConversation,
                     maxContentHeightPx = maxContentHeightPx,
@@ -488,7 +488,7 @@ private fun BoxScope.AssistantPanel(
     textFieldState: TextFieldState,
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
-    autoStartDictation: Boolean,
+    dictationStartRequest: Int,
     focusRequester: FocusRequester,
     canOpenConversation: Boolean,
     maxContentHeightPx: Float,
@@ -582,9 +582,8 @@ private fun BoxScope.AssistantPanel(
         }
     }
 
-    LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) keepBottomAnchored = true
-    }
+    // 这里刻意不按 state.messages.size 重锚定：服务注入的助手消息会在输出途中不断把
+    // 用户上翻阅读的位置一帧拽回底部。重锚只挂在用户自己的提交入口（见 onSubmit）。
     // 首条消息出现（面板从无到有）：从 0 长起到当前档位。
     LaunchedEffect(hasMessages) {
         if (hasMessages && draggedHeightPx == null) {
@@ -828,7 +827,7 @@ private fun BoxScope.AssistantPanel(
                 textFieldState = textFieldState,
                 composer = composer,
                 voiceState = voiceState,
-                autoStartDictation = autoStartDictation,
+                dictationStartRequest = dictationStartRequest,
                 focusRequester = focusRequester,
                 composerConversationId = composerConversationId,
                 onStartVoiceMode = onStartVoiceMode,
@@ -836,7 +835,12 @@ private fun BoxScope.AssistantPanel(
                 onScreenContextSelect = onScreenContextSelect,
                 onScreenContextRemove = onScreenContextRemove,
                 onScreenContextPreset = onScreenContextPreset,
-                onSubmit = onSubmit,
+                onSubmit = { text ->
+                    // 发送即重新锚定底部（对齐主界面 onSubmit 的语义）：用户主动发送要回到
+                    // 末尾；服务注入的新消息不再重锚，上翻阅读不会被拽回去。
+                    keepBottomAnchored = true
+                    onSubmit(text)
+                },
                 onStop = onStop,
                 modifier = Modifier
                     .onSizeChanged { composerHeightPx = it.height.toFloat() }
@@ -858,7 +862,7 @@ private fun AssistantComposer(
     textFieldState: TextFieldState,
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
-    autoStartDictation: Boolean,
+    dictationStartRequest: Int,
     focusRequester: FocusRequester,
     composerConversationId: String?,
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
@@ -969,7 +973,7 @@ private fun AssistantComposer(
             // 入口浮层不放「助手与模型」按钮：这里没有模型切换的上下文，发送走当前全局默认选择。
             showModelPicker = false,
             voiceState = voiceState,
-            autoStartDictation = autoStartDictation,
+            dictationStartRequest = dictationStartRequest,
             // 口述入口与聊天输入区同一套：mic → 流光听写条（× 丢弃 / ✓ 回填输入框 /
             // 说完停顿直接发送）。语音对话仍从主程序语音浮层进入，浮窗不再承载对话聆听条。
             voiceEntry = ComposerVoiceEntry.DICTATION,

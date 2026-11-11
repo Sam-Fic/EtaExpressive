@@ -1,6 +1,9 @@
 package io.github.mangi.eta.ui.components
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +81,9 @@ internal class ComposerDictation(private val context: Context) {
      */
     private var session = 0
 
+    /** 熄屏守卫：听写进行中注册，ACTION_SCREEN_OFF 即停录（与实时通话的熄屏兜底同款）。 */
+    private var screenOffReceiver: BroadcastReceiver? = null
+
     fun start() {
         if (active) return
         // 与 VoiceModeController 相同的开始前判据：未配置识别方式时不必进识别链路，
@@ -96,6 +102,7 @@ internal class ComposerDictation(private val context: Context) {
         transcript = ""
         outcome = null
         autoCommit = null
+        registerScreenOffGuard()
         job = scope.launch {
             try {
                 val heard = SpeechInputSession.recognize(
@@ -126,6 +133,7 @@ internal class ComposerDictation(private val context: Context) {
                     active = false
                     listening = false
                     micLevel.reset()
+                    unregisterScreenOffGuard()
                 }
             }
         }
@@ -144,6 +152,7 @@ internal class ComposerDictation(private val context: Context) {
         autoCommit = null
         notice = null
         micLevel.reset()
+        unregisterScreenOffGuard()
     }
 
     /** ✓ ：结束听写并把当前转写交回输入框；没有识别到文字时返回 null。 */
@@ -160,6 +169,7 @@ internal class ComposerDictation(private val context: Context) {
         autoCommit = null
         notice = null
         micLevel.reset()
+        unregisterScreenOffGuard()
         return text.takeIf { it.isNotBlank() }
     }
 
@@ -170,6 +180,35 @@ internal class ComposerDictation(private val context: Context) {
     /** 消费掉一次自然结束的转写（UI 处理完发送 / 退回编辑后调用）。 */
     fun consumeAutoCommit() {
         autoCommit = null
+    }
+
+    /**
+     * 熄屏即停：听写进行中注册 ACTION_SCREEN_OFF 守卫，熄屏立刻取消会话释放麦克风。
+     * 不停的话浮窗（TYPE_APPLICATION_OVERLAY 悬在锁屏之上）会在无人注视时继续录音，
+     * 环境噪声触发端点还会把噪声转写自动发送出去；与实时通话的熄屏兜底同一规则。
+     */
+    private fun registerScreenOffGuard() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_SCREEN_OFF) cancel()
+            }
+        }
+        screenOffReceiver = receiver
+        runCatching {
+            context.registerReceiver(
+                receiver,
+                IntentFilter(Intent.ACTION_SCREEN_OFF),
+                Context.RECEIVER_NOT_EXPORTED,
+            )
+        }.onFailure {
+            // 注册失败不阻断听写，只失去这条兜底（与浮窗熄屏接收器同一取舍）。
+            screenOffReceiver = null
+        }
+    }
+
+    private fun unregisterScreenOffGuard() {
+        screenOffReceiver?.let { runCatching { context.unregisterReceiver(it) } }
+        screenOffReceiver = null
     }
 
     private companion object {

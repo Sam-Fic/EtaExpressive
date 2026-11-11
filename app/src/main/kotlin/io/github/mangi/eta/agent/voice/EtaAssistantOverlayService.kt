@@ -145,12 +145,13 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     private var activeRunId: String? = null
     private var entryGeneration = 0L
     private var presentedEntryGeneration = -1L
-    private var lastEntryPresentedAt = 0L
     private var screenContextAttachment: EtaScreenContextAttachment? = null
     private var hiddenForForegroundOperation = false
     private var handoffInProgress = false
     private var exitAnimationRequested by mutableStateOf(false)
     private var inputFocusRequestKey by mutableIntStateOf(-1)
+    /** 唤起方式=语音识别的听写开录令牌：每次语音唤起 ++；面板在屏时经重组触发重开。 */
+    private var dictationStartRequest by mutableIntStateOf(0)
     private var lastWakeHapticAt = 0L
     private var uiState by mutableStateOf(EtaVoiceUiState())
 
@@ -265,23 +266,30 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             return
         }
         performWakeHaptic()
-        // 系统助理会话在首帧附近可能重复回调 onShow。重复 SHOW 不能重新走入口流程：
-        // removeWindow + addView 会重建 Compose 组合，入场弹簧从头再播一遍，看起来
-        // 就是弹出动画播放了两遍。采集尚未结束时直接忽略；浮窗刚展示时只在入场动画
-        // 尚未结束的短窗口内忽略，之后仍允许用户再次唤起重置会话。
-        val now = SystemClock.uptimeMillis()
-        val entryInFlight = entryCaptureJob != null
-        val entryVisible = windowView != null
-        if (!exitAnimationRequested &&
-            (entryInFlight || (entryVisible && now - lastEntryPresentedAt < WAKE_ENTRY_DEDUPE_MS))
-        ) {
+        // 唤起方式=语音识别：本次唤起要让听写开录/重开。令牌 ++ 后——面板在屏时经重组
+        // 触发重开，面板重建时随首次组合触发；start() 幂等（在录时空操作）。
+        // 麦克风权限缺失时 toast 并整体退回键盘路径；识别方式未配置由听写条原位提示。
+        val voiceWake = Prefs.assistantEntryMode() == AssistantEntryMode.VOICE && startVoiceEntry()
+        // 浮窗已不再承载语音对话 UI（入口恒为口述）：残留的浮窗实时通话只会隐形占着
+        // 进程级麦克风互斥锁（DoubaoDuplexSession 全会话持锁），开录前一律停掉。
+        // 空闲态 stop() 是空操作，代价为零。
+        voiceController.stop()
+        if (voiceWake) dictationStartRequest++
+        // 面板已在屏（未在退场、未在前台操作让位中）：重复唤起不重建窗口——
+        // removeWindow + addView 会重建 Compose 组合、把入场弹簧从头再播一遍。
+        // 顺着当前状态继续：语音识别重开听写（上面令牌已 ++），键盘则重新聚焦。
+        if (windowView != null && !exitAnimationRequested && !hiddenForForegroundOperation) {
+            if (voiceWake) {
+                // 上一段键盘会话可能还留着 IME：开录前收掉，别让它盖住听写条。
+                updateSoftInput(visible = false)
+            } else {
+                showKeyboard()
+            }
             return
         }
+        // 入口采集尚未结束：忽略紧随其后的重复 SHOW（采集窗口本就短暂）。
+        if (entryCaptureJob != null) return
         cancelCurrentRun()
-        // 浮窗已不再承载语音对话 UI（入口恒为口述）：残留的浮窗实时通话只会隐形占着
-        // 进程级麦克风互斥锁（DoubaoDuplexSession 全会话持锁），让唤醒即开录的听写
-        // 撞上「语音输入正在使用麦克风」。空闲态 stop() 是空操作，代价为零。
-        voiceController.stop()
         entryCaptureJob?.cancel()
         removeWindow()
         val generation = ++entryGeneration
@@ -304,14 +312,14 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     phase = EtaScreenContextPhase.UNAVAILABLE,
                 ),
             )
-            presentEntry(generation)
+            presentEntry(generation, voiceWake)
             return
         }
         entryCaptureJob = scope.launch {
             val result = accessibility.captureScreenshotExcludingOverlays(
                 onWindowsSubmitted = {
                     scope.launch(Dispatchers.Main.immediate) {
-                        presentEntry(generation)
+                        presentEntry(generation, voiceWake)
                     }
                 },
             )
@@ -357,12 +365,12 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                         )
                     },
                 )
-                presentEntry(generation)
+                presentEntry(generation, voiceWake)
             }
         }
     }
 
-    private fun presentEntry(generation: Long) {
+    private fun presentEntry(generation: Long, voiceWake: Boolean) {
         if (generation != entryGeneration || presentedEntryGeneration == generation) return
         presentedEntryGeneration = generation
         scope.launch {
@@ -384,18 +392,13 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             withContext(Dispatchers.Main.immediate) {
                 // 等待期间可能被重复 SHOW 重置或被关闭：过期的一代不再挂窗。
                 if (generation != entryGeneration || exitAnimationRequested) return@withContext
-                // 语音入口（唤起方式=语音识别）：过权限后由听写条自动开录、不弹键盘——
-                // 两者同时出现会把系统 IME 的入场动画和语音条打架；权限缺失 toast 后退回键盘。
-                val startDictation = Prefs.assistantEntryMode() == AssistantEntryMode.VOICE &&
-                    startVoiceEntry()
-                showWindow(appearance, startDictation)
+                showWindow(appearance)
                 if (windowView == null) {
                     stopSelf()
                     return@withContext
                 }
-                // 记录入口浮窗展示时刻，供 [showEntry] 忽略紧随其后的重复 SHOW（入场弹簧还没播完）。
-                lastEntryPresentedAt = SystemClock.uptimeMillis()
-                if (startDictation) return@withContext
+                // 语音入口不弹键盘：两者同时出现会把系统 IME 的入场动画和语音条打架。
+                if (voiceWake) return@withContext
                 showKeyboard()
             }
         }
@@ -405,7 +408,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
      * 唤起方式=语音识别时的入口前置检查。
      *
      * 只查麦克风权限：缺失时提示并返回 false，由调用方退回键盘输入。识别本身由
-     * 弹窗里 `Material3ComposerBody` 的听写会话在落座时自动开录（autoStartDictation）；
+     * 弹窗里 `Material3ComposerBody` 的听写会话在落座时自动开录（dictationStartRequest 令牌）；
      * 识别方式未配置不再走 toast——听写条会原位给出「去配置」提示（与聊天输入区同一套）。
      */
     private fun startVoiceEntry(): Boolean {
@@ -429,7 +432,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         AgentHapticFeedback.perform(this, AgentHapticFeedback.Type.ASSISTANT_WAKE)
     }
 
-    private fun showWindow(initialAppearance: AppearanceSettings, autoStartDictation: Boolean) {
+    private fun showWindow(initialAppearance: AppearanceSettings) {
         if (windowView != null) return
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         val view = createComposeView {
@@ -471,7 +474,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                         textFieldState = composerTextFieldState,
                         composer = composerState,
                         voiceState = voiceState,
-                        autoStartDictation = autoStartDictation,
+                        dictationStartRequest = dictationStartRequest,
                         inputFocusRequestKey = inputFocusRequestKey,
                         onScreenContextSelect = ::selectScreenContext,
                         onScreenContextRemove = ::removeScreenContext,
@@ -1461,11 +1464,6 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         private const val EXIT_ANIMATION_DURATION_MS = 240L
         private const val WAKE_HAPTIC_DEDUPE_MS = 500L
 
-        /**
-         * 入口浮窗展示后的动画保护窗口：系统助理会话在 onShow 附近可能重复下发 SHOW，
-         * 若直接重建浮窗会让入场弹簧重播一遍。此窗口内忽略重复 SHOW（略大于入场弹簧时长）。
-         */
-        private const val WAKE_ENTRY_DEDUPE_MS = 1_000L
         private const val HANDOFF_REQUEST_CODE = 0x455441
         private const val VOICE_SETTINGS_REQUEST_CODE = 0x455442
         private const val LEGACY_STOPPED_ERROR = "已停止"

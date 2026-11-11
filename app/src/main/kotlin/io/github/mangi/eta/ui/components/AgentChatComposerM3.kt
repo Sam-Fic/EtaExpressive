@@ -286,8 +286,10 @@ internal fun Material3ComposerBody(
      *   胶囊化作流光胶囊，× 丢弃、✓ 回填输入框继续编辑、说完停顿自动发送。
      */
     voiceEntry: ComposerVoiceEntry = ComposerVoiceEntry.CONVERSATION,
-    /** 唤起方式=语音识别（助手弹窗）：组合落座即自动开录，无需手点 mic（服务侧已过麦克风权限）。 */
-    autoStartDictation: Boolean = false,
+    /** 唤起方式=语音识别（助手弹窗）的开录令牌：非零即开录/重开——面板在屏时再次唤起
+     *  经令牌重组触发（听写已停时再按电源键的意图就是再录一句）；start() 幂等（在录时空操作），
+     *  服务侧已过麦克风权限。 */
+    dictationStartRequest: Int = 0,
     showMorphLoading: Boolean,
     pendingImages: List<PendingImageUi>,
     pendingFileReferences: List<PendingFileReferenceUi>,
@@ -441,11 +443,20 @@ internal fun Material3ComposerBody(
         // 口述（聊天输入区）：麦克风 → 单次听写 → 流光胶囊；✓ 把文字交回输入框、× 丢弃。
         // 会话随组合记住，切会话 / 关页面时由 DisposableEffect 释放麦克风。
         val dictation = rememberComposerDictation()
-        val dictating = voiceEntry == ComposerVoiceEntry.DICTATION && dictation.active
-        // 唤起方式=语音识别（助手弹窗）：弹窗落座即自动开录，无需手点 mic。
+        // 唤起即听写的首帧桥：令牌未消费的这次组合直接按听写态排版——弹窗第一帧就是流光
+        // 胶囊，不再「先弹文本胶囊再交叉淡化」。真实开录在下方 effect；令牌在 effect 里
+        // 消费后即交还给 dictation.active 接管（×/✓/自然结束回到文本胶囊，重组合不复活）。
+        val consumedStartToken = remember { mutableIntStateOf(0) }
+        val wakeDictationPending = dictationStartRequest > consumedStartToken.intValue
+        val dictating = voiceEntry == ComposerVoiceEntry.DICTATION &&
+            (dictation.active || wakeDictationPending)
+        // 唤起方式=语音识别（助手弹窗）：弹窗落座即自动开录；面板在屏时再次唤起也经令牌
+        // 重开（听写已停时再按电源键的意图就是再录一句）。start() 幂等：在录时空操作。
         // 服务侧已过麦克风权限；识别方式未配置时 start() 会原位给出「去配置」提示条。
-        LaunchedEffect(autoStartDictation) {
-            if (autoStartDictation && voiceEntry == ComposerVoiceEntry.DICTATION) dictation.start()
+        // 令牌在此消费（组合后、首帧渲染前）：上一段 wakeDictationPending 只覆盖本帧渲染。
+        LaunchedEffect(dictationStartRequest) {
+            consumedStartToken.intValue = dictationStartRequest
+            if (dictationStartRequest > 0 && voiceEntry == ComposerVoiceEntry.DICTATION) dictation.start()
         }
         // 未配置识别引擎：沿用旧语音入口的失败提示（同一句文案），原位展示在胶囊槽位，
         // 尾部圆钮改成「去配置」。它不是一个会话：不占麦克风，也不再弹 toast。
