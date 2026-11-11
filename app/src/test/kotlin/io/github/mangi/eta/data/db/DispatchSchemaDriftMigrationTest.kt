@@ -242,6 +242,24 @@ class DispatchSchemaDriftMigrationTest {
                         oldVersion: Int,
                         newVersion: Int,
                     ) = Unit
+
+                    // 同一个 Robolectric worker 里别的测试类也会经 EtaDatabase 打开 eta.db。
+                    // 那条连接不走单例、closeForTests() 关不到；删文件后它仍可能把 v40 写回来，
+                    // 框架默认的 onDowngrade 会直接抛 "Can't downgrade database from 40 to 5"，
+                    // 让本用例随机变红。种子阶段只关心「造出干净的 v5 库」，这里直接重建。
+                    override fun onDowngrade(
+                        db: SupportSQLiteDatabase,
+                        oldVersion: Int,
+                        newVersion: Int,
+                    ) {
+                        val tables = mutableListOf<String>()
+                        db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+                            .use { cursor ->
+                                while (cursor.moveToNext()) tables += cursor.getString(0)
+                            }
+                        tables.forEach { db.execSQL("DROP TABLE IF EXISTS `${it}`") }
+                        onCreate(db)
+                    }
                 },
             )
             .build()
@@ -267,6 +285,9 @@ class DispatchSchemaDriftMigrationTest {
      */
     private fun purgeProductionDatabase(context: Context) {
         val db = context.getDatabasePath(PRODUCTION_DB_NAME)
+        // 先走 Context.deleteDatabase 断开同名连接再清文件：只 unlink 主文件时，别的测试类
+        // 留下的 SQLite 连接仍持有 fd，WAL checkpoint 会把旧版本写回同一个路径。
+        context.deleteDatabase(PRODUCTION_DB_NAME)
         listOf(db, File("${'$'}{db.path}-wal"), File("${'$'}{db.path}-shm"), File("${'$'}{db.path}-journal"))
             .forEach { it.delete() }
     }

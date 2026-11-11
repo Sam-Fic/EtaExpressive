@@ -25,7 +25,8 @@ class VirtualDisplayRecoveryUiContractTest {
         val source = sections.readText()
         assertEquals(5, Regex("""TouchHaptics\.click\(view\)""").findAll(source).count())
         assertEquals(2, Regex("""FlowRow\(""").findAll(source).count())
-        assertEquals(4, Regex("""maxLines = 1""").findAll(source).count())
+        // 强制重置是两段确认的第五个单行按钮文案；新增那颗按钮后仍是 maxLines=1，计数跟着走。
+        assertEquals(5, Regex("""maxLines = 1""").findAll(source).count())
         assertTrue(source.contains("EtaSegmentedColumn("))
         assertTrue(source.contains("EtaSegmentedItemContainer {"))
         assertFalse(source.contains("Card("))

@@ -13,18 +13,30 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 import org.junit.rules.TemporaryFolder
+import org.junit.rules.TestRule
+import org.junit.runner.Description
+import org.junit.runners.model.Statement
+import org.junit.runners.model.TestTimedOutException
 
 /**
  * 这些用例会真的起常驻 shell 会话（setsid + sh）。CI runner 上偶发出现会话失联、
  * 状态行不到达，而 exec 按设计不设命令超时，测试线程会一直等到整个 job 被超时取消。
  * 每个用例自带 30 秒上限：正常执行只需几十毫秒到 1 秒，超时只会把挂起变成明确的
  * 失败用例，不会再拖死整条流水线。
+ *
+ * 失联是环境瞬态（同一用例在其他轮次正常通过，挂起的用例每次还不一样），因此只对
+ * 「超时」重跑整个用例、连 TemporaryFolder 一起重建；断言失败一律不重试。
  */
 class UserTerminalControllerTest {
 
+    private val temporaryFolder = TemporaryFolder()
+
     @get:Rule
-    val temporaryFolder = TemporaryFolder()
+    val rules: RuleChain = RuleChain
+        .outerRule(ShellFlakeRetryRule(attempts = 3))
+        .around(temporaryFolder)
 
     @Test(timeout = 30_000)
     fun startupFailureKeepsDiagnosticStageAndCreatesNoSession() {
@@ -331,5 +343,26 @@ class UserTerminalControllerTest {
         override fun info(message: String) = Unit
         override fun warn(message: String) = Unit
         override fun error(message: String, throwable: Throwable?) = Unit
+    }
+}
+
+/**
+ * 只重试 JUnit 的用例超时（常驻 shell 在 CI 上偶发失联），断言失败与其余异常原样抛出。
+ * 放在 RuleChain 最外层，保证每次重试都重新创建 TemporaryFolder 与 @Test 的超时语句。
+ */
+private class ShellFlakeRetryRule(private val attempts: Int) : TestRule {
+    override fun apply(base: Statement, description: Description): Statement = object : Statement() {
+        override fun evaluate() {
+            var last: TestTimedOutException? = null
+            repeat(attempts) {
+                try {
+                    base.evaluate()
+                    return
+                } catch (timedOut: TestTimedOutException) {
+                    last = timedOut
+                }
+            }
+            throw last ?: IllegalStateException("shell flake retry exhausted without an attempt")
+        }
     }
 }
