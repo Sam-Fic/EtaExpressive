@@ -57,12 +57,17 @@ private const val LightDotWhiteMix = 0.7f
  * （easeOutCubic），光团、波浪、色相水洗与点阵一起升，暗示启动过程；每个会话只播一次。
  * 退场对称：退出听写时（pill 槽淡出转场期间）光效按镜像曲线在约 350ms 内缓降到全灭，
  * 强度与透明度一起收——转场结束时光恰好熄灭，不会闪断。
+ * 速度联动刻意偏离原型：亮度沿用原型重平滑音量，流动速度改走轻平滑音量乘高增益
+ * （SpeedLevelInertia = 0.65 / SpeedBoost = 5），说话时流动提速可感知。
+ * 音量增亮刻意偏离原型：深色下光池透明度随音量增亮（DarkLevelBrightGain；点阵不套，
+ * 用户定稿），浅色维持原型档不变——暗底上要读出「越说越亮」。
+ * 色散只在深色（DarkDispersionAmount），浅色直接不要（2026-11-12 用户定稿）——暗底上彩边更明显。
  *
  * 三层结构（与原型同序）：
  * 1. metaball 层：9 颗骑在胶囊下轮廓上的光团，径向贝尔衰减叠加（深色 + 相加、浅色 + 普通叠加），
  *    邻团自然熔成一体；
  * 2. 受光层：metaball 与沿下轮廓起伏的波浪主体一起做一次高斯扩散（RenderEffect 模糊），
- *    再过一层 AGSL「微微色散」（红/蓝通道沿径向错开几 px，见 DISPERSION_AGSL）；
+ *    再过一层 AGSL「微微色散」（仅深色；红/蓝通道沿径向错开几 px，见 DISPERSION_AGSL）；
  *    浅色额外叠一层横向色相水洗（SRC_ATOP 只染已有光的像素）；
  * 3. 点阵层：透视三角点阵被光推起（整列抬升 + 局部抬升），近处大、远处小，
  *    常驻铺满整颗胶囊（「整张网」，透明度只由顶/底渐隐带、光挖空、左右边缘淡出与
@@ -217,6 +222,8 @@ private class VoiceGlowEngine {
 
     // 麦克风音量：原始值每帧从外部读取，这里再按原型同款指数平滑一次。
     private var smoothedLevel = 0f
+    // 速度专用的轻平滑音量：保留系数比重平滑低，跟得住音节节奏，流动提速可感知。
+    private var speedLevel = 0f
     // 当前帧的发光强度：原型 activeGlowIntensity = 0.8 * (1 + volume * 1.4)。
     private var glowIntensity = BaseGlowIntensity
     // 本帧相对 60fps 的倍率：弹性插值按它折算，高刷 / 掉帧时手感与原型一致。
@@ -227,6 +234,8 @@ private class VoiceGlowEngine {
     // 退场冷却：退出听写时光效从当前强度缓降到全灭（<0 = 未启动；已推进帧数与剩余系数）。
     private var cooldownFrames = -1f
     private var cooldownEase = 1f
+    // 音量增亮系数：每帧由 draw() 按当前模式算出，只喂光池（深色随音量升、浅色恒 1；点阵不套）。
+    private var levelBright = 1f
 
     // 与原型一一对应的 9 颗光团（基准轴、半径、漂移相位/速度/振幅）。
     private val blobs = arrayOf(
@@ -247,7 +256,9 @@ private class VoiceGlowEngine {
     private val blobDotRadius = FloatArray(blobs.size)
     private val blobEdge = FloatArray(blobs.size)
 
-    private val dots = ArrayList<GlowDot>(2048)
+    // 预估容量按实测量级上取（56dp×300dp 胶囊 ≈ 2.2k 点）：首绘一次到位，避免网格重建
+    // 时 2048→3072 的扩容拷贝落在上浮动画的第一帧上。
+    private val dots = ArrayList<GlowDot>(4096)
     private var gridWidth = -1f
     private var gridHeight = -1f
 
@@ -263,6 +274,8 @@ private class VoiceGlowEngine {
     // 点层单独离屏：4x 超采样后再缩回，亚像素点不会在光栅化时被吃掉（原型 DOT_SS）。
     private val dotNode = RenderNode("eta-voice-dots")
     private var dotBlurAppliedFor: Boolean? = null
+    // 色散 effect 当前配置对应的明暗模式（null = 待重配）；量级随模式分档，切换需重挂重录。
+    private var dispersionAppliedFor: Boolean? = null
     private val capsulePath = Path()
     private val wavePath = Path()
 
@@ -272,8 +285,13 @@ private class VoiceGlowEngine {
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val dotLayerPaint = Paint()
 
-    private val radialColors = IntArray(RadialStops + 1)
     private val radialStops = FloatArray(RadialStops + 1) { it / RadialStops.toFloat() }
+    // 光团贝尔渐变的颜色停点帧不变（alpha = 贝尔·0.62·blobEdge，edge = sin(π·baseX) 常量；
+    // RGB 只随 palette/lightMode 变）：按 (palette 实例, lightMode) 缓存，命中即跳过每帧
+    // ~279 次 argb 重算。RadialGradient 对象仍逐帧新建（中心/半径逐帧变），喂缓存数组。
+    private var gradientColorsCache: Array<IntArray>? = null
+    private var gradientColorsPalette: GlowPalette? = null
+    private var gradientColorsLightMode: Boolean? = null
     private val waveColors = IntArray(6)
     private val waveStops = floatArrayOf(0f, 0.10f, 0.30f, 0.55f, 0.80f, 1f)
     private val tintColors = IntArray(5)
@@ -297,8 +315,10 @@ private class VoiceGlowEngine {
     /**
      * 推进所有相位；[frames] 是以 60fps 为 1 的帧倍率，[level] 是本帧麦克风音量（0..1）。
      *
-     * 与原型的音频惯性一致：音量先做 0.18/帧的指数平滑，再同时驱动速度与发光强度——
-     * 说话越响，流光漂移越快、光团与点阵抬得越高。麦克风关闭时音量归零，平滑回落。
+     * 音量分双通道（2026-11-12 定稿，刻意偏离原型的单条 0.18 平滑）：亮度沿用原型
+     * 0.18/帧重平滑（smoothedLevel，不闪烁）；速度走专用轻平滑（speedLevel，跟住
+     * 音节节奏）乘 SpeedBoost——说话越响，波浪行进 / 光团漂移 / 点阵闪烁明显提速。
+     * 麦克风关闭时两条音量都归零，平滑回落。
      * 会话刚开始还有一段启动预热：光效从全灭在约 600ms 内缓升到实际强度，暗示启动过程。
      * 退出会话则相反：冷却期内光效缓降到全灭，与 pill 槽的退场淡出同步。
      */
@@ -306,6 +326,8 @@ private class VoiceGlowEngine {
         frameScale = frames
         smoothedLevel += (level.coerceIn(0f, 1f) - smoothedLevel) *
             (1f - LevelInertia.pow(frames))
+        speedLevel += (level.coerceIn(0f, 1f) - speedLevel) *
+            (1f - SpeedLevelInertia.pow(frames))
         // 启动预热：先推进预热进度（easeOutCubic 缓出），再乘进发光强度——
         // 光团半径、光场与推力随它一起从全灭升到实际强度。
         warmupFrames = min(warmupFrames + frames, WarmupFrames)
@@ -318,7 +340,7 @@ private class VoiceGlowEngine {
             val cooldownT = (cooldownFrames / CooldownFrames).coerceIn(0f, 1f)
             cooldownEase = (1f - cooldownT).pow(3f)
         }
-        val activeSpeed = BaseSpeed + smoothedLevel * 2.6f
+        val activeSpeed = BaseSpeed + speedLevel * SpeedBoost
         glowIntensity = BaseGlowIntensity * (1f + smoothedLevel * 1.4f) * warmupEase * cooldownEase
         time += 0.019f * activeSpeed * frames
         for (blob in blobs) blob.phase += blob.speed * activeSpeed * frames
@@ -335,6 +357,8 @@ private class VoiceGlowEngine {
             rebuildGeometry()
         }
         computeBlobs()
+        // 音量增亮系数：深色随 smoothedLevel 升（ADD 叠加下 alpha 直接换亮度），浅色恒 1。
+        levelBright = if (lightMode) 1f else 1f + smoothedLevel * DarkLevelBrightGain
 
         val canvas = scope.drawContext.canvas.nativeCanvas
         capsulePath.reset()
@@ -343,6 +367,7 @@ private class VoiceGlowEngine {
         )
 
         configureDotNode(lightMode)
+        configureDispersion(lightMode)
         recordLightLayer(palette, lightMode)
 
         // 主画布：胶囊底 → 模糊+微微色散的受光层 → 点阵，全部裁在胶囊内。
@@ -370,20 +395,8 @@ private class VoiceGlowEngine {
         lightNode.setRenderEffect(
             RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP),
         )
-        // 微微色散层：与 lightNode 同尺寸（含 bottomPad 缓冲），内容 = lightNode
-        // （子节点是实时引用，这里只需随尺寸变化重录一次，光层逐帧重录自动透传）。
-        // 色散中心锚在平底中点，红通道离心外推、蓝通道向心内拉，量级 [DispersionAmount]。
-        val nodeWidth = ceil(width).toInt().coerceAtLeast(1)
-        val nodeHeight = ceil(height + bottomPad).toInt().coerceAtLeast(1)
-        dispersedNode.setPosition(0, 0, nodeWidth, nodeHeight)
-        dispersedNode.setRenderEffect(
-            RenderEffect.createRuntimeShaderEffect(dispersionShader, "content"),
-        )
-        dispersionShader.setFloatUniform("uCenter", width / 2f, capsuleBottom)
-        dispersionShader.setFloatUniform("uAmount", DispersionAmount * u)
-        val dispersed = dispersedNode.beginRecording(nodeWidth, nodeHeight)
-        dispersed.drawRenderNode(lightNode)
-        dispersedNode.endRecording()
+        // 色散量级随明暗模式分档：尺寸变化时置空标记，draw() 里 configureDispersion 重配重录。
+        dispersionAppliedFor = null
         // 点层 backing 尺寸 = 画布 × DOT_SS；缩回时亚像素点仍有足够像素能量。
         dotNode.setPosition(
             0,
@@ -405,6 +418,37 @@ private class VoiceGlowEngine {
         dotNode.setRenderEffect(
             RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP),
         )
+    }
+
+    /**
+     * 微微色散层：与 lightNode 同尺寸（含 bottomPad 缓冲），内容 = lightNode
+     * （子节点是实时引用，重录一次即可，光层逐帧重录自动透传）。
+     * 色散中心锚在平底中点，红通道离心外推、蓝通道向心内拉；**仅深色挂 effect**
+     * （量级 [DarkDispersionAmount]，2026-11-12 用户定稿深色彩边更明显），浅色不挂
+     * （同日定稿「浅色直接不要了」，节点只做透传）。尺寸变化（rebuildGeometry 置空
+     * 标记）或模式切换时重挂重录。
+     */
+    private fun configureDispersion(lightMode: Boolean) {
+        if (dispersionAppliedFor == lightMode) return
+        dispersionAppliedFor = lightMode
+        val nodeWidth = ceil(width).toInt().coerceAtLeast(1)
+        val nodeHeight = ceil(height + bottomPad).toInt().coerceAtLeast(1)
+        dispersedNode.setPosition(0, 0, nodeWidth, nodeHeight)
+        // 浅色不挂 effect（节点透传 lightNode）；深色挂 AGSL 色散，量级 DarkDispersionAmount·u。
+        dispersedNode.setRenderEffect(
+            if (lightMode) {
+                null
+            } else {
+                RenderEffect.createRuntimeShaderEffect(dispersionShader, "content")
+            },
+        )
+        if (!lightMode) {
+            dispersionShader.setFloatUniform("uCenter", width / 2f, capsuleBottom)
+            dispersionShader.setFloatUniform("uAmount", DarkDispersionAmount * u)
+        }
+        val dispersed = dispersedNode.beginRecording(nodeWidth, nodeHeight)
+        dispersed.drawRenderNode(lightNode)
+        dispersedNode.endRecording()
     }
 
     /**
@@ -482,6 +526,34 @@ private class VoiceGlowEngine {
         return capsuleBottom
     }
 
+    /** 每光团的渐变颜色停点（帧不变，见字段注释）：以 palette 实例恒等 + 明暗模式为键缓存。 */
+    private fun gradientColorsFor(palette: GlowPalette, lightMode: Boolean): Array<IntArray> {
+        gradientColorsCache?.let { cached ->
+            if (gradientColorsPalette === palette && gradientColorsLightMode == lightMode) return cached
+        }
+        val colors = Array(blobs.size) { i ->
+            val color = palette.blobs[i % palette.blobs.size]
+            // 浅色不点白热核心：核心就是光团本色；深色核心取调色板里的近白色。
+            val core = if (lightMode) color else palette.core
+            IntArray(RadialStops + 1) { s ->
+                val t = s / RadialStops.toFloat()
+                // 平滑贝尔：边缘精确归零，避免出现硬边界圆环；端部权重压暗两侧。
+                val alpha = exp(-3.0f * t * t) * (1f - t * t) * 0.62f * blobEdge[i]
+                val mix = min(1f, t / 0.45f)
+                android.graphics.Color.argb(
+                    (alpha.coerceIn(0f, 1f) * 255f).roundToInt(),
+                    ((core.red + (color.red - core.red) * mix) * 255f).roundToInt().coerceIn(0, 255),
+                    ((core.green + (color.green - core.green) * mix) * 255f).roundToInt().coerceIn(0, 255),
+                    ((core.blue + (color.blue - core.blue) * mix) * 255f).roundToInt().coerceIn(0, 255),
+                )
+            }
+        }
+        gradientColorsCache = colors
+        gradientColorsPalette = palette
+        gradientColorsLightMode = lightMode
+        return colors
+    }
+
     /**
      * 把 metaball 与波浪主体录进离屏 RenderNode，再整体做一次高斯扩散。
      * 节点高度多出 bottomPad，模糊在胶囊下缘仍有内容可采。
@@ -495,34 +567,17 @@ private class VoiceGlowEngine {
         canvas.save()
         // 深色：相加累积，邻团熔成一体；浅色：普通叠加，底部保持主题色而不是发白。
         metaballPaint.xfermode = if (lightMode) null else AddXfermode
-        // 启动预热升、退场冷却降：光团透明度随两者乘积缓升 / 缓降——开场不会突然出现
-        // 小而烫的光点，退场也不会留下缩成一点仍在烧的光团。
-        metaballPaint.alpha = (warmupEase * cooldownEase * 255f).roundToInt()
+        // 启动预热升、退场冷却降、深色音量增亮：三者相乘——开场不会突然出现小而烫的
+        // 光点，退场不会留下缩成一点仍在烧的光团，说话越响光池越亮（ADD 下 alpha 即亮度）；点阵不套本系数（用户定稿，维持原型亮度档）。
+        metaballPaint.alpha =
+            ((warmupEase * cooldownEase * levelBright).coerceIn(0f, 1f) * 255f).roundToInt()
+        val stopColors = gradientColorsFor(palette, lightMode)
         for (i in blobs.indices) {
             if (blobRadius[i] < 0.05f) continue
             val fuseRadius = blobRadius[i] * 2.9f
-            val color = palette.blobs[i % palette.blobs.size]
-            // 浅色不点白热核心：核心就是光团本色；深色核心取调色板里的近白色。
-            val core = if (lightMode) color else palette.core
-            val stopCount = RadialStops
-            for (s in 0..stopCount) {
-                val t = s / stopCount.toFloat()
-                // 平滑贝尔：边缘精确归零，避免出现硬边界圆环；端部权重压暗两侧。
-                val alpha = exp(-3.0f * t * t) * (1f - t * t) * 0.62f * blobEdge[i]
-                val mix = min(1f, t / 0.45f)
-                val r = (core.red + (color.red - core.red) * mix) * 255f
-                val g = (core.green + (color.green - core.green) * mix) * 255f
-                val b = (core.blue + (color.blue - core.blue) * mix) * 255f
-                radialColors[s] = android.graphics.Color.argb(
-                    (alpha.coerceIn(0f, 1f) * 255f).roundToInt(),
-                    r.roundToInt().coerceIn(0, 255),
-                    g.roundToInt().coerceIn(0, 255),
-                    b.roundToInt().coerceIn(0, 255),
-                )
-            }
             metaballPaint.shader = RadialGradient(
                 blobX[i], blobY[i], fuseRadius,
-                radialColors, radialStops, Shader.TileMode.CLAMP,
+                stopColors[i], radialStops, Shader.TileMode.CLAMP,
             )
             // 画整圆：下半圈落在 bottomPad 缓冲里，模糊后胶囊底边不会变淡。
             canvas.drawCircle(blobX[i], blobY[i], fuseRadius, metaballPaint)
@@ -678,7 +733,8 @@ private class VoiceGlowEngine {
             var opacity = topFade * bottomFadeFactor *
                 (1f - cutout * 0.85f * maskDepth) * shimmer * pushEdge
             if (lightMode) opacity *= 1.6f
-            // 启动预热升、退场冷却降：点阵亮度随光一起升 / 降。
+            // 启动预热升、退场冷却降：点阵亮度随光一起升 / 降。音量增亮只管光池、不套点阵
+            // （2026-11-12 用户定稿：点阵维持原型亮度档）。
             opacity *= warmupEase * cooldownEase
             opacity = opacity.coerceIn(0f, if (lightMode) 1f else 0.95f)
 
@@ -768,12 +824,26 @@ private class VoiceGlowEngine {
         /** 音量指数平滑的保留系数：原型 smoothed += (target - smoothed) * 0.18（每 60fps 帧）。 */
         const val LevelInertia = 0.82f
 
+        /** 速度专用音量平滑的保留系数：0.65 ≈ 90ms 跟上 90%，音节节奏驱动流动提速。
+         *  亮度链路仍用 [LevelInertia]（原型档，不闪烁）——双通道系刻意偏离原型，勿对齐回去。 */
+        const val SpeedLevelInertia = 0.65f
+
+        /** 流动速度的音量增益（原型 2.6 提档）：典型语音 0.3 → 2 倍怠速、0.6 → 3 倍。
+         *  嫌疯调小、嫌钝调大。 */
+        const val SpeedBoost = 5f
+
+        /** 深色光池的音量增亮增益：光池透明度乘 (1 + 音量·1.0)，ADD 叠加下直接换亮度。
+         *  只喂光池、不套点阵（2026-11-12 用户定稿）；浅色不增亮（同日定稿「浅色不用太改」，
+         *  维持原型档）；嫌高音量下光池过饱和就调小。 */
+        const val DarkLevelBrightGain = 1f
+
         /** 点层超采样倍率（原型 DOT_SS）。 */
         const val DotSupersample = 4f
 
-        /** 微微色散：红/蓝通道沿径向错开的像素量（u 缩放，6u ≈ 2.6px @56dp 胶囊）。
-         *  0 = 关闭。2026-11-11 用户定稿「微微色散的感觉可以来一点」；嫌彩边重就调小。 */
-        const val DispersionAmount = 6f
+        /** 微微色散（仅深色）：红/蓝通道沿径向错开的像素量（u 缩放，10u ≈ 4.3px @56dp 胶囊）。
+         *  2026-11-11 用户定稿「微微色散的感觉可以来一点」（当时深浅同量 6u）；11-12 定稿
+         *  深色提档至 10u、浅色直接去掉。嫌彩边重调小、嫌弱调大。 */
+        const val DarkDispersionAmount = 10f
 
         /** 点阵顶部渐隐带（占胶囊高度比例）：整张网常驻铺满，带内从满亮渐隐到顶缘 0，
          *  曲线套 baseBrightness 同款 1.4 幂（见绘制处）。带宽 0.65：渐变覆盖上半段，
@@ -802,7 +872,7 @@ private class VoiceGlowEngine {
          * 红通道沿离心方向外推、蓝通道向心内拉、绿通道原位，alpha 取三采样最大——
          * 让彩边能越过光晕轮廓（预乘空间下边缘略暗属正常，量级只有几 px 不显）。
          * 入参：content = 光层内容（已过 46u 高斯），uCenter = 平底中点 px，
-         * uAmount = 通道错位 px（[DispersionAmount]·u）。
+         * uAmount = 通道错位 px（[DarkDispersionAmount]·u，仅深色挂 effect）。
          */
         private const val DISPERSION_AGSL = """
             uniform shader content;
