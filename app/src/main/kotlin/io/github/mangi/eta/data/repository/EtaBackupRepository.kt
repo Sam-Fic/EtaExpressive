@@ -22,6 +22,7 @@ import io.github.mangi.eta.agent.terminal.LinuxDistribution
 import io.github.mangi.eta.agent.terminal.LinuxEnvironmentPaths
 import io.github.mangi.eta.agent.terminal.LinuxExecutionBackend
 import io.github.mangi.eta.agent.terminal.TerminalPrivateStorage
+import io.github.mangi.eta.agent.voice.doubao.DoubaoSecretStore
 import io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.agent.delegation.ConversationSubAgentPreferences
@@ -37,6 +38,7 @@ import io.github.mangi.eta.data.db.ConversationFolderEntity
 import io.github.mangi.eta.data.db.ConversationMessageEntity
 import io.github.mangi.eta.data.db.ConversationStateEntity
 import io.github.mangi.eta.data.db.EtaDatabase
+import io.github.mangi.eta.data.db.ProviderSecretCipher
 import io.github.mangi.eta.data.db.MediaIndexDao
 import io.github.mangi.eta.data.db.MediaIndexEntity
 import io.github.mangi.eta.data.db.MediaKind
@@ -1108,12 +1110,22 @@ internal object EtaBackupRepository {
             apiKeysIncluded = options.includeApiKeys,
             recipeCount = ToolRecipePaths.count(context),
             // 语音配置跟着应用数据走；浏览器配置单列开关，默认不进包。
-            // 语音里的 ASR / 克隆 Key 是明文存储的，跟提供商密钥一起受「包含 API Key」控制。
+            // ASR / 克隆 Key 已迁入 Keystore 加密的 DoubaoSecretStore（prefs 里不再有
+            // 明文），勾选「包含 API Key」时把解密结果按同一 `s:` 编码注入快照，跨设备
+            // 迁移语义不变；恢复端写回 prefs，由 DoubaoVoiceConfig.load 重新加密入库。
             voicePreferences = BackupPrefsFiles.capture(
                 context,
                 BackupPrefsFiles.VOICE,
                 if (options.includeApiKeys) emptySet() else BackupPrefsFiles.VOICE_SECRET_KEYS,
-            ),
+            ).let { snapshot ->
+                if (!options.includeApiKeys) snapshot
+                else snapshot + (
+                    "doubao_voice" to (
+                        snapshot["doubao_voice"].orEmpty() +
+                            DoubaoSecretStore(context).exportForBackup()
+                    )
+                )
+            },
             browserPreferences = if (options.includeBrowserSettings) {
                 BackupPrefsFiles.capture(context, BackupPrefsFiles.BROWSER)
             } else {
@@ -1283,6 +1295,12 @@ internal object EtaBackupRepository {
                 // 语音配置属于应用数据；空快照表示旧备份没带，保留本机设置。
                 if (document.voicePreferences.isNotEmpty()) {
                     BackupPrefsFiles.restore(context, document.voicePreferences, BackupPrefsFiles.VOICE)
+                    // 密钥槽对齐：快照带了 doubao_voice 文件时，没带的槽位清掉（对齐旧版
+                    // 「没带密钥就清 prefs 键」语义）；带了的槽位保留，等下一行 load() 把
+                    // prefs 里的明文收编进加密存储。快照里没有该文件则完全不动本机槽位。
+                    document.voicePreferences["doubao_voice"]?.let { voiceSnapshot ->
+                        DoubaoSecretStore(context).syncSlotsWithBackup(voiceSnapshot.keys)
+                    }
                     // 该配置在内存里有一份 StateFlow 投影，重读磁盘才会反映到运行中的语音入口。
                     DoubaoVoiceConfig.load(context)
                 }
@@ -1744,12 +1762,17 @@ internal object EtaBackupRepository {
     )
 
     private fun ProviderEntity.withoutOAuthSecrets(): ProviderEntity =
-        if (authMode == ProviderAuthModes.API_KEY) this else copy(apiKey = "")
+        if (authMode == ProviderAuthModes.API_KEY) {
+            copy(apiKey = ProviderSecretCipher.decrypt(apiKey))
+        } else {
+            copy(apiKey = "")
+        }
 
     /**
      * 导出时的密钥策略。
      *
-     * 带上密钥：只剥 OAuth 衍生数据，API Key 原样进清单（与 schema 8 一致）。
+     * 带上密钥：只剥 OAuth 衍生数据，API Key 解密成明文进清单（列里是 enc1. 密文，
+     * 见 ProviderSecretCipher；zip 里保持明文才能跨设备迁移，受同一开关控制）。
      * 不带密钥（默认）：所有认证模式的 `apiKey` 一律清空，提供商其余配置照常备份。
      *
      * 光清 `apiKey` 不够：中转站常在自定义请求头 / 请求体里手写密钥，那两处一并脱敏。
@@ -1916,9 +1939,21 @@ private fun extractTarStream(input: java.io.InputStream, destination: File) {
             entry.isSymbolicLink -> {
                 target.parentFile?.mkdirs()
                 Files.deleteIfExists(target.toPath())
-                runCatching {
-                    Files.createSymbolicLink(target.toPath(), java.nio.file.Path.of(entry.linkName))
-                }.getOrElse {
+                // 链接目标拘禁：这是 root 解包的输入，只接受仍在解包根目录内解析的
+                // 相对目标（相对链接按其所在目录解析，POSIX 语义）。绝对路径或用
+                // ../ 越界的目标一律不建链，回落到空文件——与下方建链失败兜底一致。
+                val linkTarget = java.nio.file.Path.of(entry.linkName)
+                val confined = !linkTarget.isAbsolute &&
+                    target.parentFile?.toPath()
+                        ?.resolve(linkTarget)?.normalize()
+                        ?.startsWith(root.toPath()) == true
+                if (confined) {
+                    runCatching {
+                        Files.createSymbolicLink(target.toPath(), linkTarget)
+                    }.getOrElse {
+                        target.writeText("")
+                    }
+                } else {
                     target.writeText("")
                 }
             }

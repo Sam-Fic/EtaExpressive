@@ -20,11 +20,12 @@ internal object BackupPrefsFiles {
     val VOICE = listOf("doubao_voice", "offline_speech", "voice_catalog_id")
 
     /**
-     * 语音配置里以**明文**保存的密钥（豆包 ASR / 克隆 Key）。
+     * 语音密钥的历史 prefs 键名（豆包 ASR / 克隆 / 语音对话 ASR）。
      *
-     * 它们和提供商 API Key 同等敏感，受「包含 API Key」开关统一控制：
-     * 不勾时从快照里剔除，导入后语音配置还在，只是密钥要重填。
-     * 非密钥项（开关、资源 ID、音色 id）照常搬。
+     * 这些密钥现已迁入 Keystore 加密的 DoubaoSecretStore，prefs 里不再有明文——本表
+     * 保留作双保险：旧版升级未迁移 / 恢复写回的明文在 capture 时被挡在包外，勾选
+     * 「包含 API Key」的导出改由 EtaBackupRepository 从加密存储解密注入（同一键名），
+     * 受同一开关控制。非密钥项（开关、资源 ID、音色 id）照常搬。
      */
     val VOICE_SECRET_KEYS = setOf("asr_key", "clone_key", "voice_conversation_asr_key")
 

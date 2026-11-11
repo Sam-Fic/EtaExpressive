@@ -120,7 +120,8 @@ internal fun ProviderSetting.toEntity(): ProviderEntity =
         type = storageType,
         name = name,
         baseUrl = baseUrl,
-        apiKey = apiKey.takeIf { authMode == ProviderAuthModes.API_KEY }.orEmpty(),
+        // API key 静态加密：列里只存 enc1. 密文（见 [ProviderSecretCipher]），读侧在 toDomain 解密。
+        apiKey = ProviderSecretCipher.encrypt(apiKey.takeIf { authMode == ProviderAuthModes.API_KEY }.orEmpty()),
         isEnabled = isEnabled,
         isBuiltIn = isBuiltIn,
         sortOrder = sortOrder,
@@ -163,7 +164,8 @@ internal fun ProviderWithModels.toDomain(): ProviderSetting {
             name = provider.name,
             baseUrl = provider.baseUrl,
             sourceType = sourceType,
-            apiKey = provider.apiKey.takeIf { provider.authMode == ProviderAuthModes.API_KEY }.orEmpty(),
+            apiKey = ProviderSecretCipher.decrypt(provider.apiKey)
+                .takeIf { provider.authMode == ProviderAuthModes.API_KEY }.orEmpty(),
             isEnabled = provider.isEnabled,
             isBuiltIn = provider.isBuiltIn,
             sortOrder = provider.sortOrder,
@@ -185,7 +187,8 @@ internal fun ProviderWithModels.toDomain(): ProviderSetting {
             name = provider.name,
             baseUrl = provider.baseUrl,
             sourceType = sourceType,
-            apiKey = provider.apiKey.takeIf { provider.authMode == ProviderAuthModes.API_KEY }.orEmpty(),
+            apiKey = ProviderSecretCipher.decrypt(provider.apiKey)
+                .takeIf { provider.authMode == ProviderAuthModes.API_KEY }.orEmpty(),
             isEnabled = provider.isEnabled,
             isBuiltIn = provider.isBuiltIn,
             sortOrder = provider.sortOrder,
@@ -207,7 +210,8 @@ internal fun ProviderWithModels.toDomain(): ProviderSetting {
             name = provider.name,
             baseUrl = provider.baseUrl,
             sourceType = sourceType,
-            apiKey = provider.apiKey.takeIf { provider.authMode == ProviderAuthModes.API_KEY }.orEmpty(),
+            apiKey = ProviderSecretCipher.decrypt(provider.apiKey)
+                .takeIf { provider.authMode == ProviderAuthModes.API_KEY }.orEmpty(),
             isEnabled = provider.isEnabled,
             isBuiltIn = provider.isBuiltIn,
             sortOrder = provider.sortOrder,

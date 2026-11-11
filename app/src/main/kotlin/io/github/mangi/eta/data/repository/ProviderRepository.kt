@@ -3,6 +3,7 @@ package io.github.mangi.eta.data.repository
 import android.content.Context
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.db.EtaDatabase
+import io.github.mangi.eta.data.db.ProviderSecretCipher
 import io.github.mangi.eta.data.db.ProviderWithModelsSeed
 import io.github.mangi.eta.data.db.toDomain
 import io.github.mangi.eta.data.db.toEntity
@@ -20,6 +21,7 @@ import io.github.mangi.eta.data.model.selectedOrFirstModel
 import io.github.mangi.eta.data.model.withApiKey
 import io.github.mangi.eta.data.model.withModels
 import io.github.mangi.eta.data.model.withSortOrder
+import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.provider.BuiltinProviders
 import io.github.mangi.eta.data.provider.OfficialModelCatalog
 import java.util.UUID
@@ -166,8 +168,39 @@ internal object ProviderRepository {
         }
     }
 
+    @Volatile
+    private var legacyApiKeysReencrypted = false
+
+    /**
+     * 启动级兜底：把仍以明文落库的 API key 行重写为密文（[ProviderSecretCipher]）。
+     *
+     * 常规写入在 toEntity 落库时即加密；这条兜底覆盖两个绕过 toEntity 的入口——
+     * 老版本升级的存量行、备份恢复的直插实体（replaceAll 直接写 entity）。
+     * providers 表只有个位数行，首轮扫描很轻，完成后置位跳过后续调用。
+     */
+    private suspend fun reencryptLegacyApiKeys() {
+        if (legacyApiKeysReencrypted) return
+        runCatching {
+            val dao = dao()
+            var dirty = false
+            dao.providers().forEach { record ->
+                val provider = record.provider
+                val key = provider.apiKey
+                if (provider.authMode == ProviderAuthModes.API_KEY && key.isNotBlank() &&
+                    !ProviderSecretCipher.isEncrypted(key)
+                ) {
+                    dao.updateProvider(provider.copy(apiKey = ProviderSecretCipher.encrypt(key)))
+                    dirty = true
+                }
+            }
+            legacyApiKeysReencrypted = true
+            if (dirty) AndroidAgentLogger.warn("Provider api keys re-encrypted at rest")
+        }
+    }
+
     suspend fun ensureBuiltInsMerged() {
         removeRetiredProviders()
+        reencryptLegacyApiKeys()
         val current = allProviders()
         val catalogIds = BuiltinProviders.PROVIDERS.mapTo(mutableSetOf()) { it.id }
         val stale = current.filter { it.isBuiltIn && it.id !in catalogIds }
