@@ -111,7 +111,7 @@ class RuntimeStreamHandlerDiagnosticSemanticsTest {
             Function1::class.java,
         ),
         onEvent, { _: AgentRuntimeWire.RunResult -> }, { },
-        null, null, noopLogger(), { _: android.os.Bundle -> },
+        null, null, noopLogger(), null, { _: android.os.Bundle -> },
     )
 
     private fun noopLogger(): AgentLogger = java.lang.reflect.Proxy.newProxyInstance(
