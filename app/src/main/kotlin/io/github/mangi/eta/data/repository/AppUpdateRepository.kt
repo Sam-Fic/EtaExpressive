@@ -112,7 +112,9 @@ internal object AppUpdateRepository {
         offer: AppUpdateOffer,
         onProgress: ((bytesRead: Long, totalBytes: Long) -> Unit)? = null,
     ): File = withContext(Dispatchers.IO) {
-        val url = offer.apkUrl?.takeIf { it.startsWith("http") }
+        // 只收 https：feed 源是 GitHub API（恒 https），release asset 的
+        // browser_download_url 也恒为 https；明文下载面一律拒绝。
+        val url = offer.apkUrl?.takeIf { it.startsWith("https") }
             ?: error("没有可下载的安装包")
         val destination = apkDestination(context, offer)
         destination.parentFile?.mkdirs()
@@ -140,7 +142,7 @@ internal object AppUpdateRepository {
 
     /** 已经存在的可续传字节数；对话框据此把按钮文案换成「继续下载」。 */
     fun partialDownloadBytes(context: Context, offer: AppUpdateOffer): Long {
-        val url = offer.apkUrl?.takeIf { it.startsWith("http") } ?: return 0L
+        val url = offer.apkUrl?.takeIf { it.startsWith("https") } ?: return 0L
         val destination = apkDestination(context, offer)
         return ResumableDownload.partialBytes(File(destination.path + ".part"), url)
     }

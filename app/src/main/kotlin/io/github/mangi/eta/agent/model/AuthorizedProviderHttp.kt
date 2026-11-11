@@ -27,7 +27,10 @@ internal object AuthorizedProviderHttp {
     ): T {
         val profile = ProviderConnectionProfile.forAuthMode(authMode)
         profile?.requireRequestTarget(request.url)
-        val httpClient = if (profile == null) client else client.newBuilder()
+        // OAuth 档与 API-key 档一律不跟随重定向：OkHttp 跨 host 重定向只剥 Authorization，
+        // x-api-key 这类自定义头会原样带去新主机，302 即可收割；SSE / 长流本也不需要跟随。
+        // retryOnConnectionFailure 关闭是 OAuth 档既有行为，两档对齐。
+        val httpClient = client.newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
             .retryOnConnectionFailure(false)

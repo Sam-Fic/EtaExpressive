@@ -87,6 +87,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
 import kotlin.math.abs
@@ -409,12 +410,22 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_ISLAND_TOGGLE_PAUSE) {
+        // start 面调用方校验：onStartCommand 里拿不到真实调用方（投递由 system_server
+        // 代转，Binder.getCallingUid 恒为系统 uid），Messenger 的 uid 白名单只护 bind 面。
+        // 本服务仅有的两个 start action 都由本应用组件发起（执行通知卡按钮、进程内
+        // keep-alive），统一要求携带进程存活期随机的能力令牌：外部 app 伪造不出带
+        // 当前令牌的 intent（读不到别的进程内存），最多触发 stopSelf，操纵不了运行
+        // 中的 agent。进程重启后令牌更换，旧通知按钮失效属预期（通知随后重建换新）。
+        if (intent == null || intent.getStringExtra(EXTRA_START_TOKEN) != startActionToken) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        if (intent.action == ACTION_ISLAND_TOGGLE_PAUSE) {
             toggleIslandPause()
             if (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive()) stopSelf(startId)
             return START_NOT_STICKY
         }
-        if (intent?.action != ACTION_KEEP_ALIVE || (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive())) {
+        if (intent.action != ACTION_KEEP_ALIVE || (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive())) {
             stopSelf(startId)
         }
         return START_NOT_STICKY
@@ -938,7 +949,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             lastCompletedRunContext = null
         }
         runCatching {
-            startService(Intent(this, AgentRuntimeService::class.java).setAction(ACTION_KEEP_ALIVE))
+            startService(startActionIntent(this, ACTION_KEEP_ALIVE))
         }.onFailure { throwable ->
             AndroidAgentLogger.warnThrottled("runtime_keep_alive_start_failed") {
                 "Agent runtime keep-alive start failed: type=${throwable.safeLogType()}"
@@ -2632,6 +2643,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
         /** 执行通知卡上「暂停/继续」按钮的回跳入口；只切换浮层归属的那个 run。 */
         const val ACTION_ISLAND_TOGGLE_PAUSE = "io.github.mangi.eta.agent.runtime.ISLAND_TOGGLE_PAUSE"
+
+        /** start 面能力令牌：进程存活期随机一次，仅本应用组件经 [startActionIntent] 携带。 */
+        private val startActionToken: String = UUID.randomUUID().toString()
+        private const val EXTRA_START_TOKEN = "io.github.mangi.eta.extra.START_TOKEN"
+
+        /** 组装带能力令牌的 start intent——本服务 start 面的唯一合法入口。 */
+        internal fun startActionIntent(context: Context, action: String): Intent =
+            Intent(context, AgentRuntimeService::class.java)
+                .setAction(action)
+                .putExtra(EXTRA_START_TOKEN, startActionToken)
         private const val HIDE_DELAY_MS = 2_500L
         private const val RESULT_REVIEW_DELAY_MS = 120_000L
         private const val RESULT_CARD_HEIGHT_RATIO = 0.5f

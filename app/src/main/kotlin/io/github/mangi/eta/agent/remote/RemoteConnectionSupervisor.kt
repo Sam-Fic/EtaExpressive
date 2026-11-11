@@ -100,8 +100,11 @@ internal class RemoteConnectionSupervisor(
         // 界面上只剩一行永远不更新的「连接中」。
         val request = runCatching { Request.Builder().url(url).build() }.getOrNull()
         if (request == null) {
-            AndroidAgentLogger.warn("Remote WS address malformed: $url")
-            postStatus(RemoteConnectionStatus.Failed(RemoteFailure.Kind.MalformedAddress, url))
+            // 只打 host:port（剥 query）：pi 的 token 拼在 URL query 里，原样输出会把
+            // 凭据写进 logcat / 文件日志 / UI 状态。
+            val sanitized = url.substringBefore('?')
+            AndroidAgentLogger.warn("Remote WS address malformed: $sanitized")
+            postStatus(RemoteConnectionStatus.Failed(RemoteFailure.Kind.MalformedAddress, sanitized))
             return
         }
         postStatus(

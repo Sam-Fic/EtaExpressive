@@ -144,10 +144,11 @@ internal class AgentExecutionService : Service() {
         if (status != null) {
             // 暂停/继续回跳 Runtime 服务：目标 run 是浮层归属的那个（卡片状态正是它的投影）。
             val paused = status == AgentOverlayStatus.Paused
+            // start 面能力令牌经 startActionIntent 注入：通知按钮是本服务 start 面的
+            // 唯一外部触发点，伪造不出带当前令牌的 intent（见 AgentRuntimeService）。
             val toggle = PendingIntent.getService(
                 this, 2,
-                Intent(this, AgentRuntimeService::class.java)
-                    .setAction(AgentRuntimeService.ACTION_ISLAND_TOGGLE_PAUSE),
+                AgentRuntimeService.startActionIntent(this, AgentRuntimeService.ACTION_ISLAND_TOGGLE_PAUSE),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             builder.addAction(

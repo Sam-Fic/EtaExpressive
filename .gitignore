@@ -36,6 +36,8 @@ google-services.json
 
 # 本地配置和临时分析产物
 /local.properties
+# 本地导出产物（UI 设计稿等），不入库
+/exports/
 /.analysis/
 /.tmp/
 /.tmp-tmp/

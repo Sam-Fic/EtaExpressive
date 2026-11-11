@@ -4,8 +4,10 @@ package io.github.mangi.eta.agent.remote
  * 用户手里拿到的通常是 pi-remote 打印/二维码给出的完整 WebUI 链接：
  *
  * ```
- * http://192.168.31.107:8800?token=4f94995bca6d23da7749cf8c0d52f0da
+ * http://192.168.31.107:8800?token=e3b0c44298fc1c149afbf4c8996fb924
  * ```
+ *
+ * （token 仅示意格式：32 位十六进制占位值，不是任何真实配对信息。）
  *
  * 把它整段塞进「主机」字段，连接层会拼出 `ws://http://192.168.31.107:8800…`
  * 这种废地址——主机名被当成 `http`，于是永远 UnknownHostException，而界面上只剩

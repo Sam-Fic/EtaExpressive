@@ -99,6 +99,9 @@ internal class ScheduledSendReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            // 定时消息全文不上锁屏：锁屏通知默认可见，旁人可读内容。VISIBILITY_SECRET
+            // 只影响锁屏呈现，解锁后的通知抽屉照常显示全文。
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
         runCatching { manager.notify(conversationId.hashCode(), notification) }
         // 到点即从队列移除；真正的发送由应用在目标会话处于前台时完成。
