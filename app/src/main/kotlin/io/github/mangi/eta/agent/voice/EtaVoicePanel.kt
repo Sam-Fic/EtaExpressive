@@ -457,7 +457,6 @@ internal fun EtaVoicePanel(
                     composer = composer,
                     voiceState = voiceState,
                     dictationStartRequest = dictationStartRequest,
-                    pickerYield = pickerYield,
                     onSystemPickerLaunch = onSystemPickerLaunch,
                     focusRequester = focusRequester,
                     canOpenConversation = canOpenConversation,
@@ -524,7 +523,6 @@ private fun BoxScope.AssistantPanel(
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
     dictationStartRequest: Int,
-    pickerYield: Boolean,
     onSystemPickerLaunch: () -> Unit,
     focusRequester: FocusRequester,
     canOpenConversation: Boolean,
@@ -865,7 +863,6 @@ private fun BoxScope.AssistantPanel(
                 composer = composer,
                 voiceState = voiceState,
                 dictationStartRequest = dictationStartRequest,
-                pickerYield = pickerYield,
                 onSystemPickerLaunch = onSystemPickerLaunch,
                 focusRequester = focusRequester,
                 composerConversationId = composerConversationId,
@@ -916,7 +913,6 @@ private fun AssistantComposer(
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
     dictationStartRequest: Int,
-    pickerYield: Boolean,
     onSystemPickerLaunch: () -> Unit,
     focusRequester: FocusRequester,
     composerConversationId: String?,
@@ -1054,7 +1050,8 @@ private fun AssistantComposer(
             voiceState = voiceState,
             dictationStartRequest = dictationStartRequest,
             onDictationActiveChange = { dictationActive = it },
-            pickerYield = pickerYield,
+            // 让位由服务侧窗口 flags + 面板整体退位动画承接；输入区只需在发起选择器/权限
+            // 跳板前上报 onSystemPickerLaunch，不需要再持有让位状态。
             onSystemPickerLaunch = onSystemPickerLaunch,
             // 口述入口与聊天输入区同一套：mic → 流光听写条（× 丢弃 / ✓ 回填输入框 /
             // 说完停顿直接发送）。语音对话仍从主程序语音浮层进入，浮窗不再承载对话聆听条。
