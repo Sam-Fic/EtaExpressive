@@ -1,7 +1,7 @@
 # EtaExpressive
 [简体中文](README.md) | **English**
 
-<p><a href="https://github.com/Sam-Fic/EtaExpressive/releases"><img src="https://img.shields.io/github/downloads/Sam-Fic/EtaExpressive/total?logo=github&amp;label=Downloads&amp;color=1677FF" alt="Total GitHub Releases downloads"></a> <img src="https://img.shields.io/badge/minSdk-34-3DDC84?logo=android&amp;logoColor=white" alt="minSdk 34"> <img src="https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&amp;logoColor=white" alt="Kotlin 2.4.10"> <img src="https://img.shields.io/badge/AGP-9.3.2-3DDC84?logo=android&amp;logoColor=white" alt="AGP 9.3.2"> <img src="https://img.shields.io/badge/Assistant%20Integrations-ColorOS%20%26%20HyperOS-1677FF" alt="Assistant integrations for ColorOS and HyperOS"></p>
+<p><a href="https://github.com/Sam-Fic/EtaExpressive/releases"><img src="https://img.shields.io/github/downloads/Sam-Fic/EtaExpressive/total?logo=github&amp;label=Downloads&amp;color=1677FF" alt="Total GitHub Releases downloads"></a> <img src="https://img.shields.io/badge/minSdk-34-3DDC84?logo=android&amp;logoColor=white" alt="minSdk 34"> <img src="https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?logo=kotlin&amp;logoColor=white" alt="Kotlin 2.4.20"> <img src="https://img.shields.io/badge/AGP-9.4.0-3DDC84?logo=android&amp;logoColor=white" alt="AGP 9.4.0"> <img src="https://img.shields.io/badge/Assistant%20Integrations-ColorOS%20%26%20HyperOS-1677FF" alt="Assistant integrations for ColorOS and HyperOS"></p>
 
 **A System-Level Android AI Assistant That Steps Beyond the Sandbox**
 
@@ -135,8 +135,13 @@ Dedicated retrieval for contacts, SMS, and calendars currently still requires Ro
 - [TaiJi](https://github.com/zhushanwen321/tai-ji): AI Agent desktop workspace. Reference for the "Dispatch Console" session form and mechanism: restricted tool whitelist dispatch mode, self-contained briefs, notify-once completion notification claims, and anti-injection discipline.
 - [OmniBot](https://github.com/omnimind-ai/OmniBot): Reference project for Android AI Agent direction.
 - [opencode](https://github.com/sst/opencode): Terminal AI coding agent. Protocol reference for remote OpenCode integration; the second protocol wire was verified from its serve implementation (v2.2.5).
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) / [sherpa-ncnn](https://github.com/k2-fsa/sherpa-ncnn): offline speech runtime. The Kotlin JNI bindings of both projects are bundled (Apache-2.0), powering local speech recognition, synthesis, and VAD.
+- [OpenMinis](https://github.com/OpenMinis/OpenMinis): adapted source of the built-in browser. The browser code is adapted from this project (GPL-3.0) with package/resource isolation, Linux guest path mapping, cookie offload, and user takeover; see `third_party/openminis-browser/NOTICE.md`.
+- [lzhhhhc/imagine](https://github.com/lzhhhhc/imagine): image-generation protocol reference. Reference-image/mask editing, size tiers, and the JSON edit protocol were verified against its ApiModels and ImageRepository implementations.
+- [st-chatu8](https://github.com/damoshen123/st-chatu8): a SillyTavern plugin and the design inspiration for the NovelAI workbench; no source was copied, only its public interface behavior as the compatibility target.
 - [libxposed API](https://github.com/libxposed/api): Modern Xposed API.
 - [miuix](https://github.com/compose-miuix-ui/miuix): Page transition dedicated library — NavDisplay navigation container provides stack transition animations and system screen corner adaptation; the UI components themselves are Material Design 3 Expressive, not using miuix components.
+- [multiplatform-markdown-renderer](https://github.com/mikepenz/multiplatform-markdown-renderer): Markdown rendering library for chat messages and overlay content, with Compose multiplatform rendering and Material 3 styling.
 - [Zafiro](https://github.com/niki914/zafiro): Style reference for user conversation bubbles. Its bubble design is highly similar to Google Material Design 3 Expressive example bubbles, hence adopted and adapted into this project.
 - [Material Design 3 Expressive](https://m3.material.io): Official Google Material Design 3 Expressive site; the program's interface design language and visual style are referenced from its examples and specifications.
 - [KernelSU](https://github.com/tiann/KernelSU): Design reference for this app's "Appearance and Theme" sub-settings page.

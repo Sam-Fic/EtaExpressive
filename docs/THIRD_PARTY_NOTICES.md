@@ -14,6 +14,10 @@ Eta 的应用界面使用官方 Jetpack Compose Material 3 Expressive 组件，�
 
 Eta 的功能图标使用 AndroidX Compose Material Icons 的 Rounded 系列，通过 `material-icons-extended` 依赖提供。图标及其 AndroidX 实现采用 [Apache License 2.0](https://github.com/androidx/androidx/blob/androidx-main/LICENSE.txt)，来源见 [Material Design Icons](https://github.com/google/material-design-icons)。
 
+## Markdown 渲染
+
+聊天消息与悬浮内容的 Markdown 渲染使用 [multiplatform-markdown-renderer](https://github.com/mikepenz/multiplatform-markdown-renderer)（Maven 依赖 `com.mikepenz:multiplatform-markdown-renderer-android` 与 `com.mikepenz:multiplatform-markdown-renderer-m3-android`，版本由 `gradle/libs.versions.toml` 声明），采用 [Apache License 2.0](https://github.com/mikepenz/multiplatform-markdown-renderer/blob/develop/LICENSE)。该库的 markdown composer 部分基于 Erik Hellman 的 [MarkdownComposer](https://github.com/ErikHellman/MarkdownComposer)，采用 MIT License。
+
 ## Lucide Atom
 
 思考图标使用 [Lucide Atom](https://github.com/lucide-icons/lucide/blob/main/icons/atom.svg)，以本地 VectorDrawable 资源保存，不依赖 Lucide 图标库。该图标采用 ISC License：

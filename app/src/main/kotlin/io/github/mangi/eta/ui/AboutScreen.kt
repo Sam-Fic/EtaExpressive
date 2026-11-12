@@ -293,6 +293,26 @@ internal fun AboutCreditsScreen(onBack: () -> Unit) {
             url = "https://github.com/sst/opencode",
         ),
         CreditEntry(
+            name = "k2-fsa/sherpa-onnx",
+            summary = stringResource(R.string.credits_entry_sherpa),
+            url = "https://github.com/k2-fsa/sherpa-onnx",
+        ),
+        CreditEntry(
+            name = "OpenMinis/OpenMinis",
+            summary = stringResource(R.string.credits_entry_openminis),
+            url = "https://github.com/OpenMinis/OpenMinis",
+        ),
+        CreditEntry(
+            name = "lzhhhhc/imagine",
+            summary = stringResource(R.string.credits_entry_imagine),
+            url = "https://github.com/lzhhhhc/imagine",
+        ),
+        CreditEntry(
+            name = "damoshen123/st-chatu8",
+            summary = stringResource(R.string.credits_entry_stchatu8),
+            url = "https://github.com/damoshen123/st-chatu8",
+        ),
+        CreditEntry(
             name = "libxposed/api",
             summary = stringResource(R.string.credits_entry_libxposed),
             url = "https://github.com/libxposed/api",
@@ -301,6 +321,11 @@ internal fun AboutCreditsScreen(onBack: () -> Unit) {
             name = "compose-miuix-ui/miuix",
             summary = stringResource(R.string.credits_entry_miuix),
             url = "https://github.com/compose-miuix-ui/miuix",
+        ),
+        CreditEntry(
+            name = "mikepenz/multiplatform-markdown-renderer",
+            summary = stringResource(R.string.credits_entry_markdown),
+            url = "https://github.com/mikepenz/multiplatform-markdown-renderer",
         ),
         CreditEntry(
             name = "niki914/zafiro",

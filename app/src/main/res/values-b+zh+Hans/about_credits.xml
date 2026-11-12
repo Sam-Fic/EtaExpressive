@@ -11,8 +11,13 @@
     <string name="credits_entry_taiji">AI Agent 桌面工作台。「调度台」的会话形态与机制参考：受限工具白名单的调度模式、自包含 brief、notify-once 完成通知债权与防注入纪律。</string>
     <string name="credits_entry_omnibot">Android AI Agent 方向的参考项目。</string>
     <string name="credits_entry_opencode">终端 AI coding agent。远程 OpenCode 接入的协议参考，第二协议 wire 核证自其 serve 实现（v2.2.5）。</string>
+    <string name="credits_entry_sherpa">k2-fsa 的离线语音运行时（sherpa-onnx 与 sherpa-ncnn）。Kotlin JNI 绑定原样引入并随包分发（Apache-2.0），支撑本地语音识别、合成与 VAD。</string>
+    <string name="credits_entry_openminis">内置浏览器的改编来源。浏览器源码改编自该项目（GPL-3.0），并做包/资源隔离、Linux 访客路径映射、Cookie 卸载与用户接管等适配。</string>
+    <string name="credits_entry_imagine">图像生成协议参考。参考图/遮罩编辑、尺寸档位与 JSON 编辑协议的接口行为核证自其 ApiModels、ImageRepository 等实现。</string>
+    <string name="credits_entry_stchatu8">SillyTavern 插件，NovelAI 工作台的设计思路借鉴来源；未复制源码，仅以其公开接口行为为兼容目标。</string>
     <string name="credits_entry_libxposed">现代 Xposed API。</string>
     <string name="credits_entry_miuix">页面切换转场专用库：NavDisplay 导航容器提供栈式转场动画与系统屏幕圆角适配；界面组件本体为 Material Design 3 Expressive，不使用 miuix 组件。</string>
+    <string name="credits_entry_markdown">聊天消息与悬浮内容的 Markdown 渲染库，提供 Compose 多平台渲染与 Material 3 样式适配。</string>
     <string name="credits_entry_zafiro">用户对话气泡的样式参考。其气泡设计与 Google Material Design 3 Expressive 的示例气泡高度相似，因此采用并适配到本项目。</string>
     <string name="credits_entry_m3">Google Material Design 3 Expressive 官方站点，本程序的界面设计语言与视觉风格均参考自其中的示例与规范。</string>
     <string name="credits_entry_kernelsu">本应用「外观与主题」子设置页面的设计参考。</string>

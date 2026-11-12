@@ -11,8 +11,13 @@
     <string name="credits_entry_taiji">An AI agent desktop workspace. The reference for the dispatch console\'s session form and mechanics: the tool-allowlisted dispatch mode, self-contained briefs, notify-once completion claims, and the anti-injection discipline.</string>
     <string name="credits_entry_omnibot">Reference project for Android AI agents.</string>
     <string name="credits_entry_opencode">Terminal AI coding agent. The protocol reference for the remote OpenCode integration; the v2 wire protocol was verified against its serve implementation (v2.2.5).</string>
+    <string name="credits_entry_sherpa">k2-fsa offline speech runtime (sherpa-onnx and sherpa-ncnn). The Kotlin JNI bindings are bundled (Apache-2.0), powering local speech recognition, synthesis, and VAD.</string>
+    <string name="credits_entry_openminis">Adapted source of the built-in browser. The browser code is adapted from this project (GPL-3.0) with package/resource isolation, Linux guest path mapping, cookie offload, and user takeover.</string>
+    <string name="credits_entry_imagine">Image-generation protocol reference. Reference-image/mask editing, size tiers, and the JSON edit protocol were verified against its ApiModels and ImageRepository implementations.</string>
+    <string name="credits_entry_stchatu8">A SillyTavern plugin and the design inspiration for the NovelAI workbench; no source was copied, only its public interface behavior was used as the compatibility target.</string>
     <string name="credits_entry_libxposed">Modern Xposed API.</string>
     <string name="credits_entry_miuix">Navigation-only page-transition library: the NavDisplay container provides stack transitions and system display-corner adaptation; the UI components themselves are Material Design 3 Expressive, not miuix widgets.</string>
+    <string name="credits_entry_markdown">Markdown rendering library for chat messages and overlay content, with Compose multiplatform rendering and Material 3 styling.</string>
     <string name="credits_entry_zafiro">Style reference for the user chat bubbles. Its bubble design closely resembles the sample bubbles in Google Material Design 3 Expressive, so it was adopted and adapted for this project.</string>
     <string name="credits_entry_m3">The official Google Material Design 3 Expressive site. This app\'s design language and visual style reference its examples and specifications.</string>
     <string name="credits_entry_kernelsu">Design reference for the app\'s Appearance &amp; theme settings sub-pages.</string>

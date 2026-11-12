@@ -1,7 +1,7 @@
 # EtaExpressive
 **简体中文** | [English](README_EN.md)
 
-<p><a href="https://github.com/Sam-Fic/EtaExpressive/releases"><img src="https://img.shields.io/github/downloads/Sam-Fic/EtaExpressive/total?logo=github&amp;label=%E4%B8%8B%E8%BD%BD%E9%87%8F&amp;color=1677FF" alt="GitHub Releases 累计下载量"></a> <img src="https://img.shields.io/badge/minSdk-34-3DDC84?logo=android&amp;logoColor=white" alt="minSdk 34"> <img src="https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&amp;logoColor=white" alt="Kotlin 2.4.10"> <img src="https://img.shields.io/badge/AGP-9.3.2-3DDC84?logo=android&amp;logoColor=white" alt="AGP 9.3.2"> <img src="https://img.shields.io/badge/Assistant%20Integrations-ColorOS%20%26%20HyperOS-1677FF" alt="Assistant integrations for ColorOS and HyperOS"></p>
+<p><a href="https://github.com/Sam-Fic/EtaExpressive/releases"><img src="https://img.shields.io/github/downloads/Sam-Fic/EtaExpressive/total?logo=github&amp;label=%E4%B8%8B%E8%BD%BD%E9%87%8F&amp;color=1677FF" alt="GitHub Releases 累计下载量"></a> <img src="https://img.shields.io/badge/minSdk-34-3DDC84?logo=android&amp;logoColor=white" alt="minSdk 34"> <img src="https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?logo=kotlin&amp;logoColor=white" alt="Kotlin 2.4.20"> <img src="https://img.shields.io/badge/AGP-9.4.0-3DDC84?logo=android&amp;logoColor=white" alt="AGP 9.4.0"> <img src="https://img.shields.io/badge/Assistant%20Integrations-ColorOS%20%26%20HyperOS-1677FF" alt="Assistant integrations for ColorOS and HyperOS"></p>
 
 **越过沙盒的 Android 系统级 AI 助手**
 
@@ -135,8 +135,13 @@ Provider 层支持 OpenAI-compatible Chat Completions、Responses API 和 Anthro
 - [TaiJi（太极）](https://github.com/zhushanwen321/tai-ji)：AI Agent 桌面工作台。「调度台」的会话形态与机制参考：受限工具白名单的调度模式、自包含 Brief、Notify-once 完成通知债权与防注入规范。
 - [OmniBot](https://github.com/omnimind-ai/OmniBot)：Android AI Agent 方向的参考项目。
 - [opencode](https://github.com/sst/opencode)：终端 AI Coding Agent。远程 OpenCode 接入的协议参考，第二版协议 wire 格式核证自其 serve 实现（v2.2.5）。
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) / [sherpa-ncnn](https://github.com/k2-fsa/sherpa-ncnn)：离线语音运行时。两个项目的 Kotlin JNI 绑定原样引入并随包分发（Apache-2.0），支撑本地语音识别、合成与 VAD。
+- [OpenMinis](https://github.com/OpenMinis/OpenMinis)：内置浏览器的改编来源。浏览器源码改编自该项目（GPL-3.0），并做包/资源隔离、Linux 访客路径映射、Cookie 卸载与用户接管等适配，详见 `third_party/openminis-browser/NOTICE.md`。
+- [lzhhhhc/imagine](https://github.com/lzhhhhc/imagine)：图像生成协议参考。参考图/遮罩编辑、尺寸档位与 JSON 编辑协议的接口行为核证自其 ApiModels、ImageRepository 等实现。
+- [st-chatu8（智绘姬）](https://github.com/damoshen123/st-chatu8)：SillyTavern 插件，NovelAI 工作台的设计思路借鉴来源；未复制源码，仅以其公开接口行为为兼容目标。
 - [libxposed API](https://github.com/libxposed/api)：现代 Xposed API。
 - [miuix](https://github.com/compose-miuix-ui/miuix)：页面切换转场专用库——NavDisplay 导航容器提供栈式转场动画与系统屏幕圆角适配；界面组件本体为 Material Design 3 Expressive，不使用 miuix 组件。
+- [multiplatform-markdown-renderer](https://github.com/mikepenz/multiplatform-markdown-renderer)：聊天消息与悬浮内容的 Markdown 渲染库，提供 Compose 多平台渲染与 Material 3 样式适配。
 - [Zafiro](https://github.com/niki914/zafiro)：用户对话气泡的样式参考。其气泡设计与 Google Material Design 3 Expressive 的示例气泡高度相似，因此采用并适配到本项目。
 - [Material Design 3 Expressive](https://m3.material.io)：Google Material Design 3 Expressive 官方站点，本程序的界面设计语言与视觉风格均参考自其中的示例与规范。
 - [KernelSU](https://github.com/tiann/KernelSU)：本应用“外观与主题”子设置页面的设计参考。
