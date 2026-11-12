@@ -52,6 +52,9 @@ google-services.json
 # Runtime-owned collaboration workspaces and artifacts
 /.agent/
 
+# Box-Agent 本地任务登记数据
+/.box-agent/
+
 # AI 助手本地工作目录
 /.trae/
 /.codebuddy/
