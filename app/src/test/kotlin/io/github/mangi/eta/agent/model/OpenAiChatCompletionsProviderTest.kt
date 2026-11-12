@@ -2,17 +2,49 @@ package io.github.mangi.eta.agent.model
 
 import com.sun.net.httpserver.HttpServer
 import io.github.mangi.eta.agent.runtime.AgentRunController
+import io.github.mangi.eta.data.model.ProviderAuthModes
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OpenAiChatCompletionsProviderTest {
+
+    @Test
+    fun promptCacheKeyIsOnlySentToOfficialOpenAi() {
+        val messages = JSONArray().put(JSONObject().put("role", "user").put("content", "你好"))
+        fun request(
+            baseUrl: String,
+            authMode: String = ProviderAuthModes.API_KEY,
+            sessionId: String = "conv-1",
+        ) = OpenAiChatCompletionsProvider.buildRequestJson(
+            config = AgentModelClient.ModelConfig(
+                providerSourceType = "custom",
+                baseUrl = baseUrl,
+                apiKey = "test-key",
+                model = "test-model",
+                systemPrompt = "",
+                authMode = authMode,
+            ),
+            messages = messages,
+            tools = JSONArray(),
+            sessionId = sessionId,
+        )
+        assertEquals("conv-1", request("https://api.openai.com/v1").getString("prompt_cache_key"))
+        assertEquals(
+            "conv-1",
+            request("https://gateway.example/v1", ProviderAuthModes.OPENAI_CHATGPT).getString("prompt_cache_key"),
+        )
+        // 第三方网关对未知字段可能直接 400；DeepSeek 等端点的前缀缓存本身不需要分片键。
+        assertFalse(request("https://api.deepseek.com/v1").has("prompt_cache_key"))
+        assertFalse(request("https://api.openai.com/v1", sessionId = "").has("prompt_cache_key"))
+    }
 
     @Test
     fun steeringDiscardsUnfinishedToolBatchEvenWithParseableArguments() {
