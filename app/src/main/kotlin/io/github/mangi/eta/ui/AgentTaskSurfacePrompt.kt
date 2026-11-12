@@ -9,6 +9,8 @@ import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -68,6 +70,7 @@ private const val FALLBACK_DELAY_MS = 800L
  * Material 3 单选弹窗：先选前台或后台，再点“继续”。
  * 默认选中前台；点“取消”或返回会让本次界面操作失败，模型改用别的方式。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun AgentTaskSurfaceChoiceDialog(
     onChoose: (AgentTaskSurfaceMode) -> Unit,
@@ -116,10 +119,13 @@ internal fun AgentTaskSurfaceChoiceDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                TouchHaptics.click(view)
-                onChoose(selected)
-            }) {
+            Button(
+                onClick = {
+                    TouchHaptics.click(view)
+                    onChoose(selected)
+                },
+                shapes = ButtonDefaults.shapes(),
+            ) {
                 Text(stringResource(R.string.agent_task_surface_prompt_continue))
             }
         },

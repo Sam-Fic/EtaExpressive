@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
 import androidx.compose.material3.Card as M3Card
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider as M3Slider
 import androidx.compose.material3.Text as M3Text
@@ -220,6 +221,7 @@ private val TickWidth = 1.5.dp
 private const val TickAlpha = 0.5f
 
 /** 自适应主操作按钮。 */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun EtaTextButton(
     text: String,
@@ -229,10 +231,13 @@ fun EtaTextButton(
     destructive: Boolean = false,
 ) {
     // 官方按钮默认形状为胶囊（shape style "full"），不额外覆盖。
+    // shapes 必传（AGENTS §2.5 容器型按钮规则）：官方 Button 的 plain 重载没有按压
+    // morph，shapes() 才带上按下压向 CornerSmall 的 ButtonShapes。
     Button(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
+        shapes = M3ButtonDefaults.shapes(),
         // 破坏性动作取官方 error 角色色，与各列表里的「删除」菜单项统一。
         colors = if (destructive) {
             M3ButtonDefaults.buttonColors(
