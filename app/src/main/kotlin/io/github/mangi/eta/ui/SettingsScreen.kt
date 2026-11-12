@@ -1116,7 +1116,7 @@ private fun buildToolsCapabilitySummary(context: Context, prefs: SharedPreferenc
 // ── 工具调用审查模式（四档） ───────────────────────────────────────────────
 
 /**
- * 审查模式选择行：只读 / 严格 / 标准 / 自动 / 智能审查。
+ * 审查模式选择行：只读 / 标准 / 智能审查 / 完全放行。
  *
  * 与同页「语言」一致，走标准 [EtaSegmentedDropdownRow]：点击行从按下位置弹出锚定
  * 下拉气泡菜单；选中项与尾标样式全部取组件默认值。
@@ -1137,32 +1137,28 @@ private fun ToolReviewModeRow(
 ) {
     val options = listOf(
         Prefs.Keys.TOOL_REVIEW_MODE_READONLY,
-        Prefs.Keys.TOOL_REVIEW_MODE_STRICT,
         Prefs.Keys.TOOL_REVIEW_MODE_STANDARD,
-        Prefs.Keys.TOOL_REVIEW_MODE_AUTO,
         Prefs.Keys.TOOL_REVIEW_MODE_SMART,
+        Prefs.Keys.TOOL_REVIEW_MODE_OFF,
     )
     val labels = listOf(
         stringResource(R.string.settings_tool_review_mode_readonly),
-        stringResource(R.string.settings_tool_review_mode_strict),
         stringResource(R.string.settings_tool_review_mode_standard),
-        stringResource(R.string.settings_tool_review_mode_auto),
         stringResource(R.string.settings_tool_review_mode_smart),
+        stringResource(R.string.settings_tool_review_mode_off),
     )
     // 当前档位的实际效果：高风险/致命操作的确认规则并进同一句，不单列脚注。
     val effects = listOf(
         stringResource(R.string.settings_tool_review_mode_readonly_effect),
-        stringResource(R.string.settings_tool_review_mode_strict_effect),
         stringResource(R.string.settings_tool_review_mode_standard_effect),
-        stringResource(R.string.settings_tool_review_mode_auto_effect),
         stringResource(R.string.settings_tool_review_mode_smart_effect),
+        stringResource(R.string.settings_tool_review_mode_off_effect),
     )
     val hints = listOf(
         stringResource(R.string.settings_tool_review_mode_readonly_hint),
-        stringResource(R.string.settings_tool_review_mode_strict_hint),
         stringResource(R.string.settings_tool_review_mode_standard_hint),
-        stringResource(R.string.settings_tool_review_mode_auto_hint),
         stringResource(R.string.settings_tool_review_mode_smart_hint),
+        stringResource(R.string.settings_tool_review_mode_off_hint),
     )
     val selectedIndex = options.indexOf(mode).coerceAtLeast(0)
     EtaSegmentedDropdownRow(
@@ -1256,21 +1252,25 @@ private fun ToolLoadingModeRow(
     val options = listOf(
         Prefs.Keys.TOOL_LOADING_MODE_SEARCH,
         Prefs.Keys.TOOL_LOADING_MODE_GROUP,
+        Prefs.Keys.TOOL_LOADING_MODE_SUFFIX,
         Prefs.Keys.TOOL_LOADING_MODE_OFF,
     )
     val labels = listOf(
         stringResource(R.string.tools_loading_mode_search),
         stringResource(R.string.tools_loading_mode_group),
+        stringResource(R.string.tools_loading_mode_suffix),
         stringResource(R.string.tools_loading_mode_off),
     )
     val effects = listOf(
         stringResource(R.string.tools_loading_mode_search_effect),
         stringResource(R.string.tools_loading_mode_group_effect),
+        stringResource(R.string.tools_loading_mode_suffix_effect),
         stringResource(R.string.tools_loading_mode_off_effect),
     )
     val hints = listOf(
         stringResource(R.string.tools_loading_mode_search_hint),
         stringResource(R.string.tools_loading_mode_group_hint),
+        stringResource(R.string.tools_loading_mode_suffix_hint),
         stringResource(R.string.tools_loading_mode_off_hint),
     )
     val selectedIndex = options.indexOf(mode).coerceAtLeast(0)

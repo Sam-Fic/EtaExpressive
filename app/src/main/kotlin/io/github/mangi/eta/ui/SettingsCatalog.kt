@@ -464,7 +464,7 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 key = SettingsKeys.TOOL_CONFIRM_DANGEROUS,
                 title = stringResource(R.string.settings_tool_review_mode),
                 summary = stringResource(R.string.settings_tool_review_mode_summary),
-                keywords = "dangerous confirm 危险 高危 确认 审查 只读 严格 标准 自动 安全 拦截 review permission",
+                keywords = "dangerous confirm 危险 高危 确认 审查 只读 标准 智能审查 完全放行 不审查 安全 拦截 review permission unrestricted",
                 icon = Icons.Rounded.Warning,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Inline,

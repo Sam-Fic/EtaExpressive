@@ -7,7 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 危险操作逐次确认：中风险受设置开关控制，高风险/致命不受控制，
+ * 工具调用审查四档（只读 / 标准 / 智能审查 / 完全放行）的确认闸门行为：
+ * 标准档中风险本会话确认一次、高/致命每次确认；完全放行档豁免一切确认；
  * 纯读类动作即使挂在同名工具下也不会被打扰。
  */
 class AgentDangerousOperationPolicyTest {
@@ -57,51 +58,6 @@ class AgentDangerousOperationPolicyTest {
             assertFalse(name, AgentDangerousOperationPolicy.isDangerous(name, "{}"))
             assertNull(name, AgentDangerousOperationPolicy.decision(name, "{}", mode = AgentToolReviewMode.STANDARD))
         }
-    }
-
-    @Test fun autoModeSkipsMediumRiskButKeepsTheBottomLine() {
-        // 自动档：中风险直接执行——这是原「危险操作确认」开关关闭的历史行为。
-        val noDecision = AgentDangerousOperationPolicy.decision(
-            "set_timezone", """{"action":"set","timezone":"Asia/Shanghai"}""", mode = AgentToolReviewMode.AUTO,
-        )
-        assertNull(noDecision)
-    }
-
-    @Test fun fatalOperationsAlwaysAskEvenInAutoMode() {
-        // 致命操作不可撤销：任何档位（含自动）都始终确认，这是安全底线。
-        listOf(
-            "power_control" to """{"action":"reboot"}""",
-            "manage_app" to """{"action":"clear_data","package_name":"x"}""",
-            "manage_file" to """{"action":"delete","path":"/sdcard/a"}""",
-            "memory_write" to """{"mode":"clear"}""",
-            "eta_manage_history" to """{"action":"empty_trash"}""",
-        ).forEach { (name, args) ->
-            val decision = AgentDangerousOperationPolicy.decision(name, args, mode = AgentToolReviewMode.AUTO)
-            assertEquals(
-                "$name 应在自动档仍被拦下",
-                AgentDangerousOperationPolicy.CONFIRM_CODE,
-                (decision as ToolExecutionDecision.Reject).code,
-            )
-        }
-    }
-
-    @Test fun highRiskOperationsAlsoAskEvenInAutoMode() {
-        // 递归删除、git 破坏、批量删除属于高风险：不可撤销，自动档也不能跳过确认。
-        val shell = AgentDangerousOperationPolicy.decision(
-            "terminal", """{"action":"exec","command":"rm -rf build"}""", mode = AgentToolReviewMode.AUTO,
-        )
-        assertTrue(shell is ToolExecutionDecision.Reject)
-        assertTrue(
-            AgentDangerousOperationPolicy.decision(
-                "manage_file", """{"action":"move","path":"/sdcard/a"}""", mode = AgentToolReviewMode.AUTO,
-            ) is ToolExecutionDecision.Reject,
-        )
-        // 中风险在自动档免确认。
-        assertNull(
-            AgentDangerousOperationPolicy.decision(
-                "set_timezone", """{"action":"set","timezone":"UTC"}""", mode = AgentToolReviewMode.AUTO,
-            ),
-        )
     }
 
     @Test fun malformedArgumentsDoNotCrashAndDefaultToAsking() {
@@ -318,62 +274,30 @@ class AgentDangerousOperationPolicyTest {
         )
     }
 
-    @Test fun strictModeConfirmsMediumRiskEveryTimeWithoutSessionGrants() {
-        val args = """{"action":"set","timezone":"Asia/Shanghai"}"""
-        // 严格档：中风险第一次调用被拦（与标准档相同的确认闭环）。
-        val first = AgentDangerousOperationPolicy.decision("set_timezone", args, mode = AgentToolReviewMode.STRICT)
-        assertEquals(AgentDangerousOperationPolicy.CONFIRM_CODE, (first as ToolExecutionDecision.Reject).code)
-        // 确认文案不提供「本会话允许」：严格档逐次确认。
-        assertFalse(first.message.contains(AgentDangerousConfirmationGate.CONFIRM_SESSION_OPTION_ID))
-        // 用户选「本会话允许」也只登记一次性授权（闸门对 allowSession=false 的降级）。
-        assertTrue(
-            AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_SESSION_OPTION_ID),
-        )
-        // 一次性授权放行同一个调用（确认→重发的闭环本身仍然成立）。
-        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, mode = AgentToolReviewMode.STRICT))
-        // 换参数后重新确认：逐次语义。
-        assertTrue(
-            AgentDangerousOperationPolicy.decision(
-                "set_timezone", """{"action":"set","timezone":"UTC"}""", mode = AgentToolReviewMode.STRICT,
-            ) is ToolExecutionDecision.Reject,
-        )
+    @Test fun offModeSkipsEveryConfirmationIncludingFatal() {
+        // 完全放行档：用户显式豁免一切确认——中/高/致命一律直接放行，是唯一的底线豁免档。
+        listOf(
+            "set_timezone" to """{"action":"set","timezone":"UTC"}""",
+            "terminal" to """{"action":"exec","command":"rm -rf build"}""",
+            "power_control" to """{"action":"reboot"}""",
+        ).forEach { (name, args) ->
+            assertNull(
+                "$name 在完全放行档应直接执行",
+                AgentDangerousOperationPolicy.decision(name, args, mode = AgentToolReviewMode.OFF),
+            )
+        }
     }
 
-    @Test fun strictModeDoesNotConsumeSessionGrantsFromStandardMode() {
-        val args = """{"action":"set","timezone":"Asia/Shanghai"}"""
-        // 标准档：确认一次并选择「本会话允许」→ 会话授权。
-        assertTrue(
-            AgentDangerousOperationPolicy.decision("set_timezone", args, mode = AgentToolReviewMode.STANDARD)
-                is ToolExecutionDecision.Reject,
-        )
-        assertTrue(
-            AgentDangerousConfirmationGate.onUserAnswered("option", AgentDangerousConfirmationGate.CONFIRM_SESSION_OPTION_ID),
-        )
-        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, mode = AgentToolReviewMode.STANDARD))
-        // 标准档的会话授权放行同一调用。
-        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, mode = AgentToolReviewMode.STANDARD))
-        // 切到严格档：会话授权不再被认领，也不被顺手清掉。
-        assertTrue(
-            AgentDangerousOperationPolicy.decision("set_timezone", args, mode = AgentToolReviewMode.STRICT)
-                is ToolExecutionDecision.Reject,
-        )
-        // 调回标准档：此前的会话授权仍然有效（严格档没有消耗它）。
-        assertNull(AgentDangerousOperationPolicy.decision("set_timezone", args, mode = AgentToolReviewMode.STANDARD))
-    }
-
-    @Test fun autoModeStillConfirmsHighAndFatalRisks() {
-        // 自动档免的是中风险；高/致命的确认是底线，任何档位不豁免。
-        assertTrue(
-            AgentDangerousOperationPolicy.decision(
-                "terminal", """{"action":"exec","command":"rm -rf build"}""", mode = AgentToolReviewMode.AUTO,
-            ) is ToolExecutionDecision.Reject,
-        )
-        assertEquals(
-            AgentDangerousOperationPolicy.CONFIRM_CODE,
-            (AgentDangerousOperationPolicy.decision(
-                "power_control", """{"action":"reboot"}""", mode = AgentToolReviewMode.AUTO,
-            ) as ToolExecutionDecision.Reject).code,
-        )
+    @Test fun retiredPrefsValuesMapToStandard() {
+        // 严格/自动已并入标准：退役值（以及任何未知值）一律落回标准档。
+        assertEquals(AgentToolReviewMode.STANDARD, AgentToolReviewMode.from("strict"))
+        assertEquals(AgentToolReviewMode.STANDARD, AgentToolReviewMode.from("auto"))
+        assertEquals(AgentToolReviewMode.STANDARD, AgentToolReviewMode.from("anything-unknown"))
+        // 现存四档的字符串值各自映射到位。
+        assertEquals(AgentToolReviewMode.READONLY, AgentToolReviewMode.from("readonly"))
+        assertEquals(AgentToolReviewMode.STANDARD, AgentToolReviewMode.from("standard"))
+        assertEquals(AgentToolReviewMode.SMART, AgentToolReviewMode.from("smart"))
+        assertEquals(AgentToolReviewMode.OFF, AgentToolReviewMode.from("off"))
     }
 
     // ── 智能审查档（模型裁决 + 失败回退） ──────────────────────────────────────

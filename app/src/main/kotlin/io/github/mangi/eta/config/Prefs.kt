@@ -91,9 +91,27 @@ internal object Prefs {
         const val TOOL_LOADING_MODE_GROUP = "group"
         const val TOOL_LOADING_MODE_OFF = "off"
 
+        /**
+         * 缓存优先档：会话级原生组集合内的工具下发原生 schema，其余延迟组一律经
+         * `tool_call` 调用（工具说明作为工具结果追加到历史尾部）。
+         *
+         * 这一档的存在意义是前缀稳定：`tools` 与 system 在会话内字节恒定，
+         * provider 的前缀缓存只在集合增长时失效一次（且只在前缀还小时允许增长）。
+         * 见 [Prefs.nativeGroups]。
+         */
+        const val TOOL_LOADING_MODE_SUFFIX = "suffix"
+
         /** 当前会话锁定的模式与会话 id；由 [toolLoadingFullCatalog] 在会话首个 run 写入。 */
         const val TOOL_LOADING_MODE_ACTIVE = "agent_tool_loading_mode_active"
         const val TOOL_LOADING_MODE_CONVERSATION = "agent_tool_loading_mode_conversation"
+
+        /**
+         * 会话级原生工具组集合（suffix 档）；三者一起构成单槽快照，会话 id 不匹配即视为未初始化。
+         * 与 [TOOL_LOADING_MODE_ACTIVE] 同样是「只记住当前会话」的既有模式，不引新表。
+         */
+        const val NATIVE_GROUPS_CONVERSATION = "agent_native_groups_conversation"
+        const val NATIVE_GROUPS = "agent_native_groups"
+        const val NATIVE_GROUPS_FROZEN = "agent_native_groups_frozen"
 
         /**
          * MCP 工具暴露方式（布尔）：true = 按 server 粒度渐进加载（每个 server 一个
@@ -110,24 +128,33 @@ internal object Prefs {
         const val MCP_EXPOSURE_ALWAYS = "always"
 
         /**
-         * 工具调用审查模式（五档，对齐 ZCode 的权限模式光谱 + Eta 自己的智能审查）：
+         * 工具调用审查模式（四档，对齐 ZCode 的权限模式光谱 + Eta 自己的智能审查）：
          * - [TOOL_REVIEW_MODE_READONLY]：只读——非低风险调用直接拒绝（对齐 plan）；
-         * - [TOOL_REVIEW_MODE_STRICT]：严格——中风险也逐次确认（不再享受会话内一次）；
-         * - [TOOL_REVIEW_MODE_STANDARD]：标准（默认，原「危险操作确认」开关开启的行为）；
-         * - [TOOL_REVIEW_MODE_AUTO]：自动——中风险免确认，高/致命仍确认（旧开关关闭的行为）；
+         * - [TOOL_REVIEW_MODE_STANDARD]：标准（默认）——中风险本会话确认一次，高/致命每次确认；
          * - [TOOL_REVIEW_MODE_SMART]：智能审查——中风险以上调用交给一个独立模型
          *   逐次判定 allow/deny（[AGENT_TOOL_REVIEW_ENGINE] 选择 LLM 或决策模型），
-         *   模型失败时回退标准档的规则确认，绝不会因审查失效直接放行。
+         *   模型失败时回退标准档的规则确认，绝不会因审查失效直接放行；
+         * - [TOOL_REVIEW_MODE_OFF]：完全放行——不做任何确认（含高/致命），
+         *   用户显式交出底线豁免的唯一档位。
+         *
+         * 严格（中风险逐次确认）与自动（中风险免确认）两档已并入标准，确认粒度收敛为一档；
+         * 退役值只由 [toolReviewMode] 读时映射到标准，不回写（回滚旧版仍认识原值）。
          *
          * 每次调用实时读取，改设置立即生效（不同于渐进加载的新会话语义）：
          * 审查是安全边界，用户收紧时应立即拦住下一次调用。
          */
         const val AGENT_TOOL_REVIEW_MODE = "agent_tool_review_mode"
         const val TOOL_REVIEW_MODE_READONLY = "readonly"
-        const val TOOL_REVIEW_MODE_STRICT = "strict"
         const val TOOL_REVIEW_MODE_STANDARD = "standard"
-        const val TOOL_REVIEW_MODE_AUTO = "auto"
         const val TOOL_REVIEW_MODE_SMART = "smart"
+        const val TOOL_REVIEW_MODE_OFF = "off"
+
+        /**
+         * 已退役的审查档值（strict / auto）：只由 [toolReviewMode] 的读时迁移映射到
+         * [TOOL_REVIEW_MODE_STANDARD]；新写入一律不再产出这两个值。
+         */
+        const val TOOL_REVIEW_MODE_STRICT = "strict"
+        const val TOOL_REVIEW_MODE_AUTO = "auto"
 
         /**
          * 智能审查档的引擎（二选一，各自独立配置）：
@@ -200,8 +227,9 @@ internal object Prefs {
         const val AGENT_SUBAGENT_TOOLS = "agent_subagent_tools"
 
         /**
-         * 危险操作逐次确认：重启、卸载应用、清数据、删除用户等不可逆操作先问用户。
-         * 默认关闭，保持历史行为；打开后只作用于写操作，读类工具不受影响。
+         * [已退役] 危险操作逐次确认布尔开关：UI 已由 [AGENT_TOOL_REVIEW_MODE] 四档取代，
+         * 新代码不再写它；键与默认值保留，供 [BOOLEAN_DEFAULTS] / [LOCAL_AGENT_KEYS]
+         * 的远端默认值表与回滚兼容。
          */
         const val AGENT_CONFIRM_DANGEROUS_TOOLS = "agent_confirm_dangerous_tools"
         const val AGENT_THINKING_ENABLED = "agent_thinking_enabled"
@@ -605,6 +633,35 @@ internal object Prefs {
     fun toolLoadingSearchEnabled(conversationId: String): Boolean =
         resolveToolLoadingMode(conversationId) == Keys.TOOL_LOADING_MODE_SEARCH
 
+    /** 本会话是否走「原生组集合 + 后缀追加」的缓存优先档。 */
+    fun toolLoadingSuffixMode(conversationId: String): Boolean =
+        resolveToolLoadingMode(conversationId) == Keys.TOOL_LOADING_MODE_SUFFIX
+
+    /** 会话级原生工具组集合的快照；null = 本会话还没有初始化过。 */
+    data class NativeGroupsSnapshot(val groups: Set<String>, val frozen: Boolean)
+
+    /** 读取 [Keys.NATIVE_GROUPS] 单槽快照；会话 id 不匹配即视为未初始化。 */
+    fun nativeGroups(conversationId: String): NativeGroupsSnapshot? {
+        if (conversationId.isBlank()) return null
+        if (getString(Keys.NATIVE_GROUPS_CONVERSATION) != conversationId) return null
+        return NativeGroupsSnapshot(
+            groups = getString(Keys.NATIVE_GROUPS)
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet(),
+            frozen = getString(Keys.NATIVE_GROUPS_FROZEN) == "1",
+        )
+    }
+
+    /** 写入 [Keys.NATIVE_GROUPS] 单槽快照；[frozen] 一旦置真，本会话不再增长。 */
+    fun setNativeGroups(conversationId: String, groups: Set<String>, frozen: Boolean) {
+        if (conversationId.isBlank()) return
+        putString(Keys.NATIVE_GROUPS_CONVERSATION, conversationId)
+        putString(Keys.NATIVE_GROUPS, groups.sorted().joinToString(","))
+        putString(Keys.NATIVE_GROUPS_FROZEN, if (frozen) "1" else "0")
+    }
+
     /**
      * MCP 工具是否按 server 粒度渐进加载；false = 全量常驻（旧行为）。
      *
@@ -642,24 +699,20 @@ internal object Prefs {
     /**
      * 工具调用审查模式（见 [Keys.AGENT_TOOL_REVIEW_MODE]）。
      *
-     * 旧「危险操作确认」布尔开关自动迁移：存过旧键且未存新键时，
-     * 开 = 标准、关 = 自动；两者都没存过则默认标准（旧行为的默认值就是开）。
+     * 两段读时迁移都只映射不回写（保留旧值，回滚旧版仍认识）：
+     * - 退役的 strict / auto 字符串值：一律映射到标准（三档确认粒度已收敛为一档）；
+     * - 旧「危险操作确认」布尔键已不再参与：开 = 标准（即默认）、关 = 旧映射的自动档
+     *   也已并入标准，两向殊途同归，无需再读。
+     * 都没存过则默认标准（旧行为的默认值就是开）。
      * 审查决策只发生在 App 进程（localAgent 已初始化）；Hook 进程读到默认标准即可。
      */
     fun toolReviewMode(): String {
         val prefs = localAgent ?: return Keys.TOOL_REVIEW_MODE_STANDARD
-        if (prefs.contains(Keys.AGENT_TOOL_REVIEW_MODE)) {
-            return prefs.getString(Keys.AGENT_TOOL_REVIEW_MODE, null)
-                ?: Keys.TOOL_REVIEW_MODE_STANDARD
+        if (!prefs.contains(Keys.AGENT_TOOL_REVIEW_MODE)) return Keys.TOOL_REVIEW_MODE_STANDARD
+        return when (val stored = prefs.getString(Keys.AGENT_TOOL_REVIEW_MODE, null)) {
+            Keys.TOOL_REVIEW_MODE_STRICT, Keys.TOOL_REVIEW_MODE_AUTO -> Keys.TOOL_REVIEW_MODE_STANDARD
+            else -> stored ?: Keys.TOOL_REVIEW_MODE_STANDARD
         }
-        if (prefs.contains(Keys.AGENT_CONFIRM_DANGEROUS_TOOLS)) {
-            return if (prefs.getBoolean(Keys.AGENT_CONFIRM_DANGEROUS_TOOLS, true)) {
-                Keys.TOOL_REVIEW_MODE_STANDARD
-            } else {
-                Keys.TOOL_REVIEW_MODE_AUTO
-            }
-        }
-        return Keys.TOOL_REVIEW_MODE_STANDARD
     }
 
     fun setToolReviewMode(mode: String) {

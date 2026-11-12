@@ -10,25 +10,22 @@ internal enum class AgentToolReviewMode {
     /** 只读：非低风险调用直接拒绝，不询问（对齐 ZCode plan）。 */
     READONLY,
 
-    /** 严格：中风险也逐次确认，不享受「本会话允许一次」。 */
-    STRICT,
-
-    /** 标准（默认）：中风险本会话内确认一次，高/致命每次确认（原开关开启的行为）。 */
+    /** 标准（默认）：中风险本会话内确认一次，高/致命每次确认。 */
     STANDARD,
-
-    /** 自动：中风险免确认直接执行；高/致命仍确认（Eta 旧「危险操作确认」开关关闭的行为；高/致命的确认是安全底线）。 */
-    AUTO,
 
     /** 智能审查：中风险以上调用交给独立模型逐次判定 allow/deny，失败回退标准档规则确认。 */
     SMART,
+
+    /** 完全放行：任何调用都不确认（含高/致命）——用户在设置里显式交出的底线豁免，其余档位不受影响。 */
+    OFF,
     ;
 
     companion object {
+        /** 退役值（strict / auto）已并入标准档：[Prefs.toolReviewMode] 读时已映射，这里对裸字符串兜底收编。 */
         fun from(prefsValue: String): AgentToolReviewMode = when (prefsValue) {
             "readonly" -> READONLY
-            "strict" -> STRICT
-            "auto" -> AUTO
             "smart" -> SMART
+            "off" -> OFF
             else -> STANDARD
         }
     }
@@ -40,12 +37,11 @@ internal enum class AgentToolReviewMode {
  * 风险判定集中在 [AgentRiskPolicy]（工具/动作映射表）与 [AgentShellCommandRisk]（命令启发式），
  * 本对象负责按**审查模式**（[AgentToolReviewMode]，设置项实时读取，改完立即生效）把它接到确认闸门上：
  * - 只读：非低风险直接拒绝（回 [READ_ONLY_CODE]），不提供 ask_user 授权路径；
- * - 严格：中风险逐次确认（不消费会话授权），高/致命每次确认；
  * - 标准（默认）：中风险本会话内确认一次，高/致命每次确认；
- * - 自动：中风险直接执行；高/致命**仍然确认**——用户切到自动档免掉的是「什么都问」，
- *   不是「可以不问就删库/重启/卸载」；
  * - 智能审查：中风险以上交 [AgentToolReviewCoordinator] 逐次裁决（LLM 或 decision 模型），
- *   模型 allow 则放行、deny 则拦下、失败/超时回退标准档的规则确认（绝不直接放行）。
+ *   模型 allow 则放行、deny 则拦下、失败/超时回退标准档的规则确认（绝不直接放行）；
+ * - 完全放行：不做任何确认——包括高/致命。这是用户在设置里显式交出的底线豁免，
+ *   其余档位「高/致命始终确认」的约定不变。
  *
  * 确认交互由**模型自己用 ask_user 问**，复用 [ToolExecutionDecision.Reject]：
  * 命中确认条件时拒绝本次调用并回 [CONFIRM_CODE]，文案要求模型「先用 ask_user 取得同意、
@@ -112,9 +108,10 @@ internal object AgentDangerousOperationPolicy {
                 message = readOnlyMessage(toolName, assessment),
             )
         }
+        // 完全放行档：不做任何确认（含高/致命）。这是用户显式选择越过的安全底线，
+        // 其余档位的高/致命确认不受影响；工具能力开关等准入检查在调用方照常生效。
+        if (mode == AgentToolReviewMode.OFF) return null
         if (!assessment.requiresConfirmation) return null
-        // 自动档只免掉中风险；高风险与致命操作不可撤销，任何档位都始终确认。
-        if (mode == AgentToolReviewMode.AUTO && assessment.level == AgentRiskLevel.MEDIUM) return null
         // 智能审查档：中风险以上（这里正是 requiresConfirmation 的范围）交模型逐次裁决。
         // 失败/超时/未注入桥都回退到下面的标准档规则确认，绝不直接放行。
         if (mode == AgentToolReviewMode.SMART) {
@@ -132,25 +129,17 @@ internal object AgentDangerousOperationPolicy {
                 else -> Unit // Fallback / null：落到标准档规则确认
             }
         }
-        // 严格档：中风险逐次确认——不认「本会话允许」，也不把既有的会话授权顺手消费掉。
-        val strictOnce = mode == AgentToolReviewMode.STRICT && assessment.level == AgentRiskLevel.MEDIUM
         val signature = AgentDangerousConfirmationGate.signature(toolName, argumentsJson)
-        val granted = if (strictOnce) {
-            AgentDangerousConfirmationGate.consumeOnceOnly(signature)
-        } else {
-            AgentDangerousConfirmationGate.consume(signature, assessment.scope)
-        }
+        val granted = AgentDangerousConfirmationGate.consume(signature, assessment.scope)
         if (granted) {
             AgentDangerousConfirmationGate.pruneExpired()
             return null
         }
-        // 严格档的中风险按一次性授权走：待确认槽与文案都不能提供「本会话允许」选项。
-        val effective = if (strictOnce) assessment.copy(scopeOverride = AgentConfirmationScope.ONCE) else assessment
-        AgentDangerousConfirmationGate.expectConfirmation(signature, effective)
+        AgentDangerousConfirmationGate.expectConfirmation(signature, assessment)
         AgentDangerousConfirmationGate.pruneExpired()
         return ToolExecutionDecision.Reject(
             code = CONFIRM_CODE,
-            message = confirmationMessage(toolName, effective),
+            message = confirmationMessage(toolName, assessment),
         )
     }
 
