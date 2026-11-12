@@ -40,10 +40,21 @@ internal fun isChatSettledCovered(routeCovered: Boolean, transitionActive: Boole
 /**
  * 系统助手在主应用前台唤醒的请求令牌：聊天输入区按唤起方式分派响应——
  * 非零听写令牌直接开录听写胶囊（首帧桥让胶囊就位）、聚焦令牌聚焦输入框并弹键盘。
- * 令牌单调递增，消费方用自己的 consumed 标记防重放（与浮窗 dictationStartRequest 同款）。
+ * 令牌单调递增不复位；防重放靠进程级已消费水位（见下）——composer 实例随切会话
+ * 销毁重建时播种水位，旧令牌不再被当成新唤起重放（与浮窗 dictationStartRequest
+ * 不同：浮窗面板重建即重放是刻意设计）。
  */
 val LocalAssistantDictationRequest = compositionLocalOf { 0 }
 val LocalAssistantFocusRequest = compositionLocalOf { 0 }
+
+/**
+ * 系统助手唤起令牌的已消费水位：主应用侧令牌单调递增不复位，而消费它的 composer
+ * 实例随会话切换销毁重建——重建实例播种水位后旧令牌不再重放（否则每次切会话
+ * 都会误开听写/重弹键盘）。消费方在消费时经 MainActivity.markInApp*Consumed
+ * 上报（取 max）；浮窗不走这套水位，不传即无感。
+ */
+val LocalAssistantDictationConsumed = compositionLocalOf { 0 }
+val LocalAssistantFocusConsumed = compositionLocalOf { 0 }
 /** 完成且不再逐帧变化的内容复用一张离屏纹理。层始终挂着，只切换合成策略，避免插入时重挂。 */
 @Composable
 internal fun completedContentDrawLayer(modifier: Modifier, enabled: Boolean): Modifier {

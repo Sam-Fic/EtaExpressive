@@ -295,6 +295,13 @@ internal fun Material3ComposerBody(
      *  经令牌重组触发（听写已停时再按电源键的意图就是再录一句）；start() 幂等（在录时空操作），
      *  服务侧已过麦克风权限。 */
     dictationStartRequest: Int = 0,
+    /** 本实例视为已消费的令牌初值（进程级已消费水位播种）：主应用 composer 随切会话
+     *  整树销毁重建、实例内记账随之丢失——调用方播种水位后，重建实例不再把旧令牌当成
+     *  新唤起重放（否则每次切会话都误开听写）。浮窗不传：面板重建即重放是刻意设计。 */
+    initialConsumedStartToken: Int = 0,
+    /** 令牌消费上报：主应用侧转发到进程级水位（MainActivity.markInAppDictationConsumed），
+     *  供后续重建实例播种；浮窗不传，重放语义不变。 */
+    onDictationStartRequestConsumed: ((Int) -> Unit)? = null,
     /** 听写会话在场状态回传（助手弹窗用它收起/恢复屏幕上下文快捷行）；首次组合也回传一次。 */
     onDictationActiveChange: (Boolean) -> Unit = {},
     /** 系统选择器/权限跳板即将发起：助手弹窗据此让位（浮窗隐身+触摸穿透），
@@ -468,7 +475,9 @@ internal fun Material3ComposerBody(
         // 唤起即听写的首帧桥：令牌未消费的这次组合直接按听写态排版——弹窗第一帧就是流光
         // 胶囊，不再「先弹文本胶囊再交叉淡化」。真实开录在下方 effect；令牌在 effect 里
         // 消费后即交还给 dictation.active 接管（×/✓/自然结束回到文本胶囊，重组合不复活）。
-        val consumedStartToken = remember { mutableIntStateOf(0) }
+        // consumedStartToken 只随本实例存活：主应用 composer 随切会话整树重建、记账会丢——
+        // 由调用方播种 initialConsumedStartToken（进程级已消费水位），重建实例不重放旧令牌。
+        val consumedStartToken = remember { mutableIntStateOf(initialConsumedStartToken) }
         val wakeDictationPending = dictationStartRequest > consumedStartToken.intValue
         val dictating = voiceEntry == ComposerVoiceEntry.DICTATION &&
             (dictation.active || wakeDictationPending)
@@ -478,9 +487,14 @@ internal fun Material3ComposerBody(
         // 重开（听写已停时再按电源键的意图就是再录一句）。start() 幂等：在录时空操作。
         // 服务侧已过麦克风权限；识别方式未配置时 start() 会原位给出「去配置」提示条。
         // 令牌在此消费（组合后、首帧渲染前）：上一段 wakeDictationPending 只覆盖本帧渲染。
+        // 闸门用「令牌 > 记账」而非「令牌 > 0」：本 effect 首次组合必跑，播种水位后重建
+        // 实例不再重开；消费即上报水位（主应用侧供后续重建实例播种，浮窗不传即无感）。
         LaunchedEffect(dictationStartRequest) {
-            consumedStartToken.intValue = dictationStartRequest
-            if (dictationStartRequest > 0 && voiceEntry == ComposerVoiceEntry.DICTATION) dictation.start()
+            if (dictationStartRequest > consumedStartToken.intValue) {
+                consumedStartToken.intValue = dictationStartRequest
+                onDictationStartRequestConsumed?.invoke(dictationStartRequest)
+                if (voiceEntry == ComposerVoiceEntry.DICTATION) dictation.start()
+            }
         }
         // 未配置识别引擎：沿用旧语音入口的失败提示（同一句文案），原位展示在胶囊槽位，
         // 尾部圆钮改成「去配置」。它不是一个会话：不占麦克风，也不再弹 toast。

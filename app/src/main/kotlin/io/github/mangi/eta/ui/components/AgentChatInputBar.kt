@@ -117,6 +117,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import io.github.mangi.eta.ui.MainActivity
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.ui.screens.assistants.AssistantPickerDialog
@@ -355,12 +356,19 @@ internal fun AgentChatInputBar(
         wasEditingMessage = isEditingMessage
     }
     // 系统助手在主应用前台唤醒：直接在聊天输入区响应。听写请求交给
-    // Material3ComposerBody 的开录令牌（首帧桥让流光胶囊直接就位，IME 不弹）；
-    // 键盘唤起则聚焦输入框并弹键盘（与转写接管同一套 showChatInputIme 兜底节奏）。
+    // Material3ComposerBody 的开录令牌（首帧桥让流光胶囊直接就位，IME 不弹，
+    // 消费时上报进程级水位）；键盘唤起则聚焦输入框并弹键盘（与转写接管同一套
+    // showChatInputIme 兜底节奏）。两个令牌都单调递增不复位，而本组合随切会话
+    // 整树重建——闸门对照进程级已消费水位，重建后旧令牌不再重放（重开听写/重弹键盘）。
     val assistantDictationRequest = LocalAssistantDictationRequest.current
+    val assistantDictationConsumed = LocalAssistantDictationConsumed.current
     val assistantFocusRequest = LocalAssistantFocusRequest.current
+    val assistantFocusConsumed = LocalAssistantFocusConsumed.current
     LaunchedEffect(assistantFocusRequest) {
-        if (assistantFocusRequest == 0) return@LaunchedEffect
+        if (assistantFocusRequest == 0 || assistantFocusRequest <= assistantFocusConsumed) {
+            return@LaunchedEffect
+        }
+        MainActivity.markInAppFocusConsumed(assistantFocusRequest)
         showChatInputIme(focusRequester, keyboard, view)
     }
 
@@ -514,6 +522,11 @@ internal fun AgentChatInputBar(
             // 语音对话仍可从语音浮层 / 悬浮窗等其它入口进入（那里沿用默认的 CONVERSATION）。
             voiceEntry = ComposerVoiceEntry.DICTATION,
             dictationStartRequest = assistantDictationRequest,
+            // 本组合随切会话整树重建：播种进程级已消费水位 + 消费上报，旧唤起令牌
+            // 不再被重建实例重放（否则每次切会话都误开听写）。浮窗不传这两参，
+            // 面板重建即重放是刻意设计。
+            initialConsumedStartToken = assistantDictationConsumed,
+            onDictationStartRequestConsumed = { MainActivity.markInAppDictationConsumed(it) },
             showMorphLoading = showMorphLoading,
             pendingImages = pendingImages,
             pendingFileReferences = pendingFileReferences,

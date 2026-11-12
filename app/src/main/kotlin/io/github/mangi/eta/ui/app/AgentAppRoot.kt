@@ -8,7 +8,9 @@ import io.github.mangi.eta.ui.components.remoteSessionTitle
 import io.github.mangi.eta.ui.components.LocalChatRouteCovered
 import io.github.mangi.eta.ui.components.LocalChatTransitionActive
 import io.github.mangi.eta.ui.components.LocalChatUiActive
+import io.github.mangi.eta.ui.components.LocalAssistantDictationConsumed
 import io.github.mangi.eta.ui.components.LocalAssistantDictationRequest
+import io.github.mangi.eta.ui.components.LocalAssistantFocusConsumed
 import io.github.mangi.eta.ui.components.LocalAssistantFocusRequest
 import io.github.mangi.eta.ui.MainActivity
 import io.github.mangi.eta.ui.remote.ChatTarget
@@ -251,10 +253,13 @@ fun AgentAppRoot(
     // 设置页、空闲会话与纯后台任务不额外保持常亮，GUI 浮层由 Runtime 服务自己维护。
     val runtimeActive by AgentRuntimeService.keepScreenOn.collectAsState()
     // 系统助手在主应用前台唤醒：直接应用内响应——落到会话输入区（其它路由先切到会话；
-    // Home/Chat 原地），听写/聚焦由聊天输入区按令牌分派。令牌单调递增不复位，由
-    // ComposerBody 的 consumedStartToken 机制消费（与浮窗 dictationStartRequest 同款）。
+    // Home/Chat 原地），听写/聚焦由聊天输入区按令牌分派。令牌单调递增不复位；composer
+    // 实例随切会话整树销毁重建（实例内记账一并丢失），已消费水位供重建实例播种，
+    // 旧令牌不再被重放（否则每次切会话都会误开听写/重弹键盘）。
     val inAppDictationRequest by MainActivity.inAppDictationRequest.collectAsState()
     val inAppFocusRequest by MainActivity.inAppFocusRequest.collectAsState()
+    val inAppDictationConsumed by MainActivity.consumedInAppDictationRequest.collectAsState()
+    val inAppFocusConsumed by MainActivity.consumedInAppFocusRequest.collectAsState()
     LaunchedEffect(inAppDictationRequest, inAppFocusRequest) {
         if (inAppDictationRequest == 0 && inAppFocusRequest == 0) return@LaunchedEffect
         if (currentRoute !is AppRoute.Chat && currentRoute !is AppRoute.Home) {
@@ -1021,8 +1026,11 @@ fun AgentAppRoot(
         io.github.mangi.eta.ui.components.LocalConversationSubAgentEditor provides subAgentEditor,
         LocalChatTransitionActive provides navigationActive.value,
         // 系统助手在主应用前台唤醒：聊天输入区按唤起方式分派响应（听写/聚焦）。
+        // 水位随令牌一起下发：composer 重建实例播种，防旧唤起令牌重放。
         LocalAssistantDictationRequest provides inAppDictationRequest,
         LocalAssistantFocusRequest provides inAppFocusRequest,
+        LocalAssistantDictationConsumed provides inAppDictationConsumed,
+        LocalAssistantFocusConsumed provides inAppFocusConsumed,
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     // 兜底：miuix 0.9.4 的 NavEntryBuilder 没有 catch-all，未登记的 route 会在 build() 直接

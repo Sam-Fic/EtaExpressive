@@ -24,6 +24,7 @@ import io.github.mangi.eta.ui.app.AgentAppTheme
 import io.github.mangi.eta.ui.app.PredictiveBackController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -52,11 +53,28 @@ class MainActivity : ComponentActivity() {
             inAppDictationRequests.value += 1
         }
 
+        /** 已消费的听写唤起令牌水位：消费它的 composer 实例随会话切换整树销毁重建
+         *  （实例内 consumedStartToken 记账一并丢失），重建后的新实例据此播种，
+         *  旧唤起令牌不再被当成新唤起重放（否则每次切会话都会误开听写）。
+         *  与令牌同款单调递增；ComposerBody 消费时上报，取 max 防乱序回退。 */
+        private val consumedInAppDictationRequests = MutableStateFlow(0)
+        internal val consumedInAppDictationRequest = consumedInAppDictationRequests.asStateFlow()
+        internal fun markInAppDictationConsumed(token: Int) {
+            consumedInAppDictationRequests.update { maxOf(it, token) }
+        }
+
         /** 主应用前台唤醒的聚焦请求令牌：聊天输入区聚焦输入框并弹键盘。 */
         private val inAppFocusRequests = MutableStateFlow(0)
         internal val inAppFocusRequest = inAppFocusRequests.asStateFlow()
         internal fun requestInAppFocus() {
             inAppFocusRequests.value += 1
+        }
+
+        /** 已消费的聚焦唤起令牌水位：语义同 consumedInAppDictationRequests，防切会话后旧令牌重放、重弹键盘。 */
+        private val consumedInAppFocusRequests = MutableStateFlow(0)
+        internal val consumedInAppFocusRequest = consumedInAppFocusRequests.asStateFlow()
+        internal fun markInAppFocusConsumed(token: Int) {
+            consumedInAppFocusRequests.update { maxOf(it, token) }
         }
     }
 
