@@ -639,6 +639,8 @@ internal abstract class EtaDatabase : RoomDatabase() {
          * 必须声明在所有 MIGRATION_* 之后：companion 的属性按声明顺序初始化。
          */
         internal val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+            // 25 → 40 整库重建：兼容从 3.4.2 及更早版本升上来的老库。
+            MIGRATION_25_40,
             MIGRATION_6_7,
             MIGRATION_7_8,
             MIGRATION_8_9,
