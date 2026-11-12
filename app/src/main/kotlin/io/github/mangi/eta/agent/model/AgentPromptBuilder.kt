@@ -31,6 +31,8 @@ internal object AgentPromptBuilder {
         interactiveModeEnabled: Boolean = false,
         disabledCapabilities: AgentToolGroups.ToolSwitchState? = null,
         openedToolGroups: Set<String> = emptySet(),
+        /** 缓存优先档：延迟组工具经 tool_call 调用，组索引的说明随之改写。 */
+        groupCallsViaToolCall: Boolean = false,
         delegationEngaged: Boolean = false,
         /**
          * 本轮目录里真实存在的工具名。
@@ -61,11 +63,14 @@ internal object AgentPromptBuilder {
          * 注入系统提示（语音「创建屏幕日程」用它省掉取时间的一次工具往返）。
          */
         presetRunAt: Instant? = null,
+        /** 唤起即屏幕上下文（助手弹窗 run）：true 时注入 observe_screen 首轮规则（见 buildSystemMessages）。 */
+        screenObservationRule: Boolean = false,
     ): JSONArray {
         val messages = buildSystemMessages(
             config, skillContext, memoryContext, rootAvailable, delegationAvailable, shellTools,
             interactiveModeEnabled = interactiveModeEnabled,
             openedToolGroups = openedToolGroups,
+            groupCallsViaToolCall = groupCallsViaToolCall,
             disabledCapabilities = disabledCapabilities,
             delegationEngaged = delegationEngaged,
             callableTools = callableTools,
@@ -73,6 +78,7 @@ internal object AgentPromptBuilder {
             openableGroupLimit = openableGroupLimit,
             dynamicToolGroups = dynamicToolGroups,
             presetRunAt = presetRunAt,
+            screenObservationRule = screenObservationRule,
         )
         onSystemCount(messages.length())
         appendHistoryForModel(history, messages)
@@ -145,6 +151,15 @@ internal object AgentPromptBuilder {
     private const val RETIRED_ON_DEVICE_ACTION_TOOL = "device_actions"
 
     /**
+     * 唤起即屏幕上下文的首轮规则（助手弹窗 run）：判断模型或入口正则已判定「需要看屏幕」
+     * 且消息未附图，引导模型一步到位带截图观察，不要凭空猜测屏幕内容。
+     */
+    private fun screenObservationRuleText(): String =
+        "用户这条请求依赖其当前手机屏幕上正在显示的内容，而消息没有附带截图：" +
+            "请先调用 observe_screen 且把 include_screenshot 置为 true 查看屏幕，再回答或执行；" +
+            "不要凭空猜测屏幕内容，也不要不带截图先调用一次 observe_screen 再重复调用。"
+
+    /**
      * 日程预热的运行时间口径（语音「创建屏幕日程」预设与关键词命中的通用日程任务共用）。
      *
      * 时间取 Runtime 在请求发起时刻捕获的 [Instant]，按设备本地时区展开；
@@ -173,6 +188,8 @@ internal object AgentPromptBuilder {
         shellTools: AgentShellToolAvailability.Snapshot? = null,
         interactiveModeEnabled: Boolean = false,
         openedToolGroups: Set<String> = emptySet(),
+        /** 缓存优先档：延迟组工具经 tool_call 调用，组索引的说明随之改写。 */
+        groupCallsViaToolCall: Boolean = false,
         /** 决定「关闭说明」内容；默认从 config 与既有开关推导，与目录同源。 */
         disabledCapabilities: AgentToolGroups.ToolSwitchState? = null,
         /**
@@ -198,6 +215,8 @@ internal object AgentPromptBuilder {
         dynamicToolGroups: List<AgentToolGroup> = emptyList(),
         /** 预设运行发起时刻；见 [buildInitialMessages]。 */
         presetRunAt: Instant? = null,
+        /** 唤起即屏幕上下文（助手弹窗 run）；见 [buildInitialMessages]。 */
+        screenObservationRule: Boolean = false,
     ): JSONArray {
         val environmentRule = if (shellTools != null) {
             "environment 按下方本机命令检测选择"
@@ -270,6 +289,11 @@ internal object AgentPromptBuilder {
         // 语音「创建屏幕日程」预设：直接把请求发起时刻的真实系统时间写进提示，
         // 模型可一步换算相对日期并调用创建工具，省掉「先取时间」的一次往返。
         presetRunAt?.let { messages.put(systemMessage(presetRunAtRule(it))) }
+        // 唤起即屏幕上下文（助手弹窗）：用户指令依赖其当前屏幕内容且消息未附图，引导模型
+        // 一步到位带截图观察，省一次「解锁屏幕组 → 观察」的往返。屏幕组已由运行侧预开。
+        if (screenObservationRule) {
+            messages.put(systemMessage(screenObservationRuleText()))
+        }
         if (!pureChat && delegationAvailable && (!trimChatSections || delegationEngaged)) {
             messages.put(systemMessage(delegationRule(::named)))
             if (delegationEngaged) messages.put(systemMessage(DELEGATION_RESULT_RULE))
@@ -590,7 +614,7 @@ internal object AgentPromptBuilder {
         // 索引宣传一个「能打开」的组，打开后下一轮却拿不到工具，是最糟的体验
         // （模型白花一轮且被反复误导）。入口收窄、子代理最小配置都走这条路径。
         if (!trimChatSections && !pureChat) {
-            AgentToolGroups.indexMessage(availability, dynamicToolGroups)?.let { index ->
+            AgentToolGroups.indexMessage(availability, dynamicToolGroups, groupCallsViaToolCall)?.let { index ->
                 messages.put(systemMessage(index))
             }
         }

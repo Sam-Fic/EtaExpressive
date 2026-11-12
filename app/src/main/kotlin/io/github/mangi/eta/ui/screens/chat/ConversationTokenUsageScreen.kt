@@ -89,7 +89,11 @@ internal fun ConversationTokenUsageScreen(
                     item(key = "cache-rate") {
                         TokenUsageRow(
                             label = stringResource(R.string.stats_model_cache_hit_rate),
-                            value = formatCacheHitRate(usage.cachedTokens, usage.inputTokens),
+                            value = formatCacheHitRate(
+                                usage.cachedTokens,
+                                usage.inputTokens,
+                                reported = usage.cachedReported,
+                            ),
                         )
                     }
                     item(key = "total") {

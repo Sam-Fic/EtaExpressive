@@ -68,11 +68,19 @@ internal object AgentToolCatalog {
          * 同时不再下发 `tools_search` / `tools_use_group`，判断模型也不参与收窄。
          */
         presetToolNames: Set<String>? = null,
+        /**
+         * 缓存优先档（suffix）的会话级原生组集合；null = 关闭该档，保持既有渐进加载。
+         *
+         * 非 null 时只有集合内的延迟组下发原生 schema，其余延迟组一律不下发，改由
+         * [AgentToolGroupCatalog.CALL] 转发（工具说明作为组加载回执进入历史尾部）。
+         * 这样 `tools` 在会话内字节恒定，provider 的前缀缓存只在集合增长时失效一次。
+         */
+        nativeGroups: Set<String>? = null,
     ): JSONArray {
         // 组开关只决定「参与下发」；延迟折叠与单工具禁用统一在最后一次过滤完成，
         // 目录过滤、索引行与 tools_use_group 枚举共用同一份可用性判定，
         // 避免「开关关了但仍宣传该组」这类多处判断不一致的缺陷。
-        val groupAvailability = AgentToolGroups.availability(openedToolGroups, dynamicGroups) { group ->
+        val groupGate: (AgentToolGroup) -> Boolean = { group ->
             when (group.id) {
                 AgentToolGroups.BASIC_GROUP.id -> basicTools
                 AgentToolGroups.SCREEN_GROUP.id -> screenTools
@@ -90,12 +98,16 @@ internal object AgentToolCatalog {
                 else -> AgentToolGroups.isMcpGroupId(group.id)
             }
         }
+        val groupAvailability = AgentToolGroups.availability(openedToolGroups, dynamicGroups, groupGate)
+        // 缓存优先档：下发的「已解锁」集合固定为会话级原生组，与 run 内开组无关。
+        val suffixMode = nativeGroups != null && presetToolNames == null
+        val schemaUnlocked = if (suffixMode) nativeGroups.orEmpty() else openedToolGroups
         val withheld = if (presetToolNames == null) {
-            AgentToolGroups.withheldTools(openedToolGroups, disabledTools, dynamicGroups)
+            AgentToolGroups.withheldTools(schemaUnlocked, disabledTools, dynamicGroups)
         } else {
             // 预设工具直接可见：先只按「延迟组是否打开」折叠，再豁免预设名单，
             // 最后并入单工具禁用——用户关掉的工具不会因为进了预设而被重新打开。
-            AgentToolGroups.withheldTools(openedToolGroups, emptySet(), dynamicGroups)
+            AgentToolGroups.withheldTools(schemaUnlocked, emptySet(), dynamicGroups)
                 .minus(presetToolNames) + disabledTools
         }
         val emitted = JSONArray()
@@ -142,6 +154,16 @@ internal object AgentToolCatalog {
         val openable = if (presetToolNames != null) {
             // 快捷功能运行跳过渐进加载：没有可搜索/可解锁的组，目录一次到位。
             emptyList<String>()
+        } else if (suffixMode) {
+            // 枚举必须与「本轮已打开」无关：否则开一个组就改 tools 字节，整段前缀失效。
+            // 这里以会话级原生组当作「已解锁」，只看用户开关与决策收窄。
+            AgentToolGroups.openableIds(
+                AgentToolGroups.availability(nativeGroups.orEmpty(), dynamicGroups, groupGate),
+                dynamicGroups,
+            ).filter { groupId ->
+                openableGroupLimit == null || groupId in openableGroupLimit ||
+                    AgentToolGroups.isMcpGroupId(groupId)
+            }
         } else {
             AgentToolGroups.openableIds(groupAvailability, dynamicGroups)
                 .filter { groupId ->
@@ -179,7 +201,11 @@ internal object AgentToolCatalog {
             }
         }
         val projected = capabilities.project(filterWithheld(emitted, withheld))
-        return presetToolNames?.let { retainOnly(projected, it) } ?: projected
+        if (!suffixMode) return presetToolNames?.let { retainOnly(projected, it) } ?: projected
+        // 通用入口放在能力投影之后：它是固定门面，不属于任何组，也不该被投影规则剔除
+        // （AgentToolCapabilities 不认识这个名字，会按 UNKNOWN_TOOL 丢掉）。
+        projected.put(AgentToolGroupCatalog.toolCallEntry())
+        return projected
     }
 
     /**

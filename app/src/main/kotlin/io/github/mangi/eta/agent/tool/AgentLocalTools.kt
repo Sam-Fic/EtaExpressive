@@ -30,6 +30,8 @@ import io.github.mangi.eta.agent.model.AgentSelfSettingsToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.model.AgentToolGroup
 import io.github.mangi.eta.agent.model.AgentToolGroupCatalog
+import io.github.mangi.eta.agent.model.AgentToolCatalog
+import io.github.mangi.eta.agent.model.AgentToolCallValidator
 import io.github.mangi.eta.agent.model.AgentToolSearch
 import io.github.mangi.eta.agent.model.AgentToolSearchCatalog
 import io.github.mangi.eta.agent.model.AgentSensitiveToolPolicy
@@ -186,6 +188,14 @@ internal class AgentLocalTools(
      * 没选它。两者的补救方式不同，文案必须分开（决策收窄可以用「一键放行」恢复）。
      */
     private val decisionAllowedGroups: () -> Set<String>? = { null },
+    /**
+     * 缓存优先档（suffix）：延迟组的工具不下发原生 schema，改为经 `tool_call` 转发。
+     *
+     * 打开组时把每个工具的 `name / description / parameters` 作为工具结果回传（历史尾部），
+     * 因此请求前缀保持字节稳定；执行侧只多一层「真实名解析 + 真实 schema 校验」，
+     * 权限、敏感策略与媒体返回全部复用既有分支。
+     */
+    private val groupToolsViaCall: Boolean = false,
 ) : AgentModelClient.ToolExecutor, AutoCloseable {
 
     /** ASK 只在第一次界面操作前问一次，之后整轮 run 都用选定的位置。 */
@@ -455,8 +465,141 @@ internal class AgentLocalTools(
         if (failure != null) {
             return errorResult(code = failure.first, message = failure.second)
         }
-        return AgentToolGroupCatalog.result(group, usableToolsOf(group))
+        val usable = usableToolsOf(group)
+        // MCP 组的 schema 由投影快照追加（打开后原生可见），执行侧没有第二份可作回执文档
+        // 的来源，所以不套用 tool_call 语义，否则会把可调用的 server 工具说成「不在此轮」。
+        val viaCall = groupToolsViaCall && !AgentToolGroups.isMcpGroupId(group.id)
+        return AgentToolGroupCatalog.result(
+            group = group,
+            availableTools = usable,
+            toolDocs = if (viaCall) groupToolDocs(group, usable) else null,
+            usage = if (viaCall) AgentToolGroups.groupUsage(group.id) else null,
+            requiresToolCall = viaCall,
+        )
     }
+
+    /** 组内工具的文档快照（缓存优先档回执用）；run 内不随已打开状态变化。 */
+    private val groupDocsCache = mutableMapOf<String, JSONArray>()
+
+    private fun groupToolDocs(group: AgentToolGroup, usable: List<String>): JSONArray =
+        groupDocsCache.getOrPut(group.id) {
+            val capabilities = runCatching {
+                AgentToolCapabilities.capture(context).copy(
+                    virtualDisplay = runSurface == io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.BACKGROUND,
+                )
+            }.getOrNull() ?: return@getOrPut JSONArray()
+            val tools = runCatching {
+                AgentToolCatalog.build(
+                    basicTools = basicToolsEnabled(),
+                    terminalTools = terminalToolsEnabled(),
+                    browserTools = browserToolsEnabled(),
+                    screenTools = screenToolsEnabled(),
+                    deviceTools = deviceToolsEnabled(),
+                    personalTools = personalToolsEnabled(),
+                    extensionsTools = extensionsToolsEnabled(),
+                    memoryTools = memoryToolsEnabled?.invoke() ?: false,
+                    capabilities = capabilities,
+                    // 全开只为拿到该组真实 schema；投影与禁用集仍按同一套判定生效。
+                    openedToolGroups = AgentToolGroups.allIds,
+                    dynamicGroups = dynamicToolGroups(),
+                    toolSearchEnabled = false,
+                )
+            }.getOrNull() ?: return@getOrPut JSONArray()
+            JSONArray().also { docs ->
+                val retained = AgentToolCatalog.retainOnly(tools, group.toolNames)
+                for (index in 0 until retained.length()) {
+                    val function = retained.optJSONObject(index)?.optJSONObject("function") ?: continue
+                    val name = function.optString("name")
+                    if (name !in usable) continue
+                    docs.put(
+                        JSONObject()
+                            .put("name", name)
+                            // 描述只留关键部分：整段文档会让回执比 schema 本身还长。
+                            .put("description", function.optString("description").take(200))
+                            .put("parameters", function.optJSONObject("parameters") ?: JSONObject()),
+                    )
+                }
+            }
+        }
+
+    /**
+     * 缓存优先档的通用入口。
+     *
+     * 只做「真实名解析 + 组加载校验 + 真实 schema 校验」，然后把调用交回 [execute]——
+     * 权限、敏感策略、媒体返回、诊断都必须与原生调用走同一条分支，不能在这里另写一份。
+     */
+    private fun invokeGroupedTool(args: JSONObject): AgentModelClient.ToolResult {
+        val requested = args.optString("name").trim()
+        if (requested.isEmpty()) {
+            return textResult(errorResult("INVALID_ARGUMENT", "tool_call.name 不能为空"))
+        }
+        if (requested == AgentToolGroupCatalog.CALL) {
+            return textResult(errorResult("INVALID_ARGUMENT", "tool_call 不能调用自身，请填写组回执里列出的工具名"))
+        }
+        val groupId = AgentToolGroups.groupOfTool(requested, dynamicToolGroups())
+        if (groupId == null) {
+            return textResult(
+                errorResult(
+                    "UNKNOWN_TOOL",
+                    "未知工具：$requested。只能调用 tools_use_group / tools_search 回执里 tools 列出的名字。",
+                ),
+            )
+        }
+        if (groupId !in openedToolGroups) {
+            return textResult(
+                errorResult(
+                    "TOOL_GROUP_NOT_LOADED",
+                    "工具「$requested」所属组 $groupId 还没加载。先调用 tools_use_group(group=$groupId) " +
+                        "或 tools_search，从回执的 tool_docs 确认工具名与参数后再用 tool_call 调用。",
+                ),
+            )
+        }
+        val group = groupById(groupId)
+        if (group != null) {
+            val usable = usableToolsOf(group)
+            if (requested !in usable) {
+                return textResult(
+                    errorResult(
+                        "TOOL_UNAVAILABLE",
+                        "工具「$requested」在本设备当前不可用（缺少权限/root 或在设置中被禁用）。" +
+                            "该组可用工具：${usable.joinToString(", ")}",
+                    ),
+                )
+            }
+        }
+        // 参数按组内真实 schema 校验：工具不在 tools 里，主校验器看不到它。
+        val groupTools = group?.let { groupToolSchema(it) } ?: JSONArray()
+        val validation = AgentToolCallValidator(groupTools).validate(
+            AgentModelClient.ToolCall(id = "", name = requested, argumentsJson = args.optJSONObject("arguments")?.toString() ?: "{}"),
+        )
+        if (validation != null) return textResult(errorResult("INVALID_ARGUMENT", validation))
+        return execute(
+            AgentModelClient.ToolCall(
+                id = "",
+                name = requested,
+                argumentsJson = args.optJSONObject("arguments")?.toString() ?: "{}",
+            ),
+        )
+    }
+
+    /** 组内工具的目录快照（schema 校验用），与回执文档同源。 */
+    private fun groupToolSchema(group: AgentToolGroup): JSONArray =
+        groupDocsCache.getOrPut("schema:${group.id}") {
+            val docs = groupToolDocs(group, usableToolsOf(group))
+            JSONArray().also { schemas ->
+                for (index in 0 until docs.length()) {
+                    val doc = docs.getJSONObject(index)
+                    schemas.put(
+                        JSONObject().put(
+                            "function",
+                            JSONObject()
+                                .put("name", doc.getString("name"))
+                                .put("parameters", doc.optJSONObject("parameters") ?: JSONObject()),
+                        ),
+                    )
+                }
+            }
+        }
 
     /**
      * 工具级关键词搜索（tools_search）：在「开关允许、尚未打开」的延迟组里按
@@ -524,7 +667,33 @@ internal class AgentLocalTools(
         }
         val labels = hits.map { it.groupId }.distinct()
             .associateWith { AgentToolGroups.label(it, dynamic) }
-        return AgentToolSearchCatalog.result(hits, labels, unlocked, unavailable)
+        // 缓存优先档：命中的工具本就没进 tools，回执直接把参数说明带上，
+        // 模型不必再开一次组就能经 tool_call 调用。
+        // 命中里只要含 MCP 组就退回原生语义：它的 schema 打开后由投影追加，不归 tool_call 管。
+        val viaCall = groupToolsViaCall && hits.none { AgentToolGroups.isMcpGroupId(it.groupId) }
+        val toolDocs = if (!viaCall) {
+            null
+        } else {
+            JSONArray().also { docs ->
+                unlocked.forEach { groupId ->
+                    val group = groupById(groupId) ?: return@forEach
+                    val hitNames = hits.filter { it.groupId == groupId }.mapTo(mutableSetOf()) { it.name }
+                    val groupDocs = groupToolDocs(group, usableToolsOf(group))
+                    for (index in 0 until groupDocs.length()) {
+                        val doc = groupDocs.getJSONObject(index)
+                        if (doc.optString("name") in hitNames) docs.put(doc)
+                    }
+                }
+            }
+        }
+        return AgentToolSearchCatalog.result(
+            hits = hits,
+            labels = labels,
+            unlockedGroups = unlocked,
+            unavailableGroups = unavailable,
+            toolDocs = toolDocs,
+            requiresToolCall = viaCall,
+        )
     }
 
     /**
@@ -835,6 +1004,7 @@ internal class AgentLocalTools(
                 "skills_install_from_github" -> textResult(skillsInstallFromGitHub(args))
                 "skills_install_local" -> textResult(skillsInstallLocal(args))
                 AgentToolGroupCatalog.USE_GROUP -> textResult(useToolGroup(args))
+                AgentToolGroupCatalog.CALL -> invokeGroupedTool(args)
                 AgentToolSearchCatalog.SEARCH -> textResult(
                     if (toolSearchEnabled()) {
                         searchTools(args)

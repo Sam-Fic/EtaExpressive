@@ -424,6 +424,8 @@ internal object AgentToolGroups {
     fun indexMessage(
         availability: Availability,
         extraGroups: List<AgentToolGroup> = emptyList(),
+        /** 缓存优先档：加载后立即经 [AgentToolGroupCatalog.CALL] 调用，不用等下一轮。 */
+        callsViaToolCall: Boolean = false,
     ): String? {
         val available = allGroups(extraGroups).filter { it.id in availability.openable }
         if (available.isEmpty()) return null
@@ -432,14 +434,114 @@ internal object AgentToolGroups {
             available.forEach { group ->
                 appendLine("- id=${group.id} | ${group.summary}")
             }
-            append(
-                "None of these tools are in your tool list yet. Call tools_use_group with an id to " +
-                    "load it, or tools_search with keywords when you only need one or two tools — " +
-                    "a match opens the owning group for you. Their tools appear from the next round " +
-                    "onward. Never call them before loading, and do not open a group you do not need.",
-            )
+            if (callsViaToolCall) {
+                append(
+                    "None of these tools are in your tool list. Call tools_use_group with an id, or " +
+                        "tools_search with keywords when you only need one or two tools — a match opens the " +
+                        "owning group for you. The result lists each tool's parameters; call them with " +
+                        "${AgentToolGroupCatalog.CALL} ({name, arguments}) right away, same round is fine. " +
+                        "Never call a tool before its group is loaded, and do not open a group you do not need.",
+                )
+            } else {
+                append(
+                    "None of these tools are in your tool list yet. Call tools_use_group with an id to " +
+                        "load it, or tools_search with keywords when you only need one or two tools — " +
+                        "a match opens the owning group for you. Their tools appear from the next round " +
+                        "onward. Never call them before loading, and do not open a group you do not need.",
+                )
+            }
         }
     }
+
+    /**
+     * 首轮预开组的本地关键词预测。
+     *
+     * 只在会话首个 run 使用：把「几乎肯定要用」的组提前并进原生集合，模型就不必在
+     * run 中途开组，`tools` 与 system 也因此保持字节稳定。命中不明确时宁可不预开——
+     * 多开一组要付它的 schema，误判比漏判更贵。
+     *
+     * 关键词表就近写在组定义旁边，与 [summary] 描述的是同一批能力，改组时一起改。
+     */
+    fun predictFromText(text: String, allowed: (String) -> Boolean): Set<String> {
+        if (text.isBlank()) return emptySet()
+        val normalized = text.lowercase()
+        val predicted = linkedSetOf<String>()
+        for (group in deferredGroups) {
+            if (predicted.size >= MAX_PREDICTED_GROUPS) break
+            if (!allowed(group.id)) continue
+            val keywords = PREFETCH_KEYWORDS[group.id] ?: continue
+            if (keywords.any { normalized.contains(it) }) predicted += group.id
+        }
+        return predicted
+    }
+
+    /** 预开关键词：组 id → 小写匹配片段。只放强信号，避免「打开」这类泛词误开整组。 */
+    private val PREFETCH_KEYWORDS: Map<String, List<String>> = mapOf(
+        SCREEN_GROUP.id to listOf(
+            "屏幕", "截图", "界面", "点击", "点一下", "滑动", "手势", "输入框",
+            "screenshot", "tap ", "swipe",
+        ),
+        WEB_GROUP.id to listOf(
+            "网页", "浏览器", "网站", "链接", "http://", "https://", "抓取",
+            "browser", "url",
+        ),
+        TERMINAL_GROUP.id to listOf(
+            "终端", "命令", "shell", "文件", "目录", "代码", "编译", "git",
+            "脚本", "apk", "安装包", "python", "node ", "run_command",
+        ),
+        DEVICE_GROUP.id to listOf(
+            "闹钟", "计时器", "音量", "铃声", "勿扰", "静音", "亮度", "飞行模式",
+            "播放", "暂停", "卸载", "安装应用",
+        ),
+        CALENDAR_GROUP.id to listOf("日程", "日历", "提醒", "会议", "约会", "行程", "calendar"),
+        PERSONAL_GROUP.id to listOf(
+            "联系人", "短信", "通话记录", "相册", "照片", "账单", "待办", "录音",
+        ),
+        DEVICE_STATE_GROUP.id to listOf(
+            "电量", "存储空间", "剩余空间", "通知栏", "定位", "logcat", "dumpsys", "网络状态",
+        ),
+        EXTENSIONS_GROUP.id to listOf("记住", "记忆", "配方", "自定义工具", "安装技能", "skill"),
+    )
+
+    /**
+     * 组的使用要点（system 里那段指引的压缩版）。
+     *
+     * 缓存优先档不再把各组指引写进 system——那会让组开关改动整段前缀。模型打开组时，
+     * 要点随组加载回执一起给出，仍然在调用前看得到「这组该怎么用」。
+     */
+    fun groupUsage(groupId: String): String? = when (groupId) {
+        SCREEN_GROUP.id ->
+            "先 observe_screen 读 UI 树；只有确实需要画面时才 include_screenshot=true，并保持 " +
+                "include_ui_tree=true，让截图与节点来自同一次观察。点击优先 tap_element/tap_area，" +
+                "坐标工具必须写明 coordinate_space（截图定位用 normalized 0–999，节点坐标用 screen），" +
+                "节点调用要把同一次观察的 observation_id 传回。动作结果先读 after 判断是否生效；" +
+                "返回 ACTION_OUTCOME_UNKNOWN 或 DIRECTION_MISMATCH 必须先重新观察，不要重放动作。"
+        WEB_GROUP.id ->
+            "读取网页用网页工具，不要用 open_uri 代替读取；截图默认视口，整页用 full_page=true。" +
+                "用户打开 Eta 浏览器页会接管当前会话的 WebView，期间网页工具暂停。"
+        TERMINAL_GROUP.id ->
+            "Android 文件与系统命令用 environment=android，用户选择 Alpine/Debian 时统一用 " +
+                "environment=linux。连续多步先 action=open 取 session_id 再 action=exec 复用；" +
+                "长命令用 async=true 后 read_async_result 轮询；常驻服务用 daemon_start，不要用 nohup 或 &。"
+        DEVICE_GROUP.id ->
+            "设备直写工具跟随用户开关；日程读写需要运行时权限，闹钟直写需要 Root 与系统时钟库，" +
+                "缺少权限时如实说明，不要改用 Shell 绕过。"
+        CALENDAR_GROUP.id ->
+            "读日程用 search_calendar_events / list_calendars，写日程用 create_calendar_event(s) / " +
+                "update_calendar_event / delete_calendar_event；写入需要日历权限。"
+        PERSONAL_GROUP.id ->
+            "联系人、短信、通话记录、相册、账单等属于个人数据；只读取完成任务所必需的部分，" +
+                "不要批量导出，也不要把内容写进最终答复之外的地方。"
+        DEVICE_STATE_GROUP.id ->
+            "电量、存储、通知、定位等状态查询优先用专用工具；logcat/dumpsys 只取与问题相关的部分，" +
+                "不要整段回读。"
+        EXTENSIONS_GROUP.id ->
+            "写记忆前确认这是用户长期有效的信息；改 Eta 自身设置要先说明影响，不要静默修改。"
+        else -> null
+    }
+
+    /** 会话首个 run 最多预开多少个组：再多就抵掉了「按需加载」省下的 schema。 */
+    const val MAX_PREDICTED_GROUPS = 3
 
     /** 旧组 id → 新组 id 的迁移映射（按助手配置里的历史值）。 */
     fun migrateLegacyGroupId(legacyId: String): Set<String> = when (legacyId) {
@@ -526,6 +628,44 @@ internal object AgentToolGroupCatalog {
     const val USE_GROUP = "tools_use_group"
 
     /**
+     * 缓存优先档（suffix）的通用调用入口名。
+     *
+     * 延迟组的工具不再进入 `tools`：每次开组都会改写请求前缀，而 `tools` 排在 system
+     * 与历史之前，一改就让 provider 的前缀缓存整段失效。改由这个 schema 恒定的入口转发，
+     * 工具的名字与参数说明随组加载回执以**工具结果**的形式进入历史尾部（后缀），
+     * 前缀因此保持不变。
+     */
+    const val CALL = "tool_call"
+
+    /** 通用调用入口的固定 schema：与会话、已加载组、设备能力全部无关。 */
+    fun toolCallEntry(): JSONObject = AgentToolSchema.function(
+        name = CALL,
+        description = "Call a tool from a loaded deferred group. `name` must be one listed by the " +
+            "most recent tools_use_group / tools_search result; `arguments` must follow the " +
+            "parameter documentation in that same result.",
+        parameters = JSONObject()
+            .put("type", "object")
+            .put(
+                "properties",
+                JSONObject()
+                    .put(
+                        "name",
+                        JSONObject()
+                            .put("type", "string")
+                            .put("description", "Tool name listed by the latest group-load result."),
+                    )
+                    .put(
+                        "arguments",
+                        JSONObject()
+                            .put("type", "object")
+                            .put("description", "Arguments for that tool, as documented in the group-load result."),
+                    ),
+            )
+            // 只要求 name：无参工具可以省略 arguments，执行侧会按 {} 处理。
+            .put("required", JSONArray().put("name")),
+    )
+
+    /**
      * @param allowEmpty openableIds 为空时仍下发工具。control 模式把可打开组收窄到空集
      * （闲聊或判断模型未选中任何组）时，若直接摘掉工具，模型只能看到「工具不存在」，
      * 容易改试其他工具名并连续被拒；保留工具可以让它拿到一条解释性错误。
@@ -574,24 +714,41 @@ internal object AgentToolGroupCatalog {
      * 目录在组开关之外还要经过 AgentToolRequirements / AgentToolCapabilities / 单工具禁用集过滤。
      * 若照抄整组名单，模型会照着清单去调用一批永远不会出现的工具，连续被拒后终止整轮。
      */
-    fun result(group: AgentToolGroup, availableTools: List<String>): String = JSONObject()
-        .put("ok", true)
-        .put("group", group.id)
-        .put("tools", JSONArray(availableTools))
-        .put("available", "next_turn")
-        .put(
+    fun result(
+        group: AgentToolGroup,
+        availableTools: List<String>,
+        /** 每个工具的名字、描述与参数 schema；缓存优先档用它替代下发原生 schema。 */
+        toolDocs: JSONArray? = null,
+        /** 该组的使用指引（原先挂在 system 里的段落），随回执一起给出。 */
+        usage: String? = null,
+        /** true = 该组工具不在 `tools` 里，必须经 [AgentToolGroupCatalog.CALL] 调用。 */
+        requiresToolCall: Boolean = false,
+    ): String = JSONObject().apply {
+        put("ok", true)
+        put("group", group.id)
+        put("tools", JSONArray(availableTools))
+        toolDocs?.let { put("tool_docs", it) }
+        usage?.takeIf { it.isNotBlank() }?.let { put("usage", it) }
+        put("available", if (requiresToolCall) "now" else "next_turn")
+        put("call_via", if (requiresToolCall) AgentToolGroupCatalog.CALL else "direct")
+        put(
             "message",
-            if (availableTools.isEmpty()) {
-                "Group opened, but none of its tools can be used on this device right now " +
-                    "(missing permission/root or disabled in settings). Do not call them; use another " +
-                    "approach or tell the user what is missing."
-            } else {
-                "Group opened. Only the listed tools are usable on this device; they are available from " +
-                    "the next round onward and are not part of the request you are answering right now. " +
-                    "Call only these names — other tools of this group are unavailable here."
+            when {
+                availableTools.isEmpty() ->
+                    "Group opened, but none of its tools can be used on this device right now " +
+                        "(missing permission/root or disabled in settings). Do not call them; use another " +
+                        "approach or tell the user what is missing."
+                requiresToolCall ->
+                    "Group loaded. Call these tools with `${AgentToolGroupCatalog.CALL}` " +
+                        "({name, arguments}); tool_docs carries each tool's parameters. They are callable " +
+                        "right now, no extra round needed. Call only the listed names."
+                else ->
+                    "Group opened. Only the listed tools are usable on this device; they are available from " +
+                        "the next round onward and are not part of the request you are answering right now. " +
+                        "Call only these names — other tools of this group are unavailable here."
             },
         )
-        .toString()
+    }.toString()
 
     fun unknownGroup(requested: String, known: List<String>): String = JSONObject()
         .put("ok", false)

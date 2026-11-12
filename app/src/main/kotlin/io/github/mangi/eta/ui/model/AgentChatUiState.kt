@@ -262,6 +262,8 @@ data class ConversationTokenUsageUi(
      * 界面上的上下文必须取最后一个真实回执，而不是累计值。
      */
     val lastInputTokens: Long = 0,
+    /** provider 是否真的上报过 cached_tokens；false 时命中率应显示占位而不是 0%。 */
+    val cachedReported: Boolean = false,
 ) {
     val totalTokens: Long get() = inputTokens + outputTokens
     /** Uncached prefix: full prompt minus cache reads and cache writes. */
@@ -288,6 +290,7 @@ fun conversationTokenUsage(messages: List<AgentChatMessageUi>): ConversationToke
     var input = 0L
     var output = 0L
     var cached = 0L
+    var cachedReported = false
     var lastInput = 0L
     messages.forEach { message ->
         when (message) {
@@ -295,7 +298,10 @@ fun conversationTokenUsage(messages: List<AgentChatMessageUi>): ConversationToke
                 val usage = message.usage ?: return@forEach
                 input += usage.inputTokens ?: 0
                 output += usage.outputTokens ?: 0
-                cached += usage.cachedTokens ?: 0
+                usage.cachedTokens?.let {
+                    cached += it
+                    cachedReported = true
+                }
                 // 消息流按时间顺序，最后一次真实输入即最近一轮的上下文占用。
                 usage.inputTokens?.let { lastInput = it.toLong() }
             }
@@ -303,6 +309,7 @@ fun conversationTokenUsage(messages: List<AgentChatMessageUi>): ConversationToke
                 input += message.preservedUsage.inputTokens
                 output += message.preservedUsage.outputTokens
                 cached += message.preservedUsage.cachedTokens
+                cachedReported = cachedReported || message.preservedUsage.cachedReported
             }
             else -> Unit
         }
@@ -312,6 +319,7 @@ fun conversationTokenUsage(messages: List<AgentChatMessageUi>): ConversationToke
         outputTokens = output,
         cachedTokens = cached,
         lastInputTokens = lastInput,
+        cachedReported = cachedReported,
     )
 }
 
@@ -410,6 +418,11 @@ data class ToolActivityMessageUi(
      * 卡片明确说明原因，而不是只留一句「完成」。
      */
     val detailsWithheld: Boolean = false,
+    /**
+     * 派发卡专属：子会话正在等待用户回答的提问；解答/终态时置回 null（见 [DispatchWaitingQuestionUi]）。
+     * 仅内存投影、不落库：等待中 run 必然存活（进程死亡 run 即死），重载后无需恢复。
+     */
+    val waitingQuestion: DispatchWaitingQuestionUi? = null,
 ) : AgentChatMessageUi
 
 enum class ToolActivityStatusUi {
@@ -418,6 +431,19 @@ enum class ToolActivityStatusUi {
     Failed,
     Unknown,
 }
+
+/**
+ * 派发子会话正在等待用户回答的提问（调度台 `task_dispatch` 卡上的只读快照）。
+ *
+ * 子会话调用 `ask_user` 后经调度管线同步到这里，卡片据此显示「等待回答」与问题正文；
+ * 回答入口在子会话自己的问题卡（「打开会话」跳转），调度台卡只读不受理，
+ * 避免双卡各答各的。解答/终态时置回 null。
+ */
+@Immutable
+data class DispatchWaitingQuestionUi(
+    val questionTitle: String,
+    val questionText: String,
+)
 
 /**
  * 建议语 chip 行。

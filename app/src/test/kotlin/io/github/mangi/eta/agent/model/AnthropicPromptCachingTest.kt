@@ -50,10 +50,12 @@ class AnthropicPromptCachingTest {
         assertEquals(3, markerCount(body))
         assertEquals("ephemeral", control(body.getJSONArray("tools").getJSONObject(1)).getString("type"))
         assertFalse(body.getJSONArray("tools").getJSONObject(0).has("cache_control"))
-        assertEquals("1h", control(body.getJSONArray("system").getJSONObject(0)).getString("ttl"))
-        assertEquals("1h", control(body.getJSONArray("tools").getJSONObject(1)).getString("ttl"))
-        assertEquals("1h", control(body.getJSONArray("messages").getJSONObject(0)
-            .getJSONArray("content").getJSONObject(0)).getString("ttl"))
+        // 默认 5m：活跃会话里每次命中都会刷新 TTL，而 5m 的写入只按 1.25x 计价，
+        // 比 1h 的 2x 便宜一半——命中率不受影响，未命中的代价直接减半。
+        assertFalse(control(body.getJSONArray("system").getJSONObject(0)).has("ttl"))
+        assertFalse(control(body.getJSONArray("tools").getJSONObject(1)).has("ttl"))
+        assertFalse(control(body.getJSONArray("messages").getJSONObject(0)
+            .getJSONArray("content").getJSONObject(0)).has("ttl"))
         assertTrue(body.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
             .getJSONObject(0).has("cache_control"))
         assertEquals(beforeMessages, messages.toString())

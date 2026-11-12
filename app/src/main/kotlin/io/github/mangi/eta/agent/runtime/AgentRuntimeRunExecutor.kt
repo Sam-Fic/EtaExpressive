@@ -15,6 +15,7 @@ import io.github.mangi.eta.agent.dispatch.AgentDispatchPayload
 import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
 import io.github.mangi.eta.agent.model.AgentCalendarIntent
 import io.github.mangi.eta.agent.model.AgentDispatchToolCatalog
+import io.github.mangi.eta.agent.model.AgentScreenIntent
 import io.github.mangi.eta.agent.model.AgentToolCatalog
 import io.github.mangi.eta.agent.model.AgentToolGroups
 import io.github.mangi.eta.agent.model.XiaomiHostToolCatalog
@@ -244,6 +245,8 @@ internal class AgentRuntimeRunExecutor(
             // 这里只表达会话档位；预设运行时由目录层按 preset 非空自行关闭 tools_search。
             // 这样命中日程但目录为空退化回普通对话时，仍保留原有的搜索能力。
             val toolLoadingSearchEnabled = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_SEARCH
+            // 缓存优先档：延迟组工具经固定入口 tool_call 转发，目录在会话内字节恒定。
+            val toolLoadingSuffixMode = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_SUFFIX
             val mcpDeferred = runCatching { Prefs.mcpToolExposureDeferred() }.getOrDefault(true)
             val mcpProjection: AgentModelClient.McpToolProjection? =
                 if (mcpDeferred && !toolLoadingFullCatalog) mcpSnapshot else null
@@ -294,6 +297,7 @@ internal class AgentRuntimeRunExecutor(
                 }?.let { AgentUiHandoffPayload.from(it.payload).conversationId }.orEmpty(),
                 agentConversationId = request.effectiveModelSessionId,
                 decisionAllowedGroups = { decisionPlanRef.get()?.openableGroupLimit },
+                groupToolsViaCall = toolLoadingSuffixMode,
                 frozenSurface = runSurface,
                 chooseSurface = { toolName, toolsClosed ->
                     // 先写会话再等弹窗退场；返回值取自会话，工具侧与会话保持一致。
@@ -654,10 +658,32 @@ internal class AgentRuntimeRunExecutor(
                 personalTools = allowPersonal && request.config.personalTools,
             )
             // 日程预热运行不跑判断模型：工具集已由预设/关键词确定，再收窄只会让模型看不到工具。
-            val decisionPlan = if (presetRun) {
+            // 唤起即屏幕上下文（硬边界：仅助手弹窗 run，主程序不做该判断）：判断模型判定或指令
+            // 正则命中「需要看屏幕」且消息未附图时，预开屏幕组 + 注入首轮 observe_screen 引导，
+            // 模型第一轮就能看到当前屏幕，省一次渐进解锁往返。预设运行（日程 chip/关键词）已按
+            // chip 语义带图或收窄工具，不参与该判定。
+            val popupRun = request.handoff?.source == AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE
+            var screenLookHint = popupRun && !presetRun && request.images.isEmpty() && allowScreen &&
+                AgentScreenIntent.matches(request.prompt)
+            var decisionPlan = if (presetRun) {
                 null
             } else {
                 AgentDecisionRouter.route(request, effectiveConfig, AndroidAgentLogger)
+            }
+            if (decisionPlan?.needsScreenContext == true && request.images.isEmpty()) {
+                screenLookHint = true
+            }
+            val screenLookOpenedGroups = if (screenLookHint) {
+                setOf(AgentToolGroups.SCREEN_GROUP.id)
+            } else {
+                emptySet()
+            }
+            if (screenLookHint && decisionPlan != null &&
+                AgentToolGroups.SCREEN_GROUP.id !in decisionPlan.openedGroups
+            ) {
+                decisionPlan = decisionPlan.copy(
+                    openedGroups = decisionPlan.openedGroups + AgentToolGroups.SCREEN_GROUP.id,
+                )
             }
             decisionPlanRef.set(decisionPlan)
             // M4：只观测「决策没选、却实际执行」的延迟组；降级/续跑 overlay 内部会自动跳过。
@@ -697,10 +723,14 @@ internal class AgentRuntimeRunExecutor(
                 presetRunAt = presetRunAt,
                 // 命中日程但日历目录实际为空 → 安全退回普通对话（不动纯对话预设）。
                 presetFallbackWhenEmpty = presetFallbackWhenEmpty,
+                // 唤起即屏幕上下文：屏幕组已预开（上面并入 plan/打开组），再注入首轮
+                // observe_screen 引导——模型一步到位带截图观察，省一次解锁往返。
+                screenObservationRule = screenLookHint,
                 sessionId = request.effectiveModelSessionId,
                 capabilitiesProvider = { AgentToolCapabilities.captureForRound(appContext).copy(virtualDisplay = runVirtualDisplay()) },
                 // 延迟工具域：tools_use_group 成功后由执行器累积，下一轮重建目录时生效。
-                openedToolGroupsProvider = { executor.openedToolGroups() },
+                // 屏幕上下文命中时并上屏幕组：非预设 run 的目录首轮即含 observe_screen。
+                openedToolGroupsProvider = { executor.openedToolGroups() + screenLookOpenedGroups },
                 prompt = promptWithChildHandoff, toolExecutor = delegatedExecutor, images = request.images,
                 history = request.history, skipHistoryTrimming = true,
                 compactionArchive = io.github.mangi.eta.agent.model.AgentCompactionArchive(appContext.filesDir, request.effectiveModelSessionId),
@@ -726,6 +756,7 @@ internal class AgentRuntimeRunExecutor(
                 searchIndex = toolSearchIndex,
                 toolLoadingFullCatalog = toolLoadingFullCatalog,
                 toolLoadingSearchEnabled = toolLoadingSearchEnabled,
+                toolLoadingSuffixMode = toolLoadingSuffixMode,
                 // 自进化配方：每轮重新读取，已启用的配方即时出现在模型工具列表里。
                 // 必须是 provider：模型可能在 run 中途新建配方，固定快照会让它本轮就缺席。
                 recipeToolsProvider = {

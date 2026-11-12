@@ -1159,6 +1159,10 @@ internal object AgentRuntimeWire {
                 putBoolean("projected", event.projected)
                 event.requestHistoryTokens?.let { putInt("request_history_tokens", it) }
                 event.requestOverheadTokens?.let { putInt("request_overhead_tokens", it) }
+                event.requestPrefixState?.let { putString("request_prefix_state", it) }
+                event.requestToolsState?.let { putString("request_tools_state", it) }
+                event.requestSystemState?.let { putString("request_system_state", it) }
+                event.requestHistoryState?.let { putString("request_history_state", it) }
                 putTokenUsage(event.usage)
             }
 
@@ -1375,6 +1379,10 @@ internal object AgentRuntimeWire {
             projected = bundle.getBoolean("projected", false),
             requestHistoryTokens = bundle.optionalInt("request_history_tokens"),
             requestOverheadTokens = bundle.optionalInt("request_overhead_tokens"),
+            requestPrefixState = bundle.getString("request_prefix_state"),
+            requestToolsState = bundle.getString("request_tools_state"),
+            requestSystemState = bundle.getString("request_system_state"),
+            requestHistoryState = bundle.getString("request_history_state"),
         )
 
         "user_supplement_received" -> AgentEvent.UserSupplementReceived(

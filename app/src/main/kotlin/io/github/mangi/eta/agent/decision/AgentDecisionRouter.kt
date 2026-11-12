@@ -30,6 +30,12 @@ internal data class AgentDecisionPlan(
     val stickyGroups: Set<String>,
     /** 闲聊态：needs_tools=false 且没有选中任何组；仅 control 下会关闭提示段。 */
     val chatOnly: Boolean,
+    /**
+     * 唤起即屏幕上下文（助手弹窗 run 专属问题）：判断模型判定「回答依赖看到当前手机屏幕」。
+     * 消费在 AgentRuntimeRunExecutor：预开屏幕组 + 注入 observe_screen 首轮引导。
+     * 非弹窗 run 恒为 false（问题根本不发问——硬边界）。
+     */
+    val needsScreenContext: Boolean = false,
     /** null = 决策成功；非空 = 降级原因（fail-open / fail-closed 都会带）。 */
     val failureReason: String?,
     /** 被关闭的提示段名，仅用于日志。 */
@@ -570,6 +576,9 @@ internal object AgentDecisionRouter {
             policy = policySignature,
         )
         val cacheHit = cached != null
+        // 唤起即屏幕上下文（硬边界）：needs_screen_context 问题只对助手弹窗 run 发问，
+        // 主程序 run 的决策调用里不存在这个问题（用户定稿，非"问了不消费"）。
+        val popupRun = request.handoff?.source == AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE
         val evaluation = cached ?: AgentDecisionEvaluator.evaluate(
             request = request,
             modelId = modelId,
@@ -581,6 +590,7 @@ internal object AgentDecisionRouter {
             groups = gateGroups,
             stickyGroups = stickyBefore,
             isContinuation = isContinuation,
+            popupRun = popupRun,
             escalation = escalationConfig,
             modelName = runtimeConfig.model,
         )
@@ -622,8 +632,10 @@ internal object AgentDecisionRouter {
             allowed = gateIds
             opened = selected + stickyAfter + protectedAfter
         }
+        // 唤起即屏幕上下文蕴含「非闲聊」：要真看屏幕就绝不能把组索引等提示段关掉。
         val chatOnly = mode == Prefs.Keys.AGENT_DECISION_MODE_CONTROL &&
-            selected.isEmpty() && evaluation.needsTools < AgentDecisionEvaluator.NEEDS_TOOLS_THRESHOLD
+            selected.isEmpty() && evaluation.needsTools < AgentDecisionEvaluator.NEEDS_TOOLS_THRESHOLD &&
+            !evaluation.needsScreenContext
         val disabledSections = if (chatOnly) {
             listOf(SECTION_SKILL_INDEX, SECTION_MEMORY, SECTION_GROUP_INDEX, SECTION_DELEGATION_RULE)
         } else {
@@ -685,6 +697,7 @@ internal object AgentDecisionRouter {
             openedGroups = opened,
             stickyGroups = stickyAfter,
             chatOnly = chatOnly,
+            needsScreenContext = evaluation.needsScreenContext,
             failureReason = null,
             promptSectionsDisabled = disabledSections,
             openableGroupLimit = if (mode == Prefs.Keys.AGENT_DECISION_MODE_CONTROL) allowed else null,

@@ -2,6 +2,23 @@ package io.github.mangi.eta.agent.model
 
 /** 标记原始参数或结果不得进入持久会话的工具。 */
 internal object AgentSensitiveToolPolicy {
+    /**
+     * 实际执行语义上的工具名。
+     *
+     * 缓存优先档把延迟组工具收敛到固定入口 `tool_call`，真实工具名在参数里；
+     * 只按外层名判定的话，敏感工具会被当成普通调用写进持久会话与导出文件。
+     */
+    fun resolveName(toolName: String, argumentsJson: String?): String {
+        if (toolName != AgentToolGroupCatalog.CALL) return toolName
+        val inner = runCatching {
+            org.json.JSONObject(argumentsJson ?: return toolName).optString("name")
+        }.getOrDefault("")
+        return inner.ifBlank { toolName }
+    }
+
+    fun isSensitive(toolName: String, argumentsJson: String?): Boolean =
+        isSensitive(resolveName(toolName, argumentsJson))
+
     fun isSensitive(toolName: String): Boolean =
         toolName.startsWith("mcp_") ||
             toolName.startsWith("recipe_") ||

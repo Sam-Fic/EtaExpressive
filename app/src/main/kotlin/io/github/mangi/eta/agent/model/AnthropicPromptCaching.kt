@@ -5,8 +5,11 @@ import org.json.JSONObject
 
 /** Native Anthropic prefix-cache defaults. This is not a local response cache. */
 internal object AnthropicPromptCaching {
-    // Local custom-body preference: none, 5m, or 1h (default). Never sent upstream.
+    // Local custom-body preference: none, 5m, or 1h. Never sent upstream.
     const val CONFIG_KEY = "eta_prompt_cache"
+    // 默认 5m：活跃会话里每次命中都会刷新 TTL，足够覆盖一次多轮任务；
+    // 而 1h 的写入按 2x 计价、5m 只按 1.25x——命中率不变的前提下，5m 让每次未命中便宜一半。
+    private const val DEFAULT_RETENTION = "5m"
     // Local system-message metadata, used only by the Anthropic prompt builder/adapter.
     const val SYSTEM_BOUNDARY_KEY = "eta_prompt_cache_boundary"
 
@@ -17,7 +20,7 @@ internal object AnthropicPromptCaching {
      */
     fun applyDefaults(request: JSONObject, stableSystemBlockIndex: Int? = null) {
         val preference = request.remove(CONFIG_KEY)
-        val retention = if (preference == null) "1h" else preference.toString()
+        val retention = if (preference == null) DEFAULT_RETENTION else preference.toString()
         require(retention in setOf("none", "5m", "1h")) {
             "$CONFIG_KEY must be none, 5m, or 1h"
         }
@@ -48,7 +51,7 @@ internal object AnthropicPromptCaching {
         }
         val messages = request.optJSONArray("messages")
         val lastMessage = messages?.optJSONObject(messages.length() - 1)
-        if (lastMessage?.optString("role") == "user") {
+        if (lastMessage != null) {
             val content = when (val value = lastMessage.opt("content")) {
                 is JSONArray -> value
                 is String -> if (value.isNotBlank()) {
@@ -57,10 +60,14 @@ internal object AnthropicPromptCaching {
                 } else null
                 else -> null
             }
-            // Only the actual final block: never mark thinking or an empty text block.
-            content?.optJSONObject(content.length() - 1)
-                ?.takeIf(::isCacheableBlock)
-                ?.let(candidates::add)
+            // 末位断点不区分角色：一轮通常以 assistant 结束，若只在 user 上打断点，
+            // 本轮最终内容就永远不在缓存链上，下一轮第一个请求只能从头重写。
+            // 从后往前找第一个可缓存块：thinking 结尾时也不能直接放弃。
+            content?.let { blocks ->
+                (blocks.length() - 1 downTo 0).firstNotNullOfOrNull { index ->
+                    blocks.optJSONObject(index)?.takeIf(::isCacheableBlock)
+                }
+            }?.let(candidates::add)
         }
         val marked = mutableListOf<JSONObject>()
         candidates.forEach { block ->

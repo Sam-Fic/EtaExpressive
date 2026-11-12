@@ -126,6 +126,12 @@ internal object AgentModelClient {
          * tools_use_group 整组打开；off 档下本参数无意义（目录已全量）。
          */
         toolLoadingSearchEnabled: Boolean = true,
+        /**
+         * 缓存优先档（suffix）：延迟组工具不进 `tools`，改用固定入口
+         * [AgentToolGroupCatalog.CALL] 转发，工具说明作为组加载回执进入历史尾部。
+         * 与 [toolLoadingFullCatalog]、预设运行互斥（调用方按会话锁定后传入）。
+         */
+        toolLoadingSuffixMode: Boolean = false,
         sessionId: String = java.util.UUID.randomUUID().toString(),
         onEvent: (AgentEvent) -> Unit = {},
         linuxEnvironmentLabelProvider: () -> String = { "Linux" },
@@ -161,10 +167,15 @@ internal object AgentModelClient {
          */
         presetRunAt: java.time.Instant? = null,
         /**
-         * 命中日程关键词（非显式零工具预设）时置 true：若预设工具在能力投影后实际为空，
+         * 命中日历关键词（非显式零工具预设）时置 true：若预设工具在能力投影后实际为空，
          * 本轮退回普通对话（正常目录 + 正常渐进加载），而不是退化成零工具纯对话。
          */
         presetFallbackWhenEmpty: Boolean = false,
+        /**
+         * 唤起即屏幕上下文（助手弹窗 run）：true 时在系统提示注入「先 observe_screen 带截图
+         * 看屏幕」的首轮规则。调用方已保证仅弹窗链路、消息未附图、且屏幕组已预开。
+         */
+        screenObservationRule: Boolean = false,
     ): ModelResponse.Text {
         config.validate()
         val initialCapabilities = capabilitiesProvider()
@@ -235,8 +246,37 @@ internal object AgentModelClient {
         // 第 2 轮才恢复（toolsForRound 里 provider 与 initial 的并集就是这个教训，见下）。
         var initialOpenedGroups =
             presetOpenedGroups ?: (openedToolGroupsProvider() + historyOpenedGroups())
+        // 缓存优先档：与会话锁定互斥——off 档已下发完整目录，预设运行自己管工具集。
+        val suffixMode = toolLoadingSuffixMode && !toolLoadingFullCatalog && presetToolNames == null
         // control 成功/fail-closed 时限制 tools_use_group 的枚举；null 表示不接管。
         val decisionOpenableLimit = decision?.openableGroupLimit
+        /** 预开/增长只认用户开关与决策收窄，和目录构建用同一套组闸门。 */
+        fun nativeGroupAllowed(id: String): Boolean {
+            if (decisionOpenableLimit != null && id !in decisionOpenableLimit) return false
+            return when (id) {
+                AgentToolGroups.SCREEN_GROUP.id -> config.screenTools
+                AgentToolGroups.WEB_GROUP.id -> config.browserTools
+                AgentToolGroups.TERMINAL_GROUP.id -> config.terminalTools
+                AgentToolGroups.DEVICE_GROUP.id -> config.deviceTools
+                AgentToolGroups.CALENDAR_GROUP.id -> config.personalTools
+                AgentToolGroups.PERSONAL_GROUP.id -> config.personalTools
+                AgentToolGroups.DEVICE_STATE_GROUP.id -> config.personalTools
+                AgentToolGroups.EXTENSIONS_GROUP.id -> Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
+                else -> false
+            }
+        }
+        // 会话级原生组集合：run 内冻结，只在「前缀还小」的窗口里允许把历史用过的组升进来。
+        // 升级会让 tools 变一次、缓存重写一次；前缀小的时候这笔重写很便宜，所以用字符预算
+        // 而不是轮数来控制这个窗口。
+        val nativeGroups = if (!suffixMode) null else resolveNativeGroups(
+            sessionId = sessionId,
+            prompt = prompt,
+            history = outboundHistory,
+            historyGroups = historyOpenedGroups(),
+            decisionGroups = decision?.openedGroups.orEmpty(),
+            allowed = ::nativeGroupAllowed,
+            approxChars = prompt.length + outboundHistory.sumOf { it.content.length + it.toolCallsJson.length },
+        )
         // 闲聊态关段只在 control 成功时由 router 置位，prompt builder 直接据此裁剪。
         val trimChatSections = decision?.chatOnly == true
         fun toolsFor(
@@ -280,12 +320,17 @@ internal object AgentModelClient {
                 toolSearchEnabled = toolLoadingSearchEnabled,
                 // 预设运行：豁免延迟折叠并跳过 tools_search / tools_use_group。
                 presetToolNames = preset,
+                // 缓存优先档：只有会话级原生组的工具进目录，其余改由 tool_call 转发。
+                nativeGroups = nativeGroups,
             )
             for (index in 0 until additionalTools.length()) {
                 tools.put(additionalTools.opt(index))
             }
             // MCP 渐进加载：schema 按已打开 server 追加；off 模式下 openedToolGroups
             // 已含全部 server 组，等价全量。always 暴露模式走上面的 additionalTools。
+            // 缓存优先档不对 MCP 生效：MCP schema 由投影快照追加，执行侧没有另一份可作
+            // 回执文档的来源，强行改道会让 server 工具彻底不可调用。MCP 组仍按旧语义
+            // 「打开即重建」，签名里保留 MCP 组正是为了这点。
             if (mcpProjection != null) {
                 mcpProjection.appendTools(tools, openedToolGroups)
             }
@@ -299,7 +344,9 @@ internal object AgentModelClient {
             return preset?.let { AgentToolCatalog.retainOnly(tools, it) } ?: tools
         }
         var effectivePresetTools = presetToolNames
-        var initialTools = toolsFor(initialCapabilities, recipeTools = recipeToolsProvider())
+        // 配方只读一次：首轮目录与首轮签名必须来自同一份快照，否则第 2 轮会误判为「配方变了」。
+        var initialRecipeTools = recipeToolsProvider()
+        var initialTools = toolsFor(initialCapabilities, recipeTools = initialRecipeTools)
         if (presetFallbackWhenEmpty && presetToolNames != null && initialTools.length() == 0) {
             // 命中日程但日历组在能力投影后实际为空（权限/开关/单工具禁用）：
             // 退回普通对话——正常目录、正常渐进加载与判断模型，而不是零工具纯对话。
@@ -307,7 +354,7 @@ internal object AgentModelClient {
             initialOpenedGroups = openedToolGroupsProvider() + historyOpenedGroups()
             initialTools = toolsFor(
                 initialCapabilities,
-                recipeTools = recipeToolsProvider(),
+                recipeTools = initialRecipeTools,
                 openedToolGroups = initialOpenedGroups,
                 preset = null,
             )
@@ -328,7 +375,14 @@ internal object AgentModelClient {
             interactiveModeEnabled = interactiveModeEnabled,
             disabledCapabilities = capabilitySwitches.toDisabledState(),
             // 首轮通常还没有打开任何延迟组；仍走同一个 provider，保证提示与目录同源。
-            openedToolGroups = initialOpenedGroups,
+            // 缓存优先档按会话级原生组渲染：组索引与各组指引因此在会话内恒定，
+            // 模型中途打开的静态组不再改动 system 文本。MCP 组沿用「打开才出现」。
+            openedToolGroups = if (suffixMode) {
+                nativeGroups.orEmpty() + initialOpenedGroups.filter { AgentToolGroups.isMcpGroupId(it) }
+            } else {
+                initialOpenedGroups
+            },
+            groupCallsViaToolCall = suffixMode,
             delegationEngaged = delegationEngaged.get(),
             // 提示点名的工具必须真的在目录里：缺席的工具连名字都不出现在提示里。
             callableTools = AgentToolCatalog.toolNames(tools),
@@ -337,6 +391,7 @@ internal object AgentModelClient {
             openableGroupLimit = decisionOpenableLimit,
             dynamicToolGroups = mcpGroups,
             presetRunAt = effectivePresetRunAt,
+            screenObservationRule = screenObservationRule,
         )
         var transcriptStartIndex = messages.length()
         val traceFormatter = AgentTraceFormatter(
@@ -353,8 +408,27 @@ internal object AgentModelClient {
             )
         )
         var promptRootAvailable = initialCapabilities.rootAvailable
-        var lastRoundSignature: RoundCapabilitySignature? = null
-        var lastRoundTools: JSONArray? = null
+        // 首轮签名在建 loop 之前就固定：否则第 2 轮会无条件重建一次目录与系统消息，
+        // 而重建时重新采集的能力快照一旦与本轮请求不同，system 字节就变、缓存白丢。
+        fun roundSignatureOf(recipeTools: JSONArray, openedGroups: Set<String>) = RoundCapabilitySignature(
+            capabilities = initialCapabilities,
+            skillIndex = skillContext.installedSkills.map { it.id to it.enabled },
+            memoryRevision = memoryContext.revision,
+            memoryEnabled = memoryContext.enabled,
+            delegationAvailable = delegationAvailable,
+            delegationEngaged = delegationEngaged.get(),
+            interactiveModeEnabled = interactiveModeEnabled,
+            openedToolGroups = if (suffixMode) {
+                nativeGroups.orEmpty() + openedGroups.filter { AgentToolGroups.isMcpGroupId(it) }
+            } else {
+                openedGroups
+            },
+            recipeRevision = recipeTools.toString().hashCode().toString(),
+            toolSwitches = ToolSwitchSnapshot.capture(),
+            capabilitySwitches = capabilitySwitches,
+        )
+        var lastRoundSignature: RoundCapabilitySignature? = roundSignatureOf(initialRecipeTools, initialOpenedGroups)
+        var lastRoundTools: JSONArray? = initialTools
         val loop = AgentLoop(
             sessionId = sessionId,
             config = config,
@@ -412,7 +486,15 @@ internal object AgentModelClient {
                         delegationAvailable = delegationAvailable,
                         delegationEngaged = delegationEngaged.get(),
                         interactiveModeEnabled = interactiveModeEnabled,
-                        openedToolGroups = nextOpenedGroups,
+                        // 缓存优先档用会话级原生组：静态组开/关不改变目录，也就不该触发重建。
+                        // MCP 组例外：它的 schema 由投影追加，仍按「打开才出现」的旧语义。
+                        openedToolGroups = if (suffixMode) {
+                            nativeGroups.orEmpty() + nextOpenedGroups.filter {
+                                AgentToolGroups.isMcpGroupId(it)
+                            }
+                        } else {
+                            nextOpenedGroups
+                        },
                         // 配方集合变了必须重建目录，否则新建的配方在这一轮仍然缺席。
                         recipeRevision = recipeTools.toString().hashCode().toString(),
                         // 用户可能在两轮之间改开关：签名必须覆盖它，否则目录与系统提示不会刷新。
@@ -433,7 +515,15 @@ internal object AgentModelClient {
                             config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
                             capabilities.shellTools,
                             interactiveModeEnabled = interactiveModeEnabled,
-                            openedToolGroups = nextOpenedGroups,
+                            // 缓存优先档按会话级原生组渲染 system：静态组开/关不改文本。
+                            openedToolGroups = if (suffixMode) {
+                                nativeGroups.orEmpty() + nextOpenedGroups.filter {
+                                    AgentToolGroups.isMcpGroupId(it)
+                                }
+                            } else {
+                                nextOpenedGroups
+                            },
+                            groupCallsViaToolCall = suffixMode,
                             // 本轮之前是否已经派发过子任务：决定结果解读规则是否进前缀。
                             delegationEngaged = delegationEngaged.get(),
                             // 每轮重新捕获：用户可能在两轮之间改了开关。
@@ -530,11 +620,11 @@ internal object AgentModelClient {
             if (raw.isBlank()) return@forEach
             val calls = runCatching { JSONArray(raw) }.getOrNull() ?: return@forEach
             for (index in 0 until calls.length()) {
-                calls.optJSONObject(index)
-                    ?.optJSONObject("function")
-                    ?.optString("name")
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::add)
+                val function = calls.optJSONObject(index)?.optJSONObject("function") ?: continue
+                val name = function.optString("name").takeIf { it.isNotBlank() } ?: continue
+                // 缓存优先档的历史里，真实工具名在 tool_call 的参数里；只取外层名会让
+                // 「本会话已经用过的组」读不出来，原生集合就永远长不大。
+                add(AgentSensitiveToolPolicy.resolveName(name, function.optString("arguments")))
             }
         }
     }
@@ -650,6 +740,12 @@ internal object AgentModelClient {
         /** 本 run 是否已派发过子任务；翻开后系统前缀多一条结果解读规则，必须参与重建判定。 */
         val delegationEngaged: Boolean = false,
         val interactiveModeEnabled: Boolean,
+        /**
+         * 决定「哪些延迟组下发原生 schema」的集合。
+         *
+         * 渐进加载档传本轮已打开的组；缓存优先档传会话级原生组集合——
+         * 后者在 run 内不随开组变化，因此开组不会再触发整段前缀重建。
+         */
         val openedToolGroups: Set<String> = emptySet(),
         /** 配方集合的指纹；模型在本 run 内新建/停用配方时必须触发目录重建。 */
         val recipeRevision: String = "",
@@ -752,6 +848,56 @@ internal object AgentModelClient {
             delegationTools = delegationTools,
         )
     }
+
+    /**
+     * 缓存优先档（suffix）的会话级原生组集合。
+     *
+     * 集合决定「哪些延迟组下发原生 schema」。它必须在 run 开始前就固定：run 中途变一次，
+     * `tools` 就变一次，而 `tools` 排在 system 与历史之前，会连带整段前缀失效。
+     *
+     * 唯一的增长窗口是「前缀还小的时候」：重写成本与前缀大小成正比，早期升级换到的是
+     * 高频组的原生 schema 质量，前缀变大后冻结，新组一律经 `tool_call` 以后缀形式追加。
+     */
+    private fun resolveNativeGroups(
+        sessionId: String,
+        prompt: String,
+        history: List<ConversationMessage>,
+        historyGroups: Set<String>,
+        decisionGroups: Set<String>,
+        allowed: (String) -> Boolean,
+        approxChars: Int,
+    ): Set<String> {
+        val staticDeferred = AgentToolGroups.deferredGroups.mapTo(mutableSetOf()) { it.id }
+        val withinBudget = approxChars <= NATIVE_GROUP_GROWTH_CHAR_BUDGET
+        // 历史里已经真正用过的组最可信：它比关键词预测稳，也比预测更不需要解释。
+        val growable = (historyGroups + decisionGroups).filterTo(mutableSetOf()) { it in staticDeferred }
+        val snapshot = Prefs.nativeGroups(sessionId)
+        val seed = if (withinBudget) {
+            AgentToolGroups.predictFromText(
+                prompt + "\n" + history.asReversed().asSequence()
+                    .filter { it.role == "user" }
+                    .take(2)
+                    .joinToString("\n") { it.content },
+                allowed,
+            ) + growable
+        } else {
+            // 恢复来的长会话没有快照（单槽被别的会话占掉）：只能用历史反推的组兜底。
+            growable
+        }
+        val groups = when {
+            snapshot == null -> seed
+            snapshot.frozen || !withinBudget -> snapshot.groups
+            else -> snapshot.groups + growable
+        }.filterTo(mutableSetOf()) { it in staticDeferred && allowed(it) }
+        val frozen = snapshot?.frozen == true || !withinBudget
+        if (snapshot == null || snapshot.groups != groups || snapshot.frozen != frozen) {
+            Prefs.setNativeGroups(sessionId, groups, frozen)
+        }
+        return groups
+    }
+
+    /** 「新组升级进原生集合」的前缀字符预算，约等于 8k token。 */
+    private const val NATIVE_GROUP_GROWTH_CHAR_BUDGET = 32_000
 
     @Serializable
     data class ConversationMessage(

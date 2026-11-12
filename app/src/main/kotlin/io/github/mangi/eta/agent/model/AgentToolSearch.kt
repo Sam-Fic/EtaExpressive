@@ -202,6 +202,10 @@ internal object AgentToolSearchCatalog {
         labels: Map<String, String>,
         unlockedGroups: Set<String>,
         unavailableGroups: Map<String, String>,
+        /** 缓存优先档：命中工具的参数说明，随回执直接给出，省掉再开一次组。 */
+        toolDocs: JSONArray? = null,
+        /** true = 这些工具不在 `tools` 里，必须经 [AgentToolGroupCatalog.CALL] 调用。 */
+        requiresToolCall: Boolean = false,
     ): String {
         val byGroup = hits.groupBy { it.groupId }
         val lines = JSONArray()
@@ -216,13 +220,24 @@ internal object AgentToolSearchCatalog {
         val payload = JSONObject()
             .put("ok", true)
             .put("matches", lines)
-            .put("available", "next_turn")
+            .put("available", if (requiresToolCall) "now" else "next_turn")
+        if (requiresToolCall) {
+            payload.put("call_via", AgentToolGroupCatalog.CALL)
+            toolDocs?.let { payload.put("tool_docs", it) }
+        }
         if (unlockedGroups.isNotEmpty()) {
             payload.put(
                 "message",
-                "Matched tools listed above. Their groups are now opened; the tools are available " +
-                    "from the next round onward and are not part of the request you are answering " +
-                    "right now. Call only these names.",
+                when {
+                    requiresToolCall ->
+                        "Matched tools listed above; their groups are now loaded. Call them with " +
+                            "`${AgentToolGroupCatalog.CALL}` ({name, arguments}) right now — tool_docs " +
+                            "carries each tool's parameters. Call only the listed names."
+                    else ->
+                        "Matched tools listed above. Their groups are now opened; the tools are available " +
+                            "from the next round onward and are not part of the request you are answering " +
+                            "right now. Call only these names."
+                },
             )
         } else {
             payload.put(

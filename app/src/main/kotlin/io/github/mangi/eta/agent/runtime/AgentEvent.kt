@@ -172,14 +172,20 @@ internal sealed interface AgentEvent {
         val requestHistoryTokens: Int? = null,
         val requestOverheadTokens: Int? = null,
         /**
-         * 请求前缀（工具目录 + system 消息）与上一轮相比是否相同：first / same / changed。
+         * 请求前缀与上一轮相比是否相同：first / same / changed。
          * provider 的前缀缓存按块命中，前缀变了就必然掉命中；把它写进日志即可区分
          * 「我们的前缀变了」与「provider 没有回报缓存」，不需要再猜。
          */
         val requestPrefixState: String? = null,
+        /** 工具目录这一段的状态；[requestPrefixState] 为 changed 时用它定位。 */
+        val requestToolsState: String? = null,
+        /** system 这一段的状态；[requestPrefixState] 为 changed 时用它定位。 */
+        val requestSystemState: String? = null,
+        /** 历史这一段的状态；[requestPrefixState] 为 changed 时用它定位。 */
+        val requestHistoryState: String? = null,
     ) : AgentEvent {
         override fun toLogLine(): String =
-            "usage_received round=$round, projected=$projected, ctx=${usage.contextTokens}, in=${usage.inputTokens}, out=${usage.outputTokens}, reasoning=${usage.reasoningTokens}, cache=${usage.cachedTokens}, prefix=${requestPrefixState ?: "-"}"
+            "usage_received round=$round, projected=$projected, ctx=${usage.contextTokens}, in=${usage.inputTokens}, out=${usage.outputTokens}, reasoning=${usage.reasoningTokens}, cache=${usage.cachedTokens}, prefix=${requestPrefixState ?: "-"}, tools=${requestToolsState ?: "-"}, sys=${requestSystemState ?: "-"}, hist=${requestHistoryState ?: "-"}"
     }
 
     data class UserSupplementReceived(

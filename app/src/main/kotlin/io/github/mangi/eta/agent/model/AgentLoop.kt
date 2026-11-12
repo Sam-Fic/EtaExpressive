@@ -244,25 +244,63 @@ internal class AgentLoop(
         val publishLocalEstimate: Boolean,
         /** 请求前缀指纹与上一轮的比较结果：first / same / changed。 */
         val prefixState: String,
+        /** 工具目录这一段与上一轮相比是否相同：first / same / changed。 */
+        val toolsState: String,
+        /** system 前缀这一段与上一轮相比是否相同：first / same / changed。 */
+        val systemState: String,
+        /** 历史这一段与上一轮相比是否相同：first / same / changed。 */
+        val historyState: String,
     )
 
-    private var lastPrefixDigest: String? = null
+    /** 请求前缀三段的短指纹：命中率低时必须能判定是哪一段变了。 */
+    private data class PrefixDigests(val tools: String, val system: String, val history: String)
+
+    private var lastPrefixDigests: PrefixDigests? = null
 
     /**
-     * 请求前缀（工具目录 + 前 [systemCount] 条 system 消息）的短指纹。
+     * 请求前缀的短指纹，按 tools / system / history 三段分别计算。
      *
-     * provider 的前缀缓存按块命中，前缀一变命中就归零。把比较结果写进 usage 日志后，
-     * 任何 `cache=0` 都能立刻判定是「组集合/开关翻转导致前缀变化」还是「provider 侧未命中」。
+     * provider 的前缀缓存按「前缀 → 块」命中：tools 在 system 与历史之前，
+     * 所以 tools 变一段就整段失效；只有分段比较才能把 `cache=0` 归因到具体是哪一段。
+     * 历史段只取条数、总字符数与头尾若干条，避免每轮序列化整段长历史。
      */
-    private fun requestPrefixDigest(roundTools: JSONArray): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        digest.update(roundTools.toString().toByteArray())
+    private fun requestPrefixDigests(roundTools: JSONArray): PrefixDigests {
+        fun digestOf(build: java.security.MessageDigest.() -> Unit): String =
+            java.security.MessageDigest.getInstance("SHA-256").apply(build)
+                .digest().take(4).joinToString("") { "%02x".format(it) }
         val count = systemCount.coerceIn(0, messages.length())
-        for (index in 0 until count) {
-            digest.update(messages.getJSONObject(index).toString().toByteArray())
+        val toolsDigest = digestOf { update(roundTools.toString().toByteArray()) }
+        val systemDigest = digestOf {
+            for (index in 0 until count) {
+                update(messages.getJSONObject(index).toString().toByteArray())
+            }
+            update("sys=$count".toByteArray())
         }
-        digest.update("sys=$count".toByteArray())
-        return digest.digest().take(4).joinToString("") { "%02x".format(it) }
+        val historyDigest = digestOf {
+            val historyCount = (messages.length() - count).coerceAtLeast(0)
+            update("hist=$historyCount".toByteArray())
+            update("chars=${historyCharsSnapshot()}".toByteArray())
+            fun updateMessage(index: Int) {
+                messages.optJSONObject(index)?.let { update(it.toString().toByteArray()) }
+            }
+            for (index in count until (count + PREFIX_DIGEST_HEAD).coerceAtMost(messages.length())) {
+                updateMessage(index)
+            }
+            for (index in (messages.length() - PREFIX_DIGEST_TAIL).coerceAtLeast(count) until messages.length()) {
+                updateMessage(index)
+            }
+        }
+        return PrefixDigests(tools = toolsDigest, system = systemDigest, history = historyDigest)
+    }
+
+    /** 历史段的总字符数：用于捕捉中段（修剪、压缩、删除）的改写。 */
+    private fun historyCharsSnapshot(): Int {
+        val count = systemCount.coerceIn(0, messages.length())
+        var total = 0
+        for (index in count until messages.length()) {
+            total += messages.optJSONObject(index)?.toString()?.length ?: 0
+        }
+        return total
     }
 
     private fun snapshotRound(roundTools: JSONArray): RoundContext {
@@ -280,13 +318,24 @@ internal class AgentLoop(
         // 两个预算锚点都在同一个边界上前进，避免显示与静默口径互相污染。
         silentBudget.requestStarted(requestLocal)
         requestBudget.requestStarted()
-        val digest = requestPrefixDigest(roundTools)
-        val prefixState = when (lastPrefixDigest) {
-            null -> "first"
-            digest -> "same"
+        val digests = requestPrefixDigests(roundTools)
+        val previous = lastPrefixDigests
+        fun stateOf(current: String, last: String?): String = when {
+            last == null -> "first"
+            current == last -> "same"
             else -> "changed"
         }
-        lastPrefixDigest = digest
+        val toolsState = stateOf(digests.tools, previous?.tools)
+        val systemState = stateOf(digests.system, previous?.system)
+        val historyState = stateOf(digests.history, previous?.history)
+        val prefixState = if (toolsState == "changed" || systemState == "changed" || historyState == "changed") {
+            "changed"
+        } else if (toolsState == "first") {
+            "first"
+        } else {
+            "same"
+        }
+        lastPrefixDigests = digests
         return RoundContext(
             requestLocal = requestLocal,
             requestMessageCount = requestMessageCount,
@@ -295,6 +344,9 @@ internal class AgentLoop(
             filteredMessages = filteredMessages,
             publishLocalEstimate = publishLocalEstimate,
             prefixState = prefixState,
+            toolsState = toolsState,
+            systemState = systemState,
+            historyState = historyState,
         )
     }
 
@@ -414,7 +466,10 @@ internal class AgentLoop(
                                     AgentTokenUsage(inputTokens = providerEvent.tokens), projected = true,
                                     requestHistoryTokens = snapshot.requestHistoryTokens,
                                     requestOverheadTokens = snapshot.requestFixedTokens,
-                                    requestPrefixState = snapshot.prefixState))
+                                    requestPrefixState = snapshot.prefixState,
+                                    requestToolsState = snapshot.toolsState,
+                                    requestSystemState = snapshot.systemState,
+                                    requestHistoryState = snapshot.historyState))
                             }
                         }
                         if (providerEvent is ProviderEvent.Usage) {
@@ -452,6 +507,9 @@ internal class AgentLoop(
                                             requestHistoryTokens = snapshot.requestHistoryTokens,
                                             requestOverheadTokens = snapshot.requestFixedTokens,
                                             requestPrefixState = snapshot.prefixState,
+                                            requestToolsState = snapshot.toolsState,
+                                            requestSystemState = snapshot.systemState,
+                                            requestHistoryState = snapshot.historyState,
                                         )
                                     } else event)
                                 }
@@ -466,7 +524,9 @@ internal class AgentLoop(
                     },
                     onCancelledResponse = { response ->
                         val calls = AgentConversationCodec.parseToolCalls(response.assistantMessage)
-                        val sensitiveCalls = calls.filter { AgentSensitiveToolPolicy.isSensitive(it.name) }
+                        val sensitiveCalls = calls.filter {
+                            AgentSensitiveToolPolicy.isSensitive(it.name, it.argumentsJson)
+                        }
                         sensitiveCalls.forEach { sensitiveToolCallIds += it.id }
                         if (sensitiveCalls.isNotEmpty()) {
                             messages.put(AgentConversationCodec.assistantHistoryMessage(
@@ -541,7 +601,7 @@ internal class AgentLoop(
             val toolCalls = AgentConversationCodec.parseToolCalls(assistantMessage)
                 .map(toolCallValidator::normalizeArguments)
             toolCalls.forEachIndexed { index, call -> toolDiagnosticAttempt?.parsed(call, index) }
-            toolCalls.filter { AgentSensitiveToolPolicy.isSensitive(it.name) }
+            toolCalls.filter { AgentSensitiveToolPolicy.isSensitive(it.name, it.argumentsJson) }
                 .forEach { sensitiveToolCallIds += it.id }
             val assistantReasoning = continuationReasoning.visibleCompletedReasoning(
                 assistantMessage.optString("reasoning_content"))
@@ -1532,7 +1592,7 @@ internal class AgentLoop(
             AgentEvent.ToolStarted(
                 round = round,
                 toolCallId = toolCall.id,
-                name = toolCall.name,
+                name = displayToolName(toolCall),
                 argsPreview = traceFormatter.summarizeArguments(toolCall),
                 command = traceFormatter.displayCommand(toolCall),
                 argumentsDetail = traceFormatter.detailArguments(toolCall),
@@ -1564,7 +1624,7 @@ internal class AgentLoop(
         val result = shellDecision.result
         // Record what the model actually receives, plus the pre-guard code for comparison.
         toolDiagnosticAttempt?.result(toolCall, result, toolIndex, rawResult)
-        if (result.sensitive || AgentSensitiveToolPolicy.isSensitive(toolCall.name)) {
+        if (result.sensitive || AgentSensitiveToolPolicy.isSensitive(toolCall.name, toolCall.argumentsJson)) {
             sensitiveToolCallIds += toolCall.id
         }
 
@@ -1583,7 +1643,7 @@ internal class AgentLoop(
             AgentEvent.ToolStarted(
                 round = round,
                 toolCallId = toolCall.id,
-                name = toolCall.name,
+                name = displayToolName(toolCall),
                 argsPreview = traceFormatter.summarizeArguments(toolCall),
                 command = traceFormatter.displayCommand(toolCall),
                 argumentsDetail = traceFormatter.detailArguments(toolCall),
@@ -1595,7 +1655,7 @@ internal class AgentLoop(
                 .put("code", code)
                 .put("message", message)
                 .toString(),
-            sensitive = AgentSensitiveToolPolicy.isSensitive(toolCall.name),
+            sensitive = AgentSensitiveToolPolicy.isSensitive(toolCall.name, toolCall.argumentsJson),
         )
         if (result.sensitive) sensitiveToolCallIds += toolCall.id
         emitToolFinished(round, toolCall, result)
@@ -1607,22 +1667,32 @@ internal class AgentLoop(
         if (buffer == null) onEvent(event) else buffer += event
     }
 
+    /**
+     * 展示与日志用的工具名。
+     *
+     * 缓存优先档把延迟组工具收在一个固定入口 `tool_call` 下，真实工具名在参数里；
+     * 面板、轨迹与结果摘要都应该显示真实工具，而不是「tool_call」这个壳。
+     */
+    private fun displayToolName(call: AgentModelClient.ToolCall): String =
+        AgentSensitiveToolPolicy.resolveName(call.name, call.argumentsJson)
+
     private fun emitToolFinished(
         round: Int,
         toolCall: AgentModelClient.ToolCall,
         result: AgentModelClient.ToolResult,
         events: MutableList<AgentEvent>? = null,
     ) {
+        val displayName = displayToolName(toolCall)
         emit(
             AgentEvent.ToolFinished(
                 round = round,
                 toolCallId = toolCall.id,
-                name = toolCall.name,
-                resultSummary = traceFormatter.summarizeResult(toolCall.name, result),
+                name = displayName,
+                resultSummary = traceFormatter.summarizeResult(displayName, result),
                 imageCount = result.images.size,
                 imageBytes = result.images.sumOf { it.bytes },
                 success = traceFormatter.isSuccessResult(result),
-                resultDetail = traceFormatter.detailResult(toolCall.name, result),
+                resultDetail = traceFormatter.detailResult(displayName, result),
                 mediaPreviewsJson = AgentToolMediaPreviews.encode(result.images),
             ),
             events,
@@ -1774,5 +1844,9 @@ internal class AgentLoop(
 
         private const val HISTORY_HEAD_CHARS = 4608
         private const val HISTORY_TAIL_CHARS = 1536
+
+        /** 历史段指纹取样的头/尾消息条数：中段改写靠总字符数捕捉。 */
+        private const val PREFIX_DIGEST_HEAD = 8
+        private const val PREFIX_DIGEST_TAIL = 2
     }
 }

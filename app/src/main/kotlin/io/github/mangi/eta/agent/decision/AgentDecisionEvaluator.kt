@@ -41,6 +41,11 @@ internal object AgentDecisionEvaluator {
         val latencyMs: Long,
         val needsTools: Double,
         val selectedGroups: Set<String>,
+        /**
+         * 唤起即屏幕上下文（助手弹窗 run 专属问题）：回答是否依赖看到用户当前手机屏幕。
+         * 非弹窗 run 恒为 false（问题根本不发问——硬边界）。
+         */
+        val needsScreenContext: Boolean = false,
         val layers: Int,
         val usageIn: Int?,
         val usageOut: Int?,
@@ -81,6 +86,11 @@ internal object AgentDecisionEvaluator {
         stickyGroups: Set<String>,
         /** 工具回填后的续跑轮次；只影响 state 字段，便于判断模型理解上下文。 */
         isContinuation: Boolean = false,
+        /**
+         * 助手弹窗 run：true 时才追加 `needs_screen_context` 问题（唤起即屏幕上下文）。
+         * 主程序 run 硬边界——这个问题根本不发问（用户定稿，非"问了不消费"）。
+         */
+        popupRun: Boolean = false,
         /** 非 null 且主模型成功时才可能升级；升级失败会回退主模型结果。 */
         escalation: AgentDecisionEscalation.Config? = null,
         /** 真正发往 `/v1/systemone` 的模型名（provider 记录里的 API 名）；留空时退回 [modelId]。 */
@@ -123,24 +133,46 @@ internal object AgentDecisionEvaluator {
                 stickyGroups.sorted().forEach { group -> array.put(group) }
             })
             .put("is_tool_loop_continuation", isContinuation)
+            .put("has_attached_image", request.images.isNotEmpty())
         val stateChars = state.toString().length
 
-        val questions = listOf(
-            AgentDecisionQuestion.Noul(
-                id = "needs_tools",
-                instructions = "Decide whether the user's request needs at least one tool call to be completed.",
-                trueCriterion = "The request requires executing an action, reading device/app data, " +
-                    "running commands, browsing, or any other tool to answer correctly.",
-                falseCriterion = "The request can be answered from general knowledge or the " +
-                    "conversation itself, with plain text only.",
-            ),
-            AgentDecisionQuestion.MultiChoice(
-                id = "tool_groups",
-                instructions = "Select every tool group that must be available to complete the request. " +
-                    "Select no group when the request is pure chat or general knowledge.",
-                criteria = groups.associate { it.id to it.summary },
-            ),
-        )
+        val questions = buildList {
+            add(
+                AgentDecisionQuestion.Noul(
+                    id = "needs_tools",
+                    instructions = "Decide whether the user's request needs at least one tool call to be completed.",
+                    trueCriterion = "The request requires executing an action, reading device/app data, " +
+                        "running commands, browsing, or any other tool to answer correctly.",
+                    falseCriterion = "The request can be answered from general knowledge or the " +
+                        "conversation itself, with plain text only.",
+                ),
+            )
+            add(
+                AgentDecisionQuestion.MultiChoice(
+                    id = "tool_groups",
+                    instructions = "Select every tool group that must be available to complete the request. " +
+                        "Select no group when the request is pure chat or general knowledge.",
+                    criteria = groups.associate { it.id to it.summary },
+                ),
+            )
+            if (popupRun) {
+                // 唤起即屏幕上下文（助手弹窗 run 专属）：入口截图未被手动选中时，由判断模型
+                // 决定是否依赖「看到当前屏幕」。命中后运行侧预开屏幕组并注入 observe_screen
+                // 首轮引导；主程序 run 不发问（硬边界）。
+                add(
+                    AgentDecisionQuestion.Noul(
+                        id = "needs_screen_context",
+                        instructions = "Decide whether answering the user's request requires SEEING the " +
+                            "current content of the user's phone screen.",
+                        trueCriterion = "The request asks about, reads, translates, summarizes, or acts " +
+                            "on what is currently shown on the phone screen (visible app content, " +
+                            "messages, schedules, etc.), and no screenshot is attached to the message.",
+                        falseCriterion = "The request can be answered without seeing the screen, or a " +
+                            "screenshot is already attached to the message.",
+                    ),
+                )
+            }
+        }
 
         // 升级模型走同一端点覆盖规则；provider 不同时用升级模型自己的 baseUrl。
         // 自定义端点是按**主 provider** 配的：升级模型若来自另一个 provider，
@@ -251,6 +283,10 @@ internal object AgentDecisionEvaluator {
                 } else {
                     emptySet()
                 }
+                val needsScreenContext = popupRun && (
+                    (response.answers["needs_screen_context"] as? AgentDecisionAnswer.Noul)
+                        ?.probability ?: 0.0
+                    ) >= NEEDS_TOOLS_THRESHOLD
                 AgentDecisionEvaluation(
                     modelId = modelId,
                     endpoint = endpoint,
@@ -264,6 +300,7 @@ internal object AgentDecisionEvaluator {
                     latencyMs = primaryLatencyMs,
                     needsTools = needsTools,
                     selectedGroups = selected,
+                    needsScreenContext = needsScreenContext,
                     layers = response.layers.size,
                     usageIn = response.usage?.inputTokens,
                     usageOut = response.usage?.outputTokens,

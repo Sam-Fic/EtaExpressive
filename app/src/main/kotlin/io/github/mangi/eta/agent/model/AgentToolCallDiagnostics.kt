@@ -220,6 +220,14 @@ internal class AgentToolCallDiagnostics(
                 fields.put("${name}_present", value != null)
                 value?.let { fields.put(name, it) }
             }
+            // 命中率只在 provider 真的上报了 cached_tokens 时才有意义：
+            // 很多 OpenAI 兼容网关根本不返回该字段，此时 0% 只代表「未上报」。
+            val cached = usage.cachedTokens
+            fields.put("cached_reported", cached != null)
+            val input = usage.inputTokens
+            if (cached != null && input != null && input > 0) {
+                fields.put("cache_hit_ratio", (cached.toDouble() / input.toDouble()).coerceIn(0.0, 1.0))
+            }
             emit("usage", fields)
         }
 
