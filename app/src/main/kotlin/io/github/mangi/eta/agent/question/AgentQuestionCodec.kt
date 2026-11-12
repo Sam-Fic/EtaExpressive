@@ -79,6 +79,19 @@ internal object AgentQuestionCodec {
     private const val KEY_STATUS = "status"
     private const val KEY_QUESTION_ID_OUT = KEY_QUESTION_ID
 
+    /** delegate 回答的输出字段：把「委托」的后续动作讲清楚，模型读到即自决推进。 */
+    private const val KEY_GUIDANCE = "guidance"
+
+    /**
+     * delegate 回答的工具结果指引。没有它，模型读到裸 `kind:"delegate"` 只能自行脑补
+     * （在派发会话语境下尤其容易解释成「继续等」）；明说「按最合理默认推进、不要重复
+     * 提问、不要原地等待」并要求它事后说明选择理由。派发会话里「汇报」即本轮任务的
+     * 终态 summary，调度台自然收到，无需另指路径。
+     */
+    private const val DELEGATE_GUIDANCE =
+        "用户选择「交给你决定」：没有给出具体答案。不要重复提问，也不要原地等待；" +
+            "基于已有上下文选择最合理的默认方案继续推进，并在后续输出中说明你的选择与理由。"
+
     private val ARG_KEYS = setOf(
         ARG_TITLE, ARG_QUESTION, ARG_OPTIONS, ARG_RECOMMENDED,
         ARG_ALLOW_OTHER, ARG_ALLOW_DELEGATION, ARG_ALLOW_NOTE,
@@ -320,6 +333,8 @@ internal object AgentQuestionCodec {
                 )
             }
             AgentQuestionAnswer.KIND_OTHER -> result.put(KEY_OTHER_TEXT, answer.otherText)
+            // 委托没有实质答案：带上指引，模型自决推进而不是原地等待/重复提问。
+            AgentQuestionAnswer.KIND_DELEGATE -> result.put(KEY_GUIDANCE, DELEGATE_GUIDANCE)
         }
         if (request.allowNote && answer.note.isNotBlank()) {
             result.put(KEY_NOTE, answer.note)

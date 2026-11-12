@@ -36,7 +36,9 @@ internal object AgentQuestionToolCatalog {
                         "and cannot be inferred; handle inferable or defaultable details yourself. Call it alone in its batch " +
                         "with exactly one ask_user. Provide 2-8 mutually exclusive, actionable options; recommended_option_id " +
                         "is only a hint, so never decide for the user. The answer may choose an option, write a custom answer, " +
-                        "or defer; request only capabilities that allow_other/allow_delegation/allow_note grant.",
+                        "or defer the decision back to you (the result then carries guidance: pick the most reasonable " +
+                        "default yourself and move on — never wait or re-ask); request only capabilities that " +
+                        "allow_other/allow_delegation/allow_note grant.",
                 parameters = JSONObject()
                     .put("type", "object")
                     .put("additionalProperties", false)
