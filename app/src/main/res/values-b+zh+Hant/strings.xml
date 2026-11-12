@@ -225,6 +225,7 @@
   <string name="route_permissions">權限</string>
   <string name="route_system_enhancements">系統增強</string>
   <string name="route_settings">設定</string>
+  <string name="settings_detail_empty_hint">從左側選擇一項設定</string>
   <string name="route_memory">記憶</string>
   <string name="route_linux_environment">Linux 工具環境</string>
   <string name="route_terminal">終端機</string>

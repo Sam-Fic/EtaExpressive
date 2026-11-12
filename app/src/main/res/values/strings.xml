@@ -88,6 +88,7 @@
   <string name="route_permissions">Permissions</string>
   <string name="route_system_enhancements">System enhancements</string>
   <string name="route_settings">Settings</string>
+  <string name="settings_detail_empty_hint">Choose a setting from the list</string>
   <string name="route_memory">Memory</string>
   <string name="route_linux_environment">Linux environment</string>
   <string name="route_terminal">Terminal</string>

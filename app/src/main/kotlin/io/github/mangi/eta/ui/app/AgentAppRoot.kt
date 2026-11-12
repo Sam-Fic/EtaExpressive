@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.app
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import io.github.mangi.eta.ui.components.StreamingMarkdownCache
 import io.github.mangi.eta.ui.components.LocalStreamingMarkdownStates
 import io.github.mangi.eta.ui.components.remoteSessionTitle
@@ -85,6 +86,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
+import io.github.mangi.eta.ui.adaptive.LocalEtaDetailPaneDepth
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.components.LocalOpenVoiceSettings
 import io.github.mangi.eta.ui.components.LocalShellTopBarInset
@@ -95,6 +97,14 @@ import io.github.mangi.eta.ui.LiveActivitySettingsScreen
 import io.github.mangi.eta.ui.ContextCompressionSettingsScreen
 import io.github.mangi.eta.ui.DecisionModelSettingsScreen
 import io.github.mangi.eta.ui.SettingsScreen
+import io.github.mangi.eta.ui.SettingsDetailEmptyPane
+import io.github.mangi.eta.ui.SettingsDetailFirstRoute
+import io.github.mangi.eta.ui.SettingsDetailInstantTransition
+import io.github.mangi.eta.ui.SettingsDetailPaneEffects
+import io.github.mangi.eta.ui.SettingsDetailPaneTransition
+import io.github.mangi.eta.ui.SettingsWideHost
+import io.github.mangi.eta.ui.settingsAnchorKeyForRoute
+import io.github.mangi.eta.ui.layout.rememberIsWideScreen
 import io.github.mangi.eta.ui.components.AppUpdateDialog
 import io.github.mangi.eta.ui.components.AgentPendingChildStopDialog
 import io.github.mangi.eta.ui.model.AgentChatAction
@@ -159,6 +169,7 @@ import kotlinx.coroutines.ensureActive
 import top.yukonga.miuix.kmp.nav.core.LocalNavTransitionScope
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
+import top.yukonga.miuix.kmp.nav.core.NavEntryBuilder
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
@@ -187,13 +198,44 @@ fun AgentAppRoot(
     // 起点固定 Home；所有入栈操作只接受 AppRoute（见 AgentNavigator）。
     val backStack = rememberNavBackStack<AppRoute>(AppRoute.Home)
     val navigator = remember(backStack) { AgentNavigator(backStack) }
+    // 宽屏设置页右栏的独立返回栈：栈底就是「第一个子设置页」，进设置页即显示，
+    // 二级/三级设置页只压这里，主栈始终停在 AppRoute.Settings，左栏设置主页因此
+    // 不会重建、不会变化。两个 rememberNavBackStack 按组合位置各自 rememberSaveable，
+    // 互不干扰（miuix NavBackStack.kt；NavDisplay.kt:847-856 处理嵌套 display 的返回仲裁）。
+    val settingsDetailStack = rememberNavBackStack<AppRoute>(SettingsDetailFirstRoute)
+    val wideScreenActive = rememberIsWideScreen()
     // 组合期直接读 SnapshotStateList 的可观察快照，用它派生当前路由与「是否还有上一级」。
     val currentRoute by remember { derivedStateOf { backStack.lastOrNull() as? AppRoute } }
     val canPopRoute by remember { derivedStateOf { backStack.size > 1 } }
+    // 宽屏设置态：设置子页的 push/pop 全部改走右栏栈（见 pushRoute / popRoute）。
+    val settingsWideActive = wideScreenActive && currentRoute == AppRoute.Settings
+    // 左栏点选二级页 = 整栈替换 + 官方 NavTransitions.None 瞬时换页；右栏自己 push 的
+    // 三级/四级页要带动画。两者共用一个 NavDisplay，故用这个标记切换全局 transition。
+    // 只有「栈内只剩一个二级页」时会是 true，此时没有任何可播放转场的层。
+    var detailInstantSwap by remember { mutableStateOf(false) }
+    // 右栏 display 的重建代次：只在「瞬时换页」（进设置页 / 左栏换项 / 搜索层压退）时递增。
+    // 三级页 push/pop 不动它，右栏才能保留自己的转场动画。
+    var detailInstantEpoch by remember { mutableStateOf(0) }
+    // 每次重新进入宽屏设置页（含从别的页返回、旋转回宽屏）都回到第一个子设置页，
+    // 不把上一次浏览到的三级页带回来。主栈不变，左栏自然也不会重建。
+    LaunchedEffect(currentRoute, wideScreenActive) {
+        if (currentRoute == AppRoute.Settings && wideScreenActive) {
+            Snapshot.withMutableSnapshot {
+                detailInstantSwap = true
+                detailInstantEpoch++
+                settingsDetailStack.clear()
+                settingsDetailStack.add(SettingsDetailFirstRoute)
+            }
+        }
+    }
     // 容器兜底：miuix 0.9.4 没有 entryProvider fallback（未登记类型会在 build() 直接抛异常），
     // 所以渲染前先找出不可渲染的条目，命中时改渲染最小错误页（见下方 NavDisplay 处）。
+    // 两个栈都要筛，右栏栈里出现未登记类型同样会在 build() 崩。
     val unrenderableRoute by remember {
-        derivedStateOf { backStack.firstOrNull { !isKnownAppRoute(it) } }
+        derivedStateOf {
+            backStack.firstOrNull { !isKnownAppRoute(it) }
+                ?: settingsDetailStack.firstOrNull { !isKnownAppRoute(it) }
+        }
     }
     // 转场活跃信号（LocalChatTransitionActive 的唯一来源）。写入点在 RoutedShell 里，
     // 由 miuix 的 LocalNavTransitionScope.isRunning 驱动；这里先声明，供其捕获。
@@ -547,13 +589,71 @@ fun AgentAppRoot(
         onInboundShareConsumed()
     }
 
+    /**
+     * 宽屏设置态下哪些路由压进右栏栈。主界面目的地仍走主栈；设置树的一切子页走右栏，
+     * 这样从二级页再进三级页、四级页都只动右栏，左栏连重组都不会发生。
+     */
+    fun isSettingsDetailRoute(route: AppRoute): Boolean = when (route) {
+        AppRoute.Home, AppRoute.Chat, AppRoute.Browser, AppRoute.Terminal,
+        AppRoute.Settings, AppRoute.SettingsDetailEmpty,
+        AppRoute.ManageChats, AppRoute.ManageFolders, AppRoute.ConversationTrash,
+        AppRoute.ConversationTrashSearch, AppRoute.ConversationTokenUsage,
+        AppRoute.SubAgentStatus, AppRoute.TerminalDaemonTasks -> false
+        is AppRoute.MessageSearch -> false
+        else -> true
+    }
+
     fun pushRoute(route: AppRoute) {
         if (route == AppRoute.Browser) {
             focusManager.clearFocus(force = true)
             keyboard?.hide()
             conversationPaneOpen = false
         }
+        // 宽屏设置页：右栏自己 push 的三级/四级页进右栏栈，带右栏内转场；
+        // 主栈保持 Settings 不动（左栏常驻）。与 AgentNavigator.push 一致按 == 去重。
+        if (settingsWideActive && isSettingsDetailRoute(route)) {
+            Snapshot.withMutableSnapshot {
+                detailInstantSwap = false
+                if (settingsDetailStack.none { it == route }) settingsDetailStack.add(route)
+            }
+            return
+        }
         navigator.push(route)
+    }
+
+    /**
+     * 左栏点选设置项：右栏整栈替换成该二级页，瞬时换页、不压层级、不播放页面转场。
+     *
+     * 不做 push，是为了修掉「页面层级」问题——以前每点一个左栏项就压一层，返回键得
+     * 把历次点过的项逐个退出来。现在右栏栈始终只有「当前二级页 + 它上面的三级页」，
+     * 左栏再点一项就整个换掉，返回键直接退出设置页。
+     */
+    fun selectSettingsDetail(route: AppRoute) {
+        if (!settingsWideActive) {
+            pushRoute(route)
+            return
+        }
+        // 搜索是临时任务层，不是二级设置页：瞬时压在栈上（同样不播放页面转场），
+        // 返回时退回原来的二级页，左栏选中态（只看栈底）也不变。否则搜索结果命中
+        // 「行内控件」时调 popRoute 会一路退出整个设置页，左栏刚滚过去高亮的那一行
+        // 就看不见了。
+        if (route == AppRoute.SettingsSearch) {
+            Snapshot.withMutableSnapshot {
+                detailInstantSwap = true
+                detailInstantEpoch++
+                if (settingsDetailStack.none { it == route }) settingsDetailStack.add(route)
+            }
+            return
+        }
+        if (settingsDetailStack.size == 1 && settingsDetailStack.lastOrNull() == route) return
+        // 转场标记、重建代次与栈变更放同一个快照：绝不出现「栈换了但 transition 还是旧的」
+        // 那一帧，也让右栏 display 直接从新栈起步，不跑旧层的退场收敛。
+        Snapshot.withMutableSnapshot {
+            detailInstantSwap = true
+            detailInstantEpoch++
+            settingsDetailStack.clear()
+            settingsDetailStack.add(route)
+        }
     }
 
     /** 「我的声音」子页统一入口：走真实路由，复用导航容器的入栈/出栈转场。 */
@@ -591,7 +691,38 @@ fun AgentAppRoot(
     // 一旦子页里再次走到退出分支，第一次点击就直接结束 Activity，而不是再提示一次。
     LaunchedEffect(currentRoute) { exitGuard.reset() }
 
+    /**
+     * 主 `NavDisplay` 自己的返回（系统预测式返回 / 屏幕左缘横移手势）：**只弹主栈**。
+     *
+     * 宽屏设置页里右栏有独立返回栈。若主 display 的 `onBack` 也调 [popRoute]，手势会把
+     * 整页（含左栏）拖向上一页，提交时却只弹了右栏栈、主栈纹丝不动，`animatedTop`
+     * 只能弹回原位 —— 用户看到的「界面错乱」就是这一帧。让手势与它驱动的栈一致即可。
+     * 右栏自己的手势/返回仍走 [popRoute]，逐层退出右栏。
+     *
+     * 取证：miuix-nav 0.9.4 sources jar `NavDisplay.kt:616-625` 的
+     * `navSwipeDismissImpl(onCommit = currentOnBack.value)`，手势提交直接调 display 的
+     * `onBack`；同文件 `:964` 默认 `onBack = { backStack.removeLastOrNull() }` 也只动本栈。
+     */
+    fun popRootRoute() {
+        if (navigator.pop()) {
+            exitGuard.reset()
+            lastPopAtMs = SystemClock.uptimeMillis()
+        }
+    }
+
     fun popRoute() {
+        // 宽屏设置页：右栏栈还有子页时先退出栈，主栈不动，左栏保持原位。
+        // 右栏只剩空态栈底时落到下面的主栈逻辑，返回键自然退出整个设置页。
+        if (settingsWideActive && settingsDetailStack.size > 1) {
+            // 搜索层是左栏瞬时打开的，退回去同样无动画；三级/四级页出栈切回右栏内转场。
+            val dismissingSearch = settingsDetailStack.lastOrNull() == AppRoute.SettingsSearch
+            detailInstantSwap = dismissingSearch
+            if (dismissingSearch) detailInstantEpoch++
+            settingsDetailStack.removeAt(settingsDetailStack.lastIndex)
+            exitGuard.reset()
+            lastPopAtMs = SystemClock.uptimeMillis()
+            return
+        }
         // 「还有没有上一级」与系统返回键用同一个依据（miuix 返回栈 `SnapshotStateList<NavKey>`），
         // 只有确实在根页面时才进入双击退出逻辑。
         if (!navigator.canPop()) {
@@ -902,7 +1033,11 @@ fun AgentAppRoot(
             onRecover = {
                 Snapshot.withMutableSnapshot {
                     backStack.removeAll { !isKnownAppRoute(it) }
+                    settingsDetailStack.removeAll { !isKnownAppRoute(it) }
                     if (backStack.isEmpty()) backStack.add(AppRoute.Home)
+                    if (settingsDetailStack.isEmpty()) {
+                        settingsDetailStack.add(AppRoute.SettingsDetailEmpty)
+                    }
                 }
             },
         )
@@ -922,12 +1057,11 @@ fun AgentAppRoot(
             LocalLayoutDirection.current == LayoutDirection.Rtl -> NavSwipeDirection.RightToLeft
             else -> NavSwipeDirection.LeftToRight
         }
-        NavDisplay(
-            backStack = backStack,
-            modifier = Modifier.fillMaxSize(),
-            onBack = { popRoute() },
-            effects = navEffects,
-        ) {
+        // entry DSL 抽成本文件内的局部函数：主 NavDisplay 与右栏 NavDisplay 共用同一份，
+        // 不复制任何 entry（test_app_route_entry_parity_contract.py 禁止重复登记）。
+        // 局部函数可递归调用自己，Settings entry 里的右栏 NavDisplay 再次调用它即可。
+        // 函数体保持原有的 12 空格缩进与 entry 顺序，文本级契约断言照常命中。
+        fun NavEntryBuilder.appEntries() {
             // 栈底特例：Home 永远是返回栈第一项（没有 pushRoute(AppRoute.Home) 的调用），
             // 给它横移返回既没有「上一页」可回，又会和首页左边缘拉出会话抽屉抢手势，
             // 还可能让 popRoute() 的双击退出守卫弹出提示。其余路由统一用全局方向。
@@ -1488,15 +1622,79 @@ fun AgentAppRoot(
                 )
             }
             entry<AppRoute.Settings>(swipeDismiss = navSwipeDismiss) {
-                SettingsScreen(
-                    context = context,
-                    onNavigate = { route -> pushRoute(route) },
-                    onBack = ::popRoute,
-                    currentProviderId = shellHomeState.providerId,
-                    currentModelId = shellHomeState.modelId,
-                    focusKey = settingsFocusKey,
-                    onFocusConsumed = { settingsFocusKey = null },
-                )
+                // 宽屏：左栏是原封不动的设置主页（十组全渲染、自带顶栏与搜索入口），
+                // 右栏是独立的二级/三级返回栈；窄屏与改动前逐字一致。
+                // 左栏点选走 selectSettingsDetail（整栈替换 / 无动画），右栏页内跳转仍走
+                // pushRoute（压右栏栈 / 右栏内转场）。
+                val openSettingsDestination: (AppRoute) -> Unit = if (wideScreenActive) {
+                    { route -> selectSettingsDetail(route) }
+                } else {
+                    { route -> pushRoute(route) }
+                }
+                // 右栏栈底（左栏选中的二级页）：选中态与右栏 display 的重组 key 同源，
+                // 进三级/四级页时左栏高亮不跳。
+                val detailBaseRoute = settingsDetailStack.firstOrNull()
+                val selectedKey = if (wideScreenActive) {
+                    settingsAnchorKeyForRoute(detailBaseRoute as? AppRoute)
+                } else {
+                    null
+                }
+                val settingsPage: @Composable () -> Unit = {
+                    SettingsScreen(
+                        context = context,
+                        onNavigate = openSettingsDestination,
+                        onBack = ::popRoute,
+                        currentProviderId = shellHomeState.providerId,
+                        currentModelId = shellHomeState.modelId,
+                        focusKey = settingsFocusKey,
+                        onFocusConsumed = { settingsFocusKey = null },
+                        selectedKey = selectedKey,
+                    )
+                }
+                if (wideScreenActive) {
+                    SettingsWideHost(
+                        left = settingsPage,
+                        right = {
+                            // 右栏栈深（0 = 栈底）：页面骨架据此决定顶栏要不要画返回箭头 ——
+                            // 二级页第一层身后没有上层可返回，箭头是多余的；三级/四级页照旧。
+                            // 值随栈深变化，但读取方只在页面首次组合时取一次，所以 push 时
+                            // 栈底页不会重新长出箭头（见 `LocalEtaDetailPaneDepth`）。
+                            CompositionLocalProvider(
+                                LocalEtaDetailPaneDepth provides (settingsDetailStack.size - 1),
+                            ) {
+                                // 栈底换页时重建整个右栏 display：miuix 的 presentation /
+                                // animatedTop 是 remember 全局的，整栈替换会把旧三级页留成
+                                // leaving 层，在 None 转场下静止盖在新页上直到 500ms 收敛完才
+                                // 突然消失。换 key 让它从栈深 1 起步，连收敛过程都不跑 =
+                                // 真正的瞬时无动画换页。三级页 push 时栈底不变，key 不变，
+                                // 转场照常在右栏内播放。
+                                key(detailBaseRoute, detailInstantEpoch) {
+                                    NavDisplay(
+                                        backStack = settingsDetailStack,
+                                        modifier = Modifier.fillMaxSize(),
+                                        onBack = { popRoute() },
+                                        // 搜索层压/退栈 = 官方 None 瞬时切；三级页 push/pop
+                                        // = 右栏内滑入转场（带下层压深 + clipToBounds 不越界）。
+                                        transition = if (detailInstantSwap) {
+                                            SettingsDetailInstantTransition
+                                        } else {
+                                            SettingsDetailPaneTransition
+                                        },
+                                        // 右栏是直角 pane：关掉系统圆角裁切动画与整屏 scrim。
+                                        effects = SettingsDetailPaneEffects,
+                                    ) {
+                                        appEntries()
+                                    }
+                                }
+                            }
+                        },
+                    )
+                } else {
+                    settingsPage()
+                }
+            }
+            entry<AppRoute.SettingsDetailEmpty>(swipeDismiss = navSwipeDismiss) {
+                SettingsDetailEmptyPane()
             }
             entry<AppRoute.MediaSearch>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.screens.search.MediaSearchScreen(
@@ -1795,6 +1993,16 @@ fun AgentAppRoot(
                     onBack = ::popRoute
                 )
             }
+        }
+        NavDisplay(
+            backStack = backStack,
+            modifier = Modifier.fillMaxSize(),
+            // 宽屏设置页：主 display 的横移手势/预测式返回只弹主栈，右栏手势由右栏
+            // display 的 onBack = popRoute() 接管。两者各驱动自己的栈，不再互相抢。
+            onBack = { if (settingsWideActive) popRootRoute() else popRoute() },
+            effects = navEffects,
+        ) {
+            appEntries()
         }
     }
 

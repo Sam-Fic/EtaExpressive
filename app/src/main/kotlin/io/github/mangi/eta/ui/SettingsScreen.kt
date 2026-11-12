@@ -119,6 +119,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.LocalEtaSegmentedRowContainerColor
+import io.github.mangi.eta.ui.adaptive.LocalEtaSegmentedRowContentColor
 import androidx.compose.material3.Text as M3StatusText
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme as M3MaterialTheme
@@ -148,6 +149,13 @@ internal fun SettingsScreen(
     currentModelId: String? = null,
     focusKey: String? = null,
     onFocusConsumed: () -> Unit = {},
+    /**
+     * 宽屏 list-detail 左栏的持久选中行（[SettingsKeys] 锚点键）。
+     *
+     * 手机端不传，页面与原来逐字一致；宽屏传右栏当前二级页对应的行，选中态一直亮着，
+     * 三级/四级页跳转也不改变它。与 [focusKey] 的短暂高亮是两套独立状态。
+     */
+    selectedKey: String? = null,
 ) {
     // Read only attach/detach generation so idle sections rebuild observer identities.
     StreamPerformanceDiagnostics.sessionGeneration.longValue
@@ -309,6 +317,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("agent"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.MODEL_PROVIDER) {
                     SettingsProviderEntry(currentProviderId, currentModelId) {
@@ -333,6 +342,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("model_features"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.CONTEXT_COMPRESSION) {
                     EtaClickableRow(
@@ -403,6 +413,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("context_extensions"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.ASSISTANTS) {
                     EtaClickableRow(
@@ -479,6 +490,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("general"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.VOICE) {
                     EtaClickableRow(
@@ -550,6 +562,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("tools"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.TOOLS) {
                     EtaClickableRow(
@@ -655,6 +668,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("runtime"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 // 入口始终可见：执行位置与虚拟屏视窗走进程内 VirtualDisplayController，
                 // 只依赖 root/LSPosed，不再要求 Magisk 后端模块；模块仅决定网页预览与副屏恢复是否可用。
@@ -697,6 +711,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("system_takeover"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.SYSTEM_TAKEOVER) {
                     EtaClickableRow(
@@ -713,6 +728,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("diagnostics"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.FILE_LOGGING) {
                     SwitchPreference(
@@ -780,6 +796,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier.settingsSectionDiagnostics("permissions"),
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.PERMISSION_HEALTH) {
                     EtaClickableRow(
@@ -851,6 +868,7 @@ internal fun SettingsScreen(
                 sectionModifier = Modifier,
                 anchors = anchors,
                 highlightedKey = highlightedKey,
+                selectedKey = selectedKey,
             ) {
                 row(key = SettingsKeys.ABOUT) {
                     val versionName = remember { AppUpdateRepository.currentVersionName(context) }
@@ -996,6 +1014,8 @@ internal fun LazyListScope.settingsGroup(
     sectionModifier: Modifier,
     anchors: SettingsAnchorIndex,
     highlightedKey: String?,
+    /** 宽屏左栏常驻选中行；null 时（含所有手机端调用方）与原来完全一致。 */
+    selectedKey: String? = null,
     content: SettingsGroupRows.() -> Unit,
 ) {
     val rows = SettingsGroupRows().apply(content).rows
@@ -1026,6 +1046,7 @@ internal fun LazyListScope.settingsGroup(
                 ) {
                     SettingsRowHighlight(
                         highlighted = row.key != null && row.key == highlightedKey,
+                        selected = row.key != null && row.key == selectedKey,
                         content = row.content,
                     )
                 }
@@ -1035,27 +1056,38 @@ internal fun LazyListScope.settingsGroup(
 }
 
 /**
- * 聚焦行的短暂高亮：搜索命中跳回主页时把这一行的容器色换成 `secondaryContainer`，
- * 高亮结束再动画回官方 `surfaceBright`。
+ * 行的容器色状态：搜索命中的短暂高亮 `secondaryContainer`、宽屏左栏的常驻选中
+ * `tertiaryContainer`（与会话抽屉侧栏选中行同一套官方令牌），其余回到 `surfaceBright`。
  *
  * 容器色只在分段行自己绘制时生效（[LocalEtaSegmentedRowContainerColor]），所以高亮
- * 与行的分段形状严丝合缝，不会在外层叠出一块异色方块。
+ * 与行的分段形状严丝合缝，不会在外层叠出一块异色方块。亮底同时通过
+ * [LocalEtaSegmentedRowContentColor] 把标题/摘要/行首图标/行尾箭头换成官方
+ * `onXxxContainer`，否则深色主题的浅色前景在 `tertiaryContainer` 上几乎看不见。
  */
 @Composable
 private fun SettingsRowHighlight(
     highlighted: Boolean,
+    selected: Boolean,
     content: @Composable () -> Unit,
 ) {
     val color by animateColorAsState(
-        targetValue = if (highlighted) {
-            M3MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            M3MaterialTheme.colorScheme.surfaceBright
+        targetValue = when {
+            highlighted -> M3MaterialTheme.colorScheme.secondaryContainer
+            selected -> M3MaterialTheme.colorScheme.tertiaryContainer
+            else -> M3MaterialTheme.colorScheme.surfaceBright
         },
         label = "settings_row_highlight",
     )
+    // 容器色是动画中间色，无法反推前景色；这里显式给目标前景色，
+    // 非高亮/非选中时传 null，行内容逐字沿用官方 ListItem 令牌。
+    val contentColor = when {
+        highlighted -> M3MaterialTheme.colorScheme.onSecondaryContainer
+        selected -> M3MaterialTheme.colorScheme.onTertiaryContainer
+        else -> null
+    }
     CompositionLocalProvider(
         LocalEtaSegmentedRowContainerColor provides color,
+        LocalEtaSegmentedRowContentColor provides contentColor,
         content = content,
     )
 }

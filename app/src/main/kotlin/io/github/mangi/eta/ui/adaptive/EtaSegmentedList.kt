@@ -119,6 +119,15 @@ val LocalEtaSegmentedRowBare = staticCompositionLocalOf { false }
  */
 val LocalEtaSegmentedRowContainerColor = compositionLocalOf<Color?> { null }
 
+/**
+ * 分段行内容色的局部覆盖：容器色被临时换成亮色（如宽屏设置左栏的常驻选中行）时，
+ * 文字 / 图标 / 箭头必须跟着换成配套的 `onXxxContainer`，否则对比度会塌掉。
+ *
+ * 默认 null = 完全沿用官方 ListItem 令牌；容器色本身是动画中间色，不能从它反推内容色，
+ * 所以调用方要显式给出目标内容色。
+ */
+val LocalEtaSegmentedRowContentColor = compositionLocalOf<Color?> { null }
+
 /** 分段行的容器色：位于容器内时透明，否则用 surfaceBright 从页面背景浮出一档。 */
 @Composable
 internal fun etaSegmentedRowColors(
@@ -139,8 +148,10 @@ internal fun etaSegmentedRowColors(
         ?: MaterialTheme.colorScheme.surfaceBright
     // 只有显式指定底色时才推导配套内容色（tertiaryContainer → onTertiaryContainer），
     // 文字/图标/箭头与底色始终成对。LocalEtaSegmentedRowContainerColor 可能是动画中的
-    // 中间色（如设置页搜索命中高亮），不能据此判定内容色，保持原来的默认内容色。
+    // 中间色（如设置页搜索命中高亮），不能据此判定内容色；这类临时高亮由调用方通过
+    // LocalEtaSegmentedRowContentColor 显式给目标内容色，其余情况保持原来的默认内容色。
     val contentColor = containerColorOverride?.let { contentColorFor(it) }
+        ?: LocalEtaSegmentedRowContentColor.current
     // 选中态同理：由选中的容器色推出配套内容色，并覆盖前导/尾部/支持文本，
     // 避免选中行里图标、时间戳仍用未选中态颜色（如会话抽屉选中行）。
     val selectedContentColor = selectedContainerColor?.let { contentColorFor(it) }

@@ -29,6 +29,7 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.Permissions::class,
     AppRoute.SystemEnhance::class,
     AppRoute.Settings::class,
+    AppRoute.SettingsDetailEmpty::class,
     AppRoute.SettingsSearch::class,
     AppRoute.SystemTakeover::class,
     AppRoute.About::class,

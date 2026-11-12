@@ -239,6 +239,17 @@ sealed interface AppRoute : NavKey {
      */
     @Serializable
     data class RemoteAgentEditor(val serverId: String? = null) : AppRoute
+
+    /**
+     * 宽屏设置页右栏的兜底空态。
+     *
+     * 平板横屏下设置主页常驻左栏，右栏默认显示第一个子设置页；miuix `NavDisplay` 要求
+     * 栈不能为空（`NavDisplay.kt:1030` 的 `require(backStack.isNotEmpty())`），所以当右栏栈
+     * 被异常恢复成空时，用这个可渲染的占位补一项。它不对应任何用户可见的设置项，
+     * 正常导航不会 push 它。
+     */
+    @Serializable
+    data object SettingsDetailEmpty : AppRoute
 }
 
 @Serializable

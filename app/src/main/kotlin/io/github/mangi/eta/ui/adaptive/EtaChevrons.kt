@@ -29,11 +29,14 @@ fun EtaTrailingChevron(
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     size: Dp = EtaDimens.TrailingChevronSize,
 ) {
+    // 所在分段行被临时换成亮底（宽屏设置左栏选中行）时，箭头改吃官方配套前景色；
+    // 没有覆盖时保持调用方给的 tint（默认 onSurfaceVariant）。
+    val selectedContentColor = LocalEtaSegmentedRowContentColor.current
     Icon(
         imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
         contentDescription = contentDescription,
         modifier = modifier.size(size),
-        tint = tint,
+        tint = selectedContentColor ?: tint,
     )
 }
 

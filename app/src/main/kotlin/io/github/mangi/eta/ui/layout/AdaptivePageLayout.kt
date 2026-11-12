@@ -27,6 +27,16 @@ val MaxPageContentWidth = 800.dp
 /** 首页空态建议形状组的最大宽度：平板横屏下形状不再随屏幕一起放大。 */
 val MaxChatSuggestionWidth = 440.dp
 
+/**
+ * 宽屏二级页左侧索引栏的最大宽度：与 [io.github.mangi.eta.ui.components.ConversationSidePaneScaffold]
+ * 的 standard side sheet 同口径（360dp 上限、窗口刚过断点时按 0.46 比例收窄）。
+ * 不直接复用该文件里的 `DrawerMetrics`：它是 private，且宽屏尺寸令牌应集中在本文件。
+ */
+val SettingsSideRailMaxWidth = 360.dp
+
+/** 索引栏在窄一点的宽屏上按可用宽度的比例收窄，避免把右侧内容挤到放不下一行设置项。 */
+val SettingsSideRailWidthFraction = 0.46f
+
 @Composable
 fun rememberIsWideScreen(): Boolean {
     val containerSize = LocalWindowInfo.current.containerSize

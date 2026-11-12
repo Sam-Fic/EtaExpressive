@@ -117,6 +117,7 @@
   <string name="route_permissions">权限</string>
   <string name="route_system_enhancements">系统增强</string>
   <string name="route_settings">设置</string>
+  <string name="settings_detail_empty_hint">从左侧选择一项设置</string>
   <string name="route_memory">记忆</string>
   <string name="route_linux_environment">Linux 工具环境</string>
   <string name="route_terminal">终端</string>
