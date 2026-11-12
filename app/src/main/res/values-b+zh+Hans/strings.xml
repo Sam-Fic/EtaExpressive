@@ -2107,6 +2107,8 @@
   <string name="dispatch_question_waiting">等待回答：%1$s</string>
   <string name="dispatch_question_waiting_label">等待回答</string>
   <string name="dispatch_question_waiting_badge">派发的子任务在等待回答</string>
+  <string name="dispatch_control_waiting">等待手机操作权</string>
+  <string name="dispatch_question_queued">排队中（第 %1$d 位）</string>
   <string name="vd_recovery_title">副屏恢复</string>
   <string name="vd_recovery_empty">没有待恢复的Eta副屏会话</string>
   <string name="vd_recovery_record">恢复记录：副屏 %1$d · %2$s</string>

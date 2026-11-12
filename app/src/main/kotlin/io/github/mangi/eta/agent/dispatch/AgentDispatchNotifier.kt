@@ -116,6 +116,67 @@ internal object AgentDispatchNotifier {
         }
     }
 
+    /**
+     * 子会话手机操作权等待通知：并发 GUI 时派发 run 可能在 GuiControlCoordinator 里
+     * 无限期排队（另一 run 持有主屏操作权/被用户暂停），这是提问管线之外第二个
+     * 「看不见的等待」。协调器仅在等待态翻转时发布；transient、不发系统横幅——
+     * 通常数秒内自愈，卡片副标题提示即可。replay 兜底 Activity 重建窗口。
+     */
+    data class ControlNotice(
+        val dispatchId: String,
+        val conversationId: String,
+        val runId: String,
+        val waiting: Boolean,
+    )
+
+    private val _controlNotices = MutableSharedFlow<ControlNotice>(
+        replay = 16,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    val controlNotices: SharedFlow<ControlNotice> = _controlNotices
+
+    fun publishControl(notice: ControlNotice) {
+        val accepted = _controlNotices.tryEmit(notice)
+        AndroidAgentLogger.info(
+            "dispatch control notice: conversation=${notice.conversationId} " +
+                "run=${notice.runId} dispatch=${notice.dispatchId} " +
+                "waiting=${notice.waiting} emitted=$accepted",
+        )
+    }
+
+    /**
+     * 子会话开跑通知：排队单被排空、重启恢复重新派发时，协调器手里没有活跃的调度台
+     * run 会话，`DispatchCreated` 发不出（它只能 emit 进活跃会话），卡片标题/runId
+     * 绑定与 UI 订阅会整体跳过——这条通知是该路径的补位，UI 收到后补绑卡片并挂接
+     * 子 run。有调度台会话在场的正常派发只发 DispatchCreated，不发本通知（零重复）。
+     * replay 兜底：恢复路径的发布可能早于 UI 完成订阅。
+     */
+    data class StartedNotice(
+        val dispatchId: String,
+        val conversationId: String,
+        val runId: String,
+        val conversationTitle: String,
+        val brief: String,
+    )
+
+    private val _startedNotices = MutableSharedFlow<StartedNotice>(
+        replay = 32,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    val startedNotices: SharedFlow<StartedNotice> = _startedNotices
+
+    fun publishStarted(notice: StartedNotice) {
+        val accepted = _startedNotices.tryEmit(notice)
+        AndroidAgentLogger.info(
+            "dispatch started notice: conversation=${notice.conversationId} " +
+                "run=${notice.runId} dispatch=${notice.dispatchId} emitted=$accepted",
+        )
+    }
+
     fun publish(notice: Notice) {
         val accepted = _notices.tryEmit(notice)
         // 回执从这里交给 UI 落库；zip 里要能看到「哪一单、哪个 run 的回执发到了哪一步」。
@@ -148,21 +209,34 @@ internal object AgentDispatchReport {
     private const val KEY_DISPATCH_ID = "dispatch_id"
     private const val KEY_CONVERSATION_ID = "conversation_id"
     private const val KEY_RUN_ID = "run_id"
+    private const val KEY_QUEUED = "queued"
+    private const val KEY_QUEUE_DEPTH = "queue_depth"
 
     data class Meta(
         val dispatchId: String,
         val conversationId: String,
         val runId: String,
+        /** 派发单还在目标会话的队列里（目标忙）；真正开跑后由 StartedNotice/绑定路径清掉。 */
+        val queued: Boolean = false,
+        val queueDepth: Int = 0,
     )
 
     fun encode(meta: Meta): String = JSONObject()
         .put(KEY_DISPATCH_ID, meta.dispatchId)
         .put(KEY_CONVERSATION_ID, meta.conversationId)
         .put(KEY_RUN_ID, meta.runId)
+        .apply {
+            // queued 只在排队态写：终态/绑定路径新建 Meta 时默认 false，自然清掉。
+            if (meta.queued) {
+                put(KEY_QUEUED, true)
+                put(KEY_QUEUE_DEPTH, meta.queueDepth)
+            }
+        }
         .toString()
 
     /**
-     * 同时兼容两种来源：工具原始返回（只要带 dispatch_id 即可）与本编码。
+     * 同时兼容两种来源：工具原始返回（只要带 dispatch_id 即可；排队受理的返回还带
+     * queued/queue_depth，一并读入供卡片显示「排队中」）与本编码。
      * 段落被截断时 JSON 解析会失败，此时返回 null，调用方保持普通工具卡语义。
      */
     fun parse(raw: String?): Meta? {
@@ -175,6 +249,8 @@ internal object AgentDispatchReport {
             dispatchId = dispatchId,
             conversationId = json.optString(KEY_CONVERSATION_ID).trim(),
             runId = json.optString(KEY_RUN_ID).trim(),
+            queued = json.optBoolean(KEY_QUEUED, false),
+            queueDepth = json.optInt(KEY_QUEUE_DEPTH, 0),
         )
     }
 }

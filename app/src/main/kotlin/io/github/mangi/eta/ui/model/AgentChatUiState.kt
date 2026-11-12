@@ -423,6 +423,11 @@ data class ToolActivityMessageUi(
      * 仅内存投影、不落库：等待中 run 必然存活（进程死亡 run 即死），重载后无需恢复。
      */
     val waitingQuestion: DispatchWaitingQuestionUi? = null,
+    /**
+     * 派发卡专属：子会话的手机操作权在排队（另一 run 持有主屏操作权）；获得/释放即清。
+     * 与 [waitingQuestion] 同为仅内存投影，不落库（等待中 run 必然存活）。
+     */
+    val waitingControl: Boolean = false,
 ) : AgentChatMessageUi
 
 enum class ToolActivityStatusUi {

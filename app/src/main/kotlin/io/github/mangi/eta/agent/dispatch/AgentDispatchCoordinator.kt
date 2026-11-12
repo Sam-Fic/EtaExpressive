@@ -8,6 +8,7 @@ import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.agent.runtime.AgentRuntimePolicy
 import io.github.mangi.eta.agent.runtime.AgentRuntimeSession
 import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
+import io.github.mangi.eta.agent.runtime.GuiControlStatus
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.db.ConversationEntity
@@ -206,6 +207,20 @@ internal class AgentDispatchCoordinator(
                 brief = request.brief,
             ),
         )
+        if (orchestratorSession == null) {
+            // 排空/重启恢复路径：没有活跃的调度台 run，DispatchCreated 发不出，卡片
+            // 标题/runId 绑定与 UI 订阅会整体跳过（注释曾声称「排队单稍后开跑时也走
+            // 那里」与实际不符）。发 StartedNotice 补位，UI 侧做等价处理。
+            AgentDispatchNotifier.publishStarted(
+                AgentDispatchNotifier.StartedNotice(
+                    dispatchId = request.dispatchId,
+                    conversationId = target.id,
+                    runId = runId,
+                    conversationTitle = target.title,
+                    brief = request.brief,
+                ),
+            )
+        }
         return JSONObject()
             .put("ok", true)
             .put("message", "已派发；完成通知会自动送达，不要轮询状态")
@@ -234,8 +249,9 @@ internal class AgentDispatchCoordinator(
         val settlement = ledger.settleRun(request.runId, outcome, detail = result.error.orEmpty())
             ?: return
         deleteClaim(settlement.claim.request.dispatchId)
-        // 提问中的 run 终态：清掉在途提问，调度台卡片与角标由终态回报收尾。
+        // 提问/操作权等待中的 run 终态：清掉在途状态，调度台卡片与角标由终态回报收尾。
         pendingQuestions.remove(request.runId)
+        pendingControls.remove(request.runId)
         AndroidAgentLogger.info(
             "dispatch terminal: conversation=${settlement.claim.request.conversationId} " +
                 "run=${request.runId} dispatch=${settlement.claim.request.dispatchId} " +
@@ -259,8 +275,9 @@ internal class AgentDispatchCoordinator(
         val settlement = ledger.settleRun(runId, AgentDispatchLedger.Outcome.STOPPED, detail = "已停止")
             ?: return
         deleteClaim(settlement.claim.request.dispatchId)
-        // 提问中的 run 被停：清掉在途提问，调度台卡片与角标由 STOPPED 回报收尾。
+        // 提问/操作权等待中的 run 被停：清掉在途状态，调度台卡片与角标由 STOPPED 回报收尾。
         pendingQuestions.remove(runId)
+        pendingControls.remove(runId)
         AndroidAgentLogger.info(
             "dispatch terminal: conversation=${settlement.claim.request.conversationId} " +
                 "run=$runId dispatch=${settlement.claim.request.dispatchId} outcome=STOPPED receipt=emit",
@@ -337,6 +354,33 @@ internal class AgentDispatchCoordinator(
             ),
         )
         return claim.request.conversationId
+    }
+
+    /**
+     * 派发 run 的手机操作权等待态（runId → 上次发布的 waiting）。
+     * 等待无超时（另一 run 持有主屏操作权或被用户暂停时一直排队），这就是需要
+     * 可见性的原因；仅翻转时发布，避免 Acquired/Released 每次动作都打扰卡片。
+     */
+    private val pendingControls = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * 子会话的手机操作权状态变化：仅派发 run 同步（非派发 run 在账本里静默忽略）。
+     * Waiting → 调度台卡片显示「等待手机操作权」；Acquired/Released/UserPaused → 清除。
+     */
+    fun onChildGuiControl(runId: String, status: GuiControlStatus) {
+        val claim = ledger.armedClaimForRun(runId) ?: return
+        val waiting = status == GuiControlStatus.Waiting
+        val previous = pendingControls.put(runId, waiting)
+        // 状态未翻转不重发；从未等待过就直接获得（首事件即 Acquired）也无需发「不等待」。
+        if (previous == waiting || (previous == null && !waiting)) return
+        AgentDispatchNotifier.publishControl(
+            AgentDispatchNotifier.ControlNotice(
+                dispatchId = claim.request.dispatchId,
+                conversationId = claim.request.conversationId,
+                runId = runId,
+                waiting = waiting,
+            ),
+        )
     }
 
     // ---------------------------------------------------------------- 排空

@@ -45,6 +45,8 @@ import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
 import io.github.mangi.eta.agent.dispatch.AgentDispatchCoordinator
 import io.github.mangi.eta.agent.dispatch.AgentDispatchPayload
 import io.github.mangi.eta.agent.dispatch.AgentDispatchRuntime
+import io.github.mangi.eta.agent.device.AgentTaskSurface
+import io.github.mangi.eta.agent.device.AgentTaskSurfaceMode
 import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.device.OwnerDisplayPresence
 import io.github.mangi.eta.agent.device.VirtualDisplaySession
@@ -860,6 +862,28 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
     }
 
+    /**
+     * 派发 run 的执行位置豁免：全局「每次询问」档下不弹窗——派发是后台干活，弹系统级
+     * 前台/后台选择框会阻塞工具线程 ≤90s（AgentTaskPrompt.await）、不说明是哪个会话在问、
+     * 调度台也收不到任何信号。副屏可用（AGENT_VIRTUAL_DISPLAY_ENABLED，与 executor 的
+     * GUI 工具准入同一开关）时直接落到后台副屏：GUI 操作在虚拟屏上完成，不碰真实屏幕；
+     * 副屏不可用（无 root/模块或开关关闭）保持 ASK——弹窗仍是非 root 设备的既有 UX。
+     * 前台/后台档原样继承；非派发 run 不受影响。
+     */
+    private fun resolveRunTaskSurface(request: AgentRuntimeWire.RunRequest): AgentTaskSurfaceMode {
+        val stored = runCatching { AgentTaskSurface.stored() }.getOrDefault(AgentTaskSurfaceMode.FOREGROUND)
+        if (request.handoff?.source != AgentRuntimeWire.ETA_DISPATCH_HANDOFF_SOURCE ||
+            stored != AgentTaskSurfaceMode.ASK
+        ) {
+            return stored
+        }
+        return if (currentRuntimePermissions().virtualDisplay) {
+            AgentTaskSurfaceMode.BACKGROUND
+        } else {
+            AgentTaskSurfaceMode.ASK
+        }
+    }
+
     private fun startRun(
         request: AgentRuntimeWire.RunRequest,
         replyTo: Messenger? = null,
@@ -869,6 +893,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         lateinit var newSession: AgentRuntimeSession
         newSession = AgentRuntimeSession(
             runId = request.runId,
+            // 派发 run 豁免「每次询问」：后台干活不该弹全局弹窗问执行位置（弹窗不说是谁在
+            // 问，还会阻塞工具线程 ≤90s 且调度台零信号）。见 [resolveRunTaskSurface]。
+            taskSurfaceMode = resolveRunTaskSurface(request),
             questionLedger = questionLedger,
             terminalWork = { action ->
                 if (Looper.myLooper() == Looper.getMainLooper()) thread(name = "eta-question-seal", block = action)
@@ -1110,6 +1137,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         // 操作权状态与悬浮窗策略无关，先于叠加层早退分支登记，供 run 快照读取。
         if (event is AgentEvent.GuiControlChanged) {
             runs.get(session.runId)?.guiStatus = event.status
+            // 派发 run 的操作权等待同步到调度台（非派发 run 在账本里静默忽略）：
+            // 并发 GUI 时派发 run 可能无限期排队，这是提问管线之外第二个看不见的等待。
+            dispatchCoordinator.onChildGuiControl(session.runId, event.status)
         }
         // 子会话提问同步到调度台：仅派发 run（协调器按账本武装债权判定，非派发 run 返回
         // null 静默）。横幅只在后台提醒（前台静默），返回早退分支不影响这里——提问通知

@@ -3736,6 +3736,18 @@ private fun ToolActivityInline(
     val waitingSubtitle = waitingQuestion?.let {
         stringResource(R.string.dispatch_question_waiting, it.questionTitle)
     }
+    // 派发卡操作权等待：子会话在 GuiControlCoordinator 排队（另一 run 持有主屏操作权）。
+    // 与提问互斥展示（提问优先——两者同时在等时提问更要紧）。
+    val waitingControlSubtitle =
+        if (dispatchMeta != null && message.waitingControl && waitingQuestion == null) {
+            stringResource(R.string.dispatch_control_waiting)
+        } else {
+            null
+        }
+    // 派发卡排队态：目标会话忙、本单还在队列里（envelope 的 queued/queue_depth）。
+    val queuedSubtitle = dispatchMeta?.takeIf { it.queued }?.let {
+        stringResource(R.string.dispatch_question_queued, it.queueDepth)
+    }
     // 展开区至少要有一样真东西可看：命令、参数、结果、工具读到的图片，或浏览器入口。
     // 全都为空的行保持不可展开（箭头一并隐藏），不做「点开只有一句话」的空交互。
     // 派发卡的身份信封（resultDetail）不算「可看内容」，只有能跳转时才可展开。
@@ -3958,10 +3970,11 @@ private fun ToolActivityInline(
         // 行尾状态与展开箭头固定不被挤掉。
         titleMaxLines = 1,
         modifier = modifier.let { completedContentDrawLayer(it, toolRowSettled) },
-        // 副标题优先级：等待提问 > 失败原因 > 浏览器实时状态 > 图片张数；
+        // 副标题优先级：等待提问 > 操作权等待 > 排队中 > 失败原因 > 浏览器实时状态 > 图片张数；
         // 派发卡不再复述汇报正文（正文只落在「派发回报」回执卡上），
         // 失败原因用官方 error 角色着色。
-        supporting = waitingSubtitle ?: failureSubtitle ?: browserSubtitle ?: imageCountLabel,
+        supporting = waitingSubtitle ?: waitingControlSubtitle ?: queuedSubtitle ?:
+            failureSubtitle ?: browserSubtitle ?: imageCountLabel,
         supportingColor = failureSubtitle?.let { MaterialTheme.colorScheme.error },
         trailingStatus = { ToolStatusIndicator(message.status) },
         expanded = isExpanded,

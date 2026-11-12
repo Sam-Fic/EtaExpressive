@@ -465,6 +465,18 @@ internal class AgentAppState(
                 handleDispatchQuestionNotice(notice)
             }
         }
+        // 子会话手机操作权等待：并发 GUI 时无限期排队的可见性（transient，仅卡片副标题）。
+        scope.launch {
+            io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.controlNotices.collect { notice ->
+                handleDispatchControlNotice(notice)
+            }
+        }
+        // 排队单排空/重启恢复开跑：DispatchCreated 发不出时的补位（绑卡标题 + 挂接子 run）。
+        scope.launch {
+            io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.startedNotices.collect { notice ->
+                handleDispatchStartedNotice(notice)
+            }
+        }
     }
 
     /**
@@ -1063,6 +1075,55 @@ internal class AgentAppState(
     }
 
     /**
+     * 子会话手机操作权等待同步（transient）：卡片副标题「等待手机操作权」，
+     * 获得/释放/终态即清。协调器已按翻转去重，这里等值比较兜底 replay 重投。
+     */
+    private fun handleDispatchControlNotice(
+        notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.ControlNotice,
+    ) {
+        scope.launch(Dispatchers.Main.immediate) {
+            val consoleId = dispatchConsoleId() ?: return@launch
+            val state = conversationState(consoleId) ?: return@launch
+            if (!state.conversationContentLoaded) return@launch
+            val index = dispatchCardIndex(state.messages, notice.dispatchId)
+            if (index < 0) return@launch
+            val card = state.messages[index] as ToolActivityMessageUi
+            if (card.waitingControl == notice.waiting) return@launch
+            updateConversation(
+                consoleId,
+                state.copy(
+                    messages = state.messages.incrementalSnapshot().replacing(
+                        index,
+                        card.copy(waitingControl = notice.waiting),
+                    ),
+                ),
+            )
+        }
+    }
+
+    /**
+     * 排队单排空/重启恢复开跑的补位（等价于 DispatchCreated 的 UI 侧处理，只是没有
+     * 活跃的调度台 run 可反查 consoleId）：绑卡标题/runId（顺带清「排队中」快照）+
+     * 物化子会话 + 挂接子 run 订阅。找不到调度台/卡片时其余处理照常，只有绑卡跳过。
+     */
+    private fun handleDispatchStartedNotice(
+        notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.StartedNotice,
+    ) {
+        // 恰一次：replay 兜底 Activity 重建与恢复路径的早发布。
+        if (!handledDispatchNotices.add("${notice.dispatchId}:STARTED")) return
+        scope.launch(Dispatchers.Main.immediate) {
+            markDispatchManaged(notice.conversationId)
+            dispatchConsoleId()?.let { consoleId ->
+                bindDispatchCardTitleForConsole(consoleId, notice.dispatchId, notice.conversationTitle, notice.runId)
+            }
+            materializeDispatchConversation(notice.conversationId, notice.conversationTitle) {
+                attachDispatchedRun(notice.conversationId, notice.runId, notice.brief)
+                refreshRuntimeResults()
+            }
+        }
+    }
+
+    /**
      * 子任务回报落到调度台的同一张 `task_dispatch` 卡片：一个 dispatchId 一张卡，
      * 只更新状态/正文/身份，不追加新消息，因此多个子任务先后完成也不会互相覆盖。
      * 找不到卡片（旧数据、卡片被清理、调度台未加载）时才补建一张，保证汇报不丢。
@@ -1104,8 +1165,9 @@ internal class AgentAppState(
                     resultSummary = report.takeIf { it.isNotBlank() } ?: card.resultSummary,
                     resultDetail = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.encode(meta),
                     detailsWithheld = false,
-                    // 终态覆盖一切在途等待：提问中被打断的 run 由这里收尾。
+                    // 终态覆盖一切在途等待：提问中/操作权排队中被打断的 run 由这里收尾。
                     waitingQuestion = null,
+                    waitingControl = false,
                 ),
             )
         } else {
@@ -1142,6 +1204,20 @@ internal class AgentAppState(
         subRunId: String,
     ) {
         val consoleId = conversationIdForRun(consoleRunId) ?: return
+        bindDispatchCardTitleForConsole(consoleId, dispatchId, title, subRunId)
+    }
+
+    /**
+     * 通知路径用：调度台会话 id 直接给定——StartedNotice（排空/恢复路径）发出时
+     * 没有活跃的调度台 run，无法按 runId 反查 consoleId。重编码 meta 时新建 Meta
+     * 默认 queued=false，顺带清掉卡片上的「排队中」快照。
+     */
+    private fun bindDispatchCardTitleForConsole(
+        consoleId: String,
+        dispatchId: String,
+        title: String,
+        subRunId: String,
+    ) {
         val state = conversationState(consoleId) ?: return
         if (!state.conversationContentLoaded) return
         val index = dispatchCardIndex(state.messages, dispatchId)
@@ -1205,6 +1281,7 @@ internal class AgentAppState(
                         detailsWithheld = false,
                         // outbox 回补也是终态路径：同样清掉在途等待快照。
                         waitingQuestion = null,
+                        waitingControl = false,
                     ),
                 ),
             ),
