@@ -20,14 +20,24 @@ internal object AccessibilityProtectionClient {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    fun isEnabled(context: Context): Boolean {
-        val appContext = context.applicationContext
-        val fallback = appContext
+    /**
+     * 仅读本地 SP 缓存，不做 system_server IPC。
+     *
+     * 供界面组合期取初值：组合里的每次 binder 往返都直接吃进转场起步帧
+     * （真机 trace 实证设置页入栈窗口的主线程尖峰）。真值由 [isEnabled] 在
+     * 组合外（进页异步回填 / ON_RESUME）刷新。
+     */
+    fun isEnabledCached(context: Context): Boolean =
+        context.applicationContext
             .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             .getBoolean(
                 PREFERENCE_ENABLED,
                 AccessibilityProtectionProtocol.DEFAULT_ENABLED,
             )
+
+    fun isEnabled(context: Context): Boolean {
+        val appContext = context.applicationContext
+        val fallback = isEnabledCached(appContext)
         return try {
             Settings.Global.getInt(
                 appContext.contentResolver,
