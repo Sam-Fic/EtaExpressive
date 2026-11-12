@@ -42,6 +42,10 @@ class AppRouteSerializationTest {
             AppRoute.ModelProviderNew(NewProviderType.CompatibleSpeech),
             AppRoute.SubAgents,
             AppRoute.SubAgentPresetDetail("preset"),
+            AppRoute.McpServerAdd,
+            AppRoute.ModelProviderModelEdit("provider", "model", true),
+            AppRoute.ModelProviderModelEdit("provider", "", false),
+            AppRoute.ToolRecipeEdit("recipe"),
         )
         val json = Json { ignoreUnknownKeys = true }
 

@@ -22,7 +22,8 @@ class ChildGptSpeedContractTest(unittest.TestCase):
         compact = row.split('Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically)', 1)[1].split('profileDraft?.let', 1)[0]
         self.assertNotIn('R.string.sap_task_tier', compact)
         settings = source('ui/components/SubAgentProfileRow.kt')
-        self.assertLess(settings.index('trailing?.invoke()'), settings.index('if (dropdown) Icons.Rounded.ExpandMore'))
+        # 尾部统一走共享箭头组件（EtaTrailingChevron）：badge、trailing 槽、箭头依次排布。
+        self.assertLess(settings.index('trailing?.invoke()'), settings.index('EtaTrailingChevron()'))
 
     def test_speed_content_is_the_official_assist_chip(self):
         button = source('ui/components/SubAgentGptSpeedButton.kt')

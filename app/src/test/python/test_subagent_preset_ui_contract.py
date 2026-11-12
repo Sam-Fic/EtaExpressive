@@ -109,9 +109,10 @@ class SubAgentPresetUiContractTest(unittest.TestCase):
         shell = self.source('ui/SubAgentSettingsScreen.kt')
         detail = self.source('ui/SubAgentPresetDetailScreen.kt')
         # 组溢出操作改走就地弹出菜单：与详情页子代理标题行同一套 DropdownMenu，不再拉起底部面板。
+        # 删除确认走 EtaDialog（自适应弹窗），断言只锁 onDismissRequest 语义不锁弹窗形态。
         for needle in ('SubAgentDropdownMenu(', 'DropdownMenuItem(',
                        'name = preset.name; rename = preset', 'if (editable) delete = preset',
-                       'repository.renamePreset(', 'repository.removePreset(', 'AlertDialog(onDismissRequest = { delete = null }'):
+                       'repository.renamePreset(', 'repository.removePreset(', 'onDismissRequest = { delete = null }'):
             self.assertIn(needle, shell)
         for gone in ('actionsPreset', 'SubAgentPresetActionsSheet', 'ModalBottomSheet('):
             self.assertNotIn(gone, shell)

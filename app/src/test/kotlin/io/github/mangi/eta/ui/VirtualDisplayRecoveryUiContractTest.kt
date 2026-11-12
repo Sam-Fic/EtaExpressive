@@ -23,14 +23,21 @@ class VirtualDisplayRecoveryUiContractTest {
 
     @Test fun inlineRecoveryHasWrappingActionsAndExplicitWebRevocation() {
         val source = sections.readText()
-        assertEquals(5, Regex("""TouchHaptics\.click\(view\)""").findAll(source).count())
-        assertEquals(2, Regex("""FlowRow\(""").findAll(source).count())
-        // 强制重置是两段确认的第五个单行按钮文案；新增那颗按钮后仍是 maxLines=1，计数跟着走。
-        assertEquals(5, Regex("""maxLines = 1""").findAll(source).count())
+        assertEquals(3, Regex("""TouchHaptics\.click\(view\)""").findAll(source).count())
+        // FlowRow 只剩网页预览动作区一处；恢复动作已改为分段行，不再换行。
+        assertEquals(1, Regex("""FlowRow\(""").findAll(source).count())
+        // maxLines = 1：网页预览两颗按钮 + 刷新状态按钮；分段行标题同控制分组不设 maxLines。
+        assertEquals(3, Regex("""maxLines = 1""").findAll(source).count())
         assertTrue(source.contains("EtaSegmentedColumn("))
         assertTrue(source.contains("EtaSegmentedItemContainer {"))
         assertFalse(source.contains("Card("))
         assertFalse(source.contains("surfaceContainerHigh"))
+        // 强制重置走标准确认对话框（destructive 确认钮），不再用按钮内联两段确认。
+        assertTrue(source.contains("EtaDialog("))
+        assertTrue(source.contains("EtaDialogActions("))
+        assertTrue(source.contains("vd_recovery_force_reset_confirm"))
+        assertFalse(source.contains("vd_recovery_force_reset_armed"))
+        assertTrue(source.contains("destructive = true"))
         assertTrue(source.contains("!present -> R.string.vd_recovery_empty"))
         assertTrue(source.contains("VirtualDisplayWebPreview.openWithManualClose(context)"))
         assertFalse(source.contains("VirtualDisplayWebPreview.open(context)"))

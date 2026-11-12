@@ -11,7 +11,7 @@ class ModelPickerSegmentedContractTest(unittest.TestCase):
         self.source = (UI / 'TtsModelPickerDialog.kt').read_text(encoding='utf-8')
 
     def test_dialog_uses_segmented_radio_rows_grouped_by_provider(self):
-        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('private fun ModelPickerRadioRow', 1)[0]
+        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('internal fun ModelPickerRadioRow', 1)[0]
         # 按提供商分组平铺：提供商作分段列标题，模型为组内分段单选行。
         self.assertIn('EtaSegmentedColumn(', dialog)
         self.assertIn('title = group.providerName', dialog)
@@ -23,7 +23,7 @@ class ModelPickerSegmentedContractTest(unittest.TestCase):
         self.assertNotIn('expanded', dialog)
 
     def test_selection_is_pending_until_confirm_and_cancel_dismisses(self):
-        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('private fun ModelPickerRadioRow', 1)[0]
+        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('internal fun ModelPickerRadioRow', 1)[0]
         self.assertIn('var pendingModelId by remember', dialog)
         self.assertIn('onModelSelected(pendingProviderId.orEmpty(), pendingModelId.orEmpty())', dialog)
         self.assertIn('onClearSelection?.invoke()', dialog)

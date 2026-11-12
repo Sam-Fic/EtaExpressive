@@ -8,63 +8,71 @@ SOURCE = ROOT / 'app/src/main/kotlin/io/github/mangi/eta/ui/components'
 
 
 class QuestionMessageLayoutContractTest(unittest.TestCase):
+    """问答卡与思考/工具行共用 AgentWorkSegmentedBubble 官方分段气泡外壳后的结构守卫。
+
+    外壳几何（16dp 消息留白）、展开动画与展开/收起 stateDescription 语义由气泡统一持有；
+    问答卡只负责表单、提交闸门与权威历史回执。"""
     def setUp(self):
         self.card = (SOURCE / 'AgentQuestionCard.kt').read_text()
+        self.bubble = (SOURCE / 'AgentWorkSegmentedBubble.kt').read_text()
         self.entry = (SOURCE / 'ChatMessageItem.kt').read_text()
-        self.shell = (SOURCE / 'AgentWorkProcessCard.kt').read_text()
 
-    def test_actual_steps_shell_owns_the_single_message_gutter(self):
-        self.assertIn('WorkProcessCardSlice(part = WorkProcessCardPart.Whole, modifier = modifier)', self.card)
-        # M3 外壳以 16dp 消息左右留白（WorkProcessCardSliceM3 的 Box padding）。
-        self.assertIn('start = 16.dp', self.shell)
-        self.assertIn('end = 16.dp', self.shell)
-        # 不再自绘 Surface 容器（外壳由 WorkProcessCardSlice 的 clip + surfaceContainer 承担）；
-        # etaOnSurface() 是语义色调用，不算容器调用。
+    def test_bubble_shell_owns_the_single_message_gutter(self):
+        # 消息留白（左右 16dp）由共享气泡壳持有，问答卡与思考/工具行同宽对齐。
+        self.assertIn('padding(horizontal = 16.dp)', self.bubble)
+        # 卡片不再自带任何外壳/留白：无 Surface 容器、无 padding 调用，整卡委托给气泡。
         self.assertNotRegex(self.card, r'(?<![A-Za-z])Surface\(')
+        self.assertNotIn('padding(', self.card)
+        self.assertIn('AgentWorkSegmentedBubble(', self.card)
+        self.assertIn('position = position,', self.card)
+        # 单条卡用组位置默认值 Whole（与连续工具/思考组的 First/Middle/Last 相区分）。
+        self.assertIn('position: SegmentedRowPosition = SegmentedRowPosition.Whole', self.card)
         self.assertIn('question-card-surface', self.card)
         branch = self.entry.split('is io.github.mangi.eta.ui.model.AgentQuestionMessageUi ->', 1)[1].split('is UserMessageUi ->', 1)[0]
         self.assertNotIn('padding(', branch)  # no duplicated gutter
         self.assertIn('actions.onQuestionDraftChanged(message.request.conversationId, message.request.questionId, draft)', branch)
         self.assertIn('actions.onSubmitQuestionAnswer(message.request.conversationId, message.request.questionId)', branch)
 
-    def test_whole_card_uses_existing_step_animation_and_click_time_anchor(self):
-        self.assertEqual(1, self.card.count('AnimatedVisibility('))
-        self.assertIn('enter = tailDetailsEnter(anchorBottom), exit = tailDetailsExit(anchorBottom)', self.card)
-        self.assertIn('Column(modifier = retainDrawLayerWhenIdle())', self.card)
-        parent = (SOURCE / 'AgentChatBody.kt').read_text()
-        provider = parent.index('LocalExpansionHoldsBottom provides expansionHoldsBottom')
-        entry = parent.index('is AgentTimelineRow.Message -> {', provider)
-        self.assertIn('ChatMessageItem(', parent[entry:entry + 2500])
-        self.assertIn('val holdsBottom = LocalExpansionHoldsBottom.current', self.card)
-        self.assertEqual(1, self.card.count('holdsBottom()'))
-        # 点击当刻捕获“是否钉底”，同时释放锚定；展开/收起仍走在位动画。
-        toggle = self.card.split('val toggle: () -> Unit = {', 1)[1].split('\n    }', 1)[0]
-        self.assertIn('anchorBottom = holdsBottom()', toggle)
-        self.assertIn('expanded = !expanded', toggle)
-        self.assertIn('onToggle = toggle,', self.card)
-        # 展开箭头是与思考/工具卡片共用的 WorkCardChevron。
-        self.assertIn('Icons.Rounded.ExpandMore else Icons.Rounded.ChevronRight', self.shell)
+    def test_expansion_animation_owned_by_shared_bubble(self):
+        # 展开/收起动画只有气泡一处实现：官方 AnimatedVisibility + 无过冲标准弹簧。
+        self.assertEqual(1, self.bubble.count('AnimatedVisibility('))
+        self.assertIn('enter = expandVertically(StandardExpandSpec)', self.bubble)
+        self.assertIn('exit = shrinkVertically(StandardExpandSpec)', self.bubble)
         self.assertNotIn('tween(', self.card)  # do not invent a similar but different animation
+        # 卡片把展开态、切换回调与详情槽交给气泡，不另立动画。
+        self.assertIn('expanded = expanded,', self.card)
+        self.assertIn('onToggle = toggle,', self.card)
+        self.assertIn('details = questionDetails,', self.card)
+        # 点击当刻解除底部锚定（标题钉在原位、内容向下生长可见），展开方向交给标准气泡。
+        self.assertIn('val releaseAnchor = LocalChatAnchorRelease.current', self.card)
+        toggle = self.card.split('val toggle: () -> Unit = {', 1)[1].split('\n    }', 1)[0]
+        self.assertIn('releaseAnchor(!expanded)', toggle)
+        self.assertIn('expanded = !expanded', toggle)
+        # 详情子条目在官方 AnimatedVisibilityScope 里组合，保留离屏绘制层（与思考/工具行同款）。
+        self.assertIn('@Composable AnimatedVisibilityScope.() -> Unit', self.card)
+        self.assertIn('.then(retainDrawLayerWhenIdle())', self.card)
 
     def test_authoritative_status_not_submit_latch_controls_default_disclosure(self):
         self.assertIn('key(AgentQuestionProjection.messageId(message.request))', self.card)
         self.assertIn('var expanded by remember(message.status) { mutableStateOf(waiting) }', self.card)
         self.assertNotIn('remember(message.submitting)', self.card)
-        submit = self.card.split('Button(onClick =', 1)[1].split(') {', 1)[0]
+        submit = self.card.split('Button(', 1)[1].split(') {', 1)[0]
         self.assertIn('if (editable && valid) onSubmit()', submit)
         self.assertNotIn('expanded', submit)
+        # 容器型按钮直用必须传官方 shapes（AGENTS §2.5 按压 morph）。
+        self.assertIn('shapes = ButtonDefaults.shapes()', self.card)
         self.assertIn('val editable = !message.submitting', self.card)
         self.assertIn('AgentQuestionCodec.validateAnswer(request, displayed).accepted', self.card)
 
-    def test_no_nested_disclosures_or_clipped_body_and_note(self):
+    def test_no_nested_disclosures_or_clipped_body(self):
         for obsolete in ('detailsExpanded', 'fullTextExpanded', 'noteExpanded', 'QuestionDisclosureRow',
                          'QuestionDescription', 'question_show_full_text', 'question_note_added'):
             self.assertNotIn(obsolete, self.card)
-        body = self.card.split('AnimatedVisibility(visible = expanded,', 1)[1]
+        body = self.card.split('val questionDetails', 1)[1]
         self.assertNotIn('TextOverflow.Ellipsis', body)
         self.assertIn('maxLines = Int.MAX_VALUE', body)
-        self.assertIn('MaterialTheme.typography.bodyLarge', body)
-        self.assertIn('MaterialTheme.typography.bodyMedium', body)
+        # 正文与历史详情与思考/工具行同一档展开正文字号，不另设字号。
+        self.assertIn('chatExpandedBodyStyle()', self.card)
 
     def test_official_material_components_own_press_feedback(self):
         # M3-only：整卡由官方 ListItem / RadioButton / Button / Badge 组成，按压涟漪、形状形变
@@ -72,6 +80,8 @@ class QuestionMessageLayoutContractTest(unittest.TestCase):
         for component in ('ListItem(', 'RadioButton(', 'Button(', 'Badge('):
             self.assertIn(component, self.card)
         self.assertIn('selectableGroup()', self.card)
+        # 单选圆点不抢命中区：官方 RadioButton 只作指示，onClick = null 由父行接管。
+        self.assertIn('onClick = null', self.card)
         self.assertNotIn('WithoutPressRipple', self.card)
         self.assertNotIn('LocalRippleConfiguration', self.card)
         self.assertNotIn('indication = null', self.card)
@@ -86,31 +96,43 @@ class QuestionMessageLayoutContractTest(unittest.TestCase):
         self.assertIn('answer?.note?.takeIf', history)
         self.assertNotIn('onDraftChanged', history)
         self.assertNotIn('onSubmit', history)
+        # 历史项是官方展示型 ListItem：selected 语义由本层补（官方展示型重载不设）。
+        option = self.card.split('private fun QuestionHistoryOption', 1)[1]
+        self.assertIn('Modifier.semantics { this.selected = selected }', option)
 
     def test_optional_controls_still_respect_request_capabilities(self):
         self.assertIn('if (request.allowOther)', self.card)
         self.assertIn('if (request.allowDelegation)', self.card)
         self.assertIn('if (request.allowNote) QuestionTextField', self.card)
-        self.assertIn('onClick = null', self.card)  # radio's parent owns the accessible full row
-        # 单选语义由官方 ListItem(selected/onClick) + RadioButton 提供，不再声明 role = Role.RadioButton。
-        self.assertIn('selected = selected,', self.card)
-        self.assertIn('RadioButton(selected = selected, onClick = null', self.card)
+        # 官方单选 ListItem(selected/onClick) 提供整行命中与 Role.RadioButton 语义。
+        self.assertRegex(self.card, r'RadioButton\(\s*selected = selected,\s*onClick = null')
         self.assertIn('.heightIn(min = 48.dp)', self.card)
         self.assertIn('option.id == request.recommendedOptionId', self.card)
         self.assertIn('displayed.kind == "option" && displayed.optionId == option.id', self.card)
         self.assertNotRegex(self.card, r'selectedOptionId\s*=\s*request.recommendedOptionId')
 
+    def test_dangerous_confirm_options_render_destructive(self):
+        # 危险操作确认（与 AgentDangerousConfirmationGate 协议一致）用 error 容器档，
+        # 与普通选项在视觉上分开；普通选中档仍走 secondaryContainer。
+        self.assertIn('DANGEROUS_CONFIRM_OPTION_IDS', self.card)
+        self.assertIn('"confirm_once"', self.card)
+        self.assertIn('"confirm_session"', self.card)
+        self.assertIn('MaterialTheme.colorScheme.errorContainer', self.card)
+        self.assertIn('MaterialTheme.colorScheme.secondaryContainer', self.card)
+        self.assertIn('RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.error)', self.card)
+
     def test_monet_semantic_colors_and_whole_card_semantics(self):
-        # M3-only：颜色全部走 MaterialTheme.colorScheme / eta* 语义角色。
+        # M3-only：颜色全部走 MaterialTheme.colorScheme / 官方默认，不自取语义色、不写死 hex。
         self.assertIn('MaterialTheme.colorScheme.', self.card)
-        self.assertIn('etaOnSurface()', self.card)
-        self.assertIn('etaOnSurfaceVariant()', self.card)
-        self.assertIn('etaPrimary()', self.card)
-        # 展开态改用 stateDescription 语义（标题栏 ListItem 自带的“展开/收起”文案资源已不再使用）。
-        self.assertIn('stateDescription = state,', self.card)
-        self.assertIn('.semantics { this.stateDescription = stateDescription }', self.card)
         self.assertNotRegex(self.card, r'Color\(0x')
         self.assertNotIn('tonalElevation', self.card)
+        # 展开箭头与展开/收起 stateDescription 由气泡统一持有（官方 Sample 口径）。
+        self.assertIn('stateDescription = if (expanded) expandedStateDescription else collapsedStateDescription', self.bubble)
+        self.assertIn('R.string.work_state_expanded', self.bubble)
+        self.assertIn('R.string.work_state_collapsed', self.bubble)
+        self.assertIn('EtaExpandChevron(', self.bubble)
+        # 已回答回执的标题单行省略：完整标题与问题正文都在展开后的详情里。
+        self.assertIn('titleMaxLines = 1', self.card)
 
 
 if __name__ == '__main__':

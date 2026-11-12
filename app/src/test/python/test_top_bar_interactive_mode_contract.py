@@ -240,7 +240,7 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
                      "canStopKimiWeb", "onStopKimiWeb", "onRefreshKimiWeb", "onOpenBrowser",
                      "onOpenWorkspace", "onOpenVoiceSettings",
                      "autoCompressEnabled", "isCompressingContext",
-                     "onToggleAutoCompress", "onOpenCompressConversation", "onOpenSearchHistory",
+                     "onToggleAutoCompress", "onCompressConversation", "onOpenSearchHistory",
                      "onOpenTokenUsage", "onOpenSubAgentStatus",
                      "canDeleteCurrentConversation", "onDeleteCurrentConversation"):
             with self.subTest(parameter=name):

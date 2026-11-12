@@ -15,10 +15,14 @@ class SubAgentProfileDialogContractTest(unittest.TestCase):
                           '.updateProfile(', '.saveModel(', '.saveParallelLimit(', '.cycleGptSpeed(', '.add()', '.remove('):
             self.assertNotIn(forbidden, text)
         for required in ('editor.newProfileDraft()', 'editor.changeProfileModel(it, selection)',
-                         'profile.withRole(requireNotNull(value))', 'AgentModelPickerProjector.project(',
+                         'profile.withRole(requireNotNull(value))', 'profileCompatibleModels(providers, draft)',
                          'EtaFormTextField(',
                          'if (draft.supportsTaskTier)', 'if (draft.role == "image_generation")'):
             self.assertIn(required, text)
+        # 模型投影过滤统一走 SubAgentProfileCapabilities（与摘要行同一份 acceptsModel 过滤链）。
+        caps = self.source('ui/components/SubAgentProfileCapabilities.kt')
+        self.assertIn('AgentModelPickerProjector.project(', caps)
+        self.assertIn('resolveSubAgentProfileConfig(profile: SubAgentProfile', caps)
         # 表单字段统一用 EtaFormTextField；模型选择改走共用的底部面板，弹窗内不再有搜索框与二级页。
         self.assertEqual(text.count('OutlinedTextField('), 0)
         self.assertIn('TtsModelPickerDialog(', text)
@@ -26,15 +30,17 @@ class SubAgentProfileDialogContractTest(unittest.TestCase):
 
     def test_gpt_speed_edit_is_local_and_keyed_by_current_provider_selection(self):
         text = self.source('ui/components/SubAgentProfileConfigDialog.kt')
-        for required in ('providers.singleOrNull { it.id == draft.providerId && it.isEnabled }',
-                         'speedProvider?.models?.singleOrNull { it.id == draft.modelId && it.isEnabled }',
+        caps = self.source('ui/components/SubAgentProfileCapabilities.kt')
+        # provider 查重的 singleOrNull 口径统一在 SubAgentProfileCapabilities.resolveSubAgentProfileConfig。
+        self.assertIn('providers.singleOrNull { it.id == profile.providerId && it.isEnabled }', caps)
+        for required in ('speedProvider?.models?.singleOrNull { it.id == draft.modelId && it.isEnabled }',
                          'val canEditSpeed = boundConfig != null && supportsGptSpeedBinding(speedProvider, speedModel)',
-                         'if (canEditSpeed) item(key = "speed")',
-                         'SubAgentDraftSettingRow(stringResource(R.string.sap_gpt_speed)',
+                         'if (canEditSpeed) cardItem(key = "speed")',
+                         'SubAgentSettingsRow(stringResource(R.string.sap_gpt_speed)',
                          'gptSpeedDisplayName(draft.gptSpeedForModel())'):
             self.assertIn(required, text)
         # 速度行与职责行之间只允许速度行自身的提交逻辑；职责/任务分工已改为行内下拉菜单。
-        edit = text.split('if (canEditSpeed) item(key = "speed")', 1)[1].split('item(key = "role")', 1)[0]
+        edit = text.split('if (canEditSpeed) cardItem(key = "speed")', 1)[1].split('cardItem(key = "role")', 1)[0]
         for required in ('session.edit { profile ->',
                          'profile.providerId != draft.providerId', 'profile.modelId != draft.modelId',
                          'profile.role != draft.role',
