@@ -54,6 +54,7 @@ import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -127,6 +128,7 @@ import io.github.mangi.eta.ui.pages.providers.ModelProviderDetailScreen
 import io.github.mangi.eta.ui.pages.providers.ProviderAuthMethodScreen
 import io.github.mangi.eta.ui.pages.providers.ModelProviderListScreen
 import io.github.mangi.eta.ui.pages.providers.ModelProviderSearchScreen
+import io.github.mangi.eta.ui.pages.providers.ProviderModelEditScreen
 import io.github.mangi.eta.ui.screens.assistants.AssistantEditScreen
 import io.github.mangi.eta.ui.screens.assistants.AssistantSearchScreen
 import io.github.mangi.eta.ui.screens.assistants.AssistantsScreen
@@ -143,12 +145,14 @@ import io.github.mangi.eta.ui.screens.chat.SubAgentStatusScreen
 import io.github.mangi.eta.ui.screens.enhance.SystemEnhanceScreen
 import io.github.mangi.eta.ui.screens.home.AgentHomeScreen
 import io.github.mangi.eta.ui.screens.mcp.McpServerDetailScreen
+import io.github.mangi.eta.ui.screens.mcp.McpServerAddScreen
 import io.github.mangi.eta.ui.screens.mcp.McpServersScreen
 import io.github.mangi.eta.ui.screens.memory.AgentMemoryOverviewScreen
 import io.github.mangi.eta.ui.screens.memory.AgentMemoryScreen
 import io.github.mangi.eta.ui.screens.permissions.PermissionHealthScreen
 import io.github.mangi.eta.ui.screens.settings.MobileActionsScreen
 import io.github.mangi.eta.ui.screens.settings.MobileActionsSettingsScreen
+import io.github.mangi.eta.ui.screens.tools.ToolRecipeEditScreen
 import io.github.mangi.eta.ui.screens.tools.ToolRecipesScreen
 import io.github.mangi.eta.ui.screens.skills.AgentSkillsScreen
 import io.github.mangi.eta.ui.screens.stats.UsageStatsScreen
@@ -921,7 +925,9 @@ fun AgentAppRoot(
             else shellHomeState.childContexts.any { it.taskId == shellHomeState.selectedContextTaskId &&
                 (it.isCompacting || it.manualCompactionState == "pending") },
             onToggleAutoCompress = { agentState.updateAutoCompressEnabled(it) },
-            onOpenCompressConversation = { pushRoute(AppRoute.ContextCompression) },
+            // 溢出菜单「压缩会话」：立即压缩当前会话，与原设置页底部按钮共用同一段压缩逻辑
+            // （模型与端点取压缩设置页里配置的同一份偏好）；进行中的反馈由聊天流指示器与 Toast 承担。
+            onCompressConversation = { agentState.compressCurrentConversation { } },
             onOpenSearchHistory = { pushRoute(AppRoute.MessageSearch(conversationScoped = true)) },
             onOpenTokenUsage = { pushRoute(AppRoute.ConversationTokenUsage) },
             onOpenSubAgentStatus = { pushRoute(AppRoute.SubAgentStatus) },
@@ -1340,7 +1346,12 @@ fun AgentAppRoot(
             entry<AppRoute.Tools>(swipeDismiss = navSwipeDismiss) {
                 // 工具页状态是快照：进页必须重读一次，否则从设置页改完开关再进来，
                 // 看到的是上次构建时的旧快照（这就是「两处开关不同步」的来源）。
-                LaunchedEffect(Unit) { agentState.refreshToolsState() }
+                // 以 configuration（含语言）为 key：切语言后必然重建，并且每次都把
+                // Activity 级上下文交给 state——applicationContext 在部分 OEM 上不吃
+                // per-app 语言覆盖，用它预解析的快照会把工具列表停回系统语言。
+                val toolsContext = LocalContext.current
+                val toolsLocales = LocalConfiguration.current.locales.toLanguageTags()
+                LaunchedEffect(toolsLocales) { agentState.refreshToolsState(toolsContext) }
                 AgentToolsScreen(
                     state = agentState.toolsState,
                     onAction = { action ->
@@ -1918,8 +1929,20 @@ fun AgentAppRoot(
                     onBack = ::popRoute,
                 )
             }
+            entry<AppRoute.McpServerAdd>(swipeDismiss = navSwipeDismiss) {
+                McpServerAddScreen(
+                    onBack = ::popRoute,
+                )
+            }
             entry<AppRoute.ToolRecipes>(swipeDismiss = navSwipeDismiss) {
                 ToolRecipesScreen(
+                    onNavigate = { route -> pushRoute(route) },
+                    onBack = ::popRoute,
+                )
+            }
+            entry<AppRoute.ToolRecipeEdit>(swipeDismiss = navSwipeDismiss) { route ->
+                ToolRecipeEditScreen(
+                    recipeName = route.recipeName,
                     onBack = ::popRoute,
                 )
             }
@@ -1945,20 +1968,14 @@ fun AgentAppRoot(
                     onSelectCurrentModel = { modelId ->
                         agentState.selectModel(modelId, route.providerId)
                     },
+                    onEditModel = { modelId, isNew ->
+                        pushRoute(AppRoute.ModelProviderModelEdit(route.providerId, modelId, isNew))
+                    },
                 )
             }
             entry<AppRoute.ContextCompression>(swipeDismiss = navSwipeDismiss) {
-                ContextCompressionSettingsScreen(
-                    isCompressing = if (shellHomeState.selectedContextTaskId == null)
-                        shellHomeState.isCompressingContext || shellHomeState.isWaitingForCompression
-                    else shellHomeState.childContexts.any { it.taskId == shellHomeState.selectedContextTaskId &&
-                        (it.isCompacting || it.manualCompactionState == "pending") },
-                    onBack = ::popRoute,
-                    onCompress = { onFinished ->
-                        // 模型与端点取本页配置（与自动压缩同一份偏好），不再单独维护手动压缩配置。
-                        agentState.compressCurrentConversation(onFinished)
-                    },
-                )
+                // 纯配置页：立即压缩入口已移到顶栏溢出菜单「压缩会话」。
+                ContextCompressionSettingsScreen(onBack = ::popRoute)
             }
             entry<AppRoute.DecisionModel>(swipeDismiss = navSwipeDismiss) {
                 DecisionModelSettingsScreen(onBack = ::popRoute)
@@ -1999,6 +2016,14 @@ fun AgentAppRoot(
                     newType = route.providerType,
                     authMode = route.authMode,
                     onBack = ::popRoute
+                )
+            }
+            entry<AppRoute.ModelProviderModelEdit>(swipeDismiss = navSwipeDismiss) { route ->
+                ProviderModelEditScreen(
+                    providerId = route.providerId,
+                    modelId = route.modelId,
+                    isNew = route.isNew,
+                    onBack = ::popRoute,
                 )
             }
         }

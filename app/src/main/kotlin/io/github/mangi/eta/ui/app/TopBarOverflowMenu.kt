@@ -66,7 +66,8 @@ internal fun TopBarOverflowMenu(
     onOpenSearchHistory: () -> Unit = {},
     onOpenTokenUsage: () -> Unit = {},
     onOpenSubAgentStatus: () -> Unit = {},
-    onOpenCompressConversation: () -> Unit = {},
+    /** 「压缩会话」菜单行：立即压缩当前会话（不再跳压缩设置页）。 */
+    onCompressConversation: () -> Unit = {},
     canDeleteCurrentConversation: Boolean = false,
     isDispatchConsole: Boolean = false,
     /** 远程智能体目标：隐藏只对本机会话有效的条目（搜索当前会话/用量/压缩/移入回收站）。 */
@@ -103,7 +104,7 @@ internal fun TopBarOverflowMenu(
                 autoCompressEnabled = autoCompressEnabled,
                 isCompressingContext = isCompressingContext,
                 onToggleAutoCompress = onToggleAutoCompress,
-                onOpenCompressConversation = onOpenCompressConversation,
+                onCompressConversation = onCompressConversation,
                 onOpenSearchHistory = onOpenSearchHistory,
                 onOpenTokenUsage = onOpenTokenUsage,
                 onOpenSubAgentStatus = onOpenSubAgentStatus,
@@ -138,7 +139,8 @@ internal fun TopBarMenuItems(
     autoCompressEnabled: Boolean,
     isCompressingContext: Boolean = false,
     onToggleAutoCompress: (Boolean) -> Unit,
-    onOpenCompressConversation: () -> Unit = {},
+    /** 「压缩会话」菜单行：立即压缩当前会话（不再跳压缩设置页）。 */
+    onCompressConversation: () -> Unit = {},
     onOpenSearchHistory: () -> Unit = {},
     onOpenTokenUsage: () -> Unit = {},
     onOpenSubAgentStatus: () -> Unit = {},
@@ -288,7 +290,11 @@ internal fun TopBarMenuItems(
                     index = fourthSectionStart + 1,
                     count = itemCount,
                     enabled = !isCompressingContext,
-                    onClick = { dismiss(); onOpenCompressConversation() },
+                    // 图二点位：点击立即压缩当前会话，不再作为压缩设置页入口。
+                    onClick = {
+                        dismiss()
+                        onCompressConversation()
+                    },
                 ) {
                     Icon(Icons.Rounded.Summarize, contentDescription = null)
                 }
