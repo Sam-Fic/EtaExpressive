@@ -69,7 +69,8 @@ internal object AgentToolCatalog {
          */
         presetToolNames: Set<String>? = null,
         /**
-         * 缓存优先档（suffix）的会话级原生组集合；null = 关闭该档，保持既有渐进加载。
+         * 缓存优先转发的会话级原生组集合（search/group 档共用）；null = 关闭该路径，
+         * 保持既有渐进加载（off 档）。
          *
          * 非 null 时只有集合内的延迟组下发原生 schema，其余延迟组一律不下发，改由
          * [AgentToolGroupCatalog.CALL] 转发（工具说明作为组加载回执进入历史尾部）。
@@ -141,7 +142,7 @@ internal object AgentToolCatalog {
         if (memoryTools) AgentMemoryToolCatalog.appendTo(emitted)
         if (dispatchTools) AgentDispatchToolCatalog.appendTo(emitted)
         if (extensionsTools) {
-            AgentSelfSettingsToolCatalog.appendTo(emitted)
+            AgentSelfSettingsToolCatalog.appendTo(emitted, recipesViaCall = suffixMode)
         }
         // 媒体语义搜索是个人数据组成员：个人数据开关放行、未被单独禁用才可见
         // （禁用与否由最后的 withheld 过滤统一裁决，没有独立的组级开关）。
@@ -204,7 +205,7 @@ internal object AgentToolCatalog {
         if (!suffixMode) return presetToolNames?.let { retainOnly(projected, it) } ?: projected
         // 通用入口放在能力投影之后：它是固定门面，不属于任何组，也不该被投影规则剔除
         // （AgentToolCapabilities 不认识这个名字，会按 UNKNOWN_TOOL 丢掉）。
-        projected.put(AgentToolGroupCatalog.toolCallEntry())
+        projected.put(AgentToolGroupCatalog.toolCallEntry(recipesViaCall = suffixMode && extensionsTools))
         return projected
     }
 

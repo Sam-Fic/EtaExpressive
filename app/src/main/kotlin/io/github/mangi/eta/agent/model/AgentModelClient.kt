@@ -118,7 +118,7 @@ internal object AgentModelClient {
          * 渐进加载模式（对齐 ZCode「工具搜索」设置的 auto/off 两档）：
          * true = 关闭渐进加载——所有延迟组视为已打开、MCP 全量，即发送完整工具目录。
          * 由调用方在**会话首个 run** 决定并锁定（见 Prefs.toolLoadingFullCatalog），
-         * 当前会话保持原设置，新建会话才重读用户偏好。
+         * 当前会话保持原设置，新建会话或上下文压缩后才重读用户偏好。
          */
         toolLoadingFullCatalog: Boolean = false,
         /**
@@ -127,8 +127,9 @@ internal object AgentModelClient {
          */
         toolLoadingSearchEnabled: Boolean = true,
         /**
-         * 缓存优先档（suffix）：延迟组工具不进 `tools`，改用固定入口
-         * [AgentToolGroupCatalog.CALL] 转发，工具说明作为组加载回执进入历史尾部。
+         * 缓存优先转发（search/group 档）：延迟组工具不进 `tools`，改用固定入口
+         * [AgentToolGroupCatalog.CALL] 转发，工具说明作为组加载回执进入历史尾部；
+         * 同时启用会话级原生组集合（见 [resolveNativeGroups]）。off 档传 false，
          * 与 [toolLoadingFullCatalog]、预设运行互斥（调用方按会话锁定后传入）。
          */
         toolLoadingSuffixMode: Boolean = false,
@@ -200,15 +201,30 @@ internal object AgentModelClient {
                 { (durable, _) -> durable })
         }.getOrNull()
         val delegationAvailable = AgentPromptBuilder.delegationToolsAvailable(additionalTools)
-        // 委派的「结果解读规则」只在真的派发过之后才付 token：本 run 执行到 delegate_task 就翻开。
-        // 续跑的会话要从历史里认出来，否则恢复后的第一轮会缺规则，而子任务可能正在后台跑。
+        // 闲聊态关段只在 control 成功时由 router 置位，prompt builder 直接据此裁剪。
+        val trimChatSections = decision?.chatOnly == true
+        // 结果解读规则默认不进系统前缀：本 run 首次派发时随 delegate_task 回执下发，落在历史
+        // 尾部（＝后缀），前缀字节因此不随派发变化。三种情况要把它放回前缀，且都发生在缓存
+        // 尚未建立或本来就作废的时刻：
+        //  - 续跑：持久历史里已有派发标记，但回执正文已脱敏，规则只能从第一轮起常驻；
+        //  - 压缩：回执被摘要替换掉，同上（压缩本身已重写整段历史）；
+        //  - 闲聊态：调度规则整段被裁掉，派发后两段一起补回，沿用旧行为。
         // 工具可能并发执行，用 AtomicBoolean 保证下一轮重建前缀时看得见。
-        val delegationEngaged = java.util.concurrent.atomic.AtomicBoolean(
+        val delegationResultRuleInPrefix = java.util.concurrent.atomic.AtomicBoolean(
             outboundHistory.any { it.toolCallsJson.contains(DELEGATE_TASK_CALL_MARKER) },
         )
+        val delegationResultRuleDelivered = java.util.concurrent.atomic.AtomicBoolean(false)
         val observingToolExecutor = ToolExecutor { call ->
-            if (call.name == DELEGATE_TASK_NAME) delegationEngaged.set(true)
-            toolExecutor.execute(call)
+            val result = toolExecutor.execute(call)
+            if (call.name != DELEGATE_TASK_NAME) return@ToolExecutor result
+            if (trimChatSections) {
+                delegationResultRuleInPrefix.set(true)
+                return@ToolExecutor result
+            }
+            if (delegationResultRuleInPrefix.get()) return@ToolExecutor result
+            // 同一批并行派发只附一份规则；CAS 抢输的调用照常返回原回执。
+            if (!delegationResultRuleDelivered.compareAndSet(false, true)) return@ToolExecutor result
+            result.withDelegationResultRule()
         }
         // 只在此处（真实主 run）从 Prefs 捕获；子代理/压缩模型不会走到这里，
         // 因此不会因为最小配置而误报「用户关闭了终端」。
@@ -246,7 +262,7 @@ internal object AgentModelClient {
         // 第 2 轮才恢复（toolsForRound 里 provider 与 initial 的并集就是这个教训，见下）。
         var initialOpenedGroups =
             presetOpenedGroups ?: (openedToolGroupsProvider() + historyOpenedGroups())
-        // 缓存优先档：与会话锁定互斥——off 档已下发完整目录，预设运行自己管工具集。
+        // 缓存优先转发：与会话锁定互斥——off 档已下发完整目录，预设运行自己管工具集。
         val suffixMode = toolLoadingSuffixMode && !toolLoadingFullCatalog && presetToolNames == null
         // control 成功/fail-closed 时限制 tools_use_group 的枚举；null 表示不接管。
         val decisionOpenableLimit = decision?.openableGroupLimit
@@ -277,8 +293,6 @@ internal object AgentModelClient {
             allowed = ::nativeGroupAllowed,
             approxChars = prompt.length + outboundHistory.sumOf { it.content.length + it.toolCallsJson.length },
         )
-        // 闲聊态关段只在 control 成功时由 router 置位，prompt builder 直接据此裁剪。
-        val trimChatSections = decision?.chatOnly == true
         fun toolsFor(
             capabilities: AgentToolCapabilities,
             memoryEnabled: Boolean = memoryContext.enabled,
@@ -328,15 +342,20 @@ internal object AgentModelClient {
             }
             // MCP 渐进加载：schema 按已打开 server 追加；off 模式下 openedToolGroups
             // 已含全部 server 组，等价全量。always 暴露模式走上面的 additionalTools。
-            // 缓存优先档不对 MCP 生效：MCP schema 由投影快照追加，执行侧没有另一份可作
-            // 回执文档的来源，强行改道会让 server 工具彻底不可调用。MCP 组仍按旧语义
-            // 「打开即重建」，签名里保留 MCP 组正是为了这点。
-            if (mcpProjection != null) {
+            // 缓存优先档下 MCP 也不进 tools：快照能按单组渲染 schema（appendTools 只传
+            // 该组 id），执行侧据此出回执文档并校验参数，再显式路由到 MCP 执行器。
+            // 打开 server 因此不再改写前缀——这是转发路径最后一个机制性抖动源。
+            if (mcpProjection != null && !suffixMode) {
                 mcpProjection.appendTools(tools, openedToolGroups)
             }
             // 自进化配方工具放在最后：模型读完内置工具后，额外看到自己写的工具。
-            for (index in 0 until recipeTools.length()) {
-                tools.put(recipeTools.opt(index))
+            // 缓存优先档例外：配方 schema 也不进 tools——模型每新建/停用一份配方都会改写前缀，
+            // 整段缓存作废。改经 tool_call 转发，参数说明随 eta_author_tool / eta_list_recipes
+            // 回执进入历史尾部；执行侧按配方真实 schema 校验后交回同一条 execute 链路。
+            if (!suffixMode) {
+                for (index in 0 until recipeTools.length()) {
+                    tools.put(recipeTools.opt(index))
+                }
             }
             if (compactionArchive != null) tools.put(AgentCompactionArchive.tool())
             // 目录构建之后追加的 MCP / 配方 / 压缩档案也要按预设收口，
@@ -376,14 +395,14 @@ internal object AgentModelClient {
             disabledCapabilities = capabilitySwitches.toDisabledState(),
             // 首轮通常还没有打开任何延迟组；仍走同一个 provider，保证提示与目录同源。
             // 缓存优先档按会话级原生组渲染：组索引与各组指引因此在会话内恒定，
-            // 模型中途打开的静态组不再改动 system 文本。MCP 组沿用「打开才出现」。
+            // 模型中途打开的组（含 MCP server）不再改动 system 文本。
             openedToolGroups = if (suffixMode) {
-                nativeGroups.orEmpty() + initialOpenedGroups.filter { AgentToolGroups.isMcpGroupId(it) }
+                nativeGroups.orEmpty()
             } else {
                 initialOpenedGroups
             },
             groupCallsViaToolCall = suffixMode,
-            delegationEngaged = delegationEngaged.get(),
+            delegationResultRuleInPrefix = delegationResultRuleInPrefix.get(),
             // 提示点名的工具必须真的在目录里：缺席的工具连名字都不出现在提示里。
             callableTools = AgentToolCatalog.toolNames(tools),
             onSystemCount = { systemCount = it },
@@ -416,14 +435,11 @@ internal object AgentModelClient {
             memoryRevision = memoryContext.revision,
             memoryEnabled = memoryContext.enabled,
             delegationAvailable = delegationAvailable,
-            delegationEngaged = delegationEngaged.get(),
+            delegationResultRuleInPrefix = delegationResultRuleInPrefix.get(),
             interactiveModeEnabled = interactiveModeEnabled,
-            openedToolGroups = if (suffixMode) {
-                nativeGroups.orEmpty() + openedGroups.filter { AgentToolGroups.isMcpGroupId(it) }
-            } else {
-                openedGroups
-            },
-            recipeRevision = recipeTools.toString().hashCode().toString(),
+            openedToolGroups = if (suffixMode) nativeGroups.orEmpty() else openedGroups,
+            // 缓存优先档下配方不进 tools，指纹恒为空，避免新建配方触发整段前缀重建。
+            recipeRevision = if (suffixMode) "" else recipeTools.toString().hashCode().toString(),
             toolSwitches = ToolSwitchSnapshot.capture(),
             capabilitySwitches = capabilitySwitches,
         )
@@ -445,7 +461,17 @@ internal object AgentModelClient {
             turnId = turnId,
             calibratedInputTokens = calibratedInputTokens,
             allowUnmeasuredContextSend = allowUnmeasuredContextSend,
-            onHistoryCompacted = { transcriptStartIndex = messages.length() },
+            onHistoryCompacted = { pruningOnly ->
+                transcriptStartIndex = messages.length()
+                // 只有摘要压缩需要把结果解读规则放回前缀：它把保留尾之外的回执连正文一起
+                // 替换成摘要，规则随之丢失；压缩本身已重写整段历史，这一次前缀变化不额外
+                // 损失缓存。修剪不能翻：delegate_task 回执恒为敏感结果（SubAgentCoordinator
+                // 的 execute 单出口；AgentChildTaskGroups 路由层的 error/list/replace 出口
+                // 同样标 sensitive，错误与参数非法路径也不例外），敏感结果被修剪跳过
+                // （pruneOversizedToolResults 的 sensitiveToolCallIds 过滤），规则不可能丢；
+                // 此时翻旗只会让 tools+system 在历史最长的时刻整段重写，恰是本机制要避免的事。
+                if (!pruningOnly) delegationResultRuleInPrefix.set(true)
+            },
             // 压缩边界标记按动态组恢复被压缩掉的 MCP 调用。
             dynamicToolGroupsProvider = { mcpGroups },
             onHistorySnapshot = onHistorySnapshot?.let { publish ->
@@ -484,19 +510,15 @@ internal object AgentModelClient {
                         memoryRevision = nextMemoryContext.revision,
                         memoryEnabled = nextMemoryContext.enabled,
                         delegationAvailable = delegationAvailable,
-                        delegationEngaged = delegationEngaged.get(),
+                        delegationResultRuleInPrefix = delegationResultRuleInPrefix.get(),
                         interactiveModeEnabled = interactiveModeEnabled,
-                        // 缓存优先档用会话级原生组：静态组开/关不改变目录，也就不该触发重建。
-                        // MCP 组例外：它的 schema 由投影追加，仍按「打开才出现」的旧语义。
-                        openedToolGroups = if (suffixMode) {
-                            nativeGroups.orEmpty() + nextOpenedGroups.filter {
-                                AgentToolGroups.isMcpGroupId(it)
-                            }
-                        } else {
-                            nextOpenedGroups
-                        },
+                        // 缓存优先档用会话级原生组：任何组（含 MCP server）开/关都不改变
+                        // 目录，也就不该触发重建。
+                        openedToolGroups = if (suffixMode) nativeGroups.orEmpty() else nextOpenedGroups,
                         // 配方集合变了必须重建目录，否则新建的配方在这一轮仍然缺席。
-                        recipeRevision = recipeTools.toString().hashCode().toString(),
+                        // 缓存优先档下配方不进 tools，变更也就不该触发重建：tool_call 在调用时
+                        // 直接读 store，新建的配方下一轮即可用，不需要目录为它让路。
+                        recipeRevision = if (suffixMode) "" else recipeTools.toString().hashCode().toString(),
                         // 用户可能在两轮之间改开关：签名必须覆盖它，否则目录与系统提示不会刷新。
                         toolSwitches = ToolSwitchSnapshot.capture(),
                         // 关闭说明的内容同样随开关变化，必须一起参与判定。
@@ -515,17 +537,11 @@ internal object AgentModelClient {
                             config, nextSkillContext, nextMemoryContext, capabilities.rootAvailable, delegationAvailable,
                             capabilities.shellTools,
                             interactiveModeEnabled = interactiveModeEnabled,
-                            // 缓存优先档按会话级原生组渲染 system：静态组开/关不改文本。
-                            openedToolGroups = if (suffixMode) {
-                                nativeGroups.orEmpty() + nextOpenedGroups.filter {
-                                    AgentToolGroups.isMcpGroupId(it)
-                                }
-                            } else {
-                                nextOpenedGroups
-                            },
+                            // 缓存优先档按会话级原生组渲染 system：任何组开/关都不改文本。
+                            openedToolGroups = if (suffixMode) nativeGroups.orEmpty() else nextOpenedGroups,
                             groupCallsViaToolCall = suffixMode,
-                            // 本轮之前是否已经派发过子任务：决定结果解读规则是否进前缀。
-                            delegationEngaged = delegationEngaged.get(),
+                            // 结果解读规则是否常驻前缀：本 run 首次派发走回执，续跑/压缩后才置位。
+                            delegationResultRuleInPrefix = delegationResultRuleInPrefix.get(),
                             // 每轮重新捕获：用户可能在两轮之间改了开关。
                             disabledCapabilities = ToolCapabilitySwitches
                                 .capture().toDisabledState(),
@@ -737,8 +753,8 @@ internal object AgentModelClient {
         val memoryRevision: String,
         val memoryEnabled: Boolean,
         val delegationAvailable: Boolean,
-        /** 本 run 是否已派发过子任务；翻开后系统前缀多一条结果解读规则，必须参与重建判定。 */
-        val delegationEngaged: Boolean = false,
+        /** 结果解读规则是否常驻系统前缀；置位后前缀多一条消息，必须参与重建判定。 */
+        val delegationResultRuleInPrefix: Boolean = false,
         val interactiveModeEnabled: Boolean,
         /**
          * 决定「哪些延迟组下发原生 schema」的集合。
@@ -850,7 +866,7 @@ internal object AgentModelClient {
     }
 
     /**
-     * 缓存优先档（suffix）的会话级原生组集合。
+     * 缓存优先转发（search/group 档）的会话级原生组集合。
      *
      * 集合决定「哪些延迟组下发原生 schema」。它必须在 run 开始前就固定：run 中途变一次，
      * `tools` 就变一次，而 `tools` 排在 system 与历史之前，会连带整段前缀失效。
@@ -868,6 +884,10 @@ internal object AgentModelClient {
         approxChars: Int,
     ): Set<String> {
         val staticDeferred = AgentToolGroups.deferredGroups.mapTo(mutableSetOf()) { it.id }
+        // MCP 组刻意不进原生集合：升原生 = schema 回到 `tools`，但 MCP 的渲染、参数校验与
+        // 执行只有快照这一份来源，等于要重建整套目录侧通路。收益（省一次回执）远小于风险
+        // （双源漂移），且 MCP 打开本就不改写前缀（appendTools 抑制 + 回执转发），没有抖动
+        // 要解决。MCP 重的会话因此每次调用都付间接层，真机对拍时单独量一组。
         val withinBudget = approxChars <= NATIVE_GROUP_GROWTH_CHAR_BUDGET
         // 历史里已经真正用过的组最可信：它比关键词预测稳，也比预测更不需要解释。
         val growable = (historyGroups + decisionGroups).filterTo(mutableSetOf()) { it in staticDeferred }
@@ -980,3 +1000,19 @@ private const val DELEGATE_TASK_NAME = "delegate_task"
 
 /** 历史里的 tool_calls JSON 片段；用来在续跑的会话上认出「已经派发过」。 */
 private const val DELEGATE_TASK_CALL_MARKER = "\"$DELEGATE_TASK_NAME\""
+
+/** 结果解读规则在派发回执里的字段名；不在脱敏放行清单里，因此不会进持久会话。 */
+private const val DELEGATION_RESULT_RULE_KEY = "result_rules"
+
+/**
+ * 把结果解读规则挂到 `delegate_task` 回执上，让它落在历史尾部而不是系统前缀。
+ *
+ * 回执是 JSON，直接拼文本会破坏结构；解析不出对象时（错误回执可能是纯文本）退化为追加。
+ * `sensitive` 与图片原样保留：规则只影响当前 run 的模型可见历史，持久化仍按脱敏走。
+ */
+private fun AgentModelClient.ToolResult.withDelegationResultRule(): AgentModelClient.ToolResult {
+    val rule = AgentPromptBuilder.DELEGATION_RESULT_RULE
+    val merged = runCatching { JSONObject(content).put(DELEGATION_RESULT_RULE_KEY, rule).toString() }
+        .getOrElse { content + "\n\n" + rule }
+    return copy(content = merged)
+}

@@ -500,7 +500,7 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 key = SettingsKeys.TOOL_LOADING_MODE,
                 title = stringResource(R.string.tools_loading_mode_title),
                 summary = stringResource(R.string.tools_loading_mode_summary),
-                keywords = "progressive 渐进 工具加载 tools_search tools_use_group 按工具 按组 关闭 延迟 搜索",
+                keywords = "progressive 渐进 工具加载 tools_search tools_use_group 按工具 按组 关闭 延迟 搜索 转发 缓存",
                 icon = Icons.Rounded.Layers,
                 group = groupToolCapabilities,
                 destination = SettingsDestination.Inline,

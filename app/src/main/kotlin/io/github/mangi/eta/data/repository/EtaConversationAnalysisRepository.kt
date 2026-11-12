@@ -198,7 +198,9 @@ internal object EtaConversationAnalysisRepository {
      * 只读配置快照：全部是值与枚举，不含密钥、端点或 provider 凭据。
      *
      * 工具加载档取「本会话实际生效值」：会话有锁定值就用锁定值，否则用当前全局值；
-     * 这里刻意不调用会写锁的解析函数，导出不应该改变会话状态。
+     * 这里刻意不调用会写锁的解析函数，导出不应该改变会话状态。锁定槽里残留的旧值
+     * 「suffix」按历史原样保留（该会话当时确实以该语义运行）；新 run 重锁后自然
+     * 写入迁移后的三档值，全局路径则经 [Prefs.toolLoadingMode] 的读时迁移归一。
      */
     private suspend fun readConfigSnapshot(conversationId: String): EtaConversationAnalysisConfig {
         val settings = runCatching { SettingsDataStore.settings() }.getOrNull()

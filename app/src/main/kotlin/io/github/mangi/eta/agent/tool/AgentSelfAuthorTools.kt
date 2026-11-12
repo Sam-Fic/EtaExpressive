@@ -12,13 +12,19 @@ import org.json.JSONObject
  *
  * 关键约束（写进 schema 描述里，也是模型最容易踩的坑）：
  * - 配方是**声明式步骤**，不是代码；步骤类型是白名单
- * - 新建/更新后**下一轮**才会作为可调用工具出现（当前这一轮调用会拿到 UNKNOWN_TOOL）
+ * - 新建/更新后**下一轮**才可调用（当前这一轮调用会拿到 UNKNOWN_TOOL）；
+ *   缓存优先档下它永远不会成为原生工具，而是经 `tool_call` 转发，参数说明由回执给出
  * - 名字冲突时返回候选列表让模型选，不要自己猜
  * - 配方不能组合自己、不能形成环
  */
 internal class AgentSelfAuthorTools(
     private val store: AgentToolRecipeStore,
     private val rootAvailable: () -> Boolean = { false },
+    /**
+     * 缓存优先档：配方 schema 不进 `tools`，改经 `tool_call` 转发。
+     * 回执必须自带参数说明与调用方式，否则模型拿不到任何可照着调用的文档。
+     */
+    private val recipesViaCall: Boolean = false,
 ) {
     companion object {
         const val AUTHOR_TOOL = io.github.mangi.eta.agent.model.AgentSelfSettingsToolCatalog.AUTHOR_TOOL
@@ -27,6 +33,10 @@ internal class AgentSelfAuthorTools(
         /** 名字命中多个时最多返回的候选数。 */
         private const val MAX_CANDIDATES = 10
     }
+
+    /** 配方的调用方式：缓存优先档经固定入口转发，其余档位是原生工具。 */
+    private val callVia: String
+        get() = if (recipesViaCall) io.github.mangi.eta.agent.model.AgentToolGroupCatalog.CALL else "direct"
 
     fun execute(name: String, args: JSONObject): String? = when (name) {
         AUTHOR_TOOL -> author(args)
@@ -63,9 +73,14 @@ internal class AgentSelfAuthorTools(
             .put("count", matched.size)
             .put("total", all.size)
             .put("recipes", items)
+            .put("call_via", callVia)
             .put(
                 "note",
-                "已启用的配方会在下一轮请求里作为 recipe_<name> 工具出现；新建后本轮还不能调用它",
+                if (recipesViaCall) {
+                    "已启用的配方经 $callVia 调用：name 填 tool_name，arguments 按每条的 parameters 填写；它们不会作为原生工具出现"
+                } else {
+                    "已启用的配方会在下一轮请求里作为 recipe_<name> 工具出现；新建后本轮还不能调用它"
+                },
             )
             .toString()
     }
@@ -256,12 +271,20 @@ internal class AgentSelfAuthorTools(
                     .put("version", saved.version)
                     .put("requires_root", needsRoot)
                     .put("enabled", saved.enabled)
+                    // 缓存优先档不下发配方 schema，回执是模型唯一能拿到参数说明的地方。
+                    .put("parameters", saved.parameters)
+                    .put("call_via", callVia)
                     .put(
                         "note",
                         buildString {
                             append("已保存。")
                             if (needsRoot && !rootAvailable()) {
-                                append("该配方需要 Root，当前设备没有 Root 授权，因此不会出现在模型工具列表里。")
+                                append("该配方需要 Root，当前设备没有 Root 授权，因此不可调用。")
+                            } else if (recipesViaCall) {
+                                append(
+                                    "下一轮起用 $callVia 调用：name=${saved.modelToolName}，" +
+                                        "arguments 按 parameters 填写；它不会作为原生工具出现，本轮还不能调用。",
+                                )
                             } else {
                                 append("它会在下一轮请求中作为 ${saved.modelToolName} 工具出现；本轮还不能调用。")
                             }

@@ -28,10 +28,17 @@ internal object AgentSelfSettingsToolCatalog {
 
     /**
      * 下发自设置工具。[withheld] 里的工具不下发（由 [AgentToolGroups] 折叠成按需打开的域）。
+     *
+     * [recipesViaCall]：缓存优先档不把配方 schema 放进 `tools`，配方改经 `tool_call` 转发，
+     * 因此「保存后下一轮会出现为原生工具」这句描述必须改写，否则模型会一直等一个不出现的工具。
      */
-    fun appendTo(tools: JSONArray, withheld: Set<String> = emptySet()) {
+    fun appendTo(
+        tools: JSONArray,
+        withheld: Set<String> = emptySet(),
+        recipesViaCall: Boolean = false,
+    ) {
         val emitted = JSONArray()
-        appendAll(emitted)
+        appendAll(emitted, recipesViaCall)
         for (index in 0 until emitted.length()) {
             val tool = emitted.getJSONObject(index)
             val name = tool.optJSONObject("function")?.optString("name").orEmpty()
@@ -40,7 +47,7 @@ internal object AgentSelfSettingsToolCatalog {
         }
     }
 
-    private fun appendAll(tools: JSONArray) {
+    private fun appendAll(tools: JSONArray, recipesViaCall: Boolean = false) {
         tools
             .put(
                 AgentToolSchema.function(
@@ -579,8 +586,14 @@ internal object AgentSelfSettingsToolCatalog {
                 AgentToolSchema.function(
                     name = AUTHOR_TOOL,
                     description = "Write yourself a new tool: a recipe is a declarative list of fixed steps, not code. " +
-                        "A recipe you save appears as a callable recipe_<name> tool in your NEXT request, so create it, " +
-                        "then call it on a later turn. " +
+                        (if (recipesViaCall) {
+                            "A recipe you save never appears as a native tool: from your NEXT turn onward call it " +
+                                "with tool_call ({name: recipe_<name>, arguments: {...}}), following the parameters " +
+                                "returned by this tool. "
+                        } else {
+                            "A recipe you save appears as a callable recipe_<name> tool in your NEXT request, so create it, " +
+                                "then call it on a later turn. "
+                        }) +
                         "action=create needs name, description, parameters and steps; action=update changes an existing one; " +
                         "action=delete removes it; action=enable and action=disable turn it on or off. " +
                         "The recipe object is {name, description, parameters, steps}. " +
@@ -684,7 +697,13 @@ internal object AgentSelfSettingsToolCatalog {
                     description = "List the recipes you wrote earlier: their name, what they do, whether they are enabled, " +
                         "whether they need Root, their arguments and their steps. " +
                         "Pass name to see one recipe in full, or leave it out to see them all. " +
-                        "Call this before updating a recipe, so you change the one you mean instead of guessing.",
+                        "Call this before updating a recipe, so you change the one you mean instead of guessing." +
+                        if (recipesViaCall) {
+                            " Recipes are not native tools in this mode: call them with tool_call " +
+                                "({name: recipe_<name>, arguments: {...}}) using the parameters listed here."
+                        } else {
+                            ""
+                        },
                     parameters = JSONObject()
                         .put("type", "object")
                         .put(

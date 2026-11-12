@@ -45,7 +45,12 @@ internal class AgentLoop(
     private val toolDiagnostics: AgentToolCallDiagnostics = AgentToolCallDiagnostics(),
     /** 会话上一张可信云端回执折算到本次请求的输入量；只作为第一个锚点，本轮回执到达后被替换。 */
     private val calibratedInputTokens: Int? = null,
-    private val onHistoryCompacted: () -> Unit = {},
+    /**
+     * 历史被改写的回调。[pruningOnly] 区分两种改写：修剪只替换超长工具结果体（敏感结果跳过），
+     * 摘要压缩会把保留尾之外的回执连正文一起替换。回调方据此决定哪些「挂在使用回执上的
+     * 前缀外内容」需要回到 system（见 AgentModelClient 的结果解读规则）。
+     */
+    private val onHistoryCompacted: (pruningOnly: Boolean) -> Unit = {},
     private val onHistorySnapshot: ((Int, List<AgentModelClient.ConversationMessage>) -> String)? = null,
     private val compactHistory: ((
         List<AgentModelClient.ConversationMessage>,
@@ -1227,7 +1232,8 @@ internal class AgentLoop(
         // A tool-body edit is not a new context epoch. Keep the latest cloud bill
         // and its local anchor; the silent budget accounts for the trimmed delta.
         // Only a real summary replacement reopens the local display boundary.
-        onHistoryCompacted()
+        // 函数类型不能用具名实参：true = 仅修剪（见 onHistoryCompacted 的 KDoc）。
+        onHistoryCompacted(true)
         onEvent(AgentEvent.ContextCompacted(round, true, messages.length(), messages.length(),
             history = AgentConversationCodec.transcript(messages, systemCount, sensitiveToolCallIds),
             compressorLabel = AgentEvent.PRUNING_ONLY_COMPRESSOR_LABEL, pruningOnly = true))
@@ -1350,7 +1356,7 @@ internal class AgentLoop(
         unmeasuredContextSendAllowed = true
         autoCompactLatched = false
         compactionFailure = ""
-        onHistoryCompacted()
+        onHistoryCompacted(false)
         onEvent(AgentEvent.ContextCompacted(round, true, originalCount, messages.length(),
             history = AgentConversationCodec.transcript(messages, systemCount, sensitiveToolCallIds),
             compressorLabel = compressorLabel(compressConfig)))

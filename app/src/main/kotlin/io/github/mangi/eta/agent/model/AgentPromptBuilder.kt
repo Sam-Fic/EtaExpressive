@@ -33,7 +33,8 @@ internal object AgentPromptBuilder {
         openedToolGroups: Set<String> = emptySet(),
         /** 缓存优先档：延迟组工具经 tool_call 调用，组索引的说明随之改写。 */
         groupCallsViaToolCall: Boolean = false,
-        delegationEngaged: Boolean = false,
+        /** 结果解读规则是否常驻系统前缀；见 [buildSystemMessages]。 */
+        delegationResultRuleInPrefix: Boolean = false,
         /**
          * 本轮目录里真实存在的工具名。
          *
@@ -72,7 +73,7 @@ internal object AgentPromptBuilder {
             openedToolGroups = openedToolGroups,
             groupCallsViaToolCall = groupCallsViaToolCall,
             disabledCapabilities = disabledCapabilities,
-            delegationEngaged = delegationEngaged,
+            delegationResultRuleInPrefix = delegationResultRuleInPrefix,
             callableTools = callableTools,
             trimChatSections = trimChatSections,
             openableGroupLimit = openableGroupLimit,
@@ -193,10 +194,13 @@ internal object AgentPromptBuilder {
         /** 决定「关闭说明」内容；默认从 config 与既有开关推导，与目录同源。 */
         disabledCapabilities: AgentToolGroups.ToolSwitchState? = null,
         /**
-         * 本 run 是否已经真的派出过子任务。派发之前，[DELEGATION_RESULT_RULE] 一条都执行不到，
-         * 因此不常驻；派发后的下一轮起才进入前缀（与延迟工具组同一个「按需付费」思路）。
+         * [DELEGATION_RESULT_RULE] 是否常驻系统前缀。
+         *
+         * 默认 false：本 run 首次派发时规则随 `delegate_task` 回执下发，落在历史尾部（＝后缀），
+         * 前缀字节不随派发变化。只有回执拿不到规则的两种情况才置 true——续跑（持久历史里的
+         * 回执正文已脱敏）与压缩后（回执被摘要替换）；两者都发生在缓存尚未建立或已作废的时刻。
          */
-        delegationEngaged: Boolean = false,
+        delegationResultRuleInPrefix: Boolean = false,
         /**
          * 本轮目录里真实存在的工具名；见 [buildInitialMessages]。
          * 缺席的工具连名字都不出现在提示里：模型照着提示调用一个没下发的工具会被拒，
@@ -294,9 +298,9 @@ internal object AgentPromptBuilder {
         if (screenObservationRule) {
             messages.put(systemMessage(screenObservationRuleText()))
         }
-        if (!pureChat && delegationAvailable && (!trimChatSections || delegationEngaged)) {
+        if (!pureChat && delegationAvailable && (!trimChatSections || delegationResultRuleInPrefix)) {
             messages.put(systemMessage(delegationRule(::named)))
-            if (delegationEngaged) messages.put(systemMessage(DELEGATION_RESULT_RULE))
+            if (delegationResultRuleInPrefix) messages.put(systemMessage(DELEGATION_RESULT_RULE))
         }
         if (pureChat) {
             messages.put(
@@ -759,10 +763,13 @@ internal object AgentPromptBuilder {
 
     /**
      * 派发之后才用得上的结果解读规则：后台继续语义、get_task_result 分页、completed 的验收要求、
-     * 各类错误码。它们约占委派规则的一半 token，而在第一次 delegate_task 之前一条都执行不到，
-     * 因此和延迟工具组同一个思路——本 run 真的派发过再进系统前缀（见 [buildSystemMessages]）。
+     * 各类错误码。它们约占委派规则的一半 token，而在第一次 delegate_task 之前一条都执行不到。
+     *
+     * 因此不常驻系统前缀：本 run 首次派发时由 [AgentModelClient] 挂到 `delegate_task` 回执上，
+     * 落在历史尾部（＝后缀），派发不再重写整段 prompt 缓存。只有回执拿不到它的时候
+     * （续跑的脱敏历史、压缩后的摘要）才经 [buildSystemMessages] 放回前缀。
      */
-    private const val DELEGATION_RESULT_RULE =
+    internal const val DELEGATION_RESULT_RULE =
         "已经派出的子代理适用以下结果规则。" +
             "主代理正常输出最终答复并结束本轮后，已经派出的子任务默认继续在后台执行；正常完成本轮不会因此暂停、停止或取消子任务。" +
             "此规则不改变显式暂停、停止、取消及失败的既有处理，也不会自动恢复此前已经暂停的任务。无需仅为保持子任务运行而等待所有结果或持续轮询。" +

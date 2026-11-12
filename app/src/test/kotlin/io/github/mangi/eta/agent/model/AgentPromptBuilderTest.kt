@@ -316,21 +316,21 @@ class AgentPromptBuilderTest {
 
     @Test
     fun delegationRuleIsASeparateMessageAheadOfOperationalGuidance() {
-        fun systems(delegation: Boolean, engaged: Boolean) = AgentPromptBuilder.buildSystemMessages(
+        fun systems(delegation: Boolean, ruleInPrefix: Boolean) = AgentPromptBuilder.buildSystemMessages(
             config = modelConfig("", terminalTools = true, browserTools = false),
             skillContext = SkillContext.EMPTY,
             memoryContext = AgentMemoryContext.DISABLED,
             rootAvailable = false,
             delegationAvailable = delegation,
-            delegationEngaged = engaged,
+            delegationResultRuleInPrefix = ruleInPrefix,
             openedToolGroups = AgentToolGroups.allIds,
         )
-        val without = systems(delegation = false, engaged = false)
+        val without = systems(delegation = false, ruleInPrefix = false)
         assertFalse(without.systemContents().any { it.contains("本轮已公开子代理") })
-        // 结果解读规则跟着委派走：没有子代理时它一条也不该出现，即使 engaged 被误置为 true。
-        assertEquals(without.length(), systems(delegation = false, engaged = true).length())
+        // 结果解读规则跟着委派走：没有子代理时它一条也不该出现，即使标志被误置为 true。
+        assertEquals(without.length(), systems(delegation = false, ruleInPrefix = true).length())
 
-        val messages = systems(delegation = true, engaged = false)
+        val messages = systems(delegation = true, ruleInPrefix = false)
         val contents = messages.systemContents()
         val delegationAt = contents.indexOfFirst { it.contains("本轮已公开子代理") }
         val screenAt = contents.indexOfFirst { it.contains("需要看屏幕时") }
@@ -344,12 +344,13 @@ class AgentPromptBuilderTest {
         assertTrue(contents.any { it.contains("不要用本条终端要求") })
         assertFalse(contents.any { it.contains("默认优先并行委派多个") })
 
-        // 派发之前不付「结果解读」的 token：后台继续语义、分页、验收与错误码一条都不进前缀。
+        // 首次派发前不付「结果解读」的 token：它随 delegate_task 回执走，一条都不进前缀。
         for (clause in RESULT_RULE_PROBES) {
             assertFalse("派发前不该出现：$clause", contents.any { it.contains(clause) })
         }
 
-        val engagedMessages = systems(delegation = true, engaged = true)
+        // 续跑/压缩后回执拿不到规则，它才回到前缀，且紧跟在调度规则之后。
+        val engagedMessages = systems(delegation = true, ruleInPrefix = true)
         assertEquals(messages.length() + 1, engagedMessages.length())
         val engagedContents = engagedMessages.systemContents()
         val resultAt = engagedContents.indexOfFirst { it.contains("已经派出的子代理适用以下结果规则") }
@@ -454,9 +455,9 @@ class AgentPromptBuilderTest {
     }
 
     /**
-     * 只有真的派发过子任务之后才进前缀的结果解读规则。挑这几句是因为它们各自代表一类：
+     * 首次派发时随回执下发、只有续跑/压缩后才回到前缀的结果解读规则。挑这几句是因为它们各自代表一类：
      * 后台继续语义、显式暂停不被覆盖、不许把「派发成功」当完成、分页取回、completed 的验收要求、
-     * 以及供应商不可用错误码。它们全都不该在第一次 delegate_task 之前出现。
+     * 以及供应商不可用错误码。它们全都不该在第一次 delegate_task 之前出现在系统前缀里。
      */
     private val RESULT_RULE_PROBES = listOf(
         "已经派出的子任务默认继续在后台执行",

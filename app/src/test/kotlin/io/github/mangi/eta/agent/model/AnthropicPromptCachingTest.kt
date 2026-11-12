@@ -239,6 +239,26 @@ class AnthropicPromptCachingTest {
         assertFalse(blocks.getJSONObject(1).has("cache_control"))
     }
 
+    @Test fun assistantFinalRoundKeepsFourDistinctBreakpoints() {
+        // 一轮通常以 assistant 收尾。末位断点若只认 user，本轮最终内容就永远不在缓存链上，
+        // 下一轮第一个请求只能从头重写——这里钉住「四个断点仍然齐、且末位落在 assistant 上」。
+        val messages = JSONArray()
+            .put(msg("system", "stable instructions").put(AnthropicPromptCaching.SYSTEM_BOUNDARY_KEY, true))
+            .put(msg("system", "memory revision 1"))
+            .put(msg("user", "hello"))
+            .put(msg("assistant", "answer"))
+        val body = build(messages, JSONArray().put(tool("first")).put(tool("last")))
+        assertEquals(4, markerCount(body))
+        assertTrue(body.getJSONArray("tools").getJSONObject(1).has("cache_control"))
+        assertTrue(body.getJSONArray("system").getJSONObject(0).has("cache_control"))
+        assertTrue(body.getJSONArray("system").getJSONObject(1).has("cache_control"))
+        val finalBlock = body.getJSONArray("messages").getJSONObject(1).getJSONArray("content").getJSONObject(0)
+        assertEquals("answer", finalBlock.getString("text"))
+        assertTrue(finalBlock.has("cache_control"))
+        assertFalse(body.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
+            .getJSONObject(0).has("cache_control"))
+    }
+
     @Test fun applyingDefaultsTwiceIsIdempotent() {
         val body = build(JSONArray().put(msg("system", "stable")).put(msg("user", "hello")),
             JSONArray().put(tool("tool")))

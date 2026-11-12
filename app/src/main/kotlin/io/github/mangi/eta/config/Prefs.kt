@@ -78,13 +78,16 @@ internal object Prefs {
         const val AGENT_DISABLED_TOOLS = "agent_disabled_tools"
 
         /**
-         * 渐进加载模式（对齐 ZCode「工具搜索」设置的三档语义）：
+         * 渐进加载模式（三档；对齐 ZCode「工具搜索」设置的语义）：
          * - [TOOL_LOADING_MODE_SEARCH]：按工具渐进：延迟组 + tools_search 关键词搜索，
-         *   命中即解锁所属组（单工具粒度最省 token）；
+         *   命中即解锁所属组（单工具粒度最省 token）；高频组经会话级原生集合仍走原生
+         *   schema（见 [nativeGroups]），其余延迟组一律经 `tool_call` 转发；
          * - [TOOL_LOADING_MODE_GROUP]：按组渐进（最初行为）：延迟组只能经
          *   tools_use_group 整组打开，不下发 tools_search；
          * - [TOOL_LOADING_MODE_OFF]：发送完整工具目录（所有延迟组视为已打开、MCP 全量）。
-         * 新建会话生效，当前会话保持原设置——见 [resolveToolLoadingMode] 的会话锁定。
+         * 原来的 suffix 档（缓存优先）已并入 search/group：转发回执与原生组集合对三档
+         * 生效，off 档保持全量。新建会话生效；当前会话在上下文压缩后生效——见
+         * [resolveToolLoadingMode] 的会话锁定与 [unlockToolLoadingModeAtCompaction]。
          */
         const val AGENT_TOOL_LOADING_MODE = "agent_tool_loading_mode"
         const val TOOL_LOADING_MODE_SEARCH = "search"
@@ -92,12 +95,9 @@ internal object Prefs {
         const val TOOL_LOADING_MODE_OFF = "off"
 
         /**
-         * 缓存优先档：会话级原生组集合内的工具下发原生 schema，其余延迟组一律经
-         * `tool_call` 调用（工具说明作为工具结果追加到历史尾部）。
-         *
-         * 这一档的存在意义是前缀稳定：`tools` 与 system 在会话内字节恒定，
-         * provider 的前缀缓存只在集合增长时失效一次（且只在前缀还小时允许增长）。
-         * 见 [Prefs.nativeGroups]。
+         * 已退役的 suffix 档值：只由 [toolLoadingMode] 的读时迁移映射到
+         * [TOOL_LOADING_MODE_SEARCH]（搜索是它的超集：同样的转发回执 + 原生组集合，
+         * 还多一个工具级搜索）；不回写，回滚旧版仍认识原值。
          */
         const val TOOL_LOADING_MODE_SUFFIX = "suffix"
 
@@ -106,7 +106,13 @@ internal object Prefs {
         const val TOOL_LOADING_MODE_CONVERSATION = "agent_tool_loading_mode_conversation"
 
         /**
-         * 会话级原生工具组集合（suffix 档）；三者一起构成单槽快照，会话 id 不匹配即视为未初始化。
+         * 等待重新锁定的会话 id（压缩边界标记）；见 [unlockToolLoadingModeAtCompaction]。
+         * 与上面两个键同样是单槽，不引新表。
+         */
+        const val TOOL_LOADING_MODE_RECHECK = "agent_tool_loading_mode_recheck"
+
+        /**
+         * 会话级原生工具组集合（search/group 档共用）；三者一起构成单槽快照，会话 id 不匹配即视为未初始化。
          * 与 [TOOL_LOADING_MODE_ACTIVE] 同样是「只记住当前会话」的既有模式，不引新表。
          */
         const val NATIVE_GROUPS_CONVERSATION = "agent_native_groups_conversation"
@@ -600,9 +606,18 @@ internal object Prefs {
         putString(Keys.AGENT_DISABLED_TOOLS, updated.sorted().joinToString(","))
     }
 
-    /** 渐进加载模式的用户偏好值；见 [Keys.AGENT_TOOL_LOADING_MODE]。 */
+    /**
+     * 渐进加载模式的用户偏好值；见 [Keys.AGENT_TOOL_LOADING_MODE]。
+     *
+     * 读时迁移：存量 suffix 档映射到 search——search 是它的超集（同样的 `tool_call`
+     * 转发回执 + 会话级原生组集合，还多一个工具级搜索）。与 [toolReviewMode] 同一套
+     * 约定：退役值不回写，回滚旧版仍认识原值。
+     */
     fun toolLoadingMode(): String =
-        getString(Keys.AGENT_TOOL_LOADING_MODE, Keys.TOOL_LOADING_MODE_SEARCH)
+        when (val mode = getString(Keys.AGENT_TOOL_LOADING_MODE, Keys.TOOL_LOADING_MODE_SEARCH)) {
+            Keys.TOOL_LOADING_MODE_SUFFIX -> Keys.TOOL_LOADING_MODE_SEARCH
+            else -> mode
+        }
 
     fun setToolLoadingMode(mode: String) {
         putString(Keys.AGENT_TOOL_LOADING_MODE, mode)
@@ -614,15 +629,38 @@ internal object Prefs {
      * ZCode 的语义是「新建会话或恢复会话时生效，当前会话保持原设置」：
      * 首次在某个会话上 run 时把用户偏好锁定到该会话 id，之后同一会话一律用锁定值，
      * 只有新会话才重新读偏好。锁定值持久化在本地 Agent 配置里，进程重启不丢。
+     *
+     * 唯一的例外是压缩边界，见 [unlockToolLoadingModeAtCompaction]。
      */
     fun resolveToolLoadingMode(conversationId: String): String {
-        if (getString(Keys.TOOL_LOADING_MODE_CONVERSATION) == conversationId) {
+        val pendingRecheck = conversationId.isNotBlank() &&
+            getString(Keys.TOOL_LOADING_MODE_RECHECK) == conversationId
+        if (!pendingRecheck && getString(Keys.TOOL_LOADING_MODE_CONVERSATION) == conversationId) {
             return getString(Keys.TOOL_LOADING_MODE_ACTIVE, Keys.TOOL_LOADING_MODE_SEARCH)
         }
         val mode = toolLoadingMode()
         putString(Keys.TOOL_LOADING_MODE_ACTIVE, mode)
         putString(Keys.TOOL_LOADING_MODE_CONVERSATION, conversationId)
+        putString(Keys.TOOL_LOADING_MODE_RECHECK, "")
         return mode
+    }
+
+    /**
+     * 压缩边界：让本会话**下一个** run 重新读用户偏好，而不是继续用首个 run 锁定的档位。
+     *
+     * 档位在会话首个 run 锁死，那时历史是空的，无法判断这个会话会不会变长；而转发档的
+     * 收益恰恰随历史长度增长（一次前缀重写＝整段历史按未缓存价重付）。压缩本来就要重付整段
+     * 历史，此时换档只额外损失 tools+system 那几 k，比任何其它时机都便宜。
+     *
+     * 同时作废原生组快照：换档后旧集合不再适用，留在 search/group 档也该按压缩后的历史重新播种。
+     * 只放开「用户已经改过的设置」，不自动升档——默认 search 的会话行为完全不变。
+     * 本 run 不受影响：档位与原生组在 run 开始时就已取定。
+     */
+    fun unlockToolLoadingModeAtCompaction(conversationId: String) {
+        if (conversationId.isBlank()) return
+        if (getString(Keys.TOOL_LOADING_MODE_CONVERSATION) != conversationId) return
+        putString(Keys.TOOL_LOADING_MODE_RECHECK, conversationId)
+        putString(Keys.NATIVE_GROUPS_CONVERSATION, "")
     }
 
     /** 本会话是否发送完整工具目录（渐进加载 off）。 */
@@ -633,9 +671,14 @@ internal object Prefs {
     fun toolLoadingSearchEnabled(conversationId: String): Boolean =
         resolveToolLoadingMode(conversationId) == Keys.TOOL_LOADING_MODE_SEARCH
 
-    /** 本会话是否走「原生组集合 + 后缀追加」的缓存优先档。 */
+    /**
+     * 本会话是否走「原生组集合 + 转发回执」的缓存优先路径（search/group 档共用，off 档为 false）。
+     *
+     * run 执行器与 AgentModelClient 各自内联同一判定并额外排除 preset；本函数是三档
+     * 语义的命名锚点，供测试与将来的调用方使用。
+     */
     fun toolLoadingSuffixMode(conversationId: String): Boolean =
-        resolveToolLoadingMode(conversationId) == Keys.TOOL_LOADING_MODE_SUFFIX
+        resolveToolLoadingMode(conversationId) != Keys.TOOL_LOADING_MODE_OFF
 
     /** 会话级原生工具组集合的快照；null = 本会话还没有初始化过。 */
     data class NativeGroupsSnapshot(val groups: Set<String>, val frozen: Boolean)

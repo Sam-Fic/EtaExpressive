@@ -232,9 +232,15 @@ internal fun SettingsScreen(
         }
     }
 
-    // 强制无障碍开关状态：从系统设置返回时（ON_RESUME）刷新。
+    // 强制无障碍开关状态：组合期只读 SP 缓存（Settings.Global 的 binder 往返挪出主线程），
+    // 真值由下方 LaunchedEffect 异步回填；从系统设置返回时（ON_RESUME）再刷。
     var accessibilityProtectionEnabled by remember {
-        mutableStateOf(StreamPerformanceDiagnostics.measure("settings.permission.protection.initial") { AccessibilityProtectionClient.isEnabled(context) })
+        mutableStateOf(AccessibilityProtectionClient.isEnabledCached(context))
+    }
+    LaunchedEffect(Unit) {
+        accessibilityProtectionEnabled = withContext(Dispatchers.IO) {
+            AccessibilityProtectionClient.isEnabled(context)
+        }
     }
     var accessibilityProtectionPending by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -276,10 +282,13 @@ internal fun SettingsScreen(
                     }
                     hasConnectedFramework = true
                 }
-                StreamPerformanceDiagnostics.measure("settings.prefs.reconcile") {
-                    Prefs.reconcileAgentPreferences(service)
-                }
-                coroutineScope.launch {
+                // reconcile 内部走 SP commit()（写盘 fsync）与跨进程提交，必须离开主线程：
+                // 真机 trace 实证它在转场起步帧里造成连续 D 状态与 binder 往返。
+                // ensureDefaults 同为纯 IO/suspend，随它一起挪，保持先后顺序不变。
+                coroutineScope.launch(Dispatchers.IO) {
+                    StreamPerformanceDiagnostics.measure("settings.prefs.reconcile") {
+                        Prefs.reconcileAgentPreferences(service)
+                    }
                     RuntimeConfigRepository.ensureDefaults(service)
                 }
             }
@@ -1271,8 +1280,13 @@ private fun ToolReviewTimeoutRow(title: String) {
  * 工具渐进加载（三档）：与 [ToolReviewModeRow] 同族的下拉行。
  *
  * 档位语义与工具页一致：按工具 = tools_search 命中解锁所属组；按组 = 仅
- * tools_use_group 整组打开；关闭 = 下发完整工具目录。写入 [Prefs.setToolLoadingMode]，
- * 新建会话生效（当前会话由 run 侧的会话锁保持原设置）。
+ * tools_use_group 整组打开；关闭 = 下发完整工具目录。search/group 两档下延迟组
+ * 一律经 `tool_call` 转发（高频组仍可升入会话级原生集合拿原生 schema）。写入
+ * [Prefs.setToolLoadingMode]，新建会话生效；当前会话由 run 侧的会话锁保持原设置，
+ * 直到下一次上下文压缩（见 [Prefs.unlockToolLoadingModeAtCompaction]）。
+ *
+ * 原第四档 suffix（缓存优先）已并入 search/group（转发回执 + 原生组集合对它们生效）；
+ * 存量偏好值由 [Prefs.toolLoadingMode] 的读时迁移落到 search，因此这里不会选中它。
  *
  * 行内摘要只描述当前档位及生效时机，各档位的一句话说明放在菜单项第二行。
  */
@@ -1284,25 +1298,21 @@ private fun ToolLoadingModeRow(
     val options = listOf(
         Prefs.Keys.TOOL_LOADING_MODE_SEARCH,
         Prefs.Keys.TOOL_LOADING_MODE_GROUP,
-        Prefs.Keys.TOOL_LOADING_MODE_SUFFIX,
         Prefs.Keys.TOOL_LOADING_MODE_OFF,
     )
     val labels = listOf(
         stringResource(R.string.tools_loading_mode_search),
         stringResource(R.string.tools_loading_mode_group),
-        stringResource(R.string.tools_loading_mode_suffix),
         stringResource(R.string.tools_loading_mode_off),
     )
     val effects = listOf(
         stringResource(R.string.tools_loading_mode_search_effect),
         stringResource(R.string.tools_loading_mode_group_effect),
-        stringResource(R.string.tools_loading_mode_suffix_effect),
         stringResource(R.string.tools_loading_mode_off_effect),
     )
     val hints = listOf(
         stringResource(R.string.tools_loading_mode_search_hint),
         stringResource(R.string.tools_loading_mode_group_hint),
-        stringResource(R.string.tools_loading_mode_suffix_hint),
         stringResource(R.string.tools_loading_mode_off_hint),
     )
     val selectedIndex = options.indexOf(mode).coerceAtLeast(0)

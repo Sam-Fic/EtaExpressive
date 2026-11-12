@@ -169,8 +169,8 @@ class ContextOverheadBudgetTest {
 
     @Test
     fun delegationResultRulesAreNotPaidBeforeTheFirstDispatch() {
-        // 委派规则拆成两半：调度规则常驻，结果解读规则等本 run 真的派出过子任务才进前缀。
-        // 差值就是那半条规则的钱——它是常驻系统提示里最大的一块，之前每一轮都白付。
+        // 委派规则拆成两半：调度规则常驻，结果解读规则首次派发时随回执走（历史尾部）。
+        // 差值就是那半条规则的钱——它只有续跑/压缩后才回到前缀，之前每一轮都白付。
         val before = measure(allOn, extensionsTools = true, personalTools = true)
         val after = AgentPromptBuilder.buildSystemMessages(
             config = allOn,
@@ -178,7 +178,7 @@ class ContextOverheadBudgetTest {
             memoryContext = AgentMemoryContext.DISABLED,
             rootAvailable = true,
             delegationAvailable = true,
-            delegationEngaged = true,
+            delegationResultRuleInPrefix = true,
         ).let { messages ->
             (0 until messages.length()).sumOf { index ->
                 AgentContextBudget.countTokens(messages.getJSONObject(index).optString("content"))

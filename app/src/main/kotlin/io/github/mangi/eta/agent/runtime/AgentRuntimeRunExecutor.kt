@@ -214,9 +214,11 @@ internal class AgentRuntimeRunExecutor(
             val runVirtualDisplay = {
                 session.taskSurfaceMode == io.github.mangi.eta.agent.device.AgentTaskSurfaceMode.BACKGROUND
             }
-            // 渐进加载模式在会话首个 run 锁定（对齐 ZCode「新建会话生效，当前会话保持」）：
+            // 渐进加载模式在会话首个 run 锁定（对齐 ZCode「新建会话生效，当前会话保持」），
+            // 压缩边界例外：见下面 onEvent 里的 unlockToolLoadingModeAtCompaction。
             // search = 延迟组 + tools_search 命中解锁；group = 仅 tools_use_group 整组打开；
-            // off = 发送完整工具目录。
+            // off = 发送完整工具目录。三档的布尔量一一对应：fullCatalog = off、
+            // searchEnabled = search、suffix（转发 + 原生组集合）= 非 off。
             val toolLoadingMode = runCatching {
                 Prefs.resolveToolLoadingMode(request.effectiveModelSessionId)
             }.getOrDefault(Prefs.Keys.TOOL_LOADING_MODE_SEARCH)
@@ -247,8 +249,12 @@ internal class AgentRuntimeRunExecutor(
             // 这里只表达会话档位；预设运行时由目录层按 preset 非空自行关闭 tools_search。
             // 这样命中日程但目录为空退化回普通对话时，仍保留原有的搜索能力。
             val toolLoadingSearchEnabled = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_SEARCH
-            // 缓存优先档：延迟组工具经固定入口 tool_call 转发，目录在会话内字节恒定。
-            val toolLoadingSuffixMode = toolLoadingMode == Prefs.Keys.TOOL_LOADING_MODE_SUFFIX
+            // 缓存优先转发：search/group 档延迟组工具都经固定入口 tool_call 转发，
+            // 目录在会话内（原生组集合冻结的意义上）字节恒定；off 档保持全量原生 schema。
+            // preset 运行不参与：模型侧 suffixMode 按 presetToolNames 排除（中途退化回
+            // 普通对话时也保持 false），这里同步排除，两侧的目录与回执语义逐项一致。
+            val toolLoadingSuffixMode =
+                toolLoadingMode != Prefs.Keys.TOOL_LOADING_MODE_OFF && !presetRun
             val mcpDeferred = runCatching { Prefs.mcpToolExposureDeferred() }.getOrDefault(true)
             val mcpProjection: AgentModelClient.McpToolProjection? =
                 if (mcpDeferred && !toolLoadingFullCatalog) mcpSnapshot else null
@@ -261,6 +267,10 @@ internal class AgentRuntimeRunExecutor(
             // tools_search 的评分语料：目录重建时填入内置工具描述，MCP 描述在快照就绪后并入。
             val toolSearchIndex = java.util.concurrent.ConcurrentHashMap<String, String>()
             if (mcpProjection != null) toolSearchIndex.putAll(mcpSnapshot.toolDescriptions())
+            // 缓存优先转发（search/group 档）：tool_call 壳会落到 AgentLocalTools，而外层
+            // 路由按工具名分派、够不到 MCP 执行器，因此必须把它与 schema 渲染一起注入，
+            // 转发才能在按真实 schema 校验后把调用交给它。
+            val mcpExecutor = McpToolExecutor(mcpSnapshot)
             // 手机操作权按 run 登记：状态变化经 GuiControlChanged 投送给服务，run 结束即释放。
             guiRun = guiControl.openRun(request.runId, runController) { status ->
                 acceptEvent(session, AgentEvent.GuiControlChanged(status), archivedEvents, entrySurfaceGuard, checkpointRecorder)
@@ -300,7 +310,10 @@ internal class AgentRuntimeRunExecutor(
                 }?.let { AgentUiHandoffPayload.from(it.payload).conversationId }.orEmpty(),
                 agentConversationId = request.effectiveModelSessionId,
                 decisionAllowedGroups = { decisionPlanRef.get()?.openableGroupLimit },
-                groupToolsViaCall = toolLoadingSuffixMode,
+                // 与 AgentModelClient.suffixMode 对齐：preset 排除必须两侧一致，否则预设运行
+                // 目录发原生 schema、执行器却按转发出回执（含中途退化回普通对话的路径——
+                // 模型侧的 suffixMode 用原始 presetToolNames 判定，同样保持 false）。
+                groupToolsViaCall = toolLoadingSuffixMode && !presetRun,
                 frozenSurface = runSurface,
                 chooseSurface = { toolName, toolsClosed ->
                     // 先写会话再等弹窗退场；返回值取自会话，工具侧与会话保持一致。
@@ -370,6 +383,9 @@ internal class AgentRuntimeRunExecutor(
                 runSkillEntries = skillContext.installedSkills, memoryAssistantId = assistant.id,
                 runSkillsRoot = runSkillsRoot, pendingSkillConflict = pendingSkillConflict,
                 dynamicToolGroups = { if (mcpProjection != null) mcpSnapshot.deferredGroups() else emptyList() },
+                // MCP 组的回执文档与参数校验同源：快照按单组渲染 schema，与目录追加同一份。
+                mcpToolSchemas = { groupId -> JSONArray().also { mcpSnapshot.appendTools(it, setOf(groupId)) } },
+                mcpToolExecutor = { call -> mcpExecutor.execute(call) },
                 toolSearchDescriptions = { toolSearchIndex },
                 toolSearchEnabled = { toolLoadingSearchEnabled },
             )
@@ -406,7 +422,7 @@ internal class AgentRuntimeRunExecutor(
                         },
                     )
                 }
-            val routingExecutor = RoutingToolExecutor(local = executor, mcp = McpToolExecutor(mcpSnapshot))
+            val routingExecutor = RoutingToolExecutor(local = executor, mcp = mcpExecutor)
             val ownership = AgentChildToolOwnership { routingExecutor.close() }
             toolsOwner = ownership
             toolsBinding = runController.register {
@@ -797,6 +813,13 @@ internal class AgentRuntimeRunExecutor(
                     timing.accept(event)
                     foregroundReplay.accept(event)
                     decisionMismatch?.accept(event)
+                    // 压缩边界：让下一个 run 重新读用户的档位设置。只认真正的摘要压缩——
+                    // 修剪超长工具结果不算，否则设备任务里几乎每轮都会触发一次换档判定。
+                    if (event is AgentEvent.ContextCompacted &&
+                        event.applied && !event.blocked && !event.pruningOnly
+                    ) {
+                        runCatching { Prefs.unlockToolLoadingModeAtCompaction(request.effectiveModelSessionId) }
+                    }
                     acceptEvent(session, event, archivedEvents, entrySurfaceGuard, checkpointRecorder)
                 },
             )

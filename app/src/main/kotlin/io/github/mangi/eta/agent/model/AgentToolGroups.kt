@@ -628,7 +628,7 @@ internal object AgentToolGroupCatalog {
     const val USE_GROUP = "tools_use_group"
 
     /**
-     * 缓存优先档（suffix）的通用调用入口名。
+     * 缓存优先转发（search/group 档共用）的通用调用入口名。
      *
      * 延迟组的工具不再进入 `tools`：每次开组都会改写请求前缀，而 `tools` 排在 system
      * 与历史之前，一改就让 provider 的前缀缓存整段失效。改由这个 schema 恒定的入口转发，
@@ -637,12 +637,25 @@ internal object AgentToolGroupCatalog {
      */
     const val CALL = "tool_call"
 
-    /** 通用调用入口的固定 schema：与会话、已加载组、设备能力全部无关。 */
-    fun toolCallEntry(): JSONObject = AgentToolSchema.function(
+    /**
+     * 通用调用入口的固定 schema：与会话、已加载组、设备能力全部无关。
+     *
+     * [recipesViaCall] 为 true 时额外说明「自建配方也走这里」：缓存优先档不把配方 schema
+     * 放进 `tools`（否则模型每新建一份配方就改写一次前缀），入口描述是模型唯一常驻的线索。
+     * 措辞恒定、不含任何配方名，因此不会反过来引入抖动。
+     */
+    fun toolCallEntry(recipesViaCall: Boolean = false): JSONObject = AgentToolSchema.function(
         name = CALL,
         description = "Call a tool from a loaded deferred group. `name` must be one listed by the " +
             "most recent tools_use_group / tools_search result; `arguments` must follow the " +
-            "parameter documentation in that same result.",
+            "parameter documentation in that same result." +
+            if (recipesViaCall) {
+                " Also calls your own recipes: `name` is the recipe_<name> given by eta_author_tool " +
+                    "or eta_list_recipes, and `arguments` follows the parameters documented in that " +
+                    "same result. Recipes never appear as native tools in this mode."
+            } else {
+                ""
+            },
         parameters = JSONObject()
             .put("type", "object")
             .put(
