@@ -81,7 +81,8 @@ internal fun Material3HomeTopBar(
     autoCompressEnabled: Boolean,
     isCompressingContext: Boolean,
     onToggleAutoCompress: (Boolean) -> Unit,
-    onOpenCompressConversation: () -> Unit,
+    /** 「压缩会话」：立即压缩当前会话（原跳压缩设置页）。 */
+    onCompressConversation: () -> Unit,
     onOpenSearchHistory: () -> Unit,
     onOpenTokenUsage: () -> Unit,
     onOpenSubAgentStatus: () -> Unit,
@@ -227,7 +228,7 @@ internal fun Material3HomeTopBar(
                                 autoCompressEnabled = autoCompressEnabled,
                                 isCompressingContext = isCompressingContext,
                                 onToggleAutoCompress = onToggleAutoCompress,
-                                onOpenCompressConversation = onOpenCompressConversation,
+                                onCompressConversation = onCompressConversation,
                                 onOpenSearchHistory = onOpenSearchHistory,
                                 onOpenTokenUsage = onOpenTokenUsage,
                                 onOpenSubAgentStatus = onOpenSubAgentStatus,

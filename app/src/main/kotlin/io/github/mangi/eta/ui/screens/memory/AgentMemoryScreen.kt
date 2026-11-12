@@ -33,6 +33,7 @@ import io.github.mangi.eta.ui.model.AgentMemoryAction
 import io.github.mangi.eta.ui.model.AgentMemoryUiState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text as M3Text
@@ -46,6 +47,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun AgentMemoryScreen(
     state: AgentMemoryUiState,
@@ -213,6 +215,7 @@ internal fun AgentMemoryScreen(
                                 onClick = { onAction(AgentMemoryAction.Save) },
                                 enabled = state.canSave,
                                 modifier = Modifier.weight(1f),
+                                shapes = ButtonDefaults.shapes(),
                             ) {
                                 M3Text(if (state.isSaving) stringResource(R.string.memory_saving) else stringResource(R.string.memory_save))
                             }

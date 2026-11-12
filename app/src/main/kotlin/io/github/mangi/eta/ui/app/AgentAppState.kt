@@ -1799,9 +1799,36 @@ internal class AgentAppState(
     var toolsState by mutableStateOf(buildToolsState(appContext))
         private set
 
-    /** 工具页内联开关改动后重建卡片状态（分组开关状态取自 Prefs）。 */
+    /** 最近一次工具页语言标签：重建快照时用它从 appContext 派生带显式语言的配置上下文，
+     *  只存字符串不存 Activity，避免单例持有 Activity 导致泄漏。 */
+    private var toolsLocales: String? = null
+
+    /**
+     * 工具页内联开关改动后重建卡片状态（分组开关状态取自 Prefs）。
+     * 必须传 Activity 级上下文取语言：applicationContext 在部分 OEM 上不吃 per-app
+     * 语言覆盖，用它预解析的字符串快照会停回系统语言，工具列表与设置页语言不一致。
+     * 上下文本身不保存（单例防泄漏），重建时按语言标签从 appContext 派生配置上下文。
+     */
+    fun refreshToolsState(context: Context) {
+        toolsLocales = context.resources.configuration.locales.toLanguageTags()
+        rebuildToolsState()
+    }
+
+    /** 偏好监听等无 Activity 上下文的路径：沿用最近一次工具页语言重建快照。 */
     fun refreshToolsState() {
-        toolsState = buildToolsState(appContext)
+        rebuildToolsState()
+    }
+
+    private fun rebuildToolsState() {
+        toolsState = buildToolsState(localizedToolsContext())
+    }
+
+    private fun localizedToolsContext(): Context {
+        val tags = toolsLocales ?: return appContext
+        val configuration = android.content.res.Configuration(appContext.resources.configuration).apply {
+            setLocales(android.os.LocaleList.forLanguageTags(tags))
+        }
+        return appContext.createConfigurationContext(configuration)
     }
 
     var skillsState by mutableStateOf(AgentSkillsUiState(isLoading = true))

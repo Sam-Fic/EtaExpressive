@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -53,6 +52,8 @@ import io.github.mangi.eta.agent.device.VirtualDisplayWebPreview
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
@@ -63,7 +64,6 @@ import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.rememberTaskBackendInstalled
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -238,6 +238,14 @@ internal fun VirtualDisplayControlSection(
  * 恢复逻辑从旧的内联控件逐段搬移：读取状态不会改动副屏；网页授权独立于副屏是否存在；
  * 离开页面不撤销已配对浏览器；后端模块被卸载时撤销授权；恢复进行中由调用方吞掉返回。
  *
+ * 恢复组用「状态卡 + 行式动作」结构（同页控制分组的既有语言）：状态、说明与刷新
+ * 收在一张 [EtaSegmentedItemContainer] 卡里，两个动作各占一行——主操作走普通
+ * [EtaSegmentedRow]，危险动作「强制重置」走 error 色文案行，确认交给
+ * [EtaDialog] + [EtaDialogActions]（`destructive = true`，同 VirtualDisplayScreen
+ * 关闭确认模式），不再用按钮内联两段确认。
+ *
+ * 动作行点击由 [EtaSegmentedRow] 自带触感，调用方不要重复触发。
+ *
  * @param onWorkingChanged 任一只读/恢复动作进行中时为 true，页面据此启停返回守卫。
  */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -261,7 +269,7 @@ internal fun VirtualDisplayRecoverySection(
     var state by remember { mutableStateOf<JSONObject?>(null) }
     var result by remember { mutableStateOf<JSONObject?>(null) }
     var webPaired by remember { mutableStateOf(false) }
-    var resetArmed by remember { mutableStateOf(false) }
+    var showResetConfirm by remember { mutableStateOf(false) }
 
     fun setWorking(value: Boolean) {
         working = value
@@ -278,14 +286,6 @@ internal fun VirtualDisplayRecoverySection(
             } catch (_: Exception) {
                 result = JSONObject().put("ok", false).put("error", "WEB_PREVIEW_REVOKE_FAILED")
             }
-        }
-    }
-
-    // 两段确认的武装态超时自动解除，避免「点过就算数」的误触残留。
-    LaunchedEffect(resetArmed, working) {
-        if (resetArmed && !working) {
-            delay(FORCE_RESET_ARM_TIMEOUT_MS)
-            resetArmed = false
         }
     }
 
@@ -472,6 +472,8 @@ internal fun VirtualDisplayRecoverySection(
                             modifier = Modifier.fillMaxWidth().padding(EtaDimens.SpaceLg),
                             verticalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm),
                         ) {
+                            // 状态行：加载槽 / 状态点 + 状态主文案占满中段，行尾是「副屏 N」值——
+                            // 沿用本组 StatusValueRow 的「左标签右值」语言，不再单独占一行。
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -487,20 +489,23 @@ internal fun VirtualDisplayRecoverySection(
                                     EtaStatusDot(active = readable && present && !busy)
                                 }
                                 Text(
-                                    text = stringResource(recoveryStatusRes(readable, busy, present, phase)),
+                                    text = stringResource(recoveryStatusRes(working, readable, busy, present, phase)),
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f),
                                 )
-                            }
-                            if (present) {
-                                Text(
-                                    text = stringResource(
-                                        R.string.agent_task_preference_recovery_display_id,
-                                        snapshot.optInt("displayId", -1),
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                if (present) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.agent_task_preference_recovery_display_id,
+                                            snapshot.optInt("displayId", -1),
+                                        ),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                             if (readable && present && !busy && phase != RECOVERY_PHASE_PENDING) {
                                 Text(
@@ -570,138 +575,152 @@ internal fun VirtualDisplayRecoverySection(
                                     }
                                 }
                             }
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm),
-                                verticalArrangement = Arrangement.spacedBy(EtaDimens.SpaceSm),
+                            // 刷新状态：状态卡里唯一的轻量动作；状态/回执都属可读内容，
+                            // 排在次级文案之后贴卡片底部。
+                            TextButton(
+                                enabled = backendReady && !working,
+                                onClick = {
+                                    TouchHaptics.click(view)
+                                    refresh()
+                                },
                             ) {
-                                TextButton(
-                                    enabled = backendReady && !working,
-                                    onClick = {
-                                        TouchHaptics.click(view)
-                                        refresh()
-                                    },
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Refresh,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(ButtonDefaults.IconSize),
-                                    )
-                                    Spacer(Modifier.width(EtaDimens.SpaceSm))
-                                    Text(
-                                        text = stringResource(R.string.vd_recovery_refresh),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Button(
-                                    enabled = backendReady && !working && snapshot != null &&
-                                        snapshot.optBoolean("ok") && snapshot.optBoolean("present") &&
-                                        snapshot.optBoolean("recoverable"),
-                                    onClick = {
-                                        if (!working) {
-                                            TouchHaptics.click(view)
-                                            setWorking(true)
-                                            result = null
-                                            resetArmed = false
-                                            scope.launch {
-                                                try {
-                                                    val receipt = withContext(Dispatchers.IO) {
-                                                        recover(context.applicationContext)
-                                                    }
-                                                    result = receipt
-                                                    state = withContext(Dispatchers.IO) {
-                                                        readStatus(context.applicationContext)
-                                                    }
-                                                } catch (ex: CancellationException) {
-                                                    throw ex
-                                                } catch (_: Exception) {
-                                                    result = JSONObject().put("ok", false)
-                                                        .put("error", "RECOVERY_OPERATION_FAILED")
-                                                } finally {
-                                                    setWorking(false)
-                                                }
-                                            }
-                                        }
-                                    },
-                                ) {
-                                    Text(
-                                        text = stringResource(
-                                            if (working) {
-                                                R.string.vd_recovery_working
-                                            } else {
-                                                R.string.vd_recovery_action
-                                            },
-                                        ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Button(
-                                    enabled = backendReady && !working && readable && present,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                                    ),
-                                    onClick = {
-                                        TouchHaptics.click(view)
-                                        // 两段确认：第一次只武装，超时自动解除；第二次才真正执行。
-                                        if (!resetArmed) {
-                                            resetArmed = true
-                                            return@Button
-                                        }
-                                        resetArmed = false
-                                        if (!working) {
-                                            setWorking(true)
-                                            result = null
-                                            scope.launch {
-                                                try {
-                                                    result = withContext(Dispatchers.IO) {
-                                                        reset(context.applicationContext)
-                                                    }
-                                                    state = withContext(Dispatchers.IO) {
-                                                        readStatus(context.applicationContext)
-                                                    }
-                                                } catch (ex: CancellationException) {
-                                                    throw ex
-                                                } catch (_: Exception) {
-                                                    result = JSONObject().put("ok", false)
-                                                        .put("error", "RECOVERY_OPERATION_FAILED")
-                                                } finally {
-                                                    setWorking(false)
-                                                }
-                                            }
-                                        }
-                                    },
-                                ) {
-                                    Text(
-                                        text = stringResource(
-                                            if (resetArmed) {
-                                                R.string.vd_recovery_force_reset_armed
-                                            } else {
-                                                R.string.vd_recovery_force_reset
-                                            },
-                                        ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                                )
+                                Spacer(Modifier.width(EtaDimens.SpaceSm))
+                                Text(
+                                    text = stringResource(R.string.vd_recovery_refresh),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }
                 }
+                item(key = "recovery-action") {
+                    // 主操作行：同控制分组的动作行语言（标题 + summary + chevron）。
+                    // 点击触感由 EtaSegmentedRow 自带，不要重复触发。
+                    val recoverEnabled = backendReady && !working && snapshot != null &&
+                        snapshot.optBoolean("ok") && snapshot.optBoolean("present") &&
+                        snapshot.optBoolean("recoverable")
+                    EtaSegmentedRow(
+                        enabled = recoverEnabled,
+                        onClick = {
+                            setWorking(true)
+                            result = null
+                            showResetConfirm = false
+                            scope.launch {
+                                try {
+                                    val receipt = withContext(Dispatchers.IO) {
+                                        recover(context.applicationContext)
+                                    }
+                                    result = receipt
+                                    state = withContext(Dispatchers.IO) {
+                                        readStatus(context.applicationContext)
+                                    }
+                                } catch (ex: CancellationException) {
+                                    throw ex
+                                } catch (_: Exception) {
+                                    result = JSONObject().put("ok", false)
+                                        .put("error", "RECOVERY_OPERATION_FAILED")
+                                } finally {
+                                    setWorking(false)
+                                }
+                            }
+                        },
+                        content = { Text(stringResource(R.string.vd_recovery_action)) },
+                        supportingContent = { Text(stringResource(R.string.vd_recovery_action_summary)) },
+                        trailingContent = { EtaTrailingChevron() },
+                    )
+                }
+                item(key = "recovery-reset") {
+                    // 危险动作行：error 是显式覆盖色，不吃 EtaSegmentedRow 的禁用处理；
+                    // 禁用时压到 38%（EtaAlphas.DisabledContent），与可点击态区分——
+                    // 同 VirtualDisplayControlSection「关闭虚拟屏」行的禁用约定。
+                    val resetEnabled = backendReady && !working && readable && present
+                    val resetColor = MaterialTheme.colorScheme.error.copy(alpha = if (resetEnabled) 1f else EtaAlphas.DisabledContent)
+                    EtaSegmentedRow(
+                        enabled = resetEnabled,
+                        onClick = { showResetConfirm = true },
+                        content = {
+                            Text(
+                                text = stringResource(R.string.vd_recovery_force_reset),
+                                color = resetColor,
+                            )
+                        },
+                        supportingContent = { Text(stringResource(R.string.vd_recovery_force_reset_summary)) },
+                        trailingContent = { EtaTrailingChevron(tint = resetColor) },
+                    )
+                }
             }
         }
+    }
+
+    // 强制重置确认：危险动作不走按钮内联两段确认，交给标准对话框（同页关闭确认模式）；
+    // 确认钮以 error 色文案区分（官方 AlertDialog 动作形态，无按钮底色）。
+    EtaDialog(
+        show = showResetConfirm,
+        title = stringResource(R.string.vd_recovery_force_reset),
+        onDismissRequest = { if (!working) showResetConfirm = false },
+        actions = {
+            EtaDialogActions(
+                confirmText = stringResource(R.string.vd_recovery_force_reset),
+                onCancel = { if (!working) showResetConfirm = false },
+                onConfirm = {
+                    showResetConfirm = false
+                    if (!working) {
+                        setWorking(true)
+                        result = null
+                        scope.launch {
+                            try {
+                                result = withContext(Dispatchers.IO) {
+                                    reset(context.applicationContext)
+                                }
+                                state = withContext(Dispatchers.IO) {
+                                    readStatus(context.applicationContext)
+                                }
+                            } catch (ex: CancellationException) {
+                                throw ex
+                            } catch (_: Exception) {
+                                result = JSONObject().put("ok", false)
+                                    .put("error", "RECOVERY_OPERATION_FAILED")
+                            } finally {
+                                setWorking(false)
+                            }
+                        }
+                    }
+                },
+                confirmEnabled = !working,
+                destructive = true,
+            )
+        },
+    ) {
+        Text(
+            text = stringResource(R.string.vd_recovery_force_reset_confirm),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 private const val RECOVERY_PHASE_PENDING = "recovery_pending"
 
-/** 强制重置两段确认的武装态保持时长；超时自动解除，回到普通按钮。 */
-private const val FORCE_RESET_ARM_TIMEOUT_MS = 5_000L
-
-/** 只有「等待恢复」是已确认可读的状态码；其余码显示为状态未知，原始码留在次级文字里。 */
-private fun recoveryStatusRes(readable: Boolean, busy: Boolean, present: Boolean, phase: String): Int = when {
+/**
+ * 恢复状态主文案的取值；[working] 优先——首次读取期间 snapshot 还没回来，
+ * 不能显示「无法读取恢复状态」与加载指示器自相矛盾。
+ *
+ * 只有「等待恢复」是已确认可读的状态码；其余码显示为状态未知，原始码留在次级文字里。
+ */
+private fun recoveryStatusRes(
+    working: Boolean,
+    readable: Boolean,
+    busy: Boolean,
+    present: Boolean,
+    phase: String,
+): Int = when {
+    working -> R.string.vd_recovery_working
     !readable -> R.string.vd_recovery_unknown
     busy -> R.string.vd_recovery_busy
     // 恢复完成后记录已清空：phase 缺省值不是“等待恢复”。

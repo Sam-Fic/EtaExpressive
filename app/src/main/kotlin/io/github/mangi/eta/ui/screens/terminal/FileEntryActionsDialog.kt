@@ -82,6 +82,7 @@ internal fun FileEntryActionsDialog(
                             containerColor = MaterialTheme.colorScheme.error,
                             contentColor = MaterialTheme.colorScheme.onError,
                         ),
+                        shapes = M3ButtonDefaults.shapes(),
                     ) {
                         M3Text(text = stringResource(R.string.action_delete))
                     }

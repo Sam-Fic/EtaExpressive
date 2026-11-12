@@ -8,17 +8,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.FactCheck
-import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -41,9 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.delegation.ConversationSubAgentConfig
@@ -59,9 +54,7 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
-import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
@@ -72,6 +65,7 @@ import io.github.mangi.eta.ui.components.SubAgentPresetDirectory
 import io.github.mangi.eta.ui.components.SubAgentPresetNameDialog
 import io.github.mangi.eta.ui.components.SubAgentProfileConfigDialog
 import io.github.mangi.eta.ui.components.SubAgentProfileDraftSession
+import io.github.mangi.eta.ui.components.SubAgentProfileHeaderCard
 import io.github.mangi.eta.ui.components.SubAgentProfileRow
 import io.github.mangi.eta.ui.components.WithoutPressRipple
 import io.github.mangi.eta.ui.components.etaRippleConfiguration
@@ -340,6 +334,7 @@ private fun SubAgentPresetDetail(
  * 两边经 App 级会话编辑器（owner=当前会话/草稿）读写同一份配置；重新应用会以预设
  * 覆盖会话级改动，与旧选组入口的行为一致。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SubAgentPresetApplySection(
     presetId: String,
@@ -385,6 +380,7 @@ private fun SubAgentPresetApplySection(
             },
             enabled = editable,
             modifier = Modifier.padding(top = 8.dp),
+            shapes = ButtonDefaults.shapes(),
         ) {
             Text(stringResource(R.string.sas_apply_to_conversation))
         }
@@ -394,8 +390,9 @@ private fun SubAgentPresetApplySection(
 /**
  * 单个子代理的标题行：角色图标 + 名称 + 更多操作 + 启用开关。
  *
- * 形状与容器色取自外层分段组（KernelSU 式 `SegmentedListItem`）；开关和溢出菜单是行内
- * 独立可点目标。尾部顺序与技能页一致：先溢出菜单，再开关，避免开关被挤到行中间。
+ * 行本体走共享 [SubAgentProfileHeaderCard]（与配置弹窗 header 卡同一实现，
+ * 「逐像素同款」由共用保证）；溢出菜单是本页独有的 trailing 槽内容，
+ * 菜单与开关是行内独立可点目标，尾部顺序与技能页一致：先溢出菜单，再开关。
  */
 @Composable
 private fun SubAgentProfileHeaderRow(
@@ -407,70 +404,42 @@ private fun SubAgentProfileHeaderRow(
     onDelete: () -> Unit,
 ) {
     val view = LocalView.current
-    val context = LocalContext.current
     var menuExpanded by remember(profile.id) { mutableStateOf(false) }
     LaunchedEffect(editable) { if (!editable) menuExpanded = false }
-    EtaSegmentedRow(
+    SubAgentProfileHeaderCard(
+        role = profile.role,
+        name = profile.name,
+        enabled = profile.enabled,
+        switchEnabled = editable,
+        onEnabledChange = onEnabledChange,
         modifier = Modifier.fillMaxWidth(),
-        enabled = editable,
-        // 行尾带启用开关：按「开关类」保持官方内边距。
-        choiceRow = true,
-        leadingContent = {
-            // 不显式 tint：让官方行内容色在禁用态把图标一并压暗。
-            Icon(
-                imageVector = when (profile.role) {
-                    "review" -> Icons.AutoMirrored.Rounded.FactCheck
-                    "image_generation" -> Icons.Rounded.Image
-                    "video_generation" -> Icons.Rounded.Videocam
-                    else -> Icons.Rounded.AccountTree
-                },
-                contentDescription = null,
-            )
-        },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    val moreDescription = stringResource(R.string.sas_more_for, profile.name)
-                    EtaTooltip(text = moreDescription) {
-                        IconButton(
-                            enabled = editable,
-                            onClick = { if (editable) { TouchHaptics.click(view); menuExpanded = true } },
-                            shapes = IconButtonDefaults.shapes(),
-                        ) { Icon(Icons.Rounded.MoreVert, moreDescription) }
-                    }
-                    if (editable) SubAgentDropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                        itemCount = 3,
-                    ) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.sas_configure)) }, leadingIcon = { Icon(Icons.Rounded.Tune, null) },
-                            shape = EtaMenuItemShape(index = 0, count = 3),
-                            onClick = { menuExpanded = false; onConfigure() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.action_rename)) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) },
-                            shape = EtaMenuItemShape(index = 1, count = 3),
-                            onClick = { menuExpanded = false; onRename() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) },
-                            leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
-                            shape = EtaMenuItemShape(index = 2, count = 3),
-                            onClick = { menuExpanded = false; onDelete() })
-                    }
+        menuContent = {
+            Box {
+                val moreDescription = stringResource(R.string.sas_more_for, profile.name)
+                EtaTooltip(text = moreDescription) {
+                    IconButton(
+                        enabled = editable,
+                        onClick = { if (editable) { TouchHaptics.click(view); menuExpanded = true } },
+                        shapes = IconButtonDefaults.shapes(),
+                    ) { Icon(Icons.Rounded.MoreVert, moreDescription) }
                 }
-                // 开关尺寸交给官方 EtaSwitch（不再用 requiredSize 截断再溢出绘制）。
-                // 名称挂在开关自身的语义节点上：ListItem 的命中测试不会把外层包裹盒的点击
-                // 透传给内部开关，因此可访问名必须落在真正可切换的节点上。
-                EtaSwitch(
-                    checked = profile.enabled,
-                    enabled = editable,
-                    modifier = Modifier.semantics { contentDescription = context.getString(R.string.sas_enable_for, profile.name) },
-                    onCheckedChange = { active -> if (editable) onEnabledChange(active) },
-                )
+                if (editable) SubAgentDropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    itemCount = 3,
+                ) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.sas_configure)) }, leadingIcon = { Icon(Icons.Rounded.Tune, null) },
+                        shape = EtaMenuItemShape(index = 0, count = 3),
+                        onClick = { menuExpanded = false; onConfigure() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.action_rename)) }, leadingIcon = { Icon(Icons.Rounded.Edit, null) },
+                        shape = EtaMenuItemShape(index = 1, count = 3),
+                        onClick = { menuExpanded = false; onRename() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = { Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
+                        shape = EtaMenuItemShape(index = 2, count = 3),
+                        onClick = { menuExpanded = false; onDelete() })
+                }
             }
         },
-    ) {
-        Text(
-            text = profile.name,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+    )
 }

@@ -49,9 +49,11 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     AppRoute.ModelProviderSearch -> FrameDiagnosticPage.ModelProviders
     AppRoute.McpServers -> FrameDiagnosticPage.McpServers
     is AppRoute.McpServerDetail -> FrameDiagnosticPage.McpServerDetail
+    AppRoute.McpServerAdd -> FrameDiagnosticPage.McpServerAdd
     is AppRoute.ModelProviderDetail -> FrameDiagnosticPage.ModelProviderDetail
     is AppRoute.ModelProviderAuthMethod -> FrameDiagnosticPage.ModelProviderAuthMethod
     is AppRoute.ModelProviderNew -> FrameDiagnosticPage.ModelProviderNew
+    is AppRoute.ModelProviderModelEdit -> FrameDiagnosticPage.ModelProviderModelEdit
     AppRoute.ContextCompression -> FrameDiagnosticPage.ContextCompression
     AppRoute.DecisionModel -> FrameDiagnosticPage.Settings
     is AppRoute.Assistants -> FrameDiagnosticPage.Assistants
@@ -71,6 +73,7 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     AppRoute.MobileActionsSettings -> FrameDiagnosticPage.Settings
     AppRoute.MobileActions -> FrameDiagnosticPage.Settings
     AppRoute.ToolRecipes -> FrameDiagnosticPage.ToolRecipes
+    is AppRoute.ToolRecipeEdit -> FrameDiagnosticPage.ToolRecipeEdit
     AppRoute.RemoteAgents -> FrameDiagnosticPage.Settings
     is AppRoute.RemoteAgentEditor -> FrameDiagnosticPage.Settings
 }

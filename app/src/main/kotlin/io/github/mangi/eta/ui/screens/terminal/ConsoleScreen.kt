@@ -702,6 +702,8 @@ private fun KeyChip(
             },
             contentPadding = KeyChipContentPadding,
             modifier = modifier,
+            // 与下方 FilledTonalButton 同传官方 shapes：按压 morph 全键一致（AGENTS §2.5）。
+            shapes = M3ButtonDefaults.shapes(),
         ) {
             M3Text(text = label, style = MaterialTheme.typography.labelLarge)
         }

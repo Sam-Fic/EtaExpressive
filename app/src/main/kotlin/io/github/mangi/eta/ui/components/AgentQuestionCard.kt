@@ -15,6 +15,8 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -59,6 +61,7 @@ private val DANGEROUS_CONFIRM_OPTION_IDS = setOf("confirm_once", "confirm_sessio
  * Draft and submission state stay in the conversation store. Only whole-card disclosure
  * is local; the form itself is never folded in parts.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun AgentQuestionCard(
     message: AgentQuestionMessageUi,
@@ -148,8 +151,13 @@ private fun AgentQuestionCardContent(
                 }
                 // M3 Expressive：官方 Button 的默认形状、容器高度、内边距、
                 // primary / onPrimary 与禁用态颜色全部交给官方默认值。
-                Button(onClick = { if (editable && valid) onSubmit() },
-                    enabled = editable && valid, modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { if (editable && valid) onSubmit() },
+                    enabled = editable && valid,
+                    modifier = Modifier.fillMaxWidth(),
+                    // 容器型按钮直用必须传官方 shapes（AGENTS §2.5 按压 morph）。
+                    shapes = ButtonDefaults.shapes(),
+                ) {
                     Text(stringResource(if (message.submitting) R.string.question_submitting else R.string.question_submit))
                 }
             }

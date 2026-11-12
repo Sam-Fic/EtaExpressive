@@ -30,8 +30,10 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -867,6 +869,7 @@ private fun InputRow(
  * 引导态 / 空态：M3E 用官方图标 + 官方正文 + 官方主按钮（filled）组成空状态，
  * 不再是一段裸文字挂一个 TextButton。
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun LinuxGuide(onOpenEnvironment: () -> Unit) {
     val view = LocalView.current
@@ -890,6 +893,7 @@ private fun LinuxGuide(onOpenEnvironment: () -> Unit) {
                 onOpenEnvironment()
             },
             modifier = Modifier.padding(top = 16.dp),
+            shapes = ButtonDefaults.shapes(),
         ) {
             M3Text(stringResource(R.string.terminal_open_environment))
         }

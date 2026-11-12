@@ -27,6 +27,8 @@ import io.github.mangi.eta.ui.app.description
 import io.github.mangi.eta.ui.app.rememberDeviceCapabilities
 import io.github.mangi.eta.ui.model.AgentSystemEnhanceAction
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text as M3Text
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
@@ -186,10 +188,11 @@ private fun EnhanceRow(
     )
 }
 
-/** 行尾主操作按钮：用官方 [Button]（不覆盖形状与配色）。 */
+/** 行尾主操作按钮：官方 [Button] + 官方 `shapes`（按压 morph，AGENTS §2.5）。 */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun EnhanceActionButton(text: String, enabled: Boolean, onClick: () -> Unit) {
-    Button(onClick = onClick, enabled = enabled) {
+    Button(onClick = onClick, enabled = enabled, shapes = ButtonDefaults.shapes()) {
         M3Text(text = text)
     }
 }

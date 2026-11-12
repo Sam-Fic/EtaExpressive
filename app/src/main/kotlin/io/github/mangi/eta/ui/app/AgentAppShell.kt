@@ -105,7 +105,8 @@ internal fun AgentAppShell(
     autoCompressEnabled: Boolean = false,
     isCompressingContext: Boolean = false,
     onToggleAutoCompress: (Boolean) -> Unit = {},
-    onOpenCompressConversation: () -> Unit = {},
+    /** 「压缩会话」：立即压缩当前会话（原跳压缩设置页）。 */
+    onCompressConversation: () -> Unit = {},
     onOpenSearchHistory: () -> Unit = {},
     onOpenTokenUsage: () -> Unit = {},
     onOpenSubAgentStatus: () -> Unit = {},
@@ -226,7 +227,7 @@ internal fun AgentAppShell(
                             autoCompressEnabled = autoCompressEnabled,
                             isCompressingContext = isCompressingContext,
                             onToggleAutoCompress = onToggleAutoCompress,
-                            onOpenCompressConversation = onOpenCompressConversation,
+                            onCompressConversation = onCompressConversation,
                             onOpenSearchHistory = onOpenSearchHistory,
                             onOpenTokenUsage = onOpenTokenUsage,
                             onOpenSubAgentStatus = onOpenSubAgentStatus,
@@ -328,7 +329,8 @@ private fun AgentTopBar(
     autoCompressEnabled: Boolean = false,
     isCompressingContext: Boolean = false,
     onToggleAutoCompress: (Boolean) -> Unit = {},
-    onOpenCompressConversation: () -> Unit = {},
+    /** 「压缩会话」：立即压缩当前会话（原跳压缩设置页）。 */
+    onCompressConversation: () -> Unit = {},
     onOpenSearchHistory: () -> Unit = {},
     onOpenTokenUsage: () -> Unit = {},
     onOpenSubAgentStatus: () -> Unit = {},
@@ -397,7 +399,7 @@ private fun AgentTopBar(
                 autoCompressEnabled = autoCompressEnabled,
                 isCompressingContext = isCompressingContext,
                 onToggleAutoCompress = onToggleAutoCompress,
-                onOpenCompressConversation = onOpenCompressConversation,
+                onCompressConversation = onCompressConversation,
                 onOpenSearchHistory = onOpenSearchHistory,
                 onOpenTokenUsage = onOpenTokenUsage,
                 onOpenSubAgentStatus = onOpenSubAgentStatus,
@@ -440,7 +442,7 @@ private fun AgentTopBar(
             autoCompressEnabled = autoCompressEnabled,
             isCompressingContext = isCompressingContext,
             onToggleAutoCompress = onToggleAutoCompress,
-            onOpenCompressConversation = onOpenCompressConversation,
+            onCompressConversation = onCompressConversation,
             onOpenSearchHistory = onOpenSearchHistory,
             onOpenTokenUsage = onOpenTokenUsage,
             onOpenSubAgentStatus = onOpenSubAgentStatus,
@@ -518,10 +520,13 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.ModelProviderSearch -> stringResource(R.string.ui_model_provider_e8c7f5)
     is AppRoute.McpServers -> stringResource(R.string.route_mcp_servers)
     is AppRoute.ToolRecipes -> stringResource(R.string.route_tool_recipes)
+    is AppRoute.ToolRecipeEdit -> stringResource(R.string.recipe_edit_title, route.recipeName)
     is AppRoute.McpServerDetail -> stringResource(R.string.route_mcp_server_detail)
+    is AppRoute.McpServerAdd -> stringResource(R.string.mcp_add_server)
     is AppRoute.ModelProviderDetail -> stringResource(R.string.route_provider_details)
     is AppRoute.ModelProviderAuthMethod -> stringResource(R.string.provider_auth_method_title)
     is AppRoute.ModelProviderNew -> stringResource(R.string.route_new_provider)
+    is AppRoute.ModelProviderModelEdit -> stringResource(R.string.page_edit_model_29e31e)
     is AppRoute.ContextCompression -> stringResource(R.string.route_context_compression)
     is AppRoute.DecisionModel -> stringResource(R.string.route_decision_model)
     is AppRoute.UsageStats -> stringResource(R.string.stats_page_title)
