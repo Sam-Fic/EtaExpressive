@@ -16,6 +16,9 @@ OUTPUT_BUDGET = 12000  # stdout is truncated at 16000 UTF-16 units by the termin
 STDOUT_LIMIT = 15000  # final JSON line, in UTF-16 units, with headroom below the bridge cap
 PATCH_LIMIT = 60000
 SEARCH_SECONDS = 10  # hard deadline: Python re has no match timeout
+# O_NOFOLLOW 是 symlink 逃逸硬化：设备端（Linux/Android）恒有；Windows 桌面端跑本文件单测
+# 时 os 没有该属性，退化为 0——仅少一层硬化，写路径另有 symlink/组件检查兜底（见 :591）。
+_O_NOFOLLOW = getattr(os, 'O_NOFOLLOW', 0)
 
 
 class Refused(ValueError):
@@ -146,7 +149,7 @@ def file_text(p):
     size = p.stat().st_size
     if size > FILE_LIMIT:
         raise Refused('FILE_TOO_LARGE', size_bytes=size, max_bytes=FILE_LIMIT)
-    fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(p, os.O_RDONLY | _O_NOFOLLOW)
     with os.fdopen(fd, 'rb') as handle:
         data = handle.read(FILE_LIMIT + 1)
     require(len(data) <= FILE_LIMIT, 'FILE_TOO_LARGE')
@@ -277,7 +280,7 @@ def replace(p, args):
         raise Refused('FILE_TOO_LARGE', size_bytes=len(data), max_bytes=FILE_LIMIT)
     mode = p.stat().st_mode & 0o7777
     tmp = p.parent / ('.' + p.name + '.' + uuid.uuid4().hex + '.tmp')
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_NOFOLLOW, 0o600)
     try:
         with os.fdopen(fd, 'wb') as out:
             out.write(data)
@@ -314,7 +317,10 @@ def workspace_tree_exists(root, record):
         return False
     try:
         # A missing .git must not make Git silently walk up to the parent project.
-        return git(tree, 'rev-parse', '--show-toplevel') == str(tree)
+        # Windows 上 git 输出正斜杠 + 展开后的长路径名，与 str(tree)（可能含反斜杠/8.3
+        # 短名）直接比必不等；两边都 resolve 成真实路径再比（POSIX 上同为 realpath，
+        # 设备端语义不变）。
+        return Path(git(tree, 'rev-parse', '--show-toplevel')).resolve() == tree.resolve()
     except ValueError:
         return False
 
@@ -589,7 +595,7 @@ def locked(root, args):
             save(root, record)
             p.parent.mkdir(parents=True, exist_ok=True)
             # O_NOFOLLOW plus symlink/component checks; no child has an arbitrary shell.
-            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _O_NOFOLLOW, 0o644)
             with os.fdopen(fd, 'w', encoding='utf-8') as out:
                 out.write(text)
         else:
