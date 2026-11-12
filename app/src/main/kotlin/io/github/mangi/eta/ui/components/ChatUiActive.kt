@@ -36,6 +36,14 @@ val LocalChatTransitionActive = compositionLocalOf { false }
 /** 只有停稳的覆盖才允许挂起 UI 时钟；推移、弹出、横滑返回过程中仍保持实时。 */
 internal fun isChatSettledCovered(routeCovered: Boolean, transitionActive: Boolean): Boolean =
     routeCovered && !transitionActive
+
+/**
+ * 系统助手在主应用前台唤醒的请求令牌：聊天输入区按唤起方式分派响应——
+ * 非零听写令牌直接开录听写胶囊（首帧桥让胶囊就位）、聚焦令牌聚焦输入框并弹键盘。
+ * 令牌单调递增，消费方用自己的 consumed 标记防重放（与浮窗 dictationStartRequest 同款）。
+ */
+val LocalAssistantDictationRequest = compositionLocalOf { 0 }
+val LocalAssistantFocusRequest = compositionLocalOf { 0 }
 /** 完成且不再逐帧变化的内容复用一张离屏纹理。层始终挂着，只切换合成策略，避免插入时重挂。 */
 @Composable
 internal fun completedContentDrawLayer(modifier: Modifier, enabled: Boolean): Modifier {

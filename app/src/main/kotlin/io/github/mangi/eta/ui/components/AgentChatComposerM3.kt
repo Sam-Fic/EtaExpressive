@@ -297,6 +297,9 @@ internal fun Material3ComposerBody(
     dictationStartRequest: Int = 0,
     /** 听写会话在场状态回传（助手弹窗用它收起/恢复屏幕上下文快捷行）；首次组合也回传一次。 */
     onDictationActiveChange: (Boolean) -> Unit = {},
+    /** 系统选择器/权限跳板即将发起：助手弹窗据此让位（浮窗隐身+触摸穿透），
+     *  否则跳板与选择器 Activity 都压在全屏 TYPE_APPLICATION_OVERLAY 之下无法交互。 */
+    onSystemPickerLaunch: () -> Unit = {},
     showMorphLoading: Boolean,
     pendingImages: List<PendingImageUi>,
     pendingFileReferences: List<PendingFileReferenceUi>,
@@ -361,6 +364,7 @@ internal fun Material3ComposerBody(
         onAttachFiles = onAttachFiles,
         onAttachFolder = onAttachFolder,
         onAttachFilePath = onAttachFilePath,
+        onPickerLaunch = onSystemPickerLaunch,
     )
 
     val draftText = textFieldState.text.toString()
@@ -502,6 +506,8 @@ internal fun Material3ComposerBody(
                 dictation.start()
             } else {
                 startDictationAfterPermission = true
+                // 权限对话框同为 Activity 窗口：浮窗之下会被盖住，发起前同样让位。
+                onSystemPickerLaunch()
                 recordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
             }
         }

@@ -22,6 +22,8 @@ import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.ui.app.AgentAppRoot
 import io.github.mangi.eta.ui.app.AgentAppTheme
 import io.github.mangi.eta.ui.app.PredictiveBackController
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -36,6 +38,27 @@ class MainActivity : ComponentActivity() {
     private var previousPreferredRefreshRate: Float? = null
     private var requestedPreferredRefreshRate: Float? = null
     private val refreshRateRequest = Runnable { applyPreferredRefreshRate() }
+
+    internal companion object {
+        /** 主应用（本 Activity）是否在前台：助手唤醒据此决定应用内响应还是弹浮窗。 */
+        @Volatile
+        var isForeground = false
+            private set
+
+        /** 主应用前台唤醒的听写请求令牌：聊天输入区交给听写会话直接开录。 */
+        private val inAppDictationRequests = MutableStateFlow(0)
+        internal val inAppDictationRequest = inAppDictationRequests.asStateFlow()
+        internal fun requestInAppDictation() {
+            inAppDictationRequests.value += 1
+        }
+
+        /** 主应用前台唤醒的聚焦请求令牌：聊天输入区聚焦输入框并弹键盘。 */
+        private val inAppFocusRequests = MutableStateFlow(0)
+        internal val inAppFocusRequest = inAppFocusRequests.asStateFlow()
+        internal fun requestInAppFocus() {
+            inAppFocusRequests.value += 1
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,6 +119,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        isForeground = true
         refreshRateWindowResumed = true
         applyPreferredRefreshRate()
         // Retry when the decor is attached; never leave a request queued after pause.
@@ -104,6 +128,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        isForeground = false
         refreshRateWindowResumed = false
         window.decorView.removeCallbacks(refreshRateRequest)
         val previous = previousPreferredRefreshRate
@@ -114,7 +139,6 @@ class MainActivity : ComponentActivity() {
         }
         previousPreferredRefreshRate = null
         requestedPreferredRefreshRate = null
-        super.onPause()
     }
 
     override fun onNewIntent(intent: Intent) {

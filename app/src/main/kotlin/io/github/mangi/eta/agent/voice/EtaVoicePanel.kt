@@ -301,6 +301,10 @@ internal fun EtaVoicePanel(
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
     onStopVoiceMode: () -> Unit,
     dictationStartRequest: Int,
+    /** 系统选择器让位中：整窗内容隐身+触摸穿透（服务侧窗口 flags），选择器 Activity 在浮窗之下交互。 */
+    pickerYield: Boolean,
+    /** 附件/权限跳板发起信号：服务据此让位（隐身+穿透），跳板结束信号负责恢复。 */
+    onSystemPickerLaunch: () -> Unit,
     onScreenContextSelect: () -> Unit,
     onScreenContextRemove: () -> Unit,
     onScreenContextPreset: (ScreenContextPreset) -> Unit,
@@ -347,6 +351,21 @@ internal fun EtaVoicePanel(
         )
     }
 
+    // 选择器让位的隐身/恢复：动画与关闭退场完全同款——面板整体下滑出屏（同曲线
+    // 同时长，压暗层同步淡出），跳板结束信号触发后按同一动画反向滑回。让位期间
+    // 窗口 FLAG_NOT_TOUCHABLE、组合保持存活（launcher 注册不丢），选择器 Activity
+    // 在浮窗之下正常交互；恢复中途被打断（再唤醒）由 showEntry 的兜底复位接管。
+    val pickerYieldProgress = remember { Animatable(0f) }
+    LaunchedEffect(pickerYield) {
+        pickerYieldProgress.animateTo(
+            targetValue = if (pickerYield) 1f else 0f,
+            animationSpec = tween(
+                durationMillis = AssistantExitDurationMillis,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+
     LaunchedEffect(inputFocusRequestKey) {
         if (inputFocusRequestKey < 0 || state.phase == EtaVoicePhase.PROCESSING) return@LaunchedEffect
         // 入口浮窗刚 addView 时还没有窗口焦点，此时 requestFocus / keyboard.show 会被系统
@@ -367,7 +386,7 @@ internal fun EtaVoicePanel(
     // 退场时随面板退场一起淡出，避免窗口被移除时压暗「闪现消失」。
     val scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)
     val scrimAlpha by animateFloatAsState(
-        targetValue = if (exitRequested || state.messages.isEmpty()) 0f else 1f,
+        targetValue = if (exitRequested || pickerYield || state.messages.isEmpty()) 0f else 1f,
         // 压暗层只变透明度，走 M3E Effects 弹簧（临界阻尼、无过冲），
         // 不掺 Spatial 的过冲，避免压暗层在淡入末尾「闪一下」。
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
@@ -397,14 +416,22 @@ internal fun EtaVoicePanel(
                 // 入场 / 退场只做位移，不做透明度渐变：移动过程中输入框始终是不透明的，
                 // 不会在位移途中把下层用户界面透出来。
                 .graphicsLayer {
-                    translationY = if (exitRequested) {
-                        // 退场：一次性把内容推过窗口下缘（再加一段余量），完全离开屏幕。
-                        exitProgress.value * (windowHeightPx + with(density) {
-                            AssistantExitOvershoot.toPx()
-                        })
-                    } else {
-                        // 入场：M3E 弹簧从下方一小段距离平移到位。
-                        (1f - panelEntry.value) * with(density) { AssistantEntryTranslation.toPx() }
+                    translationY = when {
+                        exitRequested ->
+                            // 退场：一次性把内容推过窗口下缘（再加一段余量），完全离开屏幕。
+                            exitProgress.value * (windowHeightPx + with(density) {
+                                AssistantExitOvershoot.toPx()
+                            })
+                        // 选择器让位隐身 / 恢复：与关闭退场同一动画（整体下滑出屏，
+                        // 恢复按同一曲线滑回）。进度未归零前持续走本分支，保证从
+                        // 让位态到常驻态的位移连续（否则恢复瞬间会跳回原位）。
+                        pickerYield || pickerYieldProgress.value > 0f ->
+                            pickerYieldProgress.value * (windowHeightPx + with(density) {
+                                AssistantExitOvershoot.toPx()
+                            })
+                        else ->
+                            // 入场：M3E 弹簧从下方一小段距离平移到位。
+                            (1f - panelEntry.value) * with(density) { AssistantEntryTranslation.toPx() }
                     }
                 },
         ) {
@@ -430,6 +457,8 @@ internal fun EtaVoicePanel(
                     composer = composer,
                     voiceState = voiceState,
                     dictationStartRequest = dictationStartRequest,
+                    pickerYield = pickerYield,
+                    onSystemPickerLaunch = onSystemPickerLaunch,
                     focusRequester = focusRequester,
                     canOpenConversation = canOpenConversation,
                     maxContentHeightPx = maxContentHeightPx,
@@ -495,6 +524,8 @@ private fun BoxScope.AssistantPanel(
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
     dictationStartRequest: Int,
+    pickerYield: Boolean,
+    onSystemPickerLaunch: () -> Unit,
     focusRequester: FocusRequester,
     canOpenConversation: Boolean,
     maxContentHeightPx: Float,
@@ -834,6 +865,8 @@ private fun BoxScope.AssistantPanel(
                 composer = composer,
                 voiceState = voiceState,
                 dictationStartRequest = dictationStartRequest,
+                pickerYield = pickerYield,
+                onSystemPickerLaunch = onSystemPickerLaunch,
                 focusRequester = focusRequester,
                 composerConversationId = composerConversationId,
                 onStartVoiceMode = onStartVoiceMode,
@@ -883,6 +916,8 @@ private fun AssistantComposer(
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
     dictationStartRequest: Int,
+    pickerYield: Boolean,
+    onSystemPickerLaunch: () -> Unit,
     focusRequester: FocusRequester,
     composerConversationId: String?,
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
@@ -1019,6 +1054,8 @@ private fun AssistantComposer(
             voiceState = voiceState,
             dictationStartRequest = dictationStartRequest,
             onDictationActiveChange = { dictationActive = it },
+            pickerYield = pickerYield,
+            onSystemPickerLaunch = onSystemPickerLaunch,
             // 口述入口与聊天输入区同一套：mic → 流光听写条（× 丢弃 / ✓ 回填输入框 /
             // 说完停顿直接发送）。语音对话仍从主程序语音浮层进入，浮窗不再承载对话聆听条。
             voiceEntry = ComposerVoiceEntry.DICTATION,

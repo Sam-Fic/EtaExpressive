@@ -354,6 +354,15 @@ internal fun AgentChatInputBar(
         }
         wasEditingMessage = isEditingMessage
     }
+    // 系统助手在主应用前台唤醒：直接在聊天输入区响应。听写请求交给
+    // Material3ComposerBody 的开录令牌（首帧桥让流光胶囊直接就位，IME 不弹）；
+    // 键盘唤起则聚焦输入框并弹键盘（与转写接管同一套 showChatInputIme 兜底节奏）。
+    val assistantDictationRequest = LocalAssistantDictationRequest.current
+    val assistantFocusRequest = LocalAssistantFocusRequest.current
+    LaunchedEffect(assistantFocusRequest) {
+        if (assistantFocusRequest == 0) return@LaunchedEffect
+        showChatInputIme(focusRequester, keyboard, view)
+    }
 
     CompositionLocalProvider(LocalChatInputFocusRequester provides focusRequester) {
     Column(
@@ -504,6 +513,7 @@ internal fun AgentChatInputBar(
             // 聊天输入区的语音入口改为「口述」：单次听写，✓ 把文字放回输入框、× 丢弃。
             // 语音对话仍可从语音浮层 / 悬浮窗等其它入口进入（那里沿用默认的 CONVERSATION）。
             voiceEntry = ComposerVoiceEntry.DICTATION,
+            dictationStartRequest = assistantDictationRequest,
             showMorphLoading = showMorphLoading,
             pendingImages = pendingImages,
             pendingFileReferences = pendingFileReferences,

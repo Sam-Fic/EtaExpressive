@@ -105,6 +105,8 @@ internal fun rememberAgentAttachmentActions(
     onAttachFiles: (List<String>) -> Unit,
     onAttachFolder: (String) -> Unit,
     onAttachFilePath: (String) -> Unit,
+    /** 每次系统选择器/相机跳板发起前的信号：助手弹窗用它让浮窗让位（隐身+触摸穿透）。 */
+    onPickerLaunch: (() -> Unit)? = null,
 ): AgentAttachmentActions {
     val context = LocalContext.current
     var showPathDialog by remember { mutableStateOf(false) }
@@ -196,11 +198,13 @@ internal fun rememberAgentAttachmentActions(
 
     return AgentAttachmentActions(
         pickImage = {
+            onPickerLaunch?.invoke()
             photoPicker.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             )
         },
         takePhoto = {
+            onPickerLaunch?.invoke()
             val directory = File(context.cacheDir, "camera-captures").apply { mkdirs() }
             val output = File(directory, chatImageFileName("image/jpeg"))
             cameraOutputPath = output.absolutePath
@@ -219,12 +223,19 @@ internal fun rememberAgentAttachmentActions(
             }
         },
         pickVideo = {
+            onPickerLaunch?.invoke()
             videoPicker.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
             )
         },
-        pickFiles = { filePicker.launch(arrayOf("*/*")) },
-        pickFolder = { folderPicker.launch(null) },
+        pickFiles = {
+            onPickerLaunch?.invoke()
+            filePicker.launch(arrayOf("*/*"))
+        },
+        pickFolder = {
+            onPickerLaunch?.invoke()
+            folderPicker.launch(null)
+        },
         inputPath = {
             pathInput = ""
             showPathDialog = true

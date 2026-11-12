@@ -54,6 +54,7 @@ import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.media.MAX_AGENT_VIDEO_BYTES
 import io.github.mangi.eta.agent.media.SCREEN_CONTEXT_IMAGE_SOURCE
 import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
+import io.github.mangi.eta.agent.model.AgentScreenIntent
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.question.AgentQuestionAnswer
 import io.github.mangi.eta.agent.question.AgentQuestionCodec
@@ -153,6 +154,12 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     private var inputFocusRequestKey by mutableIntStateOf(-1)
     /** 唤起方式=语音识别的听写开录令牌：每次语音唤起 ++；面板在屏时经重组触发重开。 */
     private var dictationStartRequest by mutableIntStateOf(0)
+    /**
+     * 系统选择器让位中：附件/权限跳板把选择器 Activity 打到浮窗之下，浮窗必须整体
+     * 隐身（alpha 0）且整窗放行触摸（FLAG_NOT_TOUCHABLE），选择器才能被正常操作。
+     * 会话结束由跳板的 sessionEndListener 信号恢复（见 [beginPickerYield]）。
+     */
+    private var pickerYield by mutableStateOf(false)
     private var lastWakeHapticAt = 0L
     private var uiState by mutableStateOf(EtaVoiceUiState())
 
@@ -254,6 +261,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         ) {
             EtaAssistantOverlayPickerBridge.registry = null
         }
+        EtaAssistantOverlayPickerBridge.sessionEndListener = null
         if (activeService === this) activeService = null
         super.onDestroy()
     }
@@ -267,6 +275,23 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             return
         }
         performWakeHaptic()
+        // 主应用已在前台：不再叠一层弹窗——直接在主应用内响应（语音识别 → 聊天输入区听写；
+        // 键盘 → 聚焦聊天输入框）。先收起不可见的系统会话（存活会话会经 onBackPressed 吞
+        // 主应用 BACK），浮窗若在屏（如应用外唤起后切回主应用）也一并收起——run 挂在
+        // Runtime 的独立 runScope 上，继续推进不受影响。
+        if (MainActivity.isForeground) {
+            EtaVoiceInteractionSession.requestHideForForegroundOperation(this)
+            dismissAndStop()
+            if (Prefs.assistantEntryMode() == AssistantEntryMode.VOICE && startVoiceEntry()) {
+                MainActivity.requestInAppDictation()
+            } else {
+                MainActivity.requestInAppFocus()
+            }
+            return
+        }
+        // 任何唤醒都先退出选择器让位态（幂等）：让位中浮窗是隐身+整窗穿透的，
+        // 唤醒意图表明用户要回到助手，恢复可视可触后走正常续进/重建分支。
+        endPickerYield()
         // 唤起即听写的预热：配置里 3 个槽位是 AndroidKeyStore 解密，进程内首次成本可观。
         // 放到截图采集窗口内（IO 线程）先跑，首帧组合里听写 start() 的同步 load 就是纯缓存命中，
         // 不给上浮弹簧的起步帧添主线程负担。
@@ -480,6 +505,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                         composer = composerState,
                         voiceState = voiceState,
                         dictationStartRequest = dictationStartRequest,
+                        pickerYield = pickerYield,
+                        onSystemPickerLaunch = ::beginPickerYield,
                         inputFocusRequestKey = inputFocusRequestKey,
                         onScreenContextSelect = ::selectScreenContext,
                         onScreenContextRemove = ::removeScreenContext,
@@ -594,6 +621,22 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         }
         val normalized = prompt.trim()
         if (normalized.isBlank()) return
+        // 唤起即屏幕上下文：指令明示要看屏幕内容且入口截图就绪时自动选中——预览卡弹出即
+        // 功能触发的可见反馈，消息附带入口截图，首轮模型直接看到屏幕（省一次工具往返）。
+        // AgentScreenIntent 只在弹窗链路使用；主程序对话不做该判断（硬边界，用户定稿）。
+        if (!uiState.screenContext.selected &&
+            uiState.screenContext.phase == EtaScreenContextPhase.AVAILABLE &&
+            screenContextAttachment != null &&
+            AgentScreenIntent.matches(normalized)
+        ) {
+            uiState = uiState.copy(
+                screenContext = EtaScreenContextStateReducer.select(
+                    state = uiState.screenContext,
+                    enabled = true,
+                    hasAttachment = true,
+                ),
+            )
+        }
         submitPrompt(normalized)
     }
 
@@ -1210,6 +1253,43 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             imm?.hideSoftInputFromWindow(view.windowToken, 0)
             controller?.hide(WindowInsetsCompat.Type.ime())
         }
+    }
+
+    /**
+     * 选择器让位：附件/权限的跳板把系统选择器 Activity 打到浮窗之下，而浮窗是全屏
+     * TYPE_APPLICATION_OVERLAY——不处理的话选择器永远被盖住，点它等于点浮窗空白处
+     * （误关弹窗）。这里让浮窗**隐身且整窗放行触摸**：内容 alpha 归零（组合保持存活，
+     * launcher 注册不丢、结果回灌管线完好）+ FLAG_NOT_TOUCHABLE（触摸穿透到选择器）。
+     *
+     * 不走拆窗让位（hideForForegroundOperation）：拆窗即销毁组合、注销结果注册，
+     * 选择结果会无人接收。会话结束由跳板 [EtaAssistantOverlayPickerBridge.sessionEndListener]
+     * 信号触发恢复；唤醒（[showEntry]）也兜底复位。
+     */
+    private fun beginPickerYield() {
+        if (pickerYield) return
+        pickerYield = true
+        setWindowTouchable(false)
+        EtaAssistantOverlayPickerBridge.sessionEndListener = ::endPickerYield
+    }
+
+    /** 从选择器让位态恢复（幂等）：恢复可视与触摸，摘除会话结束信号。 */
+    private fun endPickerYield() {
+        if (!pickerYield) return
+        pickerYield = false
+        setWindowTouchable(true)
+        EtaAssistantOverlayPickerBridge.sessionEndListener = null
+    }
+
+    /** 整窗触摸放行开关：让位时加 FLAG_NOT_TOUCHABLE，恢复时去除。 */
+    private fun setWindowTouchable(touchable: Boolean) {
+        val view = windowView ?: return
+        val params = windowParams ?: return
+        params.flags = if (touchable) {
+            params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        runCatching { windowManager?.updateViewLayout(view, params) }
     }
 
     private fun selectScreenContext() {

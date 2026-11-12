@@ -26,6 +26,13 @@ internal const val EXTRA_TARGET_INTENT = "io.github.mangi.eta.agent.voice.extra.
 internal object EtaAssistantOverlayPickerBridge {
     @Volatile
     var registry: ActivityResultRegistry? = null
+
+    /**
+     * 选择器会话结束信号：跳板收到结果（含取消）或被销毁时触发一次。服务用它从
+     * 「让位穿透」状态恢复浮窗（详见 [EtaAssistantOverlayService.beginPickerYield]）。
+     */
+    @Volatile
+    var sessionEndListener: (() -> Unit)? = null
 }
 
 /**
@@ -67,12 +74,21 @@ internal class EtaAssistantOverlayPickerActivity : ComponentActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        // 先把结果派发给注册表（组合内的 launcher 回调），再发会话结束信号——
+        // 服务据此把让位中的浮窗恢复回来，顺序保证恢复时附件已就位。
         EtaAssistantOverlayPickerBridge.registry?.dispatchResult(requestCode, resultCode, data)
+        EtaAssistantOverlayPickerBridge.sessionEndListener?.invoke()
         runCatching {
             @Suppress("DEPRECATION")
             overridePendingTransition(0, 0)
         }
         finish()
+    }
+
+    override fun onDestroy() {
+        // 兜底：跳板没走到 onActivityResult（进程被杀等）也要让服务从让位态恢复。
+        EtaAssistantOverlayPickerBridge.sessionEndListener?.invoke()
+        super.onDestroy()
     }
 }
 
