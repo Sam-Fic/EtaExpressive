@@ -102,6 +102,14 @@ internal class AgentDispatchLedger {
         }
     }
 
+    /**
+     * 只读查询：该 run 当前是否有武装债权。提问同步（协调器 onChildQuestionAsked）用它
+     * 判定「这个 ask_user 是不是派发 run 发出的」——查不到即非派发 run，静默忽略。
+     */
+    fun armedClaimForRun(runId: String): ArmedClaim? = synchronized(lock) {
+        armedByRunId[runId]
+    }
+
     /** run 终态结算；未知 runId 静默返回 null（无债权完成不通知）。 */
     fun settleRun(runId: String, outcome: Outcome, detail: String): Settlement? = synchronized(lock) {
         val claim = armedByRunId.remove(runId) ?: return null

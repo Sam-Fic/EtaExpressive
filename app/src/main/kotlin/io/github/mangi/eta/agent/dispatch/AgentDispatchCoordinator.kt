@@ -234,6 +234,8 @@ internal class AgentDispatchCoordinator(
         val settlement = ledger.settleRun(request.runId, outcome, detail = result.error.orEmpty())
             ?: return
         deleteClaim(settlement.claim.request.dispatchId)
+        // 提问中的 run 终态：清掉在途提问，调度台卡片与角标由终态回报收尾。
+        pendingQuestions.remove(request.runId)
         AndroidAgentLogger.info(
             "dispatch terminal: conversation=${settlement.claim.request.conversationId} " +
                 "run=${request.runId} dispatch=${settlement.claim.request.dispatchId} " +
@@ -257,6 +259,8 @@ internal class AgentDispatchCoordinator(
         val settlement = ledger.settleRun(runId, AgentDispatchLedger.Outcome.STOPPED, detail = "已停止")
             ?: return
         deleteClaim(settlement.claim.request.dispatchId)
+        // 提问中的 run 被停：清掉在途提问，调度台卡片与角标由 STOPPED 回报收尾。
+        pendingQuestions.remove(runId)
         AndroidAgentLogger.info(
             "dispatch terminal: conversation=${settlement.claim.request.conversationId} " +
                 "run=$runId dispatch=${settlement.claim.request.dispatchId} outcome=STOPPED receipt=emit",
@@ -274,6 +278,65 @@ internal class AgentDispatchCoordinator(
         // cancelConversation（task_abort 会连同队首一起取消）或后续终态，这里把
         // 结算排出的队首退回队首位，避免滞留 handedOut 成为幽灵单。
         settlement.next?.let { ledger.requeueFront(it) }
+    }
+
+    // ---------------------------------------------------------------- 提问同步
+
+    /**
+     * 派发 run 在等待用户回答的提问（runId → 请求）。
+     *
+     * 子会话调用 `ask_user` 后 `AgentQuestionCoordinator.awaitAnswer` 无超时阻塞，用户不看
+     * 子会话就永远不知道有提问；服务侧把 QuestionRequested/Resolved 事件转发到这里，
+     * 按 [AgentDispatchLedger.armedClaimForRun] 判定「是否派发 run」后同步到调度台
+     * （只读展示 + 跳转作答，不注入调度台模型——模型无法代答）。run 终态时清残留，
+     * 终态回报会把调度台卡片与角标一并收尾。
+     */
+    private val pendingQuestions =
+        java.util.concurrent.ConcurrentHashMap<String, io.github.mangi.eta.agent.question.AgentQuestionRequest>()
+
+    /**
+     * 子会话发出提问：仅派发 run 同步。返回子会话 id；非派发 run（账本无武装债权）
+     * 返回 null，调用方据此跳过系统横幅。
+     */
+    fun onChildQuestionAsked(event: AgentEvent.QuestionRequested): String? {
+        val claim = ledger.armedClaimForRun(event.request.runId) ?: return null
+        pendingQuestions[event.request.runId] = event.request
+        AgentDispatchNotifier.publishQuestion(
+            AgentDispatchNotifier.QuestionNotice(
+                dispatchId = claim.request.dispatchId,
+                conversationId = claim.request.conversationId,
+                runId = event.request.runId,
+                conversationTitle = conversationTitle(claim.request.conversationId),
+                questionId = event.request.questionId,
+                phase = AgentDispatchNotifier.QuestionNotice.Phase.ASKED,
+                request = event.request,
+                status = null,
+            ),
+        )
+        return claim.request.conversationId
+    }
+
+    /**
+     * 子会话提问被回答/取消/中断：清 pending 并同步 RESOLVED，调度台卡片恢复「执行中」。
+     * 没有在途提问（非派发 run）或账本已结算（终态先到、RESOLVED 后到的中断路径——
+     * 卡片由终态回报收尾）返回 null。
+     */
+    fun onChildQuestionResolved(event: AgentEvent.QuestionResolved): String? {
+        pendingQuestions.remove(event.runId) ?: return null
+        val claim = ledger.armedClaimForRun(event.runId) ?: return null
+        AgentDispatchNotifier.publishQuestion(
+            AgentDispatchNotifier.QuestionNotice(
+                dispatchId = claim.request.dispatchId,
+                conversationId = claim.request.conversationId,
+                runId = event.runId,
+                conversationTitle = conversationTitle(claim.request.conversationId),
+                questionId = event.questionId,
+                phase = AgentDispatchNotifier.QuestionNotice.Phase.RESOLVED,
+                request = null,
+                status = event.status,
+            ),
+        )
+        return claim.request.conversationId
     }
 
     // ---------------------------------------------------------------- 排空

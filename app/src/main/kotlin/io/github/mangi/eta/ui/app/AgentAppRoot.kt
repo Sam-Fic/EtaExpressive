@@ -7,6 +7,9 @@ import io.github.mangi.eta.ui.components.remoteSessionTitle
 import io.github.mangi.eta.ui.components.LocalChatRouteCovered
 import io.github.mangi.eta.ui.components.LocalChatTransitionActive
 import io.github.mangi.eta.ui.components.LocalChatUiActive
+import io.github.mangi.eta.ui.components.LocalAssistantDictationRequest
+import io.github.mangi.eta.ui.components.LocalAssistantFocusRequest
+import io.github.mangi.eta.ui.MainActivity
 import io.github.mangi.eta.ui.remote.ChatTarget
 import android.Manifest
 import android.app.Activity
@@ -205,6 +208,17 @@ fun AgentAppRoot(
     // 常亮只在「对话页可见 + 正在流式回复 + Runtime 还有活着的 run」三者同时成立时挂上；
     // 设置页、空闲会话与纯后台任务不额外保持常亮，GUI 浮层由 Runtime 服务自己维护。
     val runtimeActive by AgentRuntimeService.keepScreenOn.collectAsState()
+    // 系统助手在主应用前台唤醒：直接应用内响应——落到会话输入区（其它路由先切到会话；
+    // Home/Chat 原地），听写/聚焦由聊天输入区按令牌分派。令牌单调递增不复位，由
+    // ComposerBody 的 consumedStartToken 机制消费（与浮窗 dictationStartRequest 同款）。
+    val inAppDictationRequest by MainActivity.inAppDictationRequest.collectAsState()
+    val inAppFocusRequest by MainActivity.inAppFocusRequest.collectAsState()
+    LaunchedEffect(inAppDictationRequest, inAppFocusRequest) {
+        if (inAppDictationRequest == 0 && inAppFocusRequest == 0) return@LaunchedEffect
+        if (currentRoute !is AppRoute.Chat && currentRoute !is AppRoute.Home) {
+            navigator.replace(AppRoute.Chat)
+        }
+    }
     val keepScreenOnView = LocalView.current
     val keepScreenOn = (currentRoute is AppRoute.Home || currentRoute is AppRoute.Chat) &&
         agentState.homeState.isStreaming && runtimeActive
@@ -875,6 +889,9 @@ fun AgentAppRoot(
     CompositionLocalProvider(
         io.github.mangi.eta.ui.components.LocalConversationSubAgentEditor provides subAgentEditor,
         LocalChatTransitionActive provides navigationActive.value,
+        // 系统助手在主应用前台唤醒：聊天输入区按唤起方式分派响应（听写/聚焦）。
+        LocalAssistantDictationRequest provides inAppDictationRequest,
+        LocalAssistantFocusRequest provides inAppFocusRequest,
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     // 兜底：miuix 0.9.4 的 NavEntryBuilder 没有 catch-all，未登记的 route 会在 build() 直接

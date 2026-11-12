@@ -1,5 +1,7 @@
 package io.github.mangi.eta.agent.dispatch
 
+import io.github.mangi.eta.agent.question.AgentQuestionRequest
+import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.core.AndroidAgentLogger
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -67,6 +69,52 @@ internal object AgentDispatchNotifier {
     )
 
     val notices: SharedFlow<Notice> = _notices
+
+    /**
+     * 子会话提问通知：派发 run 调用 `ask_user` 后同步到调度台侧（只读展示 + 跳转作答，
+     * 不注入调度台模型——模型无法代答）。与终态 [Notice] 分流：提问携带完整的
+     * [AgentQuestionRequest] 供卡片渲染，走独立的流避免与结算通知混型。
+     *
+     * [questionId] 两个阶段都填（RESOLVED 阶段 [request] 为 null，去重键仍取它——
+     * 同一 run 连环提问时每问各有一键，不能退化成按 dispatchId 吞并）。
+     * [phase] 为 ASKED 时 [request] 非空；RESOLVED 时 [status] 非空。
+     * replay 兜底 Activity 重建窗口；消费端按 dispatchId+questionId+phase 去重。
+     */
+    data class QuestionNotice(
+        val dispatchId: String,
+        val conversationId: String,
+        val runId: String,
+        val conversationTitle: String,
+        val questionId: String,
+        val phase: Phase,
+        val request: AgentQuestionRequest?,
+        val status: AgentQuestionStatus?,
+    ) {
+        enum class Phase { ASKED, RESOLVED }
+    }
+
+    private val _questionNotices = MutableSharedFlow<QuestionNotice>(
+        replay = 32,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    val questionNotices: SharedFlow<QuestionNotice> = _questionNotices
+
+    fun publishQuestion(notice: QuestionNotice) {
+        val accepted = _questionNotices.tryEmit(notice)
+        AndroidAgentLogger.info(
+            "dispatch question notice: conversation=${notice.conversationId} " +
+                "run=${notice.runId} dispatch=${notice.dispatchId} " +
+                "phase=${notice.phase} emitted=$accepted",
+        )
+        if (!accepted) {
+            AndroidAgentLogger.warn(
+                "dispatch question notice dropped: conversation=${notice.conversationId} " +
+                    "run=${notice.runId} dispatch=${notice.dispatchId} phase=${notice.phase}",
+            )
+        }
+    }
 
     fun publish(notice: Notice) {
         val accepted = _notices.tryEmit(notice)

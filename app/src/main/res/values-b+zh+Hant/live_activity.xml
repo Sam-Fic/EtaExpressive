@@ -13,6 +13,7 @@
     <string name="live_completion_done">任務已完成</string>
     <string name="live_completion_failed">任務失敗</string>
     <string name="live_completion_stopped">任務已停止</string>
+    <string name="live_question_waiting_title">派發的子任務在等你回答</string>
     <string name="live_pause">暫停</string>
     <string name="live_resume">繼續</string>
 </resources>

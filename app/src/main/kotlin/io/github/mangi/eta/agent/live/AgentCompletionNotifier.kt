@@ -66,6 +66,47 @@ internal object AgentCompletionNotifier {
     private fun notificationId(conversationId: String): Int =
         ID_BASE + (conversationId.hashCode() and Int.MAX_VALUE) % ID_RANGE
 
+    // ── 子会话提问横幅 ────────────────────────────────────────────────
+
+    /**
+     * 派发子会话调用 ask_user 后的「等你回答」横幅：与终态横幅同一渠道、同一 id 派生，
+     * 因此随后的终态横幅会原地覆盖它；RESOLVED 时由 [cancelQuestionWaiting] 主动撤销。
+     * 开关复用完成横幅档（同一「完成后提醒」意图，不另设设置面）；前台静默——
+     * 用户正看着界面，调度台卡片与抽屉角标就是提醒本体。
+     */
+    fun notifyQuestionWaiting(context: Context, conversationId: String, summary: String) {
+        if (!Prefs.isEnabled(Prefs.Keys.LIVE_ACTIVITY_ENABLE)) return
+        if (!Prefs.isEnabled(Prefs.Keys.LIVE_ACTIVITY_COMPLETION_BANNER)) return
+        if (AppForeground.isForeground) return
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled()) return
+        ensureChannel(context, manager)
+        val id = notificationId(conversationId)
+        val open = PendingIntent.getActivity(
+            context, id,
+            Intent(context, MainActivity::class.java).putExtra(EXTRA_CONVERSATION_ID, conversationId),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = Notification.Builder(context, CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.live_question_waiting_title))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+        val text = summary.trim()
+        if (text.isNotBlank()) {
+            builder.setContentText(text).setStyle(Notification.BigTextStyle().bigText(text))
+        }
+        manager.notify(NOTIFICATION_TAG, id, builder.build())
+    }
+
+    /** 子会话提问已回答/取消/中断：撤掉等待横幅（与等待横幅同 tag+id）。 */
+    fun cancelQuestionWaiting(context: Context, conversationId: String) {
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)
+                ?.cancel(NOTIFICATION_TAG, notificationId(conversationId))
+        }
+    }
+
     // ── 岛终态（小米私有）────────────────────────────────────────────
     // Number444 fork 真机定稿：岛「展开」只能跟着新 id 首发 alert 走（同 id 更新永不展开），
     // 且需频道在系统设置里开启「悬浮通知」。完成态在 eta_island 频道（静音 DEFAULT）用固定

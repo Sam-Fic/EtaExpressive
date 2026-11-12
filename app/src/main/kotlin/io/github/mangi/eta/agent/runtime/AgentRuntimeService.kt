@@ -1111,6 +1111,30 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         if (event is AgentEvent.GuiControlChanged) {
             runs.get(session.runId)?.guiStatus = event.status
         }
+        // 子会话提问同步到调度台：仅派发 run（协调器按账本武装债权判定，非派发 run 返回
+        // null 静默）。横幅只在后台提醒（前台静默），返回早退分支不影响这里——提问通知
+        // 与悬浮窗策略无关，必须先于它们执行。
+        when (event) {
+            is AgentEvent.QuestionRequested -> {
+                dispatchCoordinator.onChildQuestionAsked(event)?.let { conversationId ->
+                    runCatching {
+                        AgentCompletionNotifier.notifyQuestionWaiting(
+                            this,
+                            conversationId,
+                            summary = listOf(event.request.title, event.request.question)
+                                .filter { it.isNotBlank() }
+                                .joinToString("："),
+                        )
+                    }
+                }
+            }
+            is AgentEvent.QuestionResolved -> {
+                dispatchCoordinator.onChildQuestionResolved(event)?.let { conversationId ->
+                    runCatching { AgentCompletionNotifier.cancelQuestionWaiting(this, conversationId) }
+                }
+            }
+            else -> Unit
+        }
         if (!sessions.contains(session)) return
         if (!AgentOverlayVisibilityPolicy.allowsOverlay(session.taskSurfaceMode, virtualDisplayActive())) return
         val revealsForegroundOperation =

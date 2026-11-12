@@ -149,6 +149,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -1432,6 +1433,8 @@ private fun Material3ConversationRow(
     onExportAnalysis: () -> Unit,
 ) {
     var showActionMenu by remember { mutableStateOf(false) }
+    // 「等待回答」问号徽标的读屏说明（行尾 trailing 槽内引用）。
+    val waitingBadgeDescription = stringResource(R.string.dispatch_question_waiting_badge)
     EtaSegmentedItem(index = index, count = count) {
         // 组内行距走官方分段缝隙（2dp），组末行补足分组间距（末组由列表底部留白收尾）；
         // 缝隙放在外层，长按菜单的锚点仍紧贴本行。
@@ -1516,6 +1519,31 @@ private fun Material3ConversationRow(
                                 // tertiaryContainer 时取 onTertiaryContainer，与同槽的
                                 // loading 指示器、PushPin 保持同一套取色。
                                 Badge(containerColor = LocalContentColor.current)
+                            }
+                            if (conversation.isWaitingQuestion) {
+                                // 派发子会话「等待回答」问号徽标：该会话的 run 正阻塞在 ask_user
+                                // 上等用户作答，与运行态 loading 并存（一个在跑、一个要人）；
+                                // 回答/终态即清。签名按依赖版本 material3 1.5.0-alpha29 源码核实
+                                // （Badge.kt:150-155）：`Badge(modifier, containerColor =
+                                //   BadgeDefaults.containerColor, contentColor =
+                                //   contentColorFor(containerColor),
+                                //   content: (@Composable RowScope.() -> Unit)? = null)`；
+                                // 带 content 时取 Large 档令牌：minSize 16dp、文字 LabelSmall、
+                                // 水平内边距 BadgeWithContentHorizontalPadding（Badge.kt:160-187）。
+                                // containerColor 用 tertiary（本抽屉的强调色语言），contentColor
+                                // 走默认 contentColorFor(tertiary)=onTertiary 的官方配对；不套
+                                // 默认 Error 红——等待回答是「需要你」而非「出错」，且与完成红点
+                                // 同槽会撞语义。不用 LocalContentColor：contentColorFor 认不得
+                                // 非 theme 色，问号会回退成与底同色而隐形。
+                                Badge(containerColor = MaterialTheme.colorScheme.tertiary) {
+                                    // 问号本身不是文本语义；给行读屏一个明确的「等待回答」说明。
+                                    M3Text(
+                                        "?",
+                                        modifier = Modifier.semantics {
+                                            contentDescription = waitingBadgeDescription
+                                        },
+                                    )
+                                }
                             }
                             if (conversation.isPinned) {
                                 Icon(

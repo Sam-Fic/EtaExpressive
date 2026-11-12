@@ -56,7 +56,10 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
             }
             .build()
 
-        val requestJson = request.restrictReconnectPayload(buildRequestJson(config, request.messages, request.tools), capabilities.endpoint)
+        val requestJson = request.restrictReconnectPayload(
+            buildRequestJson(config, request.messages, request.tools, request.sessionId),
+            capabilities.endpoint,
+        )
         val existingToolCallIds = ChatToolCallHistory.referencedIds(request.messages) +
             requestJson.optJSONArray("messages")?.let(ChatToolCallHistory::referencedIds).orEmpty()
         val serializedBody = requestJson.toString()
@@ -89,7 +92,9 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
     internal fun buildRequestJson(
         config: AgentModelClient.ModelConfig,
         messages: JSONArray,
-        tools: JSONArray
+        tools: JSONArray,
+        /** 会话级 id：官方 OpenAI 用它做 prompt_cache_key，让同一会话落回同一个缓存分片。 */
+        sessionId: String = "",
     ): JSONObject {
         val sourceType = ProviderSourceRegistry.resolve(
             providerId = config.providerId,
@@ -104,6 +109,11 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
             .put("tools", tools)
             .put("tool_choice", "auto")
             .also { request ->
+                // 只在官方 OpenAI 写 prompt_cache_key：第三方网关对未知字段可能直接 400，
+                // DeepSeek 等端点的前缀缓存本身不需要它。
+                if (sessionId.isNotBlank() && isOfficialOpenAi(config)) {
+                    request.put("prompt_cache_key", sessionId)
+                }
                 if (sourceType != ProviderSourceTypes.OPENROUTER) {
                     request.put("stream_options", JSONObject().put("include_usage", true))
                 }
@@ -132,6 +142,13 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
                     if (tools.length() == 0) { request.remove("tools"); request.remove("tool_choice") }
                 }
             }
+    }
+
+    /** 是否官方 OpenAI 端点：只有它能安全接受 `prompt_cache_key`。 */
+    private fun isOfficialOpenAi(config: AgentModelClient.ModelConfig): Boolean {
+        if (config.authMode == ProviderAuthModes.OPENAI_CHATGPT) return true
+        val host = runCatching { java.net.URI(config.baseUrl).host }.getOrNull() ?: return false
+        return host.equals("api.openai.com", ignoreCase = true)
     }
 
     private fun readStreamingAssistantMessage(

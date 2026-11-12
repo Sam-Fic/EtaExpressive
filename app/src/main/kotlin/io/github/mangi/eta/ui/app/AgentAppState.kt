@@ -62,6 +62,7 @@ import io.github.mangi.eta.agent.question.AgentQuestionCodec
 import io.github.mangi.eta.agent.question.AgentQuestionRequest
 import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
+import io.github.mangi.eta.ui.model.DispatchWaitingQuestionUi
 import io.github.mangi.eta.ui.model.ErrorReconnectMessageUi
 import io.github.mangi.eta.ui.model.ErrorReconnectStatus
 import io.github.mangi.eta.agent.runtime.AgentExecutionService
@@ -458,6 +459,12 @@ internal class AgentAppState(
                 handleDispatchNotice(notice)
             }
         }
+        // 子会话提问同步：只读展示 + 跳转作答，不注入调度台模型（模型无法代答）。
+        scope.launch {
+            io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.questionNotices.collect { notice ->
+                handleDispatchQuestionNotice(notice)
+            }
+        }
     }
 
     /**
@@ -512,6 +519,13 @@ internal class AgentAppState(
     // ============================================================ 调度台（Session Dispatch）
 
     private val handledDispatchNotices =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** 派发子会话正在等待用户回答提问的会话 id 集：抽屉行据此显示等待标记，回答/终态即清。 */
+    private var conversationWaitingQuestionIds by mutableStateOf(setOf<String>())
+
+    /** 提问通知恰一次去重（replay 兜底 Activity 重建）；key = dispatchId:questionId:phase。 */
+    private val handledDispatchQuestionNotices =
         java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
     /**
@@ -967,6 +981,8 @@ internal class AgentAppState(
         scope.launch(Dispatchers.Main.immediate) {
             markDispatchManaged(notice.conversationId)
             pendingDispatchTitles.remove(notice.dispatchId)
+            // run 已终态：等待提问标记必然随之结束（提问中被打断/停止的路径不经过 RESOLVED 通知）。
+            conversationWaitingQuestionIds = conversationWaitingQuestionIds - notice.conversationId
             // 先把终态、正文与跳转身份写进调度台的 `task_dispatch` 卡片，再走既有注入路径。
             // 顺序反了会让模型的一轮复述先于卡片更新出现，看起来像凭空多一条回复。
             updateDispatchReportCard(notice)
@@ -977,6 +993,73 @@ internal class AgentAppState(
             }
             deliverDispatchNotice(notice)
         }
+    }
+
+    /**
+     * 子会话提问同步到调度台（只读展示 + 跳转作答，不注入调度台模型——模型无法代答）。
+     * - ASKED：`task_dispatch` 卡写入「等待回答」快照 + 抽屉行等待标记
+     *   （后台系统横幅由服务侧在发布点直接发，前台静默）；
+     * - RESOLVED：卡片恢复「执行中」、标记清除（横幅由服务侧撤销）。
+     * 找不到派发卡时不硬造：提问必晚于派发，卡已存在；旧数据/被清理时跳过展示，角标照常。
+     */
+    private fun handleDispatchQuestionNotice(
+        notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.QuestionNotice,
+    ) {
+        // 去重键取 notice.questionId（RESOLVED 阶段 request 为 null，运行时侧显式带 id），
+        // 同一 run 连环提问时每问各有一键，不会互相吞并。
+        if (!handledDispatchQuestionNotices.add("${notice.dispatchId}:${notice.questionId}:${notice.phase}")) return
+        scope.launch(Dispatchers.Main.immediate) {
+            markDispatchManaged(notice.conversationId)
+            when (notice.phase) {
+                io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.QuestionNotice.Phase.ASKED -> {
+                    // 防御性物化：子会话行不在内存时补建，抽屉标记才有落点（与结算通知同路径）。
+                    materializeDispatchConversation(notice.conversationId, notice.conversationTitle)
+                    conversationWaitingQuestionIds = conversationWaitingQuestionIds + notice.conversationId
+                    notice.request?.let { request ->
+                        updateDispatchCardWaitingQuestion(
+                            dispatchId = notice.dispatchId,
+                            waiting = DispatchWaitingQuestionUi(
+                                questionTitle = request.title,
+                                questionText = request.question,
+                            ),
+                        )
+                    }
+                }
+                io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.QuestionNotice.Phase.RESOLVED -> {
+                    conversationWaitingQuestionIds = conversationWaitingQuestionIds - notice.conversationId
+                    updateDispatchCardWaitingQuestion(dispatchId = notice.dispatchId, waiting = null)
+                }
+            }
+            refreshConversationSummaries()
+        }
+    }
+
+    /**
+     * 写/清派发卡的「等待回答」快照：只动 [ToolActivityMessageUi.waitingQuestion]，
+     * 不碰状态与正文（Running 态的终态更新仍由结算回报负责）。仅内存投影，不落库。
+     * 卡不存在/已终态时跳过；写入与清除都以等值比较幂等。
+     */
+    private fun updateDispatchCardWaitingQuestion(
+        dispatchId: String,
+        waiting: DispatchWaitingQuestionUi?,
+    ) {
+        val consoleId = dispatchConsoleId() ?: return
+        val state = conversationState(consoleId) ?: return
+        if (!state.conversationContentLoaded) return
+        val index = dispatchCardIndex(state.messages, dispatchId)
+        if (index < 0) return
+        val card = state.messages[index] as ToolActivityMessageUi
+        if (card.waitingQuestion == waiting) return
+        if (waiting != null && card.status != ToolActivityStatusUi.Running) return
+        updateConversation(
+            consoleId,
+            state.copy(
+                messages = state.messages.incrementalSnapshot().replacing(
+                    index,
+                    card.copy(waitingQuestion = waiting),
+                ),
+            ),
+        )
     }
 
     /**
@@ -1021,6 +1104,8 @@ internal class AgentAppState(
                     resultSummary = report.takeIf { it.isNotBlank() } ?: card.resultSummary,
                     resultDetail = io.github.mangi.eta.agent.dispatch.AgentDispatchReport.encode(meta),
                     detailsWithheld = false,
+                    // 终态覆盖一切在途等待：提问中被打断的 run 由这里收尾。
+                    waitingQuestion = null,
                 ),
             )
         } else {
@@ -1118,6 +1203,8 @@ internal class AgentAppState(
                         status = if (ok) ToolActivityStatusUi.Success else ToolActivityStatusUi.Failed,
                         resultSummary = report.takeIf { it.isNotBlank() } ?: card.resultSummary,
                         detailsWithheld = false,
+                        // outbox 回补也是终态路径：同样清掉在途等待快照。
+                        waitingQuestion = null,
                     ),
                 ),
             ),
@@ -8511,6 +8598,7 @@ internal class AgentAppState(
                 // 暂停不算回复中：暂停后运行已挂起，抽屉行尾不应继续转 loading。
                 isActiveRun = state.isStreaming && !state.isPaused,
                 hasCompletionMarker = id in conversationCompletionMarkers,
+                isWaitingQuestion = id in conversationWaitingQuestionIds,
                 isDispatchManaged = id in conversationDispatchMarks,
                 isDispatchConsole = id == consoleId,
                 folderId = conversationFolderIds[id],
@@ -8523,7 +8611,12 @@ internal class AgentAppState(
                 conversationSummaryCache.current(id, environment)?.let { summary ->
                     // 流式增量只改预览，预览/时间标签沿用缓存；运行态必须实时反映，
                     // 否则新开的会话一开始回复时缓存里的 isActiveRun 仍是 false，抽屉永远不显示 loading。
-                    summary.copy(isActiveRun = key.isActiveRun, isDispatchConsole = key.isDispatchConsole)
+                    // 等待提问同理：提问/解答都在流式期间发生，随 key 实时覆盖。
+                    summary.copy(
+                        isActiveRun = key.isActiveRun,
+                        isWaitingQuestion = key.isWaitingQuestion,
+                        isDispatchConsole = key.isDispatchConsole,
+                    )
                 }
             } else {
                 null
@@ -8584,6 +8677,7 @@ internal class AgentAppState(
                     isPinned = id in conversationPinned,
                     isActiveRun = state.isStreaming && !state.isPaused,
                     hasCompletionMarker = id in conversationCompletionMarkers,
+                    isWaitingQuestion = id in conversationWaitingQuestionIds,
                     isDispatchConsole = id == consoleId,
                     folderId = conversationFolderIds[id],
                     isToday = ConversationTimeLabels.isToday(
@@ -9811,6 +9905,7 @@ internal data class ConversationSummaryKey(
     val isPinned: Boolean,
     val isActiveRun: Boolean,
     val hasCompletionMarker: Boolean,
+    val isWaitingQuestion: Boolean = false,
     val isDispatchManaged: Boolean = false,
     val isDispatchConsole: Boolean = false,
     val folderId: String?,

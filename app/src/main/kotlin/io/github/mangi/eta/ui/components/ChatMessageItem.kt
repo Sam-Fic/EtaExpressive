@@ -3731,6 +3731,11 @@ private fun ToolActivityInline(
     } else {
         null
     }
+    // 派发卡等待提问：子会话 ask_user 同步来的只读快照（仅 Running 态有值，见模型层 KDoc）。
+    val waitingQuestion = dispatchMeta?.let { message.waitingQuestion }
+    val waitingSubtitle = waitingQuestion?.let {
+        stringResource(R.string.dispatch_question_waiting, it.questionTitle)
+    }
     // 展开区至少要有一样真东西可看：命令、参数、结果、工具读到的图片，或浏览器入口。
     // 全都为空的行保持不可展开（箭头一并隐藏），不做「点开只有一句话」的空交互。
     // 派发卡的身份信封（resultDetail）不算「可看内容」，只有能跳转时才可展开。
@@ -3741,6 +3746,7 @@ private fun ToolActivityInline(
         message.mediaPreviews.isNotEmpty() ||
         message.detailsWithheld ||
         showBrowserShortcut ||
+        waitingQuestion != null ||
         dispatchMeta?.conversationId?.isNotBlank() == true
     val browserSubtitle = browserSnapshot?.let { snapshot ->
         when {
@@ -3832,6 +3838,22 @@ private fun ToolActivityInline(
                             // 派发卡只负责「派发记录」定位：子会话身份、状态与跳转。
                             // 完整汇报正文（最终答复 / 失败原因）由紧随其后的「派发回报」
                             // 回执卡独占展示，这里再画一遍就等于同一条内容显示两次。
+                            if (waitingQuestion != null) {
+                                // 子会话正在等的问题：只读展示；作答入口在子会话自己的问题卡
+                                // （下方「打开会话」跳转），调度台不提供第二张表单，避免
+                                // 两处草稿/两处提交的同步问题。正文截断到 2000 字防撑爆展开区。
+                                ToolDetailBlock(
+                                    text = buildString {
+                                        if (waitingQuestion.questionTitle.isNotBlank()) {
+                                            append(waitingQuestion.questionTitle)
+                                            append('\n')
+                                        }
+                                        append(waitingQuestion.questionText.take(2_000))
+                                    },
+                                    copyLabel = stringResource(R.string.tool_detail_copy_result),
+                                    label = stringResource(R.string.dispatch_question_waiting_label),
+                                )
+                            }
                             if (dispatchMeta.conversationId.isNotBlank()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -3936,10 +3958,10 @@ private fun ToolActivityInline(
         // 行尾状态与展开箭头固定不被挤掉。
         titleMaxLines = 1,
         modifier = modifier.let { completedContentDrawLayer(it, toolRowSettled) },
-        // 副标题优先级：失败原因 > 浏览器实时状态 > 图片张数；
+        // 副标题优先级：等待提问 > 失败原因 > 浏览器实时状态 > 图片张数；
         // 派发卡不再复述汇报正文（正文只落在「派发回报」回执卡上），
         // 失败原因用官方 error 角色着色。
-        supporting = failureSubtitle ?: browserSubtitle ?: imageCountLabel,
+        supporting = waitingSubtitle ?: failureSubtitle ?: browserSubtitle ?: imageCountLabel,
         supportingColor = failureSubtitle?.let { MaterialTheme.colorScheme.error },
         trailingStatus = { ToolStatusIndicator(message.status) },
         expanded = isExpanded,

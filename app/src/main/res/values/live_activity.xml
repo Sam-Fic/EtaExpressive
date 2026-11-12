@@ -13,6 +13,7 @@
     <string name="live_completion_done">Task completed</string>
     <string name="live_completion_failed">Task failed</string>
     <string name="live_completion_stopped">Task stopped</string>
+    <string name="live_question_waiting_title">A dispatched subtask is waiting for your answer</string>
     <string name="live_pause">Pause</string>
     <string name="live_resume">Resume</string>
 </resources>

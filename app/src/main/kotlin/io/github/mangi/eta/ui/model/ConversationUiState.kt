@@ -45,6 +45,8 @@ data class ConversationSummaryUi(
     val isPinned: Boolean = false,
     val isActiveRun: Boolean = false,
     val hasCompletionMarker: Boolean = false,
+    /** 派发子会话正在等待用户回答提问（ask_user）：抽屉行尾显示等待标记，回答/终态即清。 */
+    val isWaitingQuestion: Boolean = false,
     /** 该会话由调度台所建或接续使用中；抽屉行前显示派生标记。 */
     val isDispatchManaged: Boolean = false,
     /** 调度台本体：侧栏中的系统级条目，不可删除、置顶强制成立。 */
