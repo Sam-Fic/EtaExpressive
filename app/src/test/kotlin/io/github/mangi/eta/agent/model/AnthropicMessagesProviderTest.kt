@@ -356,8 +356,12 @@ class AnthropicMessagesProviderTest {
             second.getJSONObject("metadata").getString("user_id"))
         assertEquals(first.toString(), second.toString())
         assertTrue(!bodies[0].contains("conv-restored"))
-        assertEquals("1h", first.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
-            .getJSONObject(0).getJSONObject("cache_control").getString("ttl"))
+        // 默认 5m 档不再写 ttl（活跃会话命中即刷新，写入按 1.25x 计价比 1h 的 2x 便宜一半）；
+        // 本测试只关心断点在跨运行时的新请求上稳定复现。
+        val finalControl = first.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
+            .getJSONObject(0).getJSONObject("cache_control")
+        assertEquals("ephemeral", finalControl.getString("type"))
+        assertFalse(finalControl.has("ttl"))
     }
 
     @Test

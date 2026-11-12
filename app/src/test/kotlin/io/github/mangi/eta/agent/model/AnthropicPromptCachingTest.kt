@@ -216,15 +216,27 @@ class AnthropicPromptCachingTest {
         assertEquals(2, markerCount(body))
     }
 
-    @Test fun assistantAndThinkingOrEmptyFinalBlocksAreNotMarked() {
-        val body = JSONObject().put("messages", JSONArray().put(JSONObject().put("role", "user")
+    @Test fun thinkingOrEmptyFinalBlocksAreNeverMarkedButAssistantPrefillIsMarked() {
+        // thinking/空文本块本身永远不打 cache_control：从后往前找不到可缓存块时一个断点都不加。
+        val thinkingOnly = JSONObject().put("messages", JSONArray().put(JSONObject().put("role", "user")
             .put("content", JSONArray().put(JSONObject().put("type", "thinking").put("thinking", "private")))))
-        AnthropicPromptCaching.applyDefaults(body)
-        assertEquals(0, markerCount(body))
-        val assistant = build(JSONArray().put(msg("user", "hello")).put(msg("assistant", "prefill")))
-        assertEquals(0, markerCount(assistant))
+        AnthropicPromptCaching.applyDefaults(thinkingOnly)
+        assertEquals(0, markerCount(thinkingOnly))
         val empty = build(JSONArray().put(msg("user", "")))
         assertEquals(0, markerCount(empty))
+        // 末位断点不区分角色：一轮通常以 assistant 结尾，prefill 文本也要在缓存链上。
+        val assistant = build(JSONArray().put(msg("user", "hello")).put(msg("assistant", "prefill")))
+        val prefill = assistant.getJSONArray("messages").getJSONObject(1).getJSONArray("content")
+        assertEquals("ephemeral", control(prefill.getJSONObject(0)).getString("type"))
+        // thinking 收尾时不能直接放弃：回溯到最近的可缓存块（text）打标，thinking 不吃标记。
+        val trailingThinking = JSONObject().put("messages", JSONArray().put(JSONObject().put("role", "assistant")
+            .put("content", JSONArray()
+                .put(JSONObject().put("type", "text").put("text", "answer"))
+                .put(JSONObject().put("type", "thinking").put("thinking", "private")))))
+        AnthropicPromptCaching.applyDefaults(trailingThinking)
+        val blocks = trailingThinking.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
+        assertEquals("ephemeral", control(blocks.getJSONObject(0)).getString("type"))
+        assertFalse(blocks.getJSONObject(1).has("cache_control"))
     }
 
     @Test fun applyingDefaultsTwiceIsIdempotent() {
