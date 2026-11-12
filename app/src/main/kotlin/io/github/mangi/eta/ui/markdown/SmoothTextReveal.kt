@@ -396,7 +396,11 @@ internal class SmoothTextRevealNode(
 
         // 有字素在淡入窗内时，整段不透明前缀只画到窗口起点，
         // 窗内的字素逐个按出现时刻给出不透明度与上浮。
-        val fadeLive = snapshot.liveFade
+        // 长块不参与逐字淡入：淡入窗内每个字素都要「裁剪 + 重绘整块内容」一次，
+        // 上千字素的块单帧就能压住主线程数秒（实测 22k 消息会话里触发 5s 输入 ANR，
+        // 主线程栈停在 drawFadingGlyphs -> clipPath -> drawContent 的循环里）。
+        // 超过预算直接整块绘制：视觉上只是少了逐字淡入，不会丢内容。
+        val fadeLive = snapshot.liveFade && targetCount <= MAX_FADE_GLYPHS
         val fullCount = if (fadeLive) {
             snapshot.fadeGlyphIndex.coerceIn(0, targetCount)
         } else {
@@ -497,7 +501,16 @@ internal class SmoothTextRevealNode(
             )
             try {
                 translate(top = rise) {
-                    paths.forEach { path -> clipPath(path) { contentScope.drawContent() } }
+                    // 同一不透明度档位的字形裁剪区互不重叠，合并成一条路径后再裁剪仍是
+                    // 它们的并集（NonZero 填充不会抵消），但 drawContent 从「每个字素一次」
+                    // 降到「每档一次」，这是本次卡顿的直接来源。
+                    if (paths.size == 1) {
+                        clipPath(paths[0]) { contentScope.drawContent() }
+                    } else {
+                        val union = Path()
+                        paths.forEach { path -> union.addPath(path) }
+                        clipPath(union) { contentScope.drawContent() }
+                    }
                 }
             } finally {
                 drawContext.canvas.restore()
@@ -713,5 +726,14 @@ internal fun updateGraphemeBoundaries(
 
 /** 字素刚出现时相对最终位置的下沉比例（按行高衡量）。 */
 private const val FADE_RISE_LINE_FRACTION = 0.12f
+
+/**
+ * 逐字淡入的字素预算。
+ *
+ * 淡入窗内每个字素都要单独裁剪并重绘整块内容，代价与字素数线性相关。长回答在
+ * 数万条消息的会话里会直接把主线程压到超过 5 秒（输入事件 ANR）。超过预算的块
+ * 退化为整块绘制，只牺牲逐字淡入的观感。
+ */
+private const val MAX_FADE_GLYPHS = 400
 /** 低于这个不透明度的字素不再单独建层，直接跳过。 */
 private const val MIN_FADE_ALPHA = 0.001f
