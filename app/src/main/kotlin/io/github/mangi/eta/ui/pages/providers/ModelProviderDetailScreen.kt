@@ -95,6 +95,8 @@ internal fun ModelProviderDetailScreen(
     onBack: () -> Unit,
     currentModelId: String? = null,
     onSelectCurrentModel: ((String) -> Unit)? = null,
+    // 「模型」tab 的编辑 / 新建模型入口：整屏路由 push（AppRoute.ModelProviderModelEdit）。
+    onEditModel: ((String, Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -337,6 +339,7 @@ internal fun ModelProviderDetailScreen(
                             contentSidePadding = sidePadding,
                             currentModelId = currentModelId,
                             onSelectCurrent = onSelectCurrentModel,
+                            onEditModel = onEditModel,
                         )
                     }
                 }

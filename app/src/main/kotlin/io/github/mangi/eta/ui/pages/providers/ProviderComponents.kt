@@ -41,6 +41,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.components.providerBrandLogoRes as sharedProviderBrandLogoRes
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -180,7 +181,8 @@ internal fun ProviderIconAction(
     }
 }
 
-/** 主操作按钮：用官方 [Button]（不覆盖形状与配色）。 */
+/** 主操作按钮：官方 [Button]，传官方 `shapes`（按压 morph，AGENTS §2.5）。 */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ProviderPrimaryAction(
     text: String,
@@ -188,12 +190,18 @@ internal fun ProviderPrimaryAction(
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    Button(onClick = onClick, enabled = enabled, modifier = modifier) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shapes = M3ButtonDefaults.shapes(),
+    ) {
         M3Text(text = text)
     }
 }
 
-/** 破坏性操作按钮：用官方 [Button] + 官方 error 角色色。 */
+/** 破坏性操作按钮：官方 [Button] + 官方 error 角色色，`shapes` 同主操作（AGENTS §2.5）。 */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun ProviderDestructiveAction(
     text: String,
@@ -209,6 +217,7 @@ internal fun ProviderDestructiveAction(
             containerColor = MaterialTheme.colorScheme.error,
             contentColor = MaterialTheme.colorScheme.onError,
         ),
+        shapes = M3ButtonDefaults.shapes(),
     ) {
         M3Text(text = text)
     }

@@ -143,6 +143,10 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data class McpServerDetail(val serverId: String) : AppRoute
 
+    /** MCP 添加服务器整屏子页（表单 + 连接测试），走 NavDisplay 路由转场（RULES §3.3）。 */
+    @Serializable
+    data object McpServerAdd : AppRoute
+
     @Serializable
     data class ModelProviderDetail(val providerId: String) : AppRoute
 
@@ -153,6 +157,19 @@ sealed interface AppRoute : NavKey {
     data class ModelProviderNew(
         val providerType: NewProviderType,
         val authMode: String = "api_key",
+    ) : AppRoute
+
+    /**
+     * Provider 模型编辑页（Provider 详情「模型」tab 的编辑 / 添加自定义模型入口）。
+     *
+     * [modelId] 是模型的仓库行标识（Model.id），区别于 API 模型名（Model.modelId）；
+     * 新建自定义模型时 [isNew] 为 true、[modelId] 传空串，页面自建占位模型。
+     */
+    @Serializable
+    data class ModelProviderModelEdit(
+        val providerId: String,
+        val modelId: String,
+        val isNew: Boolean,
     ) : AppRoute
 
     @Serializable
@@ -227,6 +244,13 @@ sealed interface AppRoute : NavKey {
      */
     @Serializable
     data object ToolRecipes : AppRoute
+
+    /**
+     * 配方编辑整屏子页：[recipeName] 是配方名（身份键 = 文件名 + 模型侧工具名）。
+     * 走 NavDisplay 路由转场（RULES §3.3），改名落盘由页面读快照后走 rename。
+     */
+    @Serializable
+    data class ToolRecipeEdit(val recipeName: String) : AppRoute
 
     /** 远程智能体设置页：局域网 agent 服务器的增删改与连接状态。 */
     @Serializable

@@ -17,34 +17,36 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Deselect
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,8 +60,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -69,31 +69,29 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.Model
-import io.github.mangi.eta.data.model.VisionChatModels
-import io.github.mangi.eta.data.model.ModelReasoningCapabilities
 import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.data.model.ProviderAuthModes
-import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.model.ProviderSourceTypes
 import io.github.mangi.eta.data.provider.ReasoningCapabilityResolver
 import io.github.mangi.eta.data.repository.ModelRepository
 import io.github.mangi.eta.data.repository.RemoteModelFetcher
 import io.github.mangi.eta.data.model.SpeechSynthesisModels
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
-import io.github.mangi.eta.ui.adaptive.EtaCard
+import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
+import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
+import io.github.mangi.eta.ui.adaptive.EtaIconButton
+import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
-import io.github.mangi.eta.ui.adaptive.EtaPageSurface
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
-import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSectionTitle
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
-import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.components.ListEmptyState
@@ -103,28 +101,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 private val modelSearchSeparators = Regex("""[^\p{L}\p{N}]+""")
-private val allReasoningEffortTiers = listOf(
-    ReasoningEffort.MINIMAL,
-    ReasoningEffort.LOW,
-    ReasoningEffort.MEDIUM,
-    ReasoningEffort.HIGH,
-    ReasoningEffort.XHIGH,
-    ReasoningEffort.MAX,
-)
-
-internal fun contextWindowInputError(
-    value: String,
-    errorMessage: String = "Context window must be a positive integer",
-): String? {
-    val normalized = value.trim()
-    if (normalized.isEmpty()) return null
-    return if (normalized.toIntOrNull()?.let { it > 0 } == true) {
-        null
-    } else {
-        errorMessage
-    }
-}
-
 internal fun filterProviderModels(models: List<Model>, query: String): List<Model> {
     val queryTokens = query.lowercase().split(modelSearchSeparators).filter(String::isNotBlank)
     return models
@@ -162,17 +138,17 @@ internal fun ProviderModelsTab(
     contentSidePadding: Dp,
     currentModelId: String? = null,
     onSelectCurrent: ((String) -> Unit)? = null,
+    // 编辑 / 新建模型改走整屏路由（AppRoute.ModelProviderModelEdit，RULES §3.3），
+    // 由宿主接线 pushRoute；缺省 null 时（理论上门面之外无此用法）入口静默不响应。
+    onEditModel: ((String, Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val storedModelId by RuntimeConfigRepository.selectedModelIdFlow().collectAsState(initial = null)
     val selectedModelId = currentModelId?.takeIf { it.isNotBlank() } ?: storedModelId
     var isFetching by remember { mutableStateOf(false) }
     var isMutatingModel by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var editingModel by remember { mutableStateOf<Model?>(null) }
-    var isCreatingModel by remember { mutableStateOf(false) }
-    var editorError by remember { mutableStateOf<String?>(null) }
-    var modelPendingDelete by remember { mutableStateOf<Model?>(null) }
     var selectionMode by remember(provider.id) { mutableStateOf(false) }
     var selectedModelIds by remember(provider.id) { mutableStateOf(setOf<String>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
@@ -182,6 +158,9 @@ internal fun ProviderModelsTab(
     val filteredModels = remember(provider.models, modelSearchQuery) {
         filterProviderModels(provider.models, modelSearchQuery)
     }
+    // 「全选/全不选」以当前搜索过滤后的列表为全集（沿用原全选按钮的语义）。
+    val allModelsSelected = filteredModels.isNotEmpty() &&
+        selectedModelIds.containsAll(filteredModels.map { it.id })
 
     val selectionBackState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
@@ -307,13 +286,7 @@ internal fun ProviderModelsTab(
                                 Icon(imageVector = Icons.Rounded.Add, contentDescription = null)
                             },
                             onClick = {
-                                editorError = null
-                                isCreatingModel = true
-                                editingModel = Model(
-                                    id = "",
-                                    modelId = "",
-                                    displayName = context.getString(R.string.page_custom_model_25be0f),
-                                )
+                                onEditModel?.invoke("", true)
                             },
                         )
                     }
@@ -376,34 +349,44 @@ internal fun ProviderModelsTab(
                 }
             } else {
                 item(key = "models_title", contentType = "section_title") {
-                    val view = LocalView.current
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // 多选态把「已选 n 项」并入标题（居中点号隔开），与自然语言搜索文件页
+                        // 的「找到 X 项」计数行同款。
                         Box(modifier = Modifier.weight(1f)) {
-                            EtaSectionTitle(text = modelListTitle)
-                        }
-                        if (selectionMode) {
-                            val onSelectAll = {
-                                TouchHaptics.click(view)
-                                selectedModelIds = if (
-                                    filteredModels.isNotEmpty() &&
-                                    selectedModelIds.containsAll(filteredModels.map { it.id })
-                                ) {
-                                    emptySet()
+                            EtaSectionTitle(
+                                text = if (selectionMode) {
+                                    modelListTitle + " · " +
+                                        stringResource(R.string.media_selected_count, selectedModelIds.size)
                                 } else {
-                                    filteredModels.mapTo(mutableSetOf()) { it.id }
-                                }
-                            }
-                            // M3：官方 TextButton。
-                            TextButton(
-                                onClick = onSelectAll,
-                                enabled = !isFetching && !isMutatingModel,
-                            ) {
-                                MaterialText(text = stringResource(R.string.page_select_all_3e44b2))
-                            }
+                                    modelListTitle
+                                },
+                            )
                         }
+                        // 多选入口（纯图标）：多选态原位变「取消」，退出并清空勾选——取消不落
+                        // 底栏（同搜索页计数行的入口原位切换）；长按模型行同样可进入多选。
+                        // M3：官方 EtaIconButton（`Standard` 档裸图标，容器/图标尺寸取官方
+                        // IconButtonDefaults.smallContainerSize / smallIconSize 令牌），自带长按提示。
+                        EtaIconButton(
+                            icon = if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist,
+                            contentDescription = stringResource(
+                                if (selectionMode) R.string.action_cancel else R.string.media_action_multiselect,
+                            ),
+                            onClick = {
+                                TouchHaptics.click(view)
+                                if (selectionMode) {
+                                    selectionMode = false
+                                    selectedModelIds = emptySet()
+                                } else {
+                                    selectionMode = true
+                                }
+                            },
+                            enabled = !isFetching && !isMutatingModel,
+                            size = EtaIconSize.S,
+                            style = EtaButtonStyle.Standard,
+                        )
                     }
                 }
                 itemsIndexed(
@@ -435,9 +418,7 @@ internal fun ProviderModelsTab(
                                 selectedModelIds = setOf(model.id)
                             },
                             onEdit = {
-                                editorError = null
-                                isCreatingModel = false
-                                editingModel = model
+                                onEditModel?.invoke(model.id, false)
                             },
                             onSetCurrent = {
                                 onSelectCurrent?.invoke(model.id)
@@ -477,101 +458,21 @@ internal fun ProviderModelsTab(
         ) {
             ModelSelectionBar(
                 selectedCount = selectedModelIds.size,
+                allSelected = allModelsSelected,
                 enabled = !isFetching && !isMutatingModel,
-                onDelete = { showBatchDeleteDialog = true },
-                onExit = {
-                    selectionMode = false
-                    selectedModelIds = emptySet()
+                onSelectAll = {
+                    TouchHaptics.click(view)
+                    selectedModelIds = if (allModelsSelected) {
+                        emptySet()
+                    } else {
+                        filteredModels.mapTo(mutableSetOf()) { it.id }
+                    }
+                },
+                onDelete = {
+                    TouchHaptics.click(view)
+                    showBatchDeleteDialog = true
                 },
             )
-        }
-    }
-
-    editingModel?.let { model ->
-        ModelEditPage(
-            model = model,
-            isNew = isCreatingModel,
-            isSaving = isMutatingModel,
-            error = editorError,
-            onDismiss = {
-                if (!isMutatingModel) editingModel = null
-            },
-            onSubmit = { updated ->
-                if (isMutatingModel) return@ModelEditPage
-                scope.launch {
-                    isMutatingModel = true
-                    editorError = null
-                    try {
-                        val saved = ModelRepository.saveModel(provider.id, updated)
-                        RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
-                        editingModel = null
-                        message = context.getString(R.string.provider_model_saved, saved.displayName)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (throwable: Throwable) {
-                        editorError = throwable.message ?: context.getString(R.string.page_save_failed_40525a)
-                    } finally {
-                        isMutatingModel = false
-                    }
-                }
-            },
-            onDelete = if (isCreatingModel) null else {
-                {
-                    modelPendingDelete = model
-                    editingModel = null
-                }
-            },
-        )
-    }
-
-    modelPendingDelete?.let { model ->
-        val confirmLabel = if (isMutatingModel) {
-            context.getString(R.string.page_deleting_6f941d)
-        } else {
-            context.getString(R.string.ui_delete_3755f5)
-        }
-        val onConfirmDelete: () -> Unit = {
-            scope.launch {
-                isMutatingModel = true
-                try {
-                    ModelRepository.deleteModel(provider.id, model.id)
-                    RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
-                    message = context.getString(R.string.provider_model_deleted, model.displayName)
-                    modelPendingDelete = null
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (throwable: Throwable) {
-                    message = context.getString(
-                        R.string.provider_error,
-                        throwable.message ?: context.getString(R.string.provider_delete_failed),
-                    )
-                    modelPendingDelete = null
-                } finally {
-                    isMutatingModel = false
-                }
-            }
-        }
-        val dialogTitle = stringResource(R.string.ui_delete_model_cf24da)
-        val dialogSummary = stringResource(R.string.provider_model_delete_summary, model.displayName)
-        val onDismissDelete = { if (!isMutatingModel) modelPendingDelete = null }
-        val onCancelDelete = { modelPendingDelete = null }
-        // 自适应弹窗：M3 → 官方 AlertDialog + TextButton。
-        EtaDialog(
-            show = true,
-            title = dialogTitle,
-            summary = dialogSummary,
-            onDismissRequest = onDismissDelete,
-            actions = {
-                EtaDialogActions(
-                    confirmText = confirmLabel,
-                    cancelEnabled = !isMutatingModel,
-                    confirmEnabled = !isMutatingModel,
-                    destructive = true,
-                    onCancel = onCancelDelete,
-                    onConfirm = onConfirmDelete,
-                )
-            },
-        ) {
         }
     }
 
@@ -693,40 +594,81 @@ private fun ModelListGroupItem(
     }
 }
 
-/** 多选模式底部悬浮操作栏：退出在左，已选数量其次，全选与删除在右；删除沿用统一破坏性配色。 */
+/**
+ * 多选批量操作栏：官方 M3E [HorizontalFloatingToolbar]（纯图标药丸），底部居中悬浮，
+ * 与自然语言搜索文件页（MediaSearchScreen.MediaSelectionBar）同款装配。
+ * 动作序：全选（全不选）→ 删除（error 色标破坏性，执行前另有确认弹窗）；「取消」不落
+ * 底栏，由标题行右侧多选入口原位切换（Checklist→Close）承载，已选数量并入标题行文案。
+ *
+ * 组件结论（随同仓 MediaSearchScreen 同版本依赖的既有调用核证，非凭记忆）：
+ * [HorizontalFloatingToolbar] 为 ExperimentalMaterial3ExpressiveApi；`leadingContent = {}`
+ * 显式传空以归零官方 minimumInteractiveBalancedPadding 的高度补偿（本栏布局全显式，
+ * 官方参数语义非 hack）；端盖同心取 [EtaFloatingToolbarConcentricPadding]`(smallContainerSize().width)`；
+ * 全选/全不选用 EtaIconButton（`Standard` 档 + `EtaIconSize.S` = 官方 smallContainerSize /
+ * smallIconSize 令牌）；删除用官方裸 [IconButton]（同尺寸令牌 + `IconButtonDefaults.shapes()`
+ * 按压 morph），图标 error 色——EtaIconButton 无 tint 参数，裸按钮才好只用官方 token
+ * 表达破坏性配色。
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ModelSelectionBar(
     selectedCount: Int,
+    allSelected: Boolean,
     enabled: Boolean,
+    onSelectAll: () -> Unit,
     onDelete: () -> Unit,
-    onExit: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    EtaCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp)
-            .padding(bottom = 12.dp),
-    ) {
-        Row(
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        HorizontalFloatingToolbar(
+            expanded = true,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 12.dp),
+            // 显式空 leadingContent：官方 minimumInteractiveBalancedPadding 只在两侧都没有
+            // leading/trailing 内容时才生效，会按内容里的 MinimumInteractive 对齐线补偿
+            // 内边距、把药丸撑高；本栏布局完全显式（固定间距 + 同心端盖），传空让补偿归零。
+            leadingContent = {},
+            // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
+            contentPadding = EtaFloatingToolbarConcentricPadding(
+                IconButtonDefaults.smallContainerSize().width,
+            ),
         ) {
-            ProviderDestructiveAction(
-                text = stringResource(R.string.ui_delete_3755f5),
-                onClick = onDelete,
-                enabled = selectedCount > 0 && enabled,
-                modifier = Modifier.weight(1f),
-            )
-            ProviderPrimaryAction(
-                text = stringResource(R.string.action_cancel),
-                onClick = onExit,
-                enabled = enabled,
-                modifier = Modifier.weight(1f),
-            )
+            // 动作组：固定 8dp 间距的一行图标按钮（EtaIconButton 的 `Standard` 档裸图标）。
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EtaIconButton(
+                    icon = if (allSelected) Icons.Rounded.Deselect else Icons.Rounded.SelectAll,
+                    contentDescription = stringResource(
+                        if (allSelected) R.string.media_action_deselect_all else R.string.media_action_select_all,
+                    ),
+                    onClick = onSelectAll,
+                    enabled = enabled,
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
+                )
+                // 删除是破坏性操作：图标用 error 色区分（官方裸 IconButton，容器/图标尺寸
+                // 与 EtaIconButton 的 `Standard` + S 档一致），执行前另有确认弹窗。
+                val deleteDescription = stringResource(R.string.ui_delete_3755f5)
+                EtaTooltip(text = deleteDescription) {
+                    IconButton(
+                        onClick = onDelete,
+                        enabled = selectedCount > 0 && enabled,
+                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                        shapes = IconButtonDefaults.shapes(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = deleteDescription,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -837,256 +779,6 @@ private fun ModelListItem(
         },
         trailingContent = trailing,
     )
-}
-
-@Composable
-private fun ModelEditPage(
-    model: Model,
-    isNew: Boolean,
-    isSaving: Boolean,
-    error: String?,
-    onDismiss: () -> Unit,
-    onSubmit: (Model) -> Unit,
-    onDelete: (() -> Unit)?,
-) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    var displayName by remember(model.id, isNew) { mutableStateOf(model.displayName) }
-    var modelId by remember(model.id, isNew) { mutableStateOf(model.modelId) }
-    var contextWindowOverrideText by remember(model.id, isNew) {
-        mutableStateOf(model.contextWindowOverride?.toString().orEmpty())
-    }
-    val automaticReasoning = remember(model.id, model.modelId, model.reasoning, model.reasoningCapabilities) {
-        ReasoningCapabilityResolver.automaticCapabilities(model)
-    }
-    val suggestedReasoning = remember(model.id, model.modelId, model.reasoning, model.reasoningCapabilities) {
-        ReasoningCapabilityResolver.suggestedCapabilities(model)
-    }
-    var reasoningOverrideActive by remember(model.id, isNew) {
-        mutableStateOf(
-            model.reasoningOverride != null || model.reasoningCapabilitiesOverride != null
-        )
-    }
-    var reasoningEnabled by remember(model.id, isNew) {
-        mutableStateOf(
-            when {
-                model.reasoningOverride == false -> false
-                model.supportsReasoning -> true
-                else -> automaticReasoning != null
-            }
-        )
-    }
-    val automaticVision = remember(model.id, modelId, model.attachment, model.inputModalities) {
-        modelId.trim() == model.modelId && VisionChatModels.matches(model)
-    }
-    var visionOverrideActive by remember(model.id, isNew) {
-        mutableStateOf(model.visionOverride != null)
-    }
-    var visionEnabled by remember(model.id, isNew) {
-        mutableStateOf(model.supportsVision)
-    }
-    LaunchedEffect(automaticVision, visionOverrideActive) {
-        if (!visionOverrideActive) visionEnabled = automaticVision
-    }
-    val contextError = contextWindowInputError(
-        contextWindowOverrideText,
-        context.getString(R.string.page_the_context_length_must_be_a_positive_integer_06ca7a),
-    )
-
-    fun resetAutomaticReasoning() {
-        reasoningOverrideActive = false
-        reasoningEnabled = automaticReasoning != null
-    }
-
-    fun updated(): Model = model.copy(
-        displayName = displayName.trim(),
-        modelId = modelId.trim(),
-        contextWindowOverride = contextWindowOverrideText.trim()
-            .takeIf(String::isNotEmpty)
-            ?.toInt(),
-        visionOverride = if (visionOverrideActive) visionEnabled else null,
-        attachment = model.attachment.takeIf { modelId.trim() == model.modelId },
-        inputModalities = if (modelId.trim() == model.modelId) model.inputModalities else listOf(Model.TEXT_MODALITY),
-        reasoningOverride = reasoningEnabled.takeIf { reasoningOverrideActive },
-        reasoningCapabilitiesOverride = if (reasoningOverrideActive && reasoningEnabled) {
-            (model.effectiveReasoningCapabilities ?: suggestedReasoning).copy(
-                supportedEfforts = allReasoningEffortTiers,
-                defaultEffort = model.effectiveReasoningCapabilities
-                    ?.defaultEffort
-                    ?.takeIf { it != ReasoningEffort.OFF }
-                    ?: suggestedReasoning.defaultEffort
-                    ?: ReasoningEffort.MEDIUM,
-                defaultEnabled = true,
-                mandatory = false,
-                canDisable = true,
-            )
-        } else {
-            null
-        },
-    )
-
-    val dismissPage = { if (!isSaving) onDismiss() }
-    // 多字段编辑已超出弹窗的决策语义：改为整屏页面，动作固定在底部，正文由 Scaffold 统一滚动。
-    EtaPageSurface(onDismissRequest = dismissPage) {
-        EtaScaffold(
-            title = if (isNew) context.getString(R.string.page_add_model_532a64) else context.getString(R.string.page_edit_model_29e31e),
-            onBack = dismissPage,
-            modifier = Modifier.fillMaxSize().imePadding(),
-            bottomBar = {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                    EtaDialogActions(
-                        modifier = Modifier.navigationBarsPadding().imePadding()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        confirmText = if (isSaving) context.getString(R.string.page_saving_d70d42) else context.getString(R.string.page_save_fadf24),
-                        confirmEnabled = !isSaving &&
-                            displayName.isNotBlank() &&
-                            modelId.isNotBlank() &&
-                            contextError == null,
-                        cancelEnabled = !isSaving,
-                        onCancel = onDismiss,
-                        onConfirm = { onSubmit(updated()) },
-                    )
-                }
-            },
-        ) { padding, scrollConnection, _ ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
-                    .nestedScroll(scrollConnection)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
-            ) {
-                ProviderField(
-                    value = displayName,
-                    onValueChange = { displayName = it },
-                    label = stringResource(R.string.ui_display_name_ed16be),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                ProviderField(
-                    value = modelId,
-                    onValueChange = { modelId = it },
-                    label = stringResource(R.string.provider_model_id),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Ascii,
-                        imeAction = ImeAction.Next,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                ProviderField(
-                    value = contextWindowOverrideText,
-                    onValueChange = { contextWindowOverrideText = it },
-                    label = stringResource(R.string.ui_context_length_tokens_227860),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        imeAction = ImeAction.Done,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                contextError?.let { validationError ->
-                    MaterialText(
-                        text = validationError,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                MaterialText(
-                    text = stringResource(R.string.ui_this_value_is_used_for_session_clipping_and_context__c3f9e7),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
-                EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {
-                    item {
-                    EtaSwitchRow(
-                        checked = reasoningEnabled,
-                        onCheckedChange = { enabled ->
-                            reasoningOverrideActive = true
-                            reasoningEnabled = enabled
-                        },
-                        title = stringResource(R.string.ui_support_thinking_5b9e4c),
-                        summary = if (reasoningOverrideActive) {
-                            context.getString(R.string.page_covered_model_automatic_capabilities_3fa7d4)
-                        } else {
-                            stringResource(
-                                if (automaticReasoning != null) {
-                                    R.string.provider_auto_reasoning_supported
-                                } else {
-                                    R.string.provider_auto_reasoning_unknown
-                                },
-                            )
-                        },
-                        enabled = !isSaving,
-                    )
-                    }
-                    item {
-                    EtaSwitchRow(
-                        checked = visionEnabled,
-                        onCheckedChange = { enabled ->
-                            visionOverrideActive = true
-                            visionEnabled = enabled
-                        },
-                        title = stringResource(R.string.ui_support_vision),
-                        summary = if (visionOverrideActive) {
-                            context.getString(R.string.page_covered_model_automatic_capabilities_3fa7d4)
-                        } else {
-                            stringResource(
-                                if (automaticVision) {
-                                    R.string.provider_auto_vision_supported
-                                } else {
-                                    R.string.provider_auto_vision_unknown
-                                },
-                            )
-                        },
-                        enabled = !isSaving,
-                    )
-                    }
-                }
-                error?.let { message ->
-                    MaterialText(
-                        text = message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                if (reasoningOverrideActive) {
-                    ProviderPrimaryAction(
-                        text = stringResource(R.string.ui_restore_automatic_8d4e1e),
-                        onClick = {
-                            TouchHaptics.click(view)
-                            resetAutomaticReasoning()
-                        },
-                        enabled = !isSaving,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                    )
-                }
-                onDelete?.let { delete ->
-                    ProviderDestructiveAction(
-                        text = stringResource(R.string.ui_delete_model_cf24da),
-                        onClick = {
-                            TouchHaptics.click(view)
-                            delete()
-                        },
-                        enabled = !isSaving,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                    )
-                }
-            }
-        }
-    }
 }
 
 @Composable
