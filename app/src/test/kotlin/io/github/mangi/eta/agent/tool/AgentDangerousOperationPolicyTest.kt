@@ -302,28 +302,19 @@ class AgentDangerousOperationPolicyTest {
 
     // ── 智能审查档（模型裁决 + 失败回退） ──────────────────────────────────────
 
-    @org.junit.After
-    fun clearSmartReviewBridge() {
-        AgentDangerousOperationPolicy.smartReview = null
-    }
-
     @Test fun smartModeAllowsWhenModelAllows() {
-        AgentDangerousOperationPolicy.smartReview = { _, _, _ ->
-            AgentToolReviewVerdict.Allow("consistent with request", "llm", 42)
-        }
         assertNull(
             AgentDangerousOperationPolicy.decision(
                 "terminal", """{"action":"exec","command":"rm -rf build"}""", mode = AgentToolReviewMode.SMART,
+                review = { _, _, _ -> AgentToolReviewVerdict.Allow("consistent with request", "llm", 42) },
             ),
         )
     }
 
     @Test fun smartModeDeniesWithoutAskPath() {
-        AgentDangerousOperationPolicy.smartReview = { _, _, _ ->
-            AgentToolReviewVerdict.Deny("out of scope", "decision", 31)
-        }
         val decision = AgentDangerousOperationPolicy.decision(
             "power_control", """{"action":"reboot"}""", mode = AgentToolReviewMode.SMART,
+            review = { _, _, _ -> AgentToolReviewVerdict.Deny("out of scope", "decision", 31) },
         ) as ToolExecutionDecision.Reject
         assertEquals(AgentDangerousOperationPolicy.SMART_DENY_CODE, decision.code)
         assertTrue(decision.message.contains("未做任何改动"))
@@ -331,41 +322,103 @@ class AgentDangerousOperationPolicyTest {
     }
 
     @Test fun smartModeFallsBackToRuleReviewOnFailure() {
-        // 模型失败/超时/未注入桥：一律回退标准档规则确认，绝不直接放行。
+        // 模型失败/超时/未注入裁决闭包：一律回退标准档规则确认，绝不直接放行。
         listOf(
             null,
             AgentToolReviewVerdict.Fallback("timeout", 6000),
         ).forEach { verdict ->
-            AgentDangerousOperationPolicy.smartReview = { _, _, _ -> verdict }
             val decision = AgentDangerousOperationPolicy.decision(
                 "set_timezone", """{"action":"set","timezone":"UTC"}""", mode = AgentToolReviewMode.SMART,
+                review = { _, _, _ -> verdict },
             )
             assertEquals(
                 AgentDangerousOperationPolicy.CONFIRM_CODE,
                 (decision as ToolExecutionDecision.Reject).code,
             )
         }
-        // 注入桥抛异常也不该打断工具流程（策略内 try/catch）。
-        AgentDangerousOperationPolicy.smartReview = { _, _, _ -> throw IllegalStateException("boom") }
+        // 裁决闭包抛异常也不该打断工具流程（策略内 try/catch）。
         assertTrue(
             AgentDangerousOperationPolicy.decision(
                 "set_timezone", """{"action":"set","timezone":"UTC"}""", mode = AgentToolReviewMode.SMART,
+                review = { _, _, _ -> throw IllegalStateException("boom") },
             ) is ToolExecutionDecision.Reject,
         )
     }
 
     @Test fun smartModeSkipsLowRiskCalls() {
-        // 低风险/纯读不花模型往返：桥根本不该被调用。
+        // 低风险/纯读不花模型往返：裁决闭包根本不该被调用。
         var invoked = false
-        AgentDangerousOperationPolicy.smartReview = { _, _, _ ->
-            invoked = true
-            AgentToolReviewVerdict.Deny("should not be called", "llm", 1)
-        }
         assertNull(
             AgentDangerousOperationPolicy.decision(
                 "read_file", """{"path":"/sdcard/a"}""", mode = AgentToolReviewMode.SMART,
+                review = { _, _, _ ->
+                    invoked = true
+                    AgentToolReviewVerdict.Deny("should not be called", "llm", 1)
+                },
             ),
         )
         assertFalse(invoked)
+    }
+
+    // ── 跨 run / 跨会话隔离（调度台派发 run 与主会话并发） ────────────────────
+
+    @Test fun concurrentRunsHaveIndependentPendingSlots() {
+        val args = """{"action":"reboot"}"""
+        // 两个 run 并发命中同一个危险调用：各自的待确认槽各自记账，不互相覆盖。
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "power_control", args, AgentToolReviewMode.STANDARD, runId = "run-a", conversationId = "conv-a",
+            ) is ToolExecutionDecision.Reject,
+        )
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "power_control", args, AgentToolReviewMode.STANDARD, runId = "run-b", conversationId = "conv-b",
+            ) is ToolExecutionDecision.Reject,
+        )
+        // 用户回答了 run-a 的提问：只登记 run-a 的授权（进程级单槽实现会把授权错登到 run-b）。
+        assertEquals(
+            AgentConfirmationScope.ONCE,
+            AgentDangerousConfirmationGate.onUserAnsweredScoped(
+                "option", AgentDangerousConfirmationGate.CONFIRM_OPTION_ID, runId = "run-a",
+            ),
+        )
+        // run-a 重发放行；run-b 没被代答，重发仍被拒。
+        assertNull(
+            AgentDangerousOperationPolicy.decision(
+                "power_control", args, AgentToolReviewMode.STANDARD, runId = "run-a", conversationId = "conv-a",
+            ),
+        )
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "power_control", args, AgentToolReviewMode.STANDARD, runId = "run-b", conversationId = "conv-b",
+            ) is ToolExecutionDecision.Reject,
+        )
+    }
+
+    @Test fun sessionApprovalDoesNotCrossConversations() {
+        val args = """{"action":"set","timezone":"Asia/Shanghai"}"""
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "set_timezone", args, AgentToolReviewMode.STANDARD, runId = "run-a", conversationId = "conv-a",
+            ) is ToolExecutionDecision.Reject,
+        )
+        assertEquals(
+            AgentConfirmationScope.SESSION,
+            AgentDangerousConfirmationGate.onUserAnsweredScoped(
+                "option", AgentDangerousConfirmationGate.CONFIRM_SESSION_OPTION_ID, runId = "run-a",
+            ),
+        )
+        // 同会话内本会话授权可复用。
+        assertNull(
+            AgentDangerousOperationPolicy.decision(
+                "set_timezone", args, AgentToolReviewMode.STANDARD, runId = "run-a", conversationId = "conv-a",
+            ),
+        )
+        // 另一个会话发同一个调用：不继承授权，仍要确认（授权按会话隔离，防跨会话提权）。
+        assertTrue(
+            AgentDangerousOperationPolicy.decision(
+                "set_timezone", args, AgentToolReviewMode.STANDARD, runId = "run-b", conversationId = "conv-b",
+            ) is ToolExecutionDecision.Reject,
+        )
     }
 }

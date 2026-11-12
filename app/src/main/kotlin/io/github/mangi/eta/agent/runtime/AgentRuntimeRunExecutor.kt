@@ -39,7 +39,9 @@ import io.github.mangi.eta.agent.skill.SkillRuntime
 import io.github.mangi.eta.agent.skill.PublicGitHubSkillSource
 import io.github.mangi.eta.agent.tool.AgentLocalTools
 import io.github.mangi.eta.agent.tool.AgentDangerousOperationPolicy
+import io.github.mangi.eta.agent.tool.AgentRiskAssessment
 import io.github.mangi.eta.agent.tool.AgentToolReviewCoordinator
+import io.github.mangi.eta.agent.tool.AgentToolReviewVerdict
 import io.github.mangi.eta.agent.tool.AssistantToolSwitches
 import io.github.mangi.eta.agent.tool.AgentToolRequirements
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
@@ -267,28 +269,29 @@ internal class AgentRuntimeRunExecutor(
             // 用来把「被决策收窄」与「用户关闭」区分成不同错误来源。
             val decisionPlanRef = java.util.concurrent.atomic.AtomicReference<
                 io.github.mangi.eta.agent.decision.AgentDecisionPlan?>(null)
-            // 智能审查档的模型裁决桥：这里才拿得到 ModelConfig / 控制器 / 会话上下文。
-            // 每次 run 注入一次（构造实参列表里不能写赋值语句），闭包捕获本次 run
-            // 的用户请求与配置；失败由策略回退规则确认。smartReview 是进程级 var，
-            // 多个 run 并发时以最后一次注入为准（结论按调用参数缓存，不影响正确性）。
-            AgentDangerousOperationPolicy.smartReview = { name, arguments, assessment ->
-                val recentRequest = request.history
-                    .asReversed()
-                    .firstOrNull { it.role == "user" && it.content.isNotBlank() }
-                    ?.content
-                    ?.take(1500)
-                    ?: request.prompt.take(1500)
-                AgentToolReviewCoordinator.review(
-                    toolName = name,
-                    argumentsJson = arguments,
-                    riskLevel = assessment.level.name,
-                    riskReasons = assessment.reasons,
-                    conversationContext = recentRequest,
-                    fallbackModelConfig = request.config,
-                    controller = runController,
-                    sessionId = request.effectiveModelSessionId,
-                )
-            }
+            // 智能审查档的模型裁决闭包：捕获本次 run 的用户请求与配置（这里才拿得到
+            // ModelConfig / 控制器 / 会话上下文），随 confirm 闭包逐次传给策略——
+            // 曾挂在进程级 var 上，多 run 并发时以最后一次注入为准，别的 run 会拿错
+            // 裁决上下文。失败由策略回退规则确认，绝不直接放行。
+            val smartReviewForRun: (String, String, AgentRiskAssessment) -> AgentToolReviewVerdict? =
+                { name, arguments, assessment ->
+                    val recentRequest = request.history
+                        .asReversed()
+                        .firstOrNull { it.role == "user" && it.content.isNotBlank() }
+                        ?.content
+                        ?.take(1500)
+                        ?: request.prompt.take(1500)
+                    AgentToolReviewCoordinator.review(
+                        toolName = name,
+                        argumentsJson = arguments,
+                        riskLevel = assessment.level.name,
+                        riskReasons = assessment.reasons,
+                        conversationContext = recentRequest,
+                        fallbackModelConfig = request.config,
+                        controller = runController,
+                        sessionId = request.effectiveModelSessionId,
+                    )
+                }
             val executor = AgentLocalTools(
                 context = appContext, logger = AndroidAgentLogger, browserRunId = request.runId,
                 guiControl = guiRun,
@@ -326,12 +329,26 @@ internal class AgentRuntimeRunExecutor(
                 memoryToolsEnabled = { AgentMemoryRepository.isEnabled(assistant.id) },
                 screenshotExcludedPackages = { entrySurfaceGuard?.consumeScreenshotExcludedPackages().orEmpty() },
                 // 危险操作逐次确认：未确认时拒绝本次调用，用户同意后重发即可通过。
+                // runId/conversationId 进闸门的待确认槽与授权键（按 run 等确认、按会话授权）。
                 confirmDangerousOperation = { toolName, argumentsJson ->
-                    AgentDangerousOperationPolicy.decision(toolName, argumentsJson)
+                    AgentDangerousOperationPolicy.decision(
+                        toolName,
+                        argumentsJson,
+                        runId = request.runId,
+                        conversationId = request.effectiveModelSessionId,
+                        review = smartReviewForRun,
+                    )
                 },
                 // 自建配方的 Root shell 步骤同样要过命令启发式，避免用配方名绕过确认。
                 confirmRecipeDangerousOperation = { toolName, argumentsJson, shellCommands ->
-                    AgentDangerousOperationPolicy.decisionForRecipe(toolName, argumentsJson, shellCommands)
+                    AgentDangerousOperationPolicy.decisionForRecipe(
+                        toolName,
+                        argumentsJson,
+                        shellCommands,
+                        runId = request.runId,
+                        conversationId = request.effectiveModelSessionId,
+                        review = smartReviewForRun,
+                    )
                 },
                 beforeToolExecution = { toolName ->
                     val requiresAccessibility = AgentToolRequirements.requiresAccessibility(toolName)
@@ -561,10 +578,12 @@ internal class AgentRuntimeRunExecutor(
                     }
                     // 危险操作的确认走「模型自己用 ask_user 问」：用户明确同意时登记一次性授权，
                     // 让随后重发的同一个调用能够通过闸门；其它回答不构成同意。
+                    // runId 选定本 run 的待确认槽——并发 run 各问各的确认，不得互相代答。
                     runCatching {
-                        io.github.mangi.eta.agent.tool.AgentDangerousConfirmationGate.onUserAnswered(
+                        io.github.mangi.eta.agent.tool.AgentDangerousConfirmationGate.onUserAnsweredScoped(
                             answeredKind = answer.kind,
                             optionId = answer.optionId,
+                            runId = request.runId,
                         )
                     }
                     AgentModelClient.ToolResult(AgentQuestionCodec.resultJson(question, answer).toString())

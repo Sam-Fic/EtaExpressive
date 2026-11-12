@@ -52,17 +52,6 @@ internal object AgentDangerousOperationPolicy {
     const val READ_ONLY_CODE = "READ_ONLY_REVIEW_MODE"
     const val SMART_DENY_CODE = "SMART_REVIEW_DENIED"
 
-    /**
-     * 智能审查档的模型裁决桥：由 [io.github.mangi.eta.agent.runtime.AgentRuntimeRunExecutor]
-     * 注入（那里才有 ModelConfig / AgentRunController / 会话上下文）。返回 null 表示
-     * 「没拿到模型结论」，策略据此回退标准档规则确认。null 之外的结论无条件生效。
-     */
-    var smartReview: ((
-        toolName: String,
-        argumentsJson: String,
-        assessment: AgentRiskAssessment,
-    ) -> AgentToolReviewVerdict?)? = null
-
     /** 判定一次调用是否危险（兼容旧调用方，语义等价于「需要确认」）。 */
     fun isDangerous(toolName: String, argumentsJson: String): Boolean =
         AgentRiskPolicy.assess(toolName, argumentsJson).requiresConfirmation
@@ -70,13 +59,21 @@ internal object AgentDangerousOperationPolicy {
     /**
      * 按当前审查模式返回拒绝决策；放行时返回 null（交回调用方继续原有的准入检查）。
      * 低风险与纯读类动作在任何档位都不打扰（只读档同样放行低风险）。
+     *
+     * [runId]/[conversationId] 进入确认闸门的槽位与授权键（按 run 等确认、按会话授权）；
+     * [review] 是智能审查档的模型裁决闭包（由调用方按 run 捕获上下文传入——曾用进程级
+     * var 桥注入，多 run 并发时以最后一次注入为准，别的 run 会拿错裁决上下文）。
+     * 返回 null 表示「没拿到模型结论」，策略据此回退标准档规则确认，绝不直接放行。
      */
     fun decision(
         toolName: String,
         argumentsJson: String,
         mode: AgentToolReviewMode = AgentToolReviewMode.from(Prefs.toolReviewMode()),
+        runId: String = "",
+        conversationId: String = "",
+        review: ((toolName: String, argumentsJson: String, assessment: AgentRiskAssessment) -> AgentToolReviewVerdict?)? = null,
     ): ToolExecutionDecision.Reject? =
-        decide(toolName, argumentsJson, AgentRiskPolicy.assess(toolName, argumentsJson), mode)
+        decide(toolName, argumentsJson, AgentRiskPolicy.assess(toolName, argumentsJson), mode, runId, conversationId, review)
 
     /**
      * 配方调用的判定：配方里的 Root shell 步骤也要过一遍命令启发式，
@@ -87,12 +84,18 @@ internal object AgentDangerousOperationPolicy {
         argumentsJson: String,
         shellCommands: List<String>,
         mode: AgentToolReviewMode = AgentToolReviewMode.from(Prefs.toolReviewMode()),
+        runId: String = "",
+        conversationId: String = "",
+        review: ((toolName: String, argumentsJson: String, assessment: AgentRiskAssessment) -> AgentToolReviewVerdict?)? = null,
     ): ToolExecutionDecision.Reject? =
         decide(
             toolName,
             argumentsJson,
             AgentRiskPolicy.assessRecipe(toolName, argumentsJson, shellCommands),
             mode,
+            runId,
+            conversationId,
+            review,
         )
 
     private fun decide(
@@ -100,6 +103,9 @@ internal object AgentDangerousOperationPolicy {
         argumentsJson: String,
         assessment: AgentRiskAssessment,
         mode: AgentToolReviewMode,
+        runId: String,
+        conversationId: String,
+        review: ((toolName: String, argumentsJson: String, assessment: AgentRiskAssessment) -> AgentToolReviewVerdict?)?,
     ): ToolExecutionDecision.Reject? {
         // 只读档：非低风险一律拒绝且不询问——它表达的是「这次只让我查」，不是「多问几次」。
         if (mode == AgentToolReviewMode.READONLY && assessment.level != AgentRiskLevel.LOW) {
@@ -113,10 +119,10 @@ internal object AgentDangerousOperationPolicy {
         if (mode == AgentToolReviewMode.OFF) return null
         if (!assessment.requiresConfirmation) return null
         // 智能审查档：中风险以上（这里正是 requiresConfirmation 的范围）交模型逐次裁决。
-        // 失败/超时/未注入桥都回退到下面的标准档规则确认，绝不直接放行。
+        // 失败/超时/未注入裁决闭包都回退到下面的标准档规则确认，绝不直接放行。
         if (mode == AgentToolReviewMode.SMART) {
             val verdict = try {
-                smartReview?.invoke(toolName, argumentsJson, assessment)
+                review?.invoke(toolName, argumentsJson, assessment)
             } catch (_: Throwable) {
                 null
             }
@@ -130,12 +136,12 @@ internal object AgentDangerousOperationPolicy {
             }
         }
         val signature = AgentDangerousConfirmationGate.signature(toolName, argumentsJson)
-        val granted = AgentDangerousConfirmationGate.consume(signature, assessment.scope)
+        val granted = AgentDangerousConfirmationGate.consume(conversationId, runId, signature, assessment.scope)
         if (granted) {
             AgentDangerousConfirmationGate.pruneExpired()
             return null
         }
-        AgentDangerousConfirmationGate.expectConfirmation(signature, assessment)
+        AgentDangerousConfirmationGate.expectConfirmation(runId, conversationId, signature, assessment)
         AgentDangerousConfirmationGate.pruneExpired()
         return ToolExecutionDecision.Reject(
             code = CONFIRM_CODE,
