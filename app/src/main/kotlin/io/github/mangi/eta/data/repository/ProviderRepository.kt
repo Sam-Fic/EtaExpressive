@@ -27,6 +27,7 @@ import io.github.mangi.eta.data.provider.OfficialModelCatalog
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -51,13 +52,20 @@ internal object ProviderRepository {
         }
     }
 
+    /**
+     * [toDomain] 的映射段必须挂在 flowOn 的上游：Room 内部的 flowOn 只包住查询本身，
+     * 其后的映射按收集方上下文执行——设置页用 `collectAsState` 在主线程收集，
+     * 不加这个 flowOn 的话每个 provider 的 [ProviderSecretCipher.decrypt]（Keystore
+     * binder 往返）会全部落在主线程重组里（真机 trace 实证：入栈转场窗口
+     * ~15 笔同步 keystore2 事务）。
+     */
     fun providersFlow(): Flow<List<ProviderSetting>> =
         dao().providersFlow().map { providers ->
             providers
                 .map { it.toDomain().withSpeechCatalog() }
                 .filterNot { RemovedProviderPolicy.isRemoved(it) }
                 .sortedBy(ProviderSetting::sortOrder)
-        }
+        }.flowOn(Dispatchers.Default)
 
     fun settingsFlow(): Flow<Settings> =
         SettingsDataStore.settingsFlow()
