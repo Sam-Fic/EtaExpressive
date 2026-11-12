@@ -4,17 +4,10 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -29,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -41,21 +33,14 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.mcp.McpServerManager
-import io.github.mangi.eta.agent.mcp.validateMcpEndpoint
 import io.github.mangi.eta.data.model.McpAuthorizationType
-import io.github.mangi.eta.data.model.McpProtocolMode
-import io.github.mangi.eta.data.model.McpServerSetting
 import io.github.mangi.eta.data.model.McpToolDefinition
 import io.github.mangi.eta.data.repository.McpServerRepository
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
-import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
-import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaNoticeText
-import io.github.mangi.eta.ui.adaptive.EtaPageSurface
-import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -75,7 +60,6 @@ import androidx.compose.material3.IconButton as M3IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text as M3Text
 
 
@@ -84,16 +68,7 @@ internal fun McpServersScreen(
     onNavigate: (AppRoute) -> Unit,
     onBack: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val resources = LocalResources.current
-    val scope = rememberCoroutineScope()
     val servers by McpServerRepository.serversFlow().collectAsState(initial = emptyList())
-    var showAdd by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("") }
-    var token by remember { mutableStateOf("") }
-    var working by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
     val view = LocalView.current
     val listState = rememberLazyListState()
     val fabExpanded by rememberFabExpandedState(listState)
@@ -107,7 +82,11 @@ internal fun McpServersScreen(
                 text = stringResource(R.string.mcp_add_server),
                 icon = Icons.Rounded.Add,
                 expanded = fabExpanded,
-                onClick = { TouchHaptics.click(view); showAdd = true },
+                onClick = {
+                    TouchHaptics.click(view)
+                    // 添加服务器是整屏表单子页：走路由（RULES §3.3），进出场交给 NavDisplay。
+                    onNavigate(AppRoute.McpServerAdd)
+                },
             )
         },
     ) {
@@ -147,159 +126,6 @@ internal fun McpServersScreen(
         }
     }
 
-    if (showAdd) {
-        McpAddServerPage(
-            name = name,
-            url = url,
-            token = token,
-            working = working,
-            error = error,
-            onNameChange = { name = it },
-            onUrlChange = { url = it },
-            onTokenChange = { token = it },
-            onDismiss = { if (!working) showAdd = false },
-            onSubmit = {
-                    val normalizedName = name.trim()
-                    val normalizedUrl = url.trim()
-                    error = when {
-                        normalizedName.isBlank() -> resources.getString(R.string.mcp_name_required)
-                        else -> runCatching { validateMcpEndpoint(normalizedUrl) }
-                            .exceptionOrNull()?.message
-                    }
-                    if (error == null) scope.launch {
-                        working = true
-                        val result = withContext(Dispatchers.IO) {
-                            runCatching {
-                                val draft = McpServerSetting(
-                                    id = "",
-                                    name = normalizedName,
-                                    url = normalizedUrl,
-                                    protocolMode = McpProtocolMode.AUTO,
-                                    authorizationType = if (token.isBlank()) {
-                                        McpAuthorizationType.NONE
-                                    } else {
-                                        McpAuthorizationType.BEARER
-                                    },
-                                )
-                                val discovered = McpServerManager.discover(draft, token)
-                                McpServerRepository.add(discovered, token)
-                            }
-                        }
-                        working = false
-                        result.onSuccess {
-                            showAdd = false
-                            name = ""
-                            url = ""
-                            token = ""
-                            error = null
-                            Toast.makeText(
-                                context,
-                                resources.getString(R.string.mcp_server_added, it.tools.size),
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }.onFailure {
-                            error = it.message ?: resources.getString(R.string.mcp_connection_failed)
-                        }
-                    }
-            },
-        )
-    }
-}
-
-@Composable
-private fun McpAddServerPage(
-    name: String,
-    url: String,
-    token: String,
-    working: Boolean,
-    error: String?,
-    onNameChange: (String) -> Unit,
-    onUrlChange: (String) -> Unit,
-    onTokenChange: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onSubmit: () -> Unit,
-) {
-    val dismissPage = { if (!working) onDismiss() }
-    // 添加服务器需要连接测试与错误回显，属于完整表单而非一次决策：整屏承载，动作固定底部。
-    EtaPageSurface(onDismissRequest = dismissPage) {
-        EtaScaffold(
-            title = stringResource(R.string.mcp_add_server),
-            onBack = dismissPage,
-            modifier = Modifier.fillMaxSize().imePadding(),
-            bottomBar = {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                    EtaDialogActions(
-                        modifier = Modifier.navigationBarsPadding().imePadding()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        confirmText = if (working) {
-                            stringResource(R.string.mcp_connecting)
-                        } else {
-                            stringResource(R.string.mcp_add_server)
-                        },
-                        confirmEnabled = !working,
-                        cancelEnabled = !working,
-                        onCancel = onDismiss,
-                        onConfirm = onSubmit,
-                    )
-                }
-            },
-        ) { padding, scrollConnection, _ ->
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .consumeWindowInsets(padding)
-                    .nestedScroll(scrollConnection)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
-            ) {
-                McpTextField(
-                    value = name,
-                    onValueChange = onNameChange,
-                    label = stringResource(R.string.mcp_server_name),
-                    enabled = !working,
-                )
-                McpTextField(
-                    value = url,
-                    onValueChange = onUrlChange,
-                    label = stringResource(R.string.mcp_server_url),
-                    enabled = !working,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                )
-                McpTextField(
-                    value = token,
-                    onValueChange = onTokenChange,
-                    label = stringResource(R.string.mcp_bearer_optional),
-                    enabled = !working,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                )
-                // 连接测试是网络往返：无分母走不定型，按钮与表单同步锁住（底层不可中断，不给假取消）。
-                if (working) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(EtaDimens.TrailingElementGap),
-                    ) {
-                        EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize)
-                        M3Text(
-                            text = stringResource(R.string.mcp_connecting),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                error?.let {
-                    M3Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -617,9 +443,9 @@ private fun McpDestructiveRow(
     )
 }
 
-/** 输入框：官方 [OutlinedTextField]。 */
+/** 输入框：官方 [OutlinedTextField]。internal：本文件与 McpServerAddScreen 共用。 */
 @Composable
-private fun McpTextField(
+internal fun McpTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
