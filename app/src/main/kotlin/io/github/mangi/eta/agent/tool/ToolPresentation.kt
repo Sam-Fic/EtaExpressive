@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.ContentPasteGo
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.FindReplace
 import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -276,6 +277,7 @@ internal object ToolPresentation {
         "browser_use" -> Icons.Rounded.Language
         "网页浏览" -> Icons.Rounded.Language
         "web_search", "web_search_call", "网页搜索" -> Icons.Rounded.TravelExplore
+        "mijia_control", "米家控制" -> Icons.Rounded.Hub
         "browser_read", "fetch_url" -> Icons.AutoMirrored.Rounded.MenuBook
         "browser_interact" -> Icons.Rounded.AdsClick
         "browser_screenshot" -> Icons.Rounded.ScreenshotMonitor

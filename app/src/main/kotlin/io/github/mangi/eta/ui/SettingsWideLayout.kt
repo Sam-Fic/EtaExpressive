@@ -111,6 +111,7 @@ private val settingsDetailAnchorKeys: Map<KClass<out AppRoute>, String> = mapOf(
     AppRoute.TitleModel::class to SettingsKeys.TITLE_MODEL,
     AppRoute.ErrorReconnectSettings::class to SettingsKeys.ERROR_RECONNECT,
     AppRoute.WebToolsSettings::class to SettingsKeys.WEB_TOOLS_SETTINGS,
+    AppRoute.MijiaSettings::class to SettingsKeys.MIJIA_SETTINGS,
     AppRoute.Assistants::class to SettingsKeys.ASSISTANTS,
     AppRoute.Memory::class to SettingsKeys.MEMORY,
     AppRoute.Skills::class to SettingsKeys.SKILLS,

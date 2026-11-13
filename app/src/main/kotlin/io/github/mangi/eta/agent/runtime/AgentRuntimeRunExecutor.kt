@@ -32,6 +32,7 @@ import io.github.mangi.eta.agent.memory.AgentMemoryContextBuilder
 import io.github.mangi.eta.agent.mcp.McpRunSnapshot
 import io.github.mangi.eta.agent.mcp.McpToolExecutor
 import io.github.mangi.eta.agent.mcp.RoutingToolExecutor
+import io.github.mangi.eta.agent.mijia.AgentMijiaToolCatalog
 import io.github.mangi.eta.agent.overlay.AgentOverlayVisibilityPolicy
 import io.github.mangi.eta.agent.skill.SkillCompatibilityChecker
 import io.github.mangi.eta.agent.skill.SkillContext
@@ -590,6 +591,10 @@ internal class AgentRuntimeRunExecutor(
                 directTools = allowDevice && request.config.deviceTools,
                 sensitiveActionTools = allowDevice && request.config.deviceTools,
             )
+            // 米家直连：已授权且开关打开时才下发 schema；执行路由在下方委托链。
+            if (runCatching { AgentMijiaToolCatalog.isUsable(appContext) }.getOrDefault(false)) {
+                AgentMijiaToolCatalog.appendSchemas(mcpTools, enabled = true)
+            }
             val questionCoordinator = AgentQuestionCoordinator(runController) { event ->
                 acceptEvent(session, event, archivedEvents, entrySurfaceGuard, checkpointRecorder)
             }
@@ -691,6 +696,8 @@ internal class AgentRuntimeRunExecutor(
                     }
                 } else if (call.name in enabledEntryTools && entryExecutor != null) {
                     entryExecutor.execute(call)
+                } else if (call.name == AgentMijiaToolCatalog.MIJIA_CONTROL) {
+                    AgentMijiaToolCatalog.execute(appContext, call.argumentsJson)
                 } else if (xiaomiToolsBridgeExecutor != null && call.name in xiaomiToolsBridgeExecutor.toolNames) {
                     xiaomiToolsBridgeExecutor.execute(call)
                 } else if (hostToolExecutor != null && call.name in hostToolExecutor.toolNames) {

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VerifiedUser
@@ -403,6 +404,14 @@ internal fun SettingsScreen(
                         title = stringResource(R.string.web_tools_settings_title),
                         leading = { PreferenceIcon(icon = Icons.Rounded.TravelExplore) },
                         onClick = { onNavigate(AppRoute.WebToolsSettings) },
+                    )
+                }
+
+                row(key = SettingsKeys.MIJIA_SETTINGS) {
+                    EtaClickableRow(
+                        title = "米家直连",
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Hub) },
+                        onClick = { onNavigate(AppRoute.MijiaSettings) },
                     )
                 }
 

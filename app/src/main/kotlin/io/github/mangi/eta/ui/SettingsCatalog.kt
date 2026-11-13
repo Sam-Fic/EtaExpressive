@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Warning
@@ -70,6 +71,7 @@ internal object SettingsKeys {
     const val TITLE_MODEL = "title_model"
     const val ERROR_RECONNECT = "error_reconnect"
     const val WEB_TOOLS_SETTINGS = "web_tools_settings"
+    const val MIJIA_SETTINGS = "mijia_settings"
     const val THINKING_DEFAULT = "thinking_default"
 
     // 扩展
@@ -271,6 +273,17 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 icon = Icons.Rounded.TravelExplore,
                 group = groupModelFeatures,
                 destination = SettingsDestination.Route(AppRoute.WebToolsSettings),
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.MIJIA_SETTINGS,
+                title = "米家直连",
+                summary = "小米账号 OAuth 授权后，Agent 可查询与控制米家设备",
+                keywords = "mijia mi home 米家 小米 智能家居 设备 灯 空调 开关 控制小米",
+                icon = Icons.Rounded.Hub,
+                group = groupModelFeatures,
+                destination = SettingsDestination.Route(AppRoute.MijiaSettings),
             ),
         )
         add(

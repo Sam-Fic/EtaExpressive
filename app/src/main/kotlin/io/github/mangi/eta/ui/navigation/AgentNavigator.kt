@@ -43,6 +43,7 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.ErrorReconnectSettings::class,
     AppRoute.LiveActivitySettings::class,
     AppRoute.WebToolsSettings::class,
+    AppRoute.MijiaSettings::class,
     AppRoute.SubAgents::class,
     AppRoute.SubAgentPresetDetail::class,
     AppRoute.VoiceModeSettings::class,

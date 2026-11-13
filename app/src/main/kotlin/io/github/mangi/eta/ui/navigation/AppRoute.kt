@@ -65,6 +65,10 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data object WebToolsSettings : AppRoute
 
+    /** 米家直连设置（OAuth 授权 / 设备列表 / 电源快切）；核心逻辑源自 yooma1/Eta666。 */
+    @Serializable
+    data object MijiaSettings : AppRoute
+
     @Serializable
     data object VoiceSettings : AppRoute
 

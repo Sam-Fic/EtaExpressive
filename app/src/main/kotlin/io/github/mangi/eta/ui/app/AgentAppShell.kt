@@ -12,33 +12,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddComment
-import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import io.github.mangi.eta.R
-import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.data.repository.ProviderBalanceStore
-import io.github.mangi.eta.ui.pages.providers.ProviderBalanceIndicator
 import io.github.mangi.eta.ui.pages.providers.activityLifecycleOwnerOrNull
-import io.github.mangi.eta.ui.pages.providers.hasBalanceIndicatorContent
 import io.github.mangi.eta.ui.components.ConversationSidePaneScaffold
 import io.github.mangi.eta.ui.components.TopBarBackdrop
 import io.github.mangi.eta.ui.components.captureForTopBar
@@ -48,9 +38,6 @@ import io.github.mangi.eta.ui.model.ConversationSummaryUi
 import io.github.mangi.eta.ui.model.allConversations
 import io.github.mangi.eta.ui.navigation.AppRoute
 import io.github.mangi.eta.ui.adaptive.EtaTopBarBackButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -237,7 +224,6 @@ internal fun AgentAppShell(
                             },
                             canClearDispatchConsole = canClearDispatchConsole,
                             onClearDispatchConsole = onClearDispatchConsole,
-                            selectedProviderId = selectedProviderId,
                         )
                     }
                 }
@@ -338,76 +324,18 @@ private fun AgentTopBar(
     /** 调度台右槽「清空主会话」入口：按钮可用性与点击回调。 */
     canClearDispatchConsole: Boolean = false,
     onClearDispatchConsole: () -> Unit = {},
-    selectedProviderId: String? = null,
 ) {
-    val view = LocalView.current
     val isHome = route is AppRoute.Home
+    // 首页顶栏由 Material3HomeTopBar 独立渲染（汉堡 / 拆分按钮 / 右槽圆钮全在它里面），
+    // 这里的 navigationIcon / actions 只被二级路由的官方 TopAppBar 消费——isHome 分支
+    // 因此不存在；余额指示、新建对话、溢出菜单也都不在这条二级页顶栏里出现。
     val navigationIcon: @Composable () -> Unit = {
-        if (isHome) {
-            IconButton(onClick = {
-                TouchHaptics.click(view)
-                onOpenConversationPane()
-            }, shapes = IconButtonDefaults.shapes()) {
-                Icon(
-                    imageVector = Icons.Rounded.Menu,
-                    contentDescription = stringResource(R.string.action_conversation_history),
-                )
-            }
-        } else {
-            EtaTopBarBackButton(
-                onClick = onBack,
-                contentDescription = stringResource(R.string.action_back),
-            )
-        }
+        EtaTopBarBackButton(
+            onClick = onBack,
+            contentDescription = stringResource(R.string.action_back),
+        )
     }
-    val balanceStates by ProviderBalanceStore.states.collectAsState()
-    val selectedBalanceState = selectedProviderId?.let(balanceStates::get)
-    val actions: @Composable RowScope.() -> Unit = {
-        if (isHome) {
-            if (hasBalanceIndicatorContent(selectedBalanceState)) {
-                // 按 provider 重建，切换供应商时不会把另一个账号的变化当成新扣费播放。
-                key(selectedProviderId) {
-                    ProviderBalanceIndicator(
-                        state = selectedBalanceState,
-                        modifier = Modifier.padding(end = 8.dp),
-                        animateChanges = true,
-                    )
-                }
-            }
-            // 新建对话独立成顶栏按钮，避免每次都要先展开溢出菜单。
-            IconButton(onClick = {
-                TouchHaptics.click(view)
-                onNewConversation()
-            }, shapes = IconButtonDefaults.shapes()) {
-                Icon(
-                    imageVector = Icons.Rounded.AddComment,
-                    contentDescription = stringResource(R.string.action_new_conversation),
-                )
-            }
-            TopBarOverflowMenu(
-                onOpenTerminal = onOpenTerminal,
-                onLaunchKimiWeb = onLaunchKimiWeb,
-                kimiWebLabel = kimiWebLabel,
-                canStopKimiWeb = canStopKimiWeb,
-                onStopKimiWeb = onStopKimiWeb,
-                onRefreshKimiWeb = onRefreshKimiWeb,
-                onOpenBrowser = onOpenBrowser,
-                onOpenWorkspace = onOpenWorkspace,
-                onOpenVoiceSettings = onOpenVoiceSettings,
-                autoCompressEnabled = autoCompressEnabled,
-                isCompressingContext = isCompressingContext,
-                onToggleAutoCompress = onToggleAutoCompress,
-                onCompressConversation = onCompressConversation,
-                onOpenSearchHistory = onOpenSearchHistory,
-                onOpenTokenUsage = onOpenTokenUsage,
-                onOpenSubAgentStatus = onOpenSubAgentStatus,
-                canDeleteCurrentConversation = canDeleteCurrentConversation,
-                isDispatchConsole = isDispatchConsole,
-                isRemoteTarget = isRemoteTarget,
-                onDeleteCurrentConversation = onDeleteCurrentConversation,
-            )
-        }
-    }
+    val actions: @Composable RowScope.() -> Unit = {}
 
     if (isHome) {
         // 首页顶栏不消费滚动偏移，但壳层内容仍挂在共享 TopAppBarScrollBehavior 的嵌套滚动连接上。
@@ -503,6 +431,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.LiveActivitySettings -> stringResource(R.string.live_activity_settings_title)
     is AppRoute.TtsSettings -> stringResource(R.string.tts_title)
     is AppRoute.WebToolsSettings -> stringResource(R.string.web_tools_settings_title)
+    is AppRoute.MijiaSettings -> "米家直连"
     is AppRoute.VoiceModeSettings -> stringResource(R.string.voice_mode_title)
     is AppRoute.AppearanceSettings -> stringResource(R.string.appearance_title)
     is AppRoute.DataBackup -> stringResource(R.string.data_backup_title)

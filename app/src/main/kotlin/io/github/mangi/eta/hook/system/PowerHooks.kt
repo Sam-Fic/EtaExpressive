@@ -140,6 +140,8 @@ internal object PowerHooks {
             }
             return LaunchResult.NOT_HANDLED
         }
+        // 口径：ASSISTANT_AUTO_CONFIG 只控制后台写系统默认助理配置（AssistantManager）；
+        // 电源键拦截按所选目标路由是独立能力，关闭自动配置不影响本路径。
 
         val now = SystemClock.uptimeMillis()
         if (now - lastInterceptUptime <= ModuleConfig.INTERCEPT_DEDUP_WINDOW_MS) {

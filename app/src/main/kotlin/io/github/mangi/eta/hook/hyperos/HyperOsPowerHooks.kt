@@ -19,6 +19,7 @@ import io.github.mangi.eta.hook.system.assistantBindingFor
 
 internal object HyperOsPowerHooks {
     /** 去重窗口：同一次长按可能同时命中 triggerFunction 与 launchVoiceAssistant 两条路径。 */
+    @Volatile
     private var lastInterceptUptime = 0L
 
     fun install(module: XposedModule, logger: ModuleLogger, loader: ClassLoader): HookInstallation {
