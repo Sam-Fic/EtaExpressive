@@ -433,9 +433,18 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             return START_NOT_STICKY
         }
         if (intent.action == ACTION_ISLAND_SUPPLEMENT) {
-            // 岛「补充」键：有活 run 时展开胶囊直进补充输入；无 run 说明通知是残留，只收尾。
+            // 岛「补充」键：先把胶囊窗口挂出来（可能刚被可见性策略撤下），再递增计数。
+            // 只在胶囊窗口确实存在时才计数：光球/气泡表面没有补充输入通道，计了数
+            // 没人消费，残留到下一个 run 会凭空弹输入。
             if (overlaySession?.isTerminal == false) {
-                islandSupplementRequests.intValue += 1
+                ensureOverlayVisible()
+                if (capsuleView != null) {
+                    // 缩球态先恢复成胶囊再展开：toggleCapsule 的「点球恢复」不展开，
+                    // 而补充输入必须展开体可见；展开联动（副屏 stage）由 toggleCapsule 处理。
+                    capsuleMinimized.value = false
+                    if (!capsuleExpanded.value) toggleCapsule()
+                    islandSupplementRequests.intValue += 1
+                }
             }
             if (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive()) stopSelf(startId)
             return START_NOT_STICKY
@@ -1743,6 +1752,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         capsuleExpanded.value = false
         capsuleSupplementFocusable.value = false
         capsuleYielded.value = false
+        // 换绑会话同样清零：旧 run 的岛补充请求对新 run 无意义。
+        islandSupplementRequests.intValue = 0
         hasExecutedForegroundTool = false
     }
 
@@ -2270,6 +2281,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         capsuleView = null
         capsuleParams = null
+        // 同步清零补充请求计数：下一个 run 重建胶囊时，新组合的 LaunchedEffect 初跑
+        // 会把当前计数当作新触发（旧请求重放，凭空弹输入，Number444 v3.3.3-003 同款修补）。
+        islandSupplementRequests.intValue = 0
     }
 
     private fun toggleCollapse() {
