@@ -141,17 +141,25 @@ internal object AgentDecisionEvaluator {
                 AgentDecisionQuestion.Noul(
                     id = "needs_tools",
                     instructions = "Decide whether the user's request needs at least one tool call to be completed.",
+                    // 执行类意图是最高频的误判源（2026-11-14 日志取证：「运行一个空的等待程序」
+                    // 被判闲聊，主模型只能谎称没有终端工具）。这里把「要运行/执行某个程序、
+                    // 脚本或命令」显式写进 true 判据，并要求含糊时偏向 true——漏判的代价
+                    // （模型被锁死在无工具状态）远高于误判（多开一组 schema）。
                     trueCriterion = "The request requires executing an action, reading device/app data, " +
-                        "running commands, browsing, or any other tool to answer correctly.",
+                        "running commands, browsing, or any other tool to answer correctly. " +
+                        "Requests that ask to run, execute, or test a program, script, or command — " +
+                        "even without naming a specific tool — always count as true.",
                     falseCriterion = "The request can be answered from general knowledge or the " +
-                        "conversation itself, with plain text only.",
+                        "conversation itself, with plain text only. Judge false only when the request " +
+                        "is clearly a question, explanation, or casual chat; when ambiguous, lean true.",
                 ),
             )
             add(
                 AgentDecisionQuestion.MultiChoice(
                     id = "tool_groups",
                     instructions = "Select every tool group that must be available to complete the request. " +
-                        "Select no group when the request is pure chat or general knowledge.",
+                        "Select no group when the request is pure chat or general knowledge; " +
+                        "when unsure, prefer selecting the most likely group over selecting none.",
                     criteria = groups.associate { it.id to it.summary },
                 ),
             )
