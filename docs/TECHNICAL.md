@@ -44,7 +44,7 @@
 
 - 协议：`vd/` + runtime；root `app_process` 单显示，abstract socket + uid + token 双认证、单连接、64 KiB 行限，am/input 走 argv；release 须副屏确认为空且不 kill task。
 - 只读探针：固定 `mode=read_only/ready=false`，`timeout -k 1s 8s` 包裹，R8 保留 `ReadOnlyProbe`，rootCount 必须大于 0。
-- 验证边界：远程校验只证明 JDK25 编译 + JVM 单测 + debug APK，不证明 root/app_process/真机；方案与实验边界见 `docs/vd-integration-candidate.md`、`docs/vd-ui-noncompile-verification.md`。
+- 验证边界：远程校验只证明 JDK25 编译 + JVM 单测 + debug APK，不证明 root/app_process/真机。
 
 ## 配置与实时生效
 

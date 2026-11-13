@@ -58,6 +58,3 @@ AgentSseClient.collect沿用modelClient的600秒readTimeout，无额外idle/abso
 ## 额外审查事实
 模型冻结目前在父run初始化，不是每delegate。execute读取profiles/filter enabled、selection.resolve、applyReasoning/imageResolution构造childModels；仅缓存providerId/modelId不够，应保留resolved config。新父run必须新coordinator，旧任务按taskId路由回旧owner。SubAgentPreferences.saveModel是copy不会就地改旧profile。manualCompactor闭包仍读当前压缩模式，currentPermissions和全局parallel pool允许动态收紧，不要因模型冻结绕过权限。AgentRuntimeRequestConfigResolver只改voice request主模型。钥匙/headers不得出现在日志/工具结果。
 原七文件仍不完整：未实现registry/前台租约/UI；指导队列需界限，awaitPending需核对awaiting_decision语义，旧timeout测试也要改。不要将候选视作已验证。
-
-## 原候选独立审查已返回
-请参阅同目录subagent-candidate-review.md的7项有证据缺陷，作为修正与测试检查表。
