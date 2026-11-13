@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.app
 
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -59,18 +58,33 @@ internal object ConversationTimeLabels {
         locale: Locale,
         timeZone: TimeZone,
     ): Boolean {
-        val now = Calendar.getInstance(timeZone, locale).apply { timeInMillis = nowMillis }
-        val target = Calendar.getInstance(timeZone, locale).apply { timeInMillis = timestampMillis }
-        return now.get(Calendar.YEAR) == target.get(Calendar.YEAR)
+        // java.time 直取年份，替代每次 new 两个 Calendar 的旧写法（dayDelta 已是同款）。
+        val zoneId = timeZone.toZoneId()
+        val nowYear = Instant.ofEpochMilli(nowMillis).atZone(zoneId).year
+        val targetYear = Instant.ofEpochMilli(timestampMillis).atZone(zoneId).year
+        return nowYear == targetYear
     }
+
+    // (pattern, locale) → SimpleDateFormat 缓存：抽屉全量会话行每次摘要重建都会逐条 label，
+    // 现场 new SimpleDateFormat 是最大的重复分配源。SimpleDateFormat 非线程安全，
+    // 但本对象全部调用点都在主线程（会话摘要与抽屉行渲染），共享实例安全。
+    private val formatterCache = HashMap<Pair<String, Locale>, SimpleDateFormat>()
 
     private fun formatPattern(
         pattern: String,
         millis: Long,
         locale: Locale,
         timeZone: TimeZone,
-    ): String =
-        SimpleDateFormat(pattern, locale).also { it.timeZone = timeZone }.format(Date(millis))
+    ): String {
+        val formatter = synchronized(formatterCache) {
+            formatterCache.getOrPut(pattern to locale) { SimpleDateFormat(pattern, locale) }
+        }
+        // clone 后换时区：SimpleDateFormat 非线程安全，克隆让共享缓存保持干净，
+        // 克隆的开销远低于每次现场 new 的 Pattern 解析。
+        val clone = formatter.clone() as SimpleDateFormat
+        clone.timeZone = timeZone
+        return clone.format(Date(millis))
+    }
 
     private fun sameYearPattern(locale: Locale): String = when (locale.language) {
         Locale.CHINESE.language -> "M月d日"

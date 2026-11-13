@@ -239,15 +239,14 @@ internal fun AgentWorkSegmentedBubble(
     }
 
     val displayedSupporting = if (animateSupportingHeight) shownSupporting else supporting
-    // 进度必须读在组合阶段：Animatable.value 若只在测量块里读，快照观察不会注册到
-    // 布局上，弹簧推进时不会逐帧重测，行高会停在旧值（表现为硬切）。
-    // 作为捕获值传入下方 layout 修饰符，值一变修饰符实例就变，从而每帧重新测量。
-    val supportingMorphProgress = supportingProgress.value
+    // 进度只在测量/绘制阶段读（layout 块与 graphicsLayer lambda 内读 snapshot state 同样
+    // 会注册观察并触发逐帧重测/重绘）：morph 动画期间只重测重绘这一层，不再逐帧重组
+    // 整个气泡子树。解包读值的老写法会让每一帧都生成新 modifier 实例并重组整行。
 
     val heightMorphModifier =
         if (animateSupportingHeight) {
             Modifier.layout { measurable, constraints ->
-                val progress = supportingMorphProgress
+                val progress = supportingProgress.value
                 val natural = supportingNaturalHeight[0]
                 val expandedHeight = expandedRowHeight[0]
                 val collapsedHeight = collapsedRowHeight[0]
@@ -330,11 +329,11 @@ internal fun AgentWorkSegmentedBubble(
                         color = supportingColor ?: Color.Unspecified,
                         onTextLayout = { supportingNaturalHeight[0] = it.size.height },
                         modifier = Modifier
-                            .graphicsLayer { alpha = supportingMorphProgress }
+                            .graphicsLayer { alpha = supportingProgress.value }
                             .clipToBounds()
                             .layout { measurable, constraints ->
                                 val placeable = measurable.measure(constraints)
-                                val height = (placeable.height * supportingMorphProgress)
+                                val height = (placeable.height * supportingProgress.value)
                                     .roundToInt()
                                 layout(placeable.width, height) { placeable.placeRelative(0, 0) }
                             },

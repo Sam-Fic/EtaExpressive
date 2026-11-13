@@ -76,6 +76,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -229,7 +230,9 @@ internal fun MediaSearchScreen(
     var result by remember { mutableStateOf<MediaSearchService.SearchResult?>(null) }
     // 流式分片：检索中已到达、已构建的命中行（result 在检索完成前为空）。
     // 首片到达即开始渲染，后续分片继续流入；检索完成由 result 整体接管并清空。
-    var partialHits by remember { mutableStateOf(listOf<MediaSearchService.Hit>()) }
+    // 用 SnapshotStateList 增量 addAll：分片可达万级命中，旧写法 `partialHits + chunk`
+    // 每片都整表拷贝，主线程 O(n²) 分配 + 全列表 diff。
+    val partialHits = remember { mutableStateListOf<MediaSearchService.Hit>() }
     var errorText by remember { mutableStateOf<String?>(null) }
     // 匹配度阈值：进页面恢复上次调节值（EmbeddingModelStore prefs，默认 [EmbeddingModelStore.DEFAULT_SEARCH_MIN_SCORE]），
     // 拖动结束落盘并同词静默重检——阈值是检索时参数，结果集就是「所有 ≥ 阈值的命中」。
@@ -350,7 +353,7 @@ internal fun MediaSearchScreen(
                             null
                         } else {
                             { chunk ->
-                                withContext(Dispatchers.Main) { partialHits = partialHits + chunk }
+                                withContext(Dispatchers.Main) { partialHits.addAll(chunk) }
                             }
                         },
                     ),
@@ -371,7 +374,7 @@ internal fun MediaSearchScreen(
                 outcome.exceptionOrNull()?.let { errorText = it.message ?: "search failed" }
             }
             // 检索完成由完整结果接管，分片清场（失败同样清掉，错误分支接管展示）。
-            partialHits = emptyList()
+            partialHits.clear()
             // 时刻精排异步补齐：逐条完成后按 sourceKey 原位更新行；时刻缓存命中时
             // search 已直接带回时刻，这里对已带时刻的命中跳过（无可补即空转返回）。
             // 失败保底也启动：静默重检失败时旧结果还在，补齐其中尚缺的时刻。
@@ -398,7 +401,7 @@ internal fun MediaSearchScreen(
         } else {
             // 清旧结果与检索态同帧生效，不留空闲态闪帧；首片命中到达后边流边渲染。
             result = null
-            partialHits = emptyList()
+            partialHits.clear()
             searching = true
             searchJob = scope.launch {
                 try {
@@ -429,7 +432,11 @@ internal fun MediaSearchScreen(
     // 匹配度阈值不在此过滤——它已下推到检索时（search 的 minScore），结果集本身就是
     // 「所有 ≥ 阈值的命中」，数量不设上限。
     val activeKinds = kindsForFilter(filterIndex)
-    val hits = if (activeKinds.isEmpty()) rawHits else rawHits.filter { it.kind in activeKinds }
+    // 过滤结果按「结果集引用 + 类目 + 分片到达数」缓存：万级命中的 filter 不再跟随
+    // 勾选/滚动等无关重组反复全量执行（分片到达数变化 = 新命中流入，才重新筛）。
+    val hits = remember(result, activeKinds, partialHits.size) {
+        if (activeKinds.isEmpty()) rawHits else rawHits.filter { it.kind in activeKinds }
+    }
     // 阈值面板文案用：检索时 kinds 范围内低于阈值、未进入结果的候选数（服务端随结果返回）。
     val hiddenCount = result?.belowThresholdCount ?: 0
     // 勾选按当前显示的命中取交集：类型标签切走后被隐藏的条目不再计入批量操作。
@@ -2070,5 +2077,8 @@ private fun formatDuration(millis: Long): String {
     return "%d:%02d".format(Locale.getDefault(), minutes, seconds)
 }
 
-private fun formatTime(millis: Long): String =
-    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(millis))
+// formatter 提为单例：结果行每次组合都会调 formatTime（经 hitSummary），现场 new
+// SimpleDateFormat 在滚动/勾选/筛选的重组路径上是纯分配。调用点全部在主线程，无并发问题。
+private val SearchResultTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+
+private fun formatTime(millis: Long): String = SearchResultTimeFormat.format(Date(millis))

@@ -75,6 +75,7 @@ import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
+import io.github.mangi.eta.ui.adaptive.EtaProgressBar
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
@@ -92,6 +93,9 @@ import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.nav.runtime.NavProgrammaticEasing
+
+// 音色槽位 id 形态 Pattern 提为常量：两处 enabled 判定都在每次重组时执行，现场编译纯浪费。
+private val DoubaoVoiceSlotIdPattern = Regex("S_[A-Za-z0-9_-]+")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -349,7 +353,8 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                                     text = "${current.step + 1} / 3 · " + listOf(stringResource(R.string.dv_step_slot), stringResource(R.string.dv_step_recording), stringResource(R.string.dv_step_confirm))[current.step],
                                                     color = MaterialTheme.colorScheme.primary,
                                                 )
-                                                LinearProgressIndicator(progress = { (current.step + 1) / 3f }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+                                                // 确定型进度统一走 EtaProgressBar（M3E wavy），不再直用裸 LinearProgressIndicator。
+                                                EtaProgressBar(progress = (current.step + 1) / 3f, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                                             }
                                         }
                                     }
@@ -458,7 +463,7 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                     VoiceGroup {
                                         item {
                                             EtaClickableRow(title = if (busy) stringResource(R.string.dv_querying) else stringResource(R.string.dv_mode_import),
-                                                showChevron = false, enabled = !busy && !importBusy && slotId.matches(Regex("S_[A-Za-z0-9_-]+")),
+                                                showChevron = false, enabled = !busy && !importBusy && slotId.matches(DoubaoVoiceSlotIdPattern),
                                                 // 导入既有音色是网络往返：无分母走不定型；不可中断，故不给取消。
                                                 leading = if (busy) {
                                                     { EtaLoadingSlot(progress = null, size = EtaDimens.DenseIconSize) }
@@ -479,7 +484,7 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                     VoiceGroup {
                                         item {
                                             EtaClickableRow(title = stringResource(R.string.dv_next_recording), showChevron = false,
-                                                enabled = !importBusy && name.isNotBlank() && (postpaid || (slotId.matches(Regex("S_[A-Za-z0-9_-]+")) && (PersonalVoices.find(slotId, config.cloneKey)?.canTrain != false))),
+                                                enabled = !importBusy && name.isNotBlank() && (postpaid || (slotId.matches(DoubaoVoiceSlotIdPattern) && (PersonalVoices.find(slotId, config.cloneKey)?.canTrain != false))),
                                                 onClick = { step = 1; notice = "" })
                                         }
                                     }

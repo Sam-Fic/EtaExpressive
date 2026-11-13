@@ -111,8 +111,11 @@ private fun AgentChatMessageUi.searchableText(): String? = when (this) {
     else -> null
 }
 
+// 空白折叠 Pattern 提为常量：excerptAround 对每条命中正文调用，现场编译纯浪费。
+private val WhitespaceCollapsePattern = Regex("\\s+")
+
 internal fun excerptAround(text: String, query: String, radius: Int = 36): String {
-    val collapsed = text.replace(Regex("\\s+"), " ").trim()
+    val collapsed = text.replace(WhitespaceCollapsePattern, " ").trim()
     val index = collapsed.indexOf(query, ignoreCase = true)
     if (index < 0) return collapsed.take(80)
     val start = (index - radius).coerceAtLeast(0)

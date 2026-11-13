@@ -17,8 +17,10 @@ Result (raw):
 $result"""
     }
     private data class Identity(val run: String, val call: String, val name: String)
+    // 工具调用 id 边界 Pattern 提为常量：构造函数对全量工具消息逐条 find，现场编译纯浪费。
+    private val ToolIdBoundaryPattern = Regex("-tool-[0-9]+-")
     private val identities = messages.filterIsInstance<ToolActivityMessageUi>().mapNotNull { message ->
-        val boundary = Regex("-tool-[0-9]+-").find(message.id) ?: return@mapNotNull null
+        val boundary = ToolIdBoundaryPattern.find(message.id) ?: return@mapNotNull null
         message.id to Identity(message.id.substring(0, boundary.range.first).substringAfterLast(':'),
             message.id.substring(boundary.range.last + 1), message.toolName)
     }.toMap()

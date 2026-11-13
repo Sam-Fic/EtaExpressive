@@ -620,9 +620,15 @@ private fun UsageBoundChip(
     )
 }
 
+// localized formatter 提为惰性单例：DateTimeFormatter 不可变且线程安全，
+// filterSummaryText / 日期 chip 每次重组都调 formatUsageDate，现场创建纯浪费。
+private val UsageDateFormatter: DateTimeFormatter by lazy {
+    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+}
+
 private fun formatUsageDate(bound: UsageTimeBound): String? {
     val date = bound.date ?: return null
-    return date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+    return date.format(UsageDateFormatter)
 }
 
 @Composable

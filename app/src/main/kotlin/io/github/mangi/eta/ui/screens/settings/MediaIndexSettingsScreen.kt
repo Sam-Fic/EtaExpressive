@@ -983,8 +983,10 @@ private fun formatBytes(bytes: Long): String = when {
     else -> "$bytes B"
 }
 
-private fun formatTime(millis: Long): String =
-    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(millis))
+// formatter 提为单例：设置页状态行每次重组都调 formatTime，现场 new 纯浪费（主线程专用）。
+private val MediaIndexTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+
+private fun formatTime(millis: Long): String = MediaIndexTimeFormat.format(Date(millis))
 
 /** 共享文件夹扫描源实体 id：type 前缀 + 挂载名（挂载名在 SharedFolderMounts 内唯一）。 */
 private fun sharedFolderSourceId(name: String): String =

@@ -72,7 +72,10 @@ class ProviderModelsMultiselectContractTest(unittest.TestCase):
         # 「全选/全不选」以当前搜索过滤后的列表为全集，不清掉被搜索滤掉的勾选。
         self.assertIn(
             'val allModelsSelected = filteredModels.isNotEmpty() &&\n'
-            '        selectedModelIds.containsAll(filteredModels.map { it.id })', self.source)
+            '        selectedModelIds.containsAll(filteredModelIds)', self.source)
+        self.assertIn(
+            'val filteredModelIds = remember(filteredModels) '
+            '{ filteredModels.mapTo(mutableSetOf()) { it.id } }', self.source)
         select_all = self.source.split('onSelectAll = {', 1)[1].split('onSelectAll,', 1)[0]
         self.assertIn('filteredModels.mapTo(mutableSetOf()) { it.id }', select_all)
 

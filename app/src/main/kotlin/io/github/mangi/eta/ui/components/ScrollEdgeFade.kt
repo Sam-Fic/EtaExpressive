@@ -5,7 +5,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -78,12 +78,14 @@ internal fun Modifier.horizontalScrollEdgeFade(
     edges: ScrollEdgeFadeEdges = ScrollEdgeFadeEdges.Both,
 ): Modifier {
     val fadeSpec = MaterialTheme.motionScheme.fastSpatialSpec<Dp>()
-    val startWidth by animateDpAsState(
+    // 只把 State 传进蒙版、在绘制期才读 .value：带宽动画的每一帧只失效绘制，
+    // 不再逐帧生成新 modifier 实例、不重组调用方（解包读值的老写法两者都会发生）。
+    val startWidth = animateDpAsState(
         targetValue = if (edges.fadesStart && scrollState.canScrollBackward) fadeWidth else 0.dp,
         animationSpec = fadeSpec,
         label = "scrollEdgeFadeStart",
     )
-    val endWidth by animateDpAsState(
+    val endWidth = animateDpAsState(
         targetValue = if (edges.fadesEnd && scrollState.canScrollForward) fadeWidth else 0.dp,
         animationSpec = fadeSpec,
         label = "scrollEdgeFadeEnd",
@@ -108,12 +110,13 @@ internal fun Modifier.verticalScrollEdgeFade(
     edges: ScrollEdgeFadeEdges = ScrollEdgeFadeEdges.Both,
 ): Modifier {
     val fadeSpec = MaterialTheme.motionScheme.fastSpatialSpec<Dp>()
-    val startWidth by animateDpAsState(
+    // 与 horizontalScrollEdgeFade 同口径：State 下传、绘制期读值，动画帧不重组调用方。
+    val startWidth = animateDpAsState(
         targetValue = if (edges.fadesStart && scrollState.canScrollBackward) fadeWidth else 0.dp,
         animationSpec = fadeSpec,
         label = "scrollEdgeFadeVStart",
     )
-    val endWidth by animateDpAsState(
+    val endWidth = animateDpAsState(
         targetValue = if (edges.fadesEnd && scrollState.canScrollForward) fadeWidth else 0.dp,
         animationSpec = fadeSpec,
         label = "scrollEdgeFadeVEnd",
@@ -134,12 +137,13 @@ internal fun Modifier.lazyRowEdgeFade(
     edges: ScrollEdgeFadeEdges = ScrollEdgeFadeEdges.Both,
 ): Modifier {
     val fadeSpec = MaterialTheme.motionScheme.fastSpatialSpec<Dp>()
-    val startWidth by animateDpAsState(
+    // 与 horizontalScrollEdgeFade 同口径：State 下传、绘制期读值，动画帧不重组调用方。
+    val startWidth = animateDpAsState(
         targetValue = if (edges.fadesStart && listState.canScrollBackward) fadeWidth else 0.dp,
         animationSpec = fadeSpec,
         label = "lazyRowEdgeFadeStart",
     )
-    val endWidth by animateDpAsState(
+    val endWidth = animateDpAsState(
         targetValue = if (edges.fadesEnd && listState.canScrollForward) fadeWidth else 0.dp,
         animationSpec = fadeSpec,
         label = "lazyRowEdgeFadeEnd",
@@ -163,12 +167,13 @@ internal fun Modifier.lazyColumnEdgeFade(
     edges: ScrollEdgeFadeEdges = ScrollEdgeFadeEdges.Both,
 ): Modifier {
     val fadeSpec = MaterialTheme.motionScheme.fastSpatialSpec<Dp>()
-    val startHeight by animateDpAsState(
+    // 与 horizontalScrollEdgeFade 同口径：State 下传、绘制期读值，动画帧不重组调用方。
+    val startHeight = animateDpAsState(
         targetValue = if (edges.fadesStart && listState.canScrollBackward) fadeHeight else 0.dp,
         animationSpec = fadeSpec,
         label = "lazyColumnEdgeFadeStart",
     )
-    val endHeight by animateDpAsState(
+    val endHeight = animateDpAsState(
         targetValue = if (edges.fadesEnd && listState.canScrollForward) fadeHeight else 0.dp,
         animationSpec = fadeSpec,
         label = "lazyColumnEdgeFadeEnd",
@@ -199,6 +204,10 @@ internal fun Modifier.lazyColumnEdgeFade(
  * @param fadeIn true = 带内 alpha 自上而下 0→1（最上不可见、最下可见）；
  *                false = 自上而下 1→0（最上可见、最下不可见）
  */
+// DstIn 蒙版的两套颜色表提为常量：淡出带每帧都可能重画，listOf(...) 的逐帧分配省掉。
+private val FadeInColors = listOf(Color.Transparent, Color.Black)
+private val FadeOutColors = listOf(Color.Black, Color.Transparent)
+
 internal fun Modifier.verticalFadeBand(
     bandTopPx: DrawScope.() -> Float?,
     bandHeight: Dp,
@@ -211,11 +220,7 @@ internal fun Modifier.verticalFadeBand(
         if (height <= 0f) return@drawWithContent
         drawRect(
             brush = Brush.verticalGradient(
-                colors = if (fadeIn) {
-                    listOf(Color.Transparent, Color.Black)
-                } else {
-                    listOf(Color.Black, Color.Transparent)
-                },
+                colors = if (fadeIn) FadeInColors else FadeOutColors,
                 startY = top,
                 endY = top + height,
             ),
@@ -228,27 +233,31 @@ internal fun Modifier.verticalFadeBand(
 /**
  * 淡出带的公共绘制：起始端从透明渐入，终止端从实心渐出，两端都用
  * [BlendMode.DstIn] 削内容自身的 alpha。
+ *
+ * 带宽以 [State] 传入、在绘制期才读 [State.value]：动画推进的每一帧只让这一层的
+ * 绘制失效，不生成新 modifier 实例、不重组调用方——解包读值的旧写法两者都会发生，
+ * 且每次值变都触发整层重组合。绘制期快照读取同样会注册观察，不会漏帧。
  */
 private fun Modifier.edgeFadeMask(
-    startWidth: Dp,
-    endWidth: Dp,
+    startWidth: State<Dp>,
+    endWidth: State<Dp>,
     horizontal: Boolean,
 ): Modifier = this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
-        val start = startWidth.toPx()
+        val start = startWidth.value.toPx()
         if (start > 0f) {
             drawRect(
                 brush = if (horizontal) {
                     Brush.horizontalGradient(
-                        colors = listOf(Color.Transparent, Color.Black),
+                        colors = FadeInColors,
                         startX = 0f,
                         endX = start,
                     )
                 } else {
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black),
+                        colors = FadeInColors,
                         startY = 0f,
                         endY = start,
                     )
@@ -256,18 +265,18 @@ private fun Modifier.edgeFadeMask(
                 blendMode = BlendMode.DstIn,
             )
         }
-        val end = endWidth.toPx()
+        val end = endWidth.value.toPx()
         if (end > 0f) {
             drawRect(
                 brush = if (horizontal) {
                     Brush.horizontalGradient(
-                        colors = listOf(Color.Black, Color.Transparent),
+                        colors = FadeOutColors,
                         startX = size.width - end,
                         endX = size.width,
                     )
                 } else {
                     Brush.verticalGradient(
-                        colors = listOf(Color.Black, Color.Transparent),
+                        colors = FadeOutColors,
                         startY = size.height - end,
                         endY = size.height,
                     )

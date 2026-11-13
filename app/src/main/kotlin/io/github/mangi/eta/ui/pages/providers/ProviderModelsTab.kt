@@ -159,8 +159,10 @@ internal fun ProviderModelsTab(
         filterProviderModels(provider.models, modelSearchQuery)
     }
     // 「全选/全不选」以当前搜索过滤后的列表为全集（沿用原全选按钮的语义）。
+    // id 集合按 filteredModels 记忆：模型列表可达几百条，每次重组都 map 一遍纯浪费。
+    val filteredModelIds = remember(filteredModels) { filteredModels.mapTo(mutableSetOf()) { it.id } }
     val allModelsSelected = filteredModels.isNotEmpty() &&
-        selectedModelIds.containsAll(filteredModels.map { it.id })
+        selectedModelIds.containsAll(filteredModelIds)
 
     val selectionBackState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(

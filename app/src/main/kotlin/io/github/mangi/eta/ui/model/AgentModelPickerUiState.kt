@@ -258,10 +258,16 @@ internal fun countAssistantLiveTokens(message: AgentMessageUi): Int {
     }
 }
 
+// 消息 id 轮次解析的三条 Pattern 提为常量：messageRoundFromId 在全消息循环与状态同步路径上
+// 被逐条调用，每次调用现场 Pattern.compile 是纯浪费（对标 MessageTimestamp.kt 的做法）。
+private val MessageIdThinkingRoundPattern = Regex("""-thinking-(\d+)-""")
+private val MessageIdToolRoundPattern = Regex("""-tool-(\d+)-""")
+private val MessageIdHostedRoundPattern = Regex("""-hosted-(\d+)-""")
+
 internal fun messageRoundFromId(id: String): Int? {
-    Regex("""-thinking-(\d+)-""").find(id)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
-    Regex("""-tool-(\d+)-""").find(id)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
-    Regex("""-hosted-(\d+)-""").find(id)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+    MessageIdThinkingRoundPattern.find(id)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+    MessageIdToolRoundPattern.find(id)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+    MessageIdHostedRoundPattern.find(id)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
     if (id.startsWith("assistant-run-")) {
         val parts = id.split("-")
         if (parts.size >= 9) return parts[parts.size - 2].toIntOrNull()
