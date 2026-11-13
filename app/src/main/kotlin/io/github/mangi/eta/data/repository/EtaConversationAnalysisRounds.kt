@@ -28,7 +28,7 @@ internal object EtaConversationAnalysisRounds {
         status == STATUS_FAILED || status == STATUS_UNKNOWN
 
     /** 助手行的 id 形如 `assistant-<run>-<round>-<idx>`，工具行是 `<run>-tool-<round>-<call>`。 */
-    private data class RoundKey(val runId: String, val round: Int)
+    internal data class RoundKey(val runId: String, val round: Int)
 
     private class RoundBuilder {
         var key: RoundKey? = null
@@ -205,7 +205,8 @@ internal object EtaConversationAnalysisRounds {
             contextTokens = contextTokens + other.contextTokens,
         )
 
-    private fun roundKeyOf(messageId: String, runIds: List<String>): RoundKey? {
+    /** 从消息 id（`assistant-<run>-<round>-<idx>` 等前缀）解析运行标识；老消息返回 null。导入侧复用同一解析。 */
+    internal fun roundKeyOf(messageId: String, runIds: List<String>): RoundKey? {
         for (runId in runIds) {
             if (runId.isBlank()) continue
             val prefixes = listOf("assistant-$runId-", "$runId-tool-", "$runId-thinking-")

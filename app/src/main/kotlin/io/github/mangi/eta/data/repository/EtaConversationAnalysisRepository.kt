@@ -109,6 +109,7 @@ internal object EtaConversationAnalysisRepository {
                 isDispatchConsole = conversation.id == DISPATCH_CONSOLE_CONVERSATION_ID,
                 dispatchParentId = conversation.dispatchParentId?.takeIf { it.isNotBlank() },
                 dispatchManagedAt = conversation.dispatchManagedAt?.takeIf { it > 0 },
+                appliedRuntimeRunIds = runIds.takeIf { it.isNotEmpty() },
             ),
             options = options,
             summary = summary,
@@ -240,13 +241,20 @@ internal object EtaConversationAnalysisRepository {
             .firstOrNull { it.wireValue == document.conversation.reasoningEffort }
             ?.wireValue
             ?: ReasoningEffort.DEFAULT.wireValue
+        // 还原应用过的运行 id：回合切分靠它把消息 id 解析成真实模型回合；
+        // 旧版文件没有这一项时为空，导入后按顺序分段兜底。
+        // 同一文件可能被重复导入（或导入设备就是导出设备），原始 runId 与消息 id
+        // 都可能撞库内主键，所以整体重映射成新 runId，同步改写消息 id 前缀。
+        val appliedRunIds = document.conversation.appliedRuntimeRunIds.orEmpty()
+        val runIdRemap = appliedRunIds.associateWith { "run-${UUID.randomUUID()}" }
+        val remappedRunIds = appliedRunIds.map { runIdRemap.getValue(it) }
         val conversation = ConversationEntity(
             id = id,
             title = document.conversation.title,
             thinkingEnabled = document.conversation.thinkingEnabled,
             reasoningEffort = reasoningEffort,
             historyJson = "[]",
-            appliedRuntimeRunIdsJson = "[]",
+            appliedRuntimeRunIdsJson = encodeStringList(remappedRunIds),
             createdAt = now,
             updatedAt = now,
             folderId = "",
@@ -257,9 +265,11 @@ internal object EtaConversationAnalysisRepository {
             modelId = "",
             assistantId = "",
         )
+        val database = EtaDatabase.get(appContext)
+        val dao = database.conversationDao()
         val messages = document.messages
             .filter { it.type in IMPORTABLE_MESSAGE_TYPES }
-            .mapIndexed { index, message -> message.toEntity(id, index) }
+            .mapIndexed { index, message -> message.toEntity(id, index, runIdRemap) }
         val checkpoint = document.history.takeIf { it.isNotEmpty() }?.let { history ->
             ConversationContextCheckpointEntity(
                 conversationId = id,
@@ -267,9 +277,8 @@ internal object EtaConversationAnalysisRepository {
                 cloudUsageJson = "",
             )
         }
-        val database = EtaDatabase.get(appContext)
         database.withTransaction {
-            database.conversationDao().importAsNewConversation(conversation, messages, checkpoint)
+            dao.importAsNewConversation(conversation, messages, checkpoint)
         }
         id
     }
@@ -354,9 +363,43 @@ internal object EtaConversationAnalysisRepository {
         )
     }
 
-    private fun EtaConversationAnalysisMessage.toEntity(conversationId: String, sortIndex: Int) =
-        ConversationMessageEntity(
-            id = "import-${UUID.randomUUID()}",
+    /**
+     * 把消息 id 里的 runId 段重映射成新值，回合结构与 toolCallId 派生保持不变。
+     * 覆盖五类带运行标识的 id：`assistant-<run>-<round>-<idx>`、`<run>-tool-<round>-<call>`、
+     * `<run>-thinking-<round>-<idx>`、`user-<run>` 与其补充行 `user-<run>-supplement-*`；
+     * 其余（自由命名 / 老消息）返回 null，由调用方换随机 id。
+     */
+    private fun remapMessageId(messageId: String, runIdRemap: Map<String, String>): String? {
+        for ((oldRunId, newRunId) in runIdRemap) {
+            // 三个带尾部界符的前缀：`-tool-` / `-thinking-` / `assistant-…-` 自带分隔，
+            // 不会把 run-1 误配到 run-12；剩余部分是「回合号-序号」直接拼接。
+            val prefixed = listOf(
+                "assistant-$oldRunId-" to "assistant-$newRunId-",
+                "$oldRunId-tool-" to "$newRunId-tool-",
+                "$oldRunId-thinking-" to "$newRunId-thinking-",
+            )
+            for ((oldPrefix, newPrefix) in prefixed) {
+                if (messageId.startsWith(oldPrefix)) return newPrefix + messageId.removePrefix(oldPrefix)
+            }
+            // user 前缀没有尾部界符（id 形如 `user-<run>` 或 `user-<run>-supplement-*`），
+            // 需按整词匹配：剩余部分为空或以 `-` 开头才算命中。
+            val userOld = "user-$oldRunId"
+            if (messageId.startsWith(userOld)) {
+                val rest = messageId.removePrefix(userOld)
+                if (rest.isEmpty() || rest.startsWith("-")) return "user-$newRunId$rest"
+            }
+        }
+        return null
+    }
+
+    private fun EtaConversationAnalysisMessage.toEntity(
+        conversationId: String,
+        sortIndex: Int,
+        runIdRemap: Map<String, String>,
+    ): ConversationMessageEntity {
+        val candidate = remapMessageId(id, runIdRemap) ?: "import-${UUID.randomUUID()}"
+        return ConversationMessageEntity(
+            id = candidate,
             conversationId = conversationId,
             sortIndex = sortIndex,
             type = type,
@@ -381,6 +424,7 @@ internal object EtaConversationAnalysisRepository {
             toolsJson = encodeStringList(tools),
             generatedAtMillis = generatedAtMillis,
         )
+    }
 
     private fun encodeImages(images: List<EtaConversationAnalysisImage>): String {
         if (images.isEmpty()) return "[]"

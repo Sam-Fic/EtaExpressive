@@ -14,6 +14,8 @@ import kotlinx.serialization.json.JsonElement
  * 隐私边界：敏感工具的 argumentsDetail / resultDetail / media 在落库时就已剔除，
  * 归档事件在写库时也会做同样的剔除，因此本文件不含这些原文；被剔除的调用 id
  * 列在 [withheldToolCallIds]，单条调用另有 detailsWithheld 标记。
+ * 检查点的 cloud_usage_json（云侧计费回执展示态）同样有意不导出：
+ * 对复盘无用，且会扩大可分享文件的隐私面；消息级 token 五项不受影响。
  */
 @Serializable
 internal data class EtaConversationAnalysisDocument(
@@ -67,6 +69,12 @@ internal data class EtaConversationAnalysisConversation(
     /** 派生会话所属的调度台会话 id。 */
     val dispatchParentId: String? = null,
     val dispatchManagedAt: Long? = null,
+    /**
+     * 本会话应用过的运行 id；回合切分靠它把消息 id 解析成真实模型回合。
+     * 导入时还原进新会话，否则「导出 → 导入 → 再导出」的回合结构会退化为顺序分段。
+     * 旧版文件没有这一项，解码为 null，导入后按原样走顺序分段兜底。
+     */
+    val appliedRuntimeRunIds: List<String>? = null,
 )
 
 /** 本次导出实际带了哪些可选内容。 */
@@ -266,6 +274,11 @@ internal data class EtaConversationAnalysisRuntimeRun(
     val ok: Boolean,
     val error: String? = null,
     val transcript: List<AgentModelClient.ConversationMessage> = emptyList(),
+    /**
+     * 运行时事件日志。只覆盖已归档的 run：未归档 run 的事件在 run 结束确认后即被清理，
+     * 导出时拿不到——events 为空可能是「没产生事件」也可能是「run 尚未归档」，
+     * 消费方不要据此断言事件缺失。
+     */
     val events: List<JsonElement> = emptyList(),
 )
 

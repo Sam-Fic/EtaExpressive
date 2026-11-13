@@ -244,7 +244,6 @@ class EtaConversationAnalysisTest {
     fun importRestoresTheConversationAsANewChat() = runBlocking {
         seedConversation()
         val document = EtaConversationAnalysisRepository.export(context, "conv-1")
-
         val newId = EtaConversationAnalysisRepository.import(context, document)
 
         assertTrue(newId != "conv-1")
@@ -255,11 +254,19 @@ class EtaConversationAnalysisTest {
         // 设备相关的模型绑定不跟着走，留空回落到本机默认。
         assertEquals("", conversation.providerId)
         assertEquals("", conversation.modelId)
-        assertEquals("[]", conversation.appliedRuntimeRunIdsJson)
+        // 应用过的运行 id 被重映射成新值后跟着走：回合切分靠它解析消息 id，
+        // 且新值不会撞导出设备库里已有的 runId。
+        assertTrue(conversation.appliedRuntimeRunIdsJson != "[]")
+        assertTrue(!conversation.appliedRuntimeRunIdsJson.contains("run-1"))
 
         val restored = dao.messagesForConversation(newId)
         assertEquals(4, restored.size)
         assertEquals(listOf("user", "tool", "assistant", "user"), restored.map { it.type })
+        // 带运行标识的消息 id 被重映射到新 runId，回合结构与 toolCallId 派生保持不变；
+        // 自由命名的 user 行换成随机 id。
+        assertTrue(restored[1].id.endsWith("-tool-1-call-a"))
+        assertTrue(restored[2].id.startsWith("assistant-") && restored[2].id.endsWith("-1-0"))
+        assertTrue(restored[0].id.startsWith("import-"))
         assertEquals(100, restored[2].inputTokens)
         assertEquals(20, restored[2].outputTokens)
         assertEquals("read_file", restored[1].toolName)
@@ -292,6 +299,36 @@ class EtaConversationAnalysisTest {
         val restored = EtaDatabase.get(context).conversationDao().messagesForConversation(newId)
         assertEquals(listOf("user", "assistant"), restored.map { it.type })
         assertEquals(listOf(0, 1), restored.map { it.sortIndex })
+    }
+
+    @Test
+    fun importKeepsRoundStructureAcrossAnExportImportRoundTrip() = runBlocking {
+        seedConversation()
+        val document = EtaConversationAnalysisRepository.export(context, "conv-1")
+
+        // 导入后再导出，回合结构不应退化为顺序分段。
+        val newId = EtaConversationAnalysisRepository.import(context, document)
+        val reExported = EtaConversationAnalysisRepository.export(context, newId)
+
+        assertEquals(2, reExported.rounds.size)
+        assertEquals(1, reExported.summary.toolCallCount)
+        // 重映射后的新 runId 出现在回合与工具行 id 里，原始 runId 不再出现。
+        assertTrue(reExported.rounds[0].runId != "run-1")
+        assertTrue(reExported.rounds[0].runId != null)
+        assertTrue(reExported.messages.any { it.type == "tool" && it.id.endsWith("-tool-1-call-a") })
+    }
+
+    @Test
+    fun importSurvivesDuplicateMessageIdsInTheSameFileAndAcrossImports() = runBlocking {
+        seedConversation()
+        val document = EtaConversationAnalysisRepository.export(context, "conv-1")
+
+        val first = EtaConversationAnalysisRepository.import(context, document)
+        val second = EtaConversationAnalysisRepository.import(context, document)
+
+        val dao = EtaDatabase.get(context).conversationDao()
+        assertEquals(4, dao.messagesForConversation(first).size)
+        assertEquals(4, dao.messagesForConversation(second).size)
     }
 
     @Test
