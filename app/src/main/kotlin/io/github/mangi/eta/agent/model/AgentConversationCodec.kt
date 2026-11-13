@@ -413,10 +413,14 @@ internal object AgentConversationCodec {
      *
      * 只放行 id / 状态码 / 计数：它们不含事件内容、便签正文等隐私，却是跨 run 后模型
      * 唯一能直接复用的锚点（否则只能凭自己的总结文本重找，或误判调用没生效）。
+     *
+     * `advice` 是工具回执里单独一个「给模型的可执行下一步」字段，契约上不含用户数据
+     * （不写事件标题、正文、文件名），因此也放行。此前恢复指令只写在 message 里，
+     * 跨 run 被整段丢掉后模型只剩 `ok=false` 空壳，只会原样重试整批。
      */
     private val SENSITIVE_KEEP_KEYS = setOf(
         "ok", "code", "tool", "event_id", "event_ids", "note_id", "note_ids",
-        "alarm_id", "alarm_ids", "count", "created", "updated", "deleted",
+        "alarm_id", "alarm_ids", "count", "created", "updated", "deleted", "advice",
     )
 
     private fun sensitiveToolContent(raw: String): String {

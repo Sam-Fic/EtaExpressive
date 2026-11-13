@@ -17,7 +17,6 @@ import top.yukonga.miuix.kmp.nav.core.NavKey
  */
 private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.Home::class,
-    AppRoute.Chat::class,
     AppRoute.Browser::class,
     AppRoute.Terminal::class,
     AppRoute.Tools::class,
@@ -194,16 +193,16 @@ class AgentNavigator(
     }
 
     /**
-     * 回到承载对话的页面（[AppRoute.Home] 或 [AppRoute.Chat]）。
+     * 回到承载对话的页面（[AppRoute.Home]）。
      *
      * 搜索命中要「点开就落在对话里」：从管理聊天页跳进来的栈是
      * `Home → ManageChats → MessageSearch`，逐级 pop 会停在管理聊天页，
-     * 所以这里一次性截断到承载对话的那一层（栈里有 Home 和 Chat 时取更靠上的那个）。
+     * 所以这里一次性截断到承载对话的那一层。
      * 一次快照内截断，只播一段转场，不会出现逐级退场的多段动画。
      * 栈里没有承载对话的页面（异常栈）时退到首页。
      */
     fun popToConversationHost(): Boolean {
-        val target = backStack.indexOfLast { it is AppRoute.Home || it is AppRoute.Chat }
+        val target = backStack.indexOfLast { it is AppRoute.Home }
         if (target < 0) {
             popToHome()
             return false

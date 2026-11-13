@@ -663,7 +663,7 @@ internal object BreenoHooks {
                             config = config,
                             images = images,
                             history = request.history,
-                            handoff = request.toRuntimeHandoff(prompt)
+                            handoff = request.toRuntimeHandoff(prompt, config)
                         )
                     ) { event ->
                         if (activeAgentRun.get() === runState) {
@@ -1014,7 +1014,10 @@ internal object BreenoHooks {
         if (map.size > 256) map.clear()
     }
 
-    private fun TextRequest.toRuntimeHandoff(userText: String): AgentRuntimeWire.EntryHandoff =
+    private fun TextRequest.toRuntimeHandoff(
+        userText: String,
+        config: AgentModelClient.ModelConfig,
+    ): AgentRuntimeWire.EntryHandoff =
         AgentRuntimeWire.EntryHandoff(
             id = runId,
             source = BREENO_HANDOFF_SOURCE,
@@ -1027,8 +1030,10 @@ internal object BreenoHooks {
                     .ifBlank { recordId }
                     .ifBlank { runId },
                 title = archiveTitle(userText),
-                thinkingEnabled = thinkingEnabledOverride,
-                reasoningEffort = thinkingEnabledOverride?.let(ReasoningEffort::fromLegacy),
+                // 用本次 run 实际下发的 config 还原档位：override 为 null 时仍要保留
+                // loadConfig 里的精确 effort，不能只写一个 boolean→legacy 默认档。
+                thinkingEnabled = config.thinkingEnabled,
+                reasoningEffort = config.effectiveReasoningEffort,
                 adapterPayload = JSONObject()
                     .put("recordId", recordId)
                     .put("originalRecordId", originalRecordId)

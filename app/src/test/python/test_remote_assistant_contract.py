@@ -26,14 +26,14 @@ class RemoteAssistantListContractTest(unittest.TestCase):
         # 列出一整套本机助手。
         self.assertIn("null", source)
 
-    def test_both_chat_routes_provide_the_remote_agent_name(self):
+    def test_conversation_route_provides_the_remote_agent_name(self):
         root = read(KOTLIN / "ui/app/AgentAppRoot.kt")
-        # Home 与 Chat 两条路由各自渲染聊天视图，两条都必须提供，漏一条就会有一半
-        # 场景（首页新会话 / 已开会话）仍然列出本机助手。
+        # 会话只由主页承载（独立对话页已删），这一处必须 provide，否则远程会话
+        # 仍会列出本机助手。
         self.assertEqual(
             root.count("LocalRemoteAgentName provides"),
-            2,
-            "Home 与 Chat 两条路由都必须 provide LocalRemoteAgentName",
+            1,
+            "主页必须 provide LocalRemoteAgentName",
         )
         self.assertIn("fun remoteAgentNameOf(", root)
         # 名字查不到时返回空串（不是 null），把「远程但没名字」与「本机」区分开。

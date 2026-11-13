@@ -56,6 +56,22 @@ internal object AgentCalendarIntent {
     private val ALARM_CONTEXT = Regex("闹钟|起床|叫醒|打铃|alarm|wake\\s+me|wake-up", RegexOption.IGNORE_CASE)
 
     /**
+     * 明确的写入意图。只有出现这些动词，才把日程类请求判成「创建任务」并走快速路径。
+     * 刻意不含「安排」「提醒」这类泛词：它们由 [ARRANGE] / [REMIND] 配合时间表达命中，
+     * 但不足以证明用户要写日历，误开快速路径会把普通问答压成单轮写入。
+     */
+    private val CALENDAR_WRITE_INTENT = Regex(
+        "添加|加到|加进|加入|新增|新建|创建|写入|记到|记入|录入|登记" +
+            "|add\\b|create\\b|schedule\\b|book\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** 纯识别/整理语境：没有写入动词时不预热日历写入目录，也不注入命令式的时间口径。 */
+    private val SCREEN_RECOGNITION_INTENT = Regex(
+        "识别|提取|提炼|总结|整理|有没有(?:日程|日历|会议|活动)|哪些(?:日程|会议|活动)",
+    )
+
+    /**
      * 本轮指令是否属于日程任务。
      *
      * 判定口径：
@@ -66,10 +82,20 @@ internal object AgentCalendarIntent {
      */
     fun matches(prompt: String): Boolean {
         if (prompt.isBlank()) return false
-        if (CALENDAR_NOUN.containsMatchIn(prompt)) return true
-        if (CALENDAR_VERB_PHRASE.containsMatchIn(prompt)) return true
         val hasTime = TIME_TOKEN.containsMatchIn(prompt)
-        if (ARRANGE.containsMatchIn(prompt) && hasTime) return true
-        return REMIND.containsMatchIn(prompt) && hasTime && !ALARM_CONTEXT.containsMatchIn(prompt)
+        val hit = CALENDAR_NOUN.containsMatchIn(prompt) ||
+            CALENDAR_VERB_PHRASE.containsMatchIn(prompt) ||
+            (ARRANGE.containsMatchIn(prompt) && hasTime) ||
+            (REMIND.containsMatchIn(prompt) && hasTime && !ALARM_CONTEXT.containsMatchIn(prompt))
+        if (!hit) return false
+        // 「识别截图中的日程」「整理一下日程」是只读任务：没有写入动词时不预热日历组，
+        // 也不下发「按当前时间换算并调用日程工具」这类命令式口径。有写入动词时
+        // （「识别…并添加到日历」）仍照常命中。
+        return CALENDAR_WRITE_INTENT.containsMatchIn(prompt) ||
+            !SCREEN_RECOGNITION_INTENT.containsMatchIn(prompt)
     }
+
+    /** 是否为明确的「添加日程」任务：决定要不要启用专用短提示与最低思考档。 */
+    fun writeIntent(prompt: String): Boolean =
+        matches(prompt) && CALENDAR_WRITE_INTENT.containsMatchIn(prompt)
 }

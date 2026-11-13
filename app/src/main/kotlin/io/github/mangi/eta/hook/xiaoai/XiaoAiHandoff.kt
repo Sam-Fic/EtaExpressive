@@ -2,6 +2,7 @@ package io.github.mangi.eta.hook.xiaoai
 
 import io.github.mangi.eta.agent.runtime.AgentExternalArchivePayload
 import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
+import io.github.mangi.eta.data.model.ReasoningEffort
 import org.json.JSONObject
 
 internal object XiaoAiHandoff {
@@ -12,6 +13,8 @@ internal object XiaoAiHandoff {
         runId: String,
         dialogId: String,
         prompt: String,
+        thinkingEnabled: Boolean? = null,
+        reasoningEffort: ReasoningEffort? = null,
     ): AgentRuntimeWire.EntryHandoff =
         AgentRuntimeWire.EntryHandoff(
             id = runId,
@@ -21,6 +24,8 @@ internal object XiaoAiHandoff {
                 userText = prompt,
                 conversationKey = dialogId,
                 title = archiveTitle(prompt),
+                thinkingEnabled = thinkingEnabled,
+                reasoningEffort = reasoningEffort,
                 adapterPayload = JSONObject().put("dialogId", dialogId),
             ).toJson(),
         )

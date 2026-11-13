@@ -15,6 +15,17 @@ internal object EtaConversationAnalysisRounds {
     const val TYPE_CONTEXT_COMPACTED = "context_compacted"
 
     private const val STATUS_FAILED = "Failed"
+    private const val STATUS_UNKNOWN = "Unknown"
+
+    /**
+     * 工具调用是否**未确认成功**。
+     *
+     * run 被停止时，尚未收到 ToolFinished 的 Running 卡片会被投影层改成 Unknown；
+     * 敏感工具的结果又已脱敏，导出里没有任何可反推终态的证据。把 Unknown 与 Failed
+     * 一并计入未完成，避免「一条日程都没建成功」的诊断里失败数显示为 0。
+     */
+    private fun isUnsuccessful(status: String): Boolean =
+        status == STATUS_FAILED || status == STATUS_UNKNOWN
 
     /** 助手行的 id 形如 `assistant-<run>-<round>-<idx>`，工具行是 `<run>-tool-<round>-<call>`。 */
     private data class RoundKey(val runId: String, val round: Int)
@@ -98,7 +109,7 @@ internal object EtaConversationAnalysisRounds {
                 EtaConversationAnalysisToolAggregate(
                     name = name,
                     count = calls.size,
-                    failedCount = calls.count { it.status == STATUS_FAILED },
+                    failedCount = calls.count { isUnsuccessful(it.status) },
                 )
             }
             .sortedWith(compareByDescending<EtaConversationAnalysisToolAggregate> { it.count }.thenBy { it.name })
@@ -108,7 +119,7 @@ internal object EtaConversationAnalysisRounds {
         val groupAggregates = rounds
             .flatMap { it.toolCalls }
             .mapNotNull { call ->
-                groupNameOf(call)?.let { group -> group to (call.status == STATUS_FAILED) }
+                groupNameOf(call)?.let { group -> group to isUnsuccessful(call.status) }
             }
             .groupBy({ it.first }, { it.second })
             .map { (name, failedFlags) ->
@@ -127,7 +138,7 @@ internal object EtaConversationAnalysisRounds {
             messageCount = messages.size,
             roundCount = rounds.size,
             toolCallCount = rounds.sumOf { it.toolCalls.size },
-            failedToolCallCount = rounds.sumOf { round -> round.toolCalls.count { it.status == STATUS_FAILED } },
+            failedToolCallCount = rounds.sumOf { round -> round.toolCalls.count { isUnsuccessful(it.status) } },
             tools = aggregates,
             toolGroups = groupAggregates,
             usage = usage,
@@ -166,7 +177,7 @@ internal object EtaConversationAnalysisRounds {
 
     /** 成功打开的那个组；打开失败的调用返回 null，单独计入 failed。 */
     private fun openedGroupOf(call: EtaConversationAnalysisToolCall): String? =
-        groupNameOf(call)?.takeIf { call.status != STATUS_FAILED }
+        groupNameOf(call)?.takeIf { !isUnsuccessful(call.status) }
 
     private fun groupNameOf(call: EtaConversationAnalysisToolCall): String? {
         if (call.name != USE_GROUP_TOOL) return null

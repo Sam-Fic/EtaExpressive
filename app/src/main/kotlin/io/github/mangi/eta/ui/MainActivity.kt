@@ -28,7 +28,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    private var assistantConversationKey by mutableStateOf<String?>(null)
     /** 助手浮窗口述「去配置」请求令牌；AgentAppRoot 落地语音设置页后复位。 */
     private var openVoiceSettingsRequest by mutableStateOf(0)
     /** 完成横幅点击直达的会话 id；AgentAppRoot 消费后复位。 */
@@ -86,7 +85,6 @@ class MainActivity : ComponentActivity() {
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED,
         )
-        updateAssistantHandoff(intent)
         updateAssistantVoiceSettingsRequest(intent)
         updateLiveTarget(intent)
         consumeShareIntent(intent)
@@ -113,16 +111,9 @@ class MainActivity : ComponentActivity() {
                     onResolvedDarkModeChange = ::updateSystemBars,
                 ) {
                     AgentAppRoot(
-                        assistantConversationKey = assistantConversationKey,
                         openVoiceSettingsRequest = openVoiceSettingsRequest,
                         liveTargetConversationId = liveTargetConversationId,
                         inboundShareUris = inboundShareUris,
-                        onAssistantConversationOpened = { opened ->
-                            assistantConversationKey = null
-                            if (opened) {
-                                EtaAssistantOverlayService.notifyHandoffReady(this@MainActivity)
-                            }
-                        },
                         onInboundShareConsumed = { inboundShareUris = emptyList() },
                         onLiveTargetConsumed = { liveTargetConversationId = null },
                         onVoiceSettingsRequestConsumed = { openVoiceSettingsRequest = 0 },
@@ -162,7 +153,6 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        updateAssistantHandoff(intent)
         updateAssistantVoiceSettingsRequest(intent)
         updateLiveTarget(intent)
         consumeShareIntent(intent)
@@ -241,13 +231,6 @@ class MainActivity : ComponentActivity() {
             getParcelableArrayListExtra<Parcelable>(Intent.EXTRA_STREAM)
         }
         return values.orEmpty().mapNotNull { it as? android.net.Uri }
-    }
-
-    private fun updateAssistantHandoff(intent: Intent?) {
-        if (intent?.action != EtaAssistantOverlayService.ACTION_OPEN_CONVERSATION) return
-        assistantConversationKey = intent.getStringExtra(
-            EtaAssistantOverlayService.EXTRA_CONVERSATION_KEY,
-        )?.takeIf(String::isNotBlank)
     }
 
     /** 助手浮窗口述「去配置」：请求令牌自增，AgentAppRoot 据此落地语音设置页。 */

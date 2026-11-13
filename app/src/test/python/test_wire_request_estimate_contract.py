@@ -51,12 +51,11 @@ class WireRequestEstimateContractTest(unittest.TestCase):
         ring = bar.split('AgentContextUsageButton(', 1)[1].split(')', 1)[0]
         self.assertIn('usage = liveUsage,', ring)
         self.assertNotIn('else sendBudget', ring)
-        for path in ('ui/screens/chat/AgentChatScreen.kt', 'ui/screens/home/AgentHomeScreen.kt'):
-            screen = self.text(path)
-            self.assertIn('measuredContextTokens: () -> Int? = { null },', screen)
-            self.assertIn('measuredContextTokens = measuredContextTokens(),', screen)
-            self.assertNotIn('overheadCalibrationTokens', screen)
-            self.assertNotIn('previewRequestOverheadTokens', screen)
+        screen = self.text('ui/screens/home/AgentHomeScreen.kt')
+        self.assertIn('measuredContextTokens: () -> Int? = { null },', screen)
+        self.assertIn('measuredContextTokens = measuredContextTokens(),', screen)
+        self.assertNotIn('overheadCalibrationTokens', screen)
+        self.assertNotIn('previewRequestOverheadTokens', screen)
 
     def test_diagnostic_wire_bytes_reuse_serialized_request_without_payload_logging(self):
         for name in ('OpenAiResponsesProvider', 'OpenAiChatCompletionsProvider', 'AnthropicMessagesProvider'):

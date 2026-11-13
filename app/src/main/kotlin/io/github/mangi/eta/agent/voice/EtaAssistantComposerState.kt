@@ -19,6 +19,7 @@ import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.data.datastore.SettingsDataStore
 import io.github.mangi.eta.data.model.AssistantProfile
+import io.github.mangi.eta.data.model.AssistantPrompt
 import io.github.mangi.eta.data.model.GptSpeedMode
 import io.github.mangi.eta.data.model.Model
 import io.github.mangi.eta.data.model.ProviderSetting
@@ -70,7 +71,12 @@ internal class EtaAssistantComposerState(
         private set
     var selectedModelId by mutableStateOf<String?>(null)
         private set
-    var assistantId by mutableStateOf(AssistantRepository.activeId.value)
+    /**
+     * 系统语音助手入口一律用「普通助理」：全局当前助手若是调度台，回落到默认助手。
+     * 外部入口没有会话上下文，不能继承调度台的「只调度不执行」纪律提示词；
+     * 用户自定义的普通助手照旧继承。规则单一出处见 [AssistantRepository.plainActiveId]。
+     */
+    var assistantId by mutableStateOf(AssistantRepository.plainActiveId())
         private set
 
     var reasoningEffort by mutableStateOf(ReasoningEffort.OFF)
@@ -162,8 +168,12 @@ internal class EtaAssistantComposerState(
         scope.launch {
             AssistantRepository.activeId.collect { id ->
                 withContext(Dispatchers.Main) {
-                    if (id != assistantId) {
-                        assistantId = id
+                    // 主界面切到调度台会话会把全局活动助手联动改写成调度台，入口浮层不跟随。
+                    val resolved = if (id == AssistantPrompt.DISPATCHER_ID) {
+                        AssistantRepository.plainActiveId()
+                    } else id
+                    if (resolved != assistantId) {
+                        assistantId = resolved
                         refreshModelBindings()
                     }
                 }
@@ -180,9 +190,15 @@ internal class EtaAssistantComposerState(
     fun selectedModelRecord(): Model? =
         selectedProviderRecord()?.selectedOrFirstModel(selectedModelId)
 
+    /**
+     * 入口 run 的助手档案，决定 `config.systemPrompt` 与 `config.assistantId`。
+     * 绝不能回落到 [AssistantRepository.active]（它可能正是调度台）：再兜一层调度台排除，
+     * 保证即便状态来自旧快照也不会把「只调度不执行」发到模型。
+     */
     fun assistantProfile(): AssistantProfile? =
         AssistantRepository.profiles.value.firstOrNull { it.id == assistantId }
-            ?: AssistantRepository.active()
+            ?.takeIf { it.id != AssistantPrompt.DISPATCHER_ID }
+            ?: AssistantRepository.plainActive()
 
     private fun refreshModelBindings() {
         val provider = selectedProviderRecord()
@@ -221,7 +237,9 @@ internal class EtaAssistantComposerState(
     }
 
     fun selectAssistant(id: String) {
-        if (id.isBlank() || id == assistantId) return
+        // 入口浮层不提供调度台身份：选它会连带把全局活动助手改写成调度台，
+        // 下一次唤起又会把派发纪律带进普通对话。
+        if (id.isBlank() || id == AssistantPrompt.DISPATCHER_ID || id == assistantId) return
         val profile = AssistantRepository.profiles.value.firstOrNull { it.id == id } ?: return
         assistantId = profile.id
         refreshModelBindings()

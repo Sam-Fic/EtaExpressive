@@ -20,25 +20,29 @@ class MessageSearchJumpHighlightContractTest(unittest.TestCase):
         root = (SRC / "ui/app/AgentAppRoot.kt").read_text(encoding="utf-8")
         block = root[root.index("fun popToConversation() {"):root.index("val interceptExitBack")]
         self.assertIn("navigator.popToConversationHost()", block)
+        # 跨会话命中：弹回主页时钉住该会话，否则主页的调度台复位会把它换掉。
+        self.assertIn("homeEntryPinnedConversationId", block)
 
-    def test_navigator_can_pop_to_home_or_chat(self):
+    def test_navigator_can_pop_back_to_home(self):
         navigator = (SRC / "ui/navigation/AgentNavigator.kt").read_text(encoding="utf-8")
         self.assertIn("fun popToConversationHost()", navigator)
         block = navigator[navigator.index("fun popToConversationHost()"):]
-        self.assertIn("route is AppRoute.Home || route is AppRoute.Chat", block)
+        self.assertIn("it is AppRoute.Home", block)
+        # 独立对话页已删除：不再有 AppRoute.Chat 这个承载页。
+        self.assertNotIn("AppRoute.Chat", block)
         # miuix 版本按 index 一次截断（一次快照内 removeLastOrNull），只播一段转场。
         self.assertIn("backStack.size > target + 1", block)
 
-    def test_both_chat_hosts_receive_the_scroll_target(self):
+    def test_conversation_host_receives_the_scroll_target(self):
         root = (SRC / "ui/app/AgentAppRoot.kt").read_text(encoding="utf-8")
-        # 首页与独立会话页都要接收滚动锚点，命中才能落在那条消息上。
-        self.assertGreaterEqual(
-            root.count("scrollToMessageId = agentState.pendingScrollToMessageId"),
-            2,
+        # 会话只由主页承载（独立对话页已删），滚动锚点只需下发这一处。
+        self.assertEqual(
+            root.count("scrollToMessageId = if (remote != null) null else agentState.pendingScrollToMessageId"),
+            1,
         )
-        self.assertGreaterEqual(
+        self.assertEqual(
             root.count("onScrollToMessageConsumed = agentState::consumePendingScrollToMessage"),
-            2,
+            1,
         )
 
     def test_search_rows_highlight_the_query(self):

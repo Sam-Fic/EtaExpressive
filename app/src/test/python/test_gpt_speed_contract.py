@@ -14,14 +14,12 @@ def between(text, start, end):
 
 
 class GptSpeedContractTest(unittest.TestCase):
-    def test_owner_actions_are_connected_on_both_screens(self):
+    def test_owner_action_is_connected_on_the_conversation_screen(self):
         root = source("ui/app/AgentAppRoot.kt")
-        for name in ("AgentHomeAction", "AgentChatAction"):
-            self.assertIn(f"{name}.CycleGptSpeedMode -> agentState.cycleGptSpeedMode()", root)
-        for path in ("ui/screens/home/AgentHomeScreen.kt", "ui/screens/chat/AgentChatScreen.kt"):
-            screen = source(path)
-            self.assertIn("gptSpeedMode = state.gptSpeedMode", screen)
-            self.assertIn("CycleGptSpeedMode", screen)
+        self.assertIn("AgentHomeAction.CycleGptSpeedMode -> agentState.cycleGptSpeedMode()", root)
+        screen = source("ui/screens/home/AgentHomeScreen.kt")
+        self.assertIn("gptSpeedMode = state.gptSpeedMode", screen)
+        self.assertIn("CycleGptSpeedMode", screen)
 
     def test_ui_and_owner_share_binding_eligibility(self):
         picker = source("ui/model/AgentModelPickerUiState.kt")

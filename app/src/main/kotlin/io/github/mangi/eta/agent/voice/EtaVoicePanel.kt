@@ -88,7 +88,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -96,7 +95,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -267,12 +265,6 @@ private const val AssistantExitDurationMillis = 220
 /** 半屏档继续下拉超过该距离即关闭浮层（下拉关闭阈值）。 */
 private val AssistantDismissThreshold = 92.dp
 
-/** 全屏档继续上拉超过该距离即把对话交接回主程序（交接阈值）。 */
-private val AssistantHandoffThreshold = 72.dp
-
-/** 列表上滑时第二段交接的阈值（pre-scroll 阶段整段消费）。 */
-private val AssistantDirectHandoffThreshold = 48.dp
-
 /** 甩动速度阈值：快速下滑关闭、快速上滑展开，超过即按惯性翻档。 */
 private val AssistantFlingVelocity = 900.dp
 
@@ -315,7 +307,6 @@ internal fun EtaVoicePanel(
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
     inputFocusRequestKey: Int,
-    canOpenConversation: Boolean,
     exitRequested: Boolean,
     composerConversationId: String?,
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
@@ -331,7 +322,6 @@ internal fun EtaVoicePanel(
     onSubmit: (String) -> Unit,
     onStop: () -> Unit,
     onClose: () -> Unit,
-    onOpenConversation: () -> Unit,
     onQuestionDraftChanged: (String, String, io.github.mangi.eta.agent.question.AgentQuestionAnswer) -> Unit,
     onSubmitQuestionAnswer: (String, String) -> Unit,
 ) {
@@ -479,7 +469,6 @@ internal fun EtaVoicePanel(
                     dictationStartRequest = dictationStartRequest,
                     onSystemPickerLaunch = onSystemPickerLaunch,
                     focusRequester = focusRequester,
-                    canOpenConversation = canOpenConversation,
                     maxContentHeightPx = maxContentHeightPx,
                     bottomInsetPx = bottomInset,
                     imeOverlapPx = imeOverlap,
@@ -495,7 +484,6 @@ internal fun EtaVoicePanel(
                     },
                     onStop = onStop,
                     onClose = onClose,
-                    onOpenConversation = onOpenConversation,
                     onQuestionDraftChanged = onQuestionDraftChanged,
                     onSubmitQuestionAnswer = onSubmitQuestionAnswer,
                 )
@@ -545,7 +533,6 @@ private fun BoxScope.AssistantPanel(
     dictationStartRequest: Int,
     onSystemPickerLaunch: () -> Unit,
     focusRequester: FocusRequester,
-    canOpenConversation: Boolean,
     maxContentHeightPx: Float,
     bottomInsetPx: Int,
     imeOverlapPx: Int,
@@ -558,12 +545,10 @@ private fun BoxScope.AssistantPanel(
     onSubmit: (String) -> Unit,
     onStop: () -> Unit,
     onClose: () -> Unit,
-    onOpenConversation: () -> Unit,
     onQuestionDraftChanged: (String, String, io.github.mangi.eta.agent.question.AgentQuestionAnswer) -> Unit,
     onSubmitQuestionAnswer: (String, String) -> Unit,
 ) {
     val density = LocalDensity.current
-    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     // 两档高度：半屏 / 全屏。拖拽跟手，松手按位置与惯性吸附到最近一档，
@@ -572,16 +557,10 @@ private fun BoxScope.AssistantPanel(
     var sheetMode by remember { mutableStateOf(AssistantSheetMode.HALF) }
     var draggedHeightPx by remember { mutableStateOf<Float?>(null) }
     var dismissPullPx by remember { mutableFloatStateOf(0f) }
-    var handoffPullPx by remember { mutableFloatStateOf(0f) }
-    var directHandoffPullPx by remember { mutableFloatStateOf(0f) }
-    var thresholdHapticSent by remember { mutableStateOf(false) }
-    var handoffRunning by remember { mutableStateOf(false) }
     var keepBottomAnchored by remember { mutableStateOf(true) }
     // 空态输入区下方渐变压暗的实测取材：输入区实测高度（含自身内边距），
     // 输入区长高 / 缩短时渐变同步变高。绘制阶段读取，只触发重绘不触发重组。
     var composerHeightPx by remember { mutableFloatStateOf(0f) }
-    val handoffThresholdPx = with(density) { AssistantHandoffThreshold.toPx() }
-    val directHandoffThresholdPx = with(density) { AssistantDirectHandoffThreshold.toPx() }
     val dismissThresholdPx = with(density) { AssistantDismissThreshold.toPx() }
     val flingVelocityPx = with(density) { AssistantFlingVelocity.toPx() }
     val hasMessages = state.messages.isNotEmpty()
@@ -619,9 +598,6 @@ private fun BoxScope.AssistantPanel(
     val visibleSheetHeightPx = sheetHeightPx.coerceAtMost(
         (maxContentHeightPx - imeOverlapPx).coerceAtLeast(0f),
     )
-    val handoffReady = canOpenConversation &&
-        (handoffPullPx >= handoffThresholdPx ||
-            directHandoffPullPx >= directHandoffThresholdPx)
 
     /**
      * 吸附到目标高度：从 [sheetHeight] 的当前值（即手指松手位置）开始续接播放，
@@ -645,47 +621,25 @@ private fun BoxScope.AssistantPanel(
             settleSheet(targetHeightPx)
         }
     }
-    LaunchedEffect(handoffReady) {
-        if (handoffReady && !thresholdHapticSent) {
-            thresholdHapticSent = true
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        } else if (!handoffReady) {
-            thresholdHapticSent = false
-        }
-    }
-
-    fun triggerHandoff(velocityY: Float = 0f) {
-        if (handoffRunning || !canOpenConversation) return
-        handoffRunning = true
-        // 交接动画期间先吸附到全屏档，避免交接途中高度掉回半屏。
-        sheetMode = AssistantSheetMode.FULL
-        draggedHeightPx = null
-        settleSheet(maxContentHeightPx, velocityY)
-        scope.launch {
-            delay(120)
-            onOpenConversation()
-        }
-    }
 
     /**
      * 拖拽跟手：按当前基准高度与手指位移请求新高度（上拉变大、下拉变小），
-     * 同时刷新「半屏档继续下拉（关闭）」与「全屏档继续上拉（交接）」的越界量。
+     * 同时刷新「半屏档继续下拉（关闭）」的越界量。
      * 高度直接写 [sheetHeight] 当前值（不播放动画），松手后由 [settleSheet] 从此处续接。
      */
     fun dragBy(deltaY: Float): Float {
-        if (handoffRunning || state.messages.isEmpty()) return 0f
+        if (state.messages.isEmpty()) return 0f
         val base = draggedHeightPx ?: sheetHeight.value
         val requested = base - deltaY
         val clamped = requested.coerceIn(0f, maxContentHeightPx)
         draggedHeightPx = clamped
         dismissPullPx = (halfSheetHeightPx - requested).coerceAtLeast(0f)
-        handoffPullPx = (requested - maxContentHeightPx).coerceAtLeast(0f)
         scope.launch { sheetHeight.snapTo(clamped) }
         return deltaY
     }
 
     /**
-     * 松手：先判「继续上拉交接 / 继续下拉关闭」，其余按位置与惯性在两档之间吸附。
+     * 松手：先判「继续下拉关闭」，其余按位置与惯性在两档之间吸附。
      * 吸附一律从松手位置续接（见 [settleSheet]），不再有「跳回原位再播放」。
      * 速度判据只对面板自身拖拽生效，避免消息列表的甩动被误判成翻档 / 关闭。
      */
@@ -695,18 +649,11 @@ private fun BoxScope.AssistantPanel(
         val current = draggedHeightPx ?: sheetHeight.value
         draggedHeightPx = null
         val dismissPull = dismissPullPx
-        val handoffPull = handoffPullPx
         dismissPullPx = 0f
-        handoffPullPx = 0f
-        directHandoffPullPx = 0f
         val flingUp = wasDragging && velocityY <= -flingVelocityPx
         val flingDown = wasDragging && velocityY >= flingVelocityPx
         val pastMidpoint = current >= (halfSheetHeightPx + maxContentHeightPx) / 2f
         when {
-            // 全屏档继续上拉：交接回主程序（或快速上甩）。
-            handoffPull >= handoffThresholdPx ||
-                (flingUp && current >= maxContentHeightPx * 0.98f) ->
-                triggerHandoff(velocityY)
             // 半屏档继续下拉：关闭浮层（或快速下甩）。
             dismissPull >= dismissThresholdPx ||
                 (flingDown && current < halfSheetHeightPx) ->
@@ -727,25 +674,11 @@ private fun BoxScope.AssistantPanel(
     val nestedScrollConnection = remember(
         halfSheetHeightPx,
         maxContentHeightPx,
-        canOpenConversation,
         listState,
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val current = draggedHeightPx ?: sheetHeight.value
-                if (
-                    available.y < 0f &&
-                    canOpenConversation &&
-                    current >= maxContentHeightPx * 0.98f
-                ) {
-                    directHandoffPullPx += -available.y
-                    if (directHandoffPullPx >= directHandoffThresholdPx) {
-                        triggerHandoff()
-                    }
-                    // 第二段上滑由父容器在 pre-scroll 阶段完整消费，避免列表或
-                    // overscroll 先截走事件后，接管手势永远达不到阈值。
-                    return Offset(0f, available.y)
-                }
                 // 未到全屏时上滑先长高、到顶后下滑先收缩（半屏档继续下滑即下拉关闭），
                 // 两档之外不消费，交还列表自身滚动。
                 val shouldResize = (available.y < 0f && current < maxContentHeightPx) ||

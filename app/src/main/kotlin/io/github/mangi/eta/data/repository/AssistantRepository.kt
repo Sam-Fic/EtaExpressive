@@ -73,6 +73,33 @@ internal object AssistantRepository {
             ?: profiles.value.firstOrNull()
             ?: defaultProfile()
 
+    /**
+     * 普通对话入口使用的助手 id：**调度台身份不外溢**。
+     *
+     * 全局活动助手会被「选中会话」联动改写，用户用过调度台后全局活动即调度台。系统语音助手
+     * 与厂商助手等外部入口没有会话上下文，若原样继承就会带上「只调度不执行」的纪律提示词，
+     * 连一句话的普通问答都会变成 task_dispatch 派发，且目录里凭空多出派发工具。
+     * 这些入口一律用非调度台助手：默认助手（普通助理 Eta）优先，被删时取任一非调度台助手。
+     * 用户自定义的普通助手照旧继承，不被改写。
+     *
+     * 主界面新建普通会话走同一规则（AgentAppState.currentBoundAssistantId）；调度台会话自身
+     * 与它派发的工作会话不走这里，仍按真实身份运行。
+     */
+    fun plainActiveId(): String {
+        // 走 active() 而非裸 activeId：后者可能指向已删除的 id，active() 的兜底与主界面一致。
+        val active = active().id
+        if (active != AssistantPrompt.DISPATCHER_ID) return active
+        return profile(AssistantPrompt.DEFAULT_ID)?.id
+            ?: profiles.value.firstOrNull { it.id != AssistantPrompt.DISPATCHER_ID }?.id
+            ?: active
+    }
+
+    /** [plainActiveId] 对应的档案；索引未就绪或档案缺失时回落到任一可用非调度台助手。 */
+    fun plainActive(): AssistantProfile =
+        profile(plainActiveId())
+            ?: profiles.value.firstOrNull { it.id != AssistantPrompt.DISPATCHER_ID }
+            ?: active()
+
     fun profile(id: String): AssistantProfile? =
         profiles.value.firstOrNull { it.id == id }
 

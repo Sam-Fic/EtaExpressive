@@ -557,13 +557,15 @@ internal object XiaoAiHooks {
         run.client.set(client)
         var resultRunId: String? = null
         try {
+            val runConfig = AgentModelClient.loadConfig()
             val result = client.run(
                 request = AgentRuntimeWire.RunRequest(
                     runId = run.runId,
                     prompt = run.prompt,
-                    config = AgentModelClient.loadConfig(),
+                    config = runConfig,
                     images = listOfNotNull(run.image),
-                    handoff = run.toHandoff(),
+                    // 归档回放要靠 handoff 里的档位还原思考设置，缺了会退回全局布尔默认值。
+                    handoff = run.toHandoff(runConfig),
                     entryTools = uiAgentBridge.availableTools.sorted(),
                     xiaomiToolsBridgeCatalogJson = toolsBridgeCatalog
                         .takeUnless { it.definitions.isEmpty() }
@@ -749,11 +751,13 @@ internal object XiaoAiHooks {
             logger.debug { "超级小爱请求已取消" }
         }
 
-        fun toHandoff(): AgentRuntimeWire.EntryHandoff =
+        fun toHandoff(config: AgentModelClient.ModelConfig): AgentRuntimeWire.EntryHandoff =
             XiaoAiHandoff.create(
                 runId = runId,
                 dialogId = dialogId,
                 prompt = prompt,
+                thinkingEnabled = config.thinkingEnabled,
+                reasoningEffort = config.effectiveReasoningEffort,
             )
     }
 }

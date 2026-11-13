@@ -63,6 +63,14 @@ internal class AgentLoop(
      * 与静态组同走 [AgentToolGroups.deferredGroupsOf]。
      */
     private val dynamicToolGroupsProvider: () -> List<AgentToolGroup> = { emptyList() },
+    /**
+     * 允许的模型请求轮数上限，仅「目标单一的快捷任务」设置。
+     *
+     * 达到上限后不清空历史、不直接抛错，而是把本轮目录置空：模型只能输出最终正文，
+     * 循环按自然结束收口。这样既不会丢掉已写入的工具结果，也不会让快捷任务在
+     * 「再查一次 / 再试一次」上无限往返。Int.MAX_VALUE = 保持原有的无界循环。
+     */
+    private val maxRounds: Int = Int.MAX_VALUE,
 ) {
     data class CompactPolicy(
         val enabled: Boolean,
@@ -369,7 +377,10 @@ internal class AgentLoop(
             runController.throwIfCancelled()
             postToolReconnect?.check()
             appendPendingSteeringMessage()
-            selectRoundTools(toolsForRound?.invoke(round) ?: tools)
+            // 快捷任务超轮次：撤掉工具目录，逼模型用已有回执直接给出最终答复。
+            selectRoundTools(
+                if (round > maxRounds) JSONArray() else (toolsForRound?.invoke(round) ?: tools)
+            )
             try {
                 auxiliaryRound = round
                 auxiliaryVision.prepare(messages)

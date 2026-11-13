@@ -177,6 +177,13 @@ internal object AgentModelClient {
          * 看屏幕」的首轮规则。调用方已保证仅弹窗链路、消息未附图、且屏幕组已预开。
          */
         screenObservationRule: Boolean = false,
+        /**
+         * 「添加日程」快速路径：用一条专用短系统约束替换全部常驻提示，并在超轮次后
+         * 清空工具目录强制收束。仅在预设目录确实生效时为 true（退化回普通对话时自动关闭）。
+         */
+        calendarFastTask: Boolean = false,
+        /** 快速路径允许的模型请求轮数；仅 [calendarFastTask] 生效时读取。 */
+        fastPathMaxRounds: Int = Int.MAX_VALUE,
     ): ModelResponse.Text {
         config.validate()
         val initialCapabilities = capabilitiesProvider()
@@ -381,6 +388,9 @@ internal object AgentModelClient {
         val tools = initialTools
         // 退化后不再注入时间，也不再宣传日历能力。
         val effectivePresetRunAt = if (effectivePresetTools != null) presetRunAt else null
+        // 目录被能力投影清空而退回普通对话时，快速路径必须同步失效：常驻规则要恢复，
+        // 否则会出现「专用短提示 + 完整通用目录」的错配。
+        val fastTaskActive = calendarFastTask && effectivePresetTools != null
         val messages = AgentPromptBuilder.buildInitialMessages(
             config,
             prompt,
@@ -411,6 +421,7 @@ internal object AgentModelClient {
             dynamicToolGroups = mcpGroups,
             presetRunAt = effectivePresetRunAt,
             screenObservationRule = screenObservationRule,
+            calendarFastTask = fastTaskActive,
         )
         var transcriptStartIndex = messages.length()
         val traceFormatter = AgentTraceFormatter(
@@ -447,6 +458,7 @@ internal object AgentModelClient {
         var lastRoundTools: JSONArray? = initialTools
         val loop = AgentLoop(
             sessionId = sessionId,
+            maxRounds = if (fastTaskActive) fastPathMaxRounds else Int.MAX_VALUE,
             config = config,
             messages = messages,
             tools = tools,
@@ -553,6 +565,8 @@ internal object AgentModelClient {
                             dynamicToolGroups = mcpGroups,
                             // 预设运行的时间口径跨轮稳定：复用 run 建立时捕获的同一份。
                             presetRunAt = effectivePresetRunAt,
+                            // 快速路径跨轮同样只保留专用短规则，目录重建不能把它换回常驻段。
+                            calendarFastTask = fastTaskActive,
                         )
                         // 系统前缀的条数会随「本轮打开了哪些工具组」变化（指引块与组索引都是条件消息）。
                         // JSONArray.put(index, …) 是替换不是插入，按索引覆写会在前缀变长时盖掉历史与用户消息，

@@ -83,7 +83,6 @@
   <string name="action_launch_kimi_web">启动 Kimi Web</string>
   <string name="action_sub_agent_status">子代理状态</string>
   <string name="sub_agent_status_empty">这个会话还没有子代理</string>
-  <string name="route_chat">对话</string>
   <string name="route_browser">Agent 浏览器</string>
   <string name="route_tools">工具能力</string>
   <string name="haptics_title">震动</string>

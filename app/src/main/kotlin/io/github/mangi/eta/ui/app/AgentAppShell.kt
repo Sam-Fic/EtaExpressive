@@ -476,7 +476,6 @@ private fun AgentTopBar(
 @Composable
 private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = null): String = when (route) {
     is AppRoute.Home -> currentConversationTitle ?: stringResource(R.string.app_name)
-    is AppRoute.Chat -> stringResource(R.string.route_chat)
     is AppRoute.Browser -> stringResource(R.string.route_browser)
     is AppRoute.Terminal -> stringResource(R.string.route_terminal)
     is AppRoute.TerminalDaemonTasks -> stringResource(R.string.terminal_daemon_tasks)

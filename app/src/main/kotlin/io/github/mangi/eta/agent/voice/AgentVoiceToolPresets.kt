@@ -18,19 +18,40 @@ internal object AgentVoiceToolPresets {
     /** 创建屏幕日程：只下发日程创建链，截图已附在用户消息里。 */
     const val SCREEN_CALENDAR = "screen_calendar"
 
+    /**
+     * 日程快速路径允许的模型请求轮数上限。
+     *
+     * 一轮决策 + 一轮写入回执后的收尾足够；超过上限时目录被清空，模型只能输出最终答复，
+     * 不会再发起新的工具往返。这里约束的是「请求轮次」，不是模型内部的思考长度，
+     * 后者由快速路径把思考档位压到最低来控制。
+     */
+    const val CALENDAR_FAST_MAX_ROUNDS = 3
+
     /** 整理屏幕内容：截图已附在用户消息里，纯对话，不下发工具。 */
     const val SCREEN_ORGANIZE = "screen_organize"
 
     /**
-     * 创建日程的最小闭环：单条新建与批量新建。
+     * 创建日程的最小闭环。
      *
      * 截图直接给出事项，当前时间由 Runtime 在系统提示里注入（[Preset.injectCurrentTime]），
      * 因此不需要 `get_current_context` 的取时间往返，也不配任何读取屏幕的工具。
+     *
+     * 查询类两个工具必须留下：单条/批量写入失败回执里写着「先用 search_calendar_events
+     * 确认、必要时用 list_calendars 换可写日历」，只给写入工具时模型照做会被校验器拒，
+     * 框架自己的恢复指令就成了空话。
      */
     private val CALENDAR_CREATE: Set<String> = setOf(
         "create_calendar_event",
         "create_calendar_events",
+        "search_calendar_events",
+        "list_calendars",
     )
+
+    /** 日程快速路径使用的收窄目录，供关键词命中的主界面任务复用。 */
+    val calendarFastToolNames: Set<String> = CALENDAR_CREATE
+
+    /** 走专用短系统提示、压低思考档位、限制请求轮数的预设。 */
+    private val fastPathPresets: Set<String> = setOf(SCREEN_CALENDAR)
 
     /** 需要把请求发起时刻的真实系统时间注入提示的预设（免去取时间的一次工具往返）。 */
     private val timeInjected: Set<String> = setOf(SCREEN_CALENDAR)
@@ -63,6 +84,11 @@ internal object AgentVoiceToolPresets {
          * 日历预设据此省掉「先取当前时间」的一次工具往返。
          */
         val injectCurrentTime: Boolean = false,
+        /**
+         * 是否走「添加日程」快速路径：专用短系统提示 + 最低思考档 + 有界请求轮数。
+         * 只给目标单一、参数可从截图/指令直接抽取的确定性任务开。
+         */
+        val fastPath: Boolean = false,
     )
 
     /** 解析预设 id；未知 id（包括普通对话的空串）返回 null，保持原有行为。 */
@@ -72,6 +98,7 @@ internal object AgentVoiceToolPresets {
             toolNames = tools,
             openedGroups = openedGroups[id].orEmpty(),
             injectCurrentTime = id in timeInjected,
+            fastPath = id in fastPathPresets,
         )
     }
 }

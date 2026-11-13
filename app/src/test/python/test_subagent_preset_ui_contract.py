@@ -69,13 +69,10 @@ class SubAgentPresetUiContractTest(unittest.TestCase):
         self.assertIn('data object OpenSubAgentSettings : AgentChatAction', actions)
         root = self.source('ui/app/AgentAppRoot.kt')
         self.assertIn('AgentHomeAction.OpenSubAgentSettings -> pushRoute(AppRoute.SubAgents)', root)
-        self.assertIn('AgentChatAction.OpenSubAgentSettings -> pushRoute(AppRoute.SubAgents)', root)
         composer = self.source('ui/components/AgentChatComposerM3.kt')
         self.assertIn('onOpenSubAgentSettings: () -> Unit = {}', composer)
         self.assertIn('onOpenSubAgentSettings = onOpenSubAgentSettings', composer)
         self.assertIn('onLongClick = onOpenSubAgentSettings', composer)
-        screen = self.source('ui/screens/chat/AgentChatScreen.kt')
-        self.assertIn('onOpenSubAgentSettings = { onAction(AgentChatAction.OpenSubAgentSettings) }', screen)
         home = self.source('ui/screens/home/AgentHomeScreen.kt')
         self.assertIn('onOpenSubAgentSettings = { onAction(AgentHomeAction.OpenSubAgentSettings) }', home)
         # 独立页面已删除：主源码里不得再出现协作页或其宿主弹窗围栏。

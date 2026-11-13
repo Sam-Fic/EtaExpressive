@@ -72,6 +72,8 @@ import io.github.mangi.eta.agent.overlay.CapsuleFlingPlan
 import io.github.mangi.eta.agent.overlay.applyControlledEvent
 import io.github.mangi.eta.agent.overlay.applyEvent
 import io.github.mangi.eta.agent.xiaomi.XiaomiToolsBridgeProtocol
+import io.github.mangi.eta.data.model.AssistantPrompt
+import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplayController
 import io.github.mangi.eta.agent.virtualdisplay.VirtualDisplaySnapshot
 import io.github.mangi.eta.agent.virtualdisplay.VirtualTouchEffect
@@ -885,6 +887,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     private fun startRun(
+        incoming: AgentRuntimeWire.RunRequest,
+        replyTo: Messenger? = null,
+    ) = startRunPrepared(incoming.withPlainAssistantForExternalEntry(), replyTo)
+
+    /** 实际起跑：入参已按入口归一化（见 [AgentRuntimeWire.RunRequest.withPlainAssistantForExternalEntry]）。 */
+    private fun startRunPrepared(
         request: AgentRuntimeWire.RunRequest,
         replyTo: Messenger? = null,
     ) {
@@ -2637,6 +2645,39 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         AgentRuntimePolicy.permissions(
             Prefs.localAgentPreferences()
         )
+
+    /**
+     * 外部入口（系统语音助手浮窗 / 超级小爱 / Breeno）一律以「普通助理」身份运行，
+     * 不继承全局活动助手里的调度台。
+     *
+     * 小爱与 Breeno 的 config 来自 `AgentModelClient.loadConfig()` 的全局快照——那是主界面
+     * 最后一次同步时写下的，用户当时若停在调度台会话，快照的 systemPrompt 与 assistantId
+     * 就都是调度台；语音浮窗虽已在入口侧回落，但快照路径必须在这里兜住。
+     * 归一化同时改三处：`config.systemPrompt` 决定模型看到的纪律提示词，
+     * `config.assistantId` / `request.assistantId` 决定 `AgentRuntimeRunExecutor` 是否下发
+     * 派发工具、以及记忆与技能按哪个助手装载。
+     *
+     * 硬边界：主界面（agent_ui，调度台本体）与调度台派发（eta_dispatch）不归一化；
+     * 已经是非调度台身份的请求原样返回，不触碰用户自定义助手与其人格设定。
+     */
+    private fun AgentRuntimeWire.RunRequest.withPlainAssistantForExternalEntry(): AgentRuntimeWire.RunRequest {
+        val source = handoff?.source ?: return this
+        if (source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE ||
+            source == AgentRuntimeWire.ETA_DISPATCH_HANDOFF_SOURCE
+        ) return this
+        if (assistantId != AssistantPrompt.DISPATCHER_ID &&
+            config.assistantId != AssistantPrompt.DISPATCHER_ID
+        ) return this
+        val plain = AssistantRepository.currentProfile(AssistantRepository.plainActiveId())
+            ?: AssistantRepository.plainActive()
+        return copy(
+            assistantId = plain.id,
+            config = config.copy(
+                assistantId = plain.id,
+                systemPrompt = AssistantPrompt.build(plain.name, plain.prompt),
+            ),
+        )
+    }
 
     private fun AgentRuntimeWire.RunRequest.withActiveSupplements(): AgentRuntimeWire.RunRequest {
         val handoff = handoff ?: return this

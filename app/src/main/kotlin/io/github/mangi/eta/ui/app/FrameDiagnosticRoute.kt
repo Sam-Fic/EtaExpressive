@@ -6,7 +6,6 @@ import io.github.mangi.eta.ui.navigation.AppRoute
 /** Exhaustive mapping intentionally ignores all route payloads. */
 internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     AppRoute.Home -> FrameDiagnosticPage.Home
-    AppRoute.Chat -> FrameDiagnosticPage.Chat
     AppRoute.Browser -> FrameDiagnosticPage.Browser
     AppRoute.Terminal -> FrameDiagnosticPage.Terminal
     AppRoute.Tools -> FrameDiagnosticPage.Tools

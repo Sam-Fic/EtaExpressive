@@ -66,6 +66,8 @@ internal object AgentPromptBuilder {
         presetRunAt: Instant? = null,
         /** 唤起即屏幕上下文（助手弹窗 run）：true 时注入 observe_screen 首轮规则（见 buildSystemMessages）。 */
         screenObservationRule: Boolean = false,
+        /** 「添加日程」快速路径：用一条专用短系统约束替换全部常驻规则。 */
+        calendarFastTask: Boolean = false,
     ): JSONArray {
         val messages = buildSystemMessages(
             config, skillContext, memoryContext, rootAvailable, delegationAvailable, shellTools,
@@ -80,6 +82,7 @@ internal object AgentPromptBuilder {
             dynamicToolGroups = dynamicToolGroups,
             presetRunAt = presetRunAt,
             screenObservationRule = screenObservationRule,
+            calendarFastTask = calendarFastTask,
         )
         onSystemCount(messages.length())
         appendHistoryForModel(history, messages)
@@ -174,10 +177,36 @@ internal object AgentPromptBuilder {
         val offset = local.offset.id.let { if (it == "Z") "UTC" else "UTC$it" }
         val weekday = local.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.SIMPLIFIED_CHINESE)
         return "当前时间（本次请求发起时刻）：$dateTime（$offset），时区 ${local.zone.id}，$weekday。\n" +
-            "用户说的“今天/明天/后天/周五/下周一下午三点”等相对时间，一律按这一刻的本地时间换算成具体日期与时刻。\n" +
+            "用户**指令里**说的“今天/明天/后天/周五/下周一下午三点”等相对时间，按这一刻的本地时间换算成具体日期与时刻；" +
+            "用户指令引用的截图、聊天记录、通知或原文里出现的日期与时刻按原文理解，不要用当前年份去补，也不要把它换算成未来日期。" +
+            "日期缺少年份、明显早于当前时间，或属于示例、条件句、填表说明时，不要写成日程，在回复里说明跳过原因。\n" +
             "日程工具的时间参数使用 YYYY-MM-DDTHH:MM（设备本地时间，秒可省略；只写 YYYY-MM-DD 表示全天日程）；" +
             "省略 end 时默认 start 后 1 小时（全天日程为 1 天），按标题定位事件的 match_date 用 YYYY-MM-DD。\n" +
-            "本轮已直接给出当前时间：不要调用 get_current_context 或其它取时工具，直接按上面的时间换算并调用日程工具。"
+            "本轮已直接给出当前时间：无需再调用 get_current_context 或其它取时工具；没有可写入的日程时直接说明，不要勉强调用写入工具。"
+    }
+
+    /**
+     * 「添加日程」快速路径的**唯一**系统约束。
+     *
+     * 常规提示有几十条互相制衡的规则（主动推进 / 不猜测关键参数 / 合理推断不追问 / 立即调用工具），
+     * 对「识别历史截图并写日历」这类任务会互相打架，模型把整轮时间花在给规则做仲裁上。
+     * 快捷功能的目标在点击时就已确定，所以这里用一条自洽的短规则整体替换常驻段：
+     * 时间口径、抽取边界、失败口径三个容易反刍的决策一次讲死，并把「没有日程就不调用工具」
+     * 明确写成合法结果。
+     */
+    private fun calendarFastTaskRule(instant: Instant): String {
+        val local = instant.atZone(ZoneId.systemDefault()).truncatedTo(ChronoUnit.MINUTES)
+        val dateTime = local.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm", Locale.ROOT))
+        val offset = local.offset.id.let { if (it == "Z") "UTC" else "UTC$it" }
+        val weekday = local.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.SIMPLIFIED_CHINESE)
+        return "当前时间：$dateTime（$offset），时区 ${local.zone.id}，$weekday。这是一次「把截图或指令里的事项添加到系统日历」的快捷任务，只做抽取与一次批量写入。\n" +
+            "时间：指令里的“今天/明天/后天/周X/下周X”按上面的当前时间换算；截图、聊天记录、通知等引用内容里的日期按原文理解，" +
+            "不要套用当前年份，也不要把已过去的日期改写成未来日期。缺年份、明显已过去、无法唯一定下来的条目直接跳过，不猜、不追问、不编造。\n" +
+            "抽取：只取真实发生或明确要求用户办理的事项；填表说明、举例、条件句（“如果…则填…”）、别人的时间安排都不算用户日程。\n" +
+            "执行：把所有有效条目一次性放进 create_calendar_events 的 events 数组，只调用一次；start/end 用 YYYY-MM-DDTHH:MM（设备本地时间），" +
+            "只写 YYYY-MM-DD 表示全天，省略 end 默认 1 小时。没有有效条目时不要调用任何工具，直接回复截图里没有可添加的日程并说明看到了什么。\n" +
+            "回执：ok=true 才逐条说明创建了什么；ok=false 时如实说明失败原因与已创建项，不要原样重试整批，必要时才用 search_calendar_events 核对。\n" +
+            "不要输出计划、推理过程或中间说明，不要调用取时、屏幕、搜索等其它工具。最终回复用用户的语言，一到两句话。"
     }
 
     fun buildSystemMessages(
@@ -221,6 +250,12 @@ internal object AgentPromptBuilder {
         presetRunAt: Instant? = null,
         /** 唤起即屏幕上下文（助手弹窗 run）；见 [buildInitialMessages]。 */
         screenObservationRule: Boolean = false,
+        /**
+         * 「添加日程」快速路径：为 true 时只下发人格 + [calendarFastTaskRule] 并直接返回，
+         * 跳过所有常驻策略、组索引与被关闭能力说明。快捷任务的目录已收窄，这些段落既用不上，
+         * 又会与专用规则冲突；更短的 system 前缀也直接降低首字延迟。
+         */
+        calendarFastTask: Boolean = false,
     ): JSONArray {
         val environmentRule = if (shellTools != null) {
             "environment 按下方本机命令检测选择"
@@ -289,6 +324,11 @@ internal object AgentPromptBuilder {
         val messages = JSONArray()
         if (config.systemPrompt.isNotBlank()) {
             messages.put(systemMessage(config.systemPrompt))
+        }
+        // 日程快速路径：人格 + 一条自洽的短规则即为全部系统约束，提前收口。
+        if (calendarFastTask) {
+            messages.put(systemMessage(calendarFastTaskRule(presetRunAt ?: Instant.now())))
+            return messages
         }
         // 语音「创建屏幕日程」预设：直接把请求发起时刻的真实系统时间写进提示，
         // 模型可一步换算相对日期并调用创建工具，省掉「先取时间」的一次往返。

@@ -16,10 +16,9 @@ class ContextLearningV2Contract(unittest.TestCase):
         store = self.source('ui/app/AgentConversationStore.kt')
         self.assertIn('state.contextHasStarted, state.contextAwaitingReceipt, state.cloudRouteSignature', store)
         self.assertIn('CloudUsageReceiptCodec.decodeDisplayState(', store)
-        for screen in ('home/AgentHomeScreen', 'chat/AgentChatScreen'):
-            ui = self.source('ui/screens/' + screen + '.kt')
-            self.assertIn('contextDisplayPolicy(state)', ui)
-            self.assertNotIn('filterIsInstance<ContextCompactedMessageUi>', ui)
+        ui = self.source('ui/screens/home/AgentHomeScreen.kt')
+        self.assertIn('contextDisplayPolicy(state)', ui)
+        self.assertNotIn('filterIsInstance<ContextCompactedMessageUi>', ui)
         policy = self.source('ui/model/RequestOverheadCalibration.kt').split('internal fun contextDisplayPolicy(', 1)[1]
         self.assertIn('awaitingReceipt = state.contextAwaitingReceipt', policy)
         self.assertIn('firstTurn = !state.contextHasStarted', policy)
@@ -91,7 +90,7 @@ class ContextLearningV2Contract(unittest.TestCase):
         self.assertNotIn('receiptEstimateTokens', bar)
         self.assertIn('liveContextUsage(', bar)
         for path in ('ui/components/AgentChatBody.kt', 'ui/screens/home/AgentHomeScreen.kt',
-                     'ui/screens/chat/AgentChatScreen.kt', 'ui/app/AgentAppRoot.kt'):
+                     'ui/app/AgentAppRoot.kt'):
             self.assertNotIn('overheadCalibrationTokens', self.source(path))
         ring = self.source('ui/model/AgentModelPickerUiState.kt').split('internal fun liveContextUsage(', 1)[1]
         self.assertNotIn('estimate(', ring.split('internal fun compressionContextUsage(', 1)[0])

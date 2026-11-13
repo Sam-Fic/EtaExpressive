@@ -3004,24 +3004,6 @@ internal class AgentAppState(
         }
     }
 
-    suspend fun openAssistantConversation(conversationKey: String): Boolean {
-        if (withContext(Dispatchers.Main.immediate) { rejectConversationArchiveMutation() }) return false
-        if (conversationKey.isBlank()) return false
-        importArchivedExternalRuns()
-        return withContext(Dispatchers.Main.immediate) {
-            val conversationId = archiveConversationId(
-                source = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
-                conversationKey = conversationKey,
-            )
-            if (conversationState(conversationId) == null) {
-                false
-            } else {
-                selectConversation(conversationId)
-                true
-            }
-        }
-    }
-
     private fun importExternalRun(archivedRun: AgentRunArchiveStore.ArchivedRun): String? {
         val runId = archivedRun.result.runId.ifBlank { archivedRun.handoff.id }
         if (runId.isBlank()) return null
@@ -9085,14 +9067,10 @@ internal class AgentAppState(
      * 把当前会话助手登记为全局活动），用户用过调度台后全局活动即调度台；若原样继承，手动新建的
      * 普通会话会带上调度身份——只派发不执行，行为完全不对。因此调度台身份不外溢，回落到默认
      * 助手（被删时退而取任一非调度台助手）；自定义助手不受影响，照旧继承。
+     *
+     * 系统语音助手等外部入口走同一规则（[AssistantRepository.plainActiveId]），规则只此一份。
      */
-    private fun currentBoundAssistantId(): String {
-        val active = AssistantRepository.active().id
-        if (active != io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID) return active
-        return AssistantRepository.profile(io.github.mangi.eta.data.model.AssistantPrompt.DEFAULT_ID)?.id
-            ?: AssistantRepository.profiles.value.firstOrNull { it.id != io.github.mangi.eta.data.model.AssistantPrompt.DISPATCHER_ID }?.id
-            ?: active
-    }
+    private fun currentBoundAssistantId(): String = AssistantRepository.plainActiveId()
 
     private fun resolvedAssistantId(state: AgentChatHomeUiState): String {
         val stored = state.assistantId

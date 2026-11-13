@@ -252,6 +252,7 @@ internal class AgentCalendarTools(
                     "写入命令已执行（写入身份=$paths）但回读不到新日程，目标日历「${calendar.name}」可能拒绝了写入。" +
                         insertUnverifiedAdvice() +
                         echo,
+                    advice = insertUnverifiedAdvice(),
                 )
             }
         }
@@ -359,6 +360,15 @@ internal class AgentCalendarTools(
                 } else {
                     failed!!.optString("message")
                 },
+            )
+            // 给下一轮/下一个 run 的可执行下一步。单独成字段且不含事件标题、正文等用户数据，
+            // 因此能通过敏感工具结果的脱敏白名单；只写在 message 里的话跨 run 会被整段丢掉，
+            // 模型只剩下 ok=false 的空壳，只会原样重试整批。
+            .put(
+                "advice",
+                "不要原样重试整批：先用 search_calendar_events 核对已创建项，只补建失败项；" +
+                    "若失败码是 CALENDAR_INSERT_UNVERIFIED 且只有一个可写日历，直接如实告知用户" +
+                    "系统日历拒绝了写入并结束，不要换参数反复尝试。",
             )
         return AgentModelClient.ToolResult(payload.toString())
     }
@@ -970,13 +980,22 @@ internal class AgentCalendarTools(
     private fun ok(payload: JSONObject): AgentModelClient.ToolResult =
         AgentModelClient.ToolResult(payload.put("ok", true).toString())
 
-    private fun error(code: String, message: String, candidates: JSONArray? = null): AgentModelClient.ToolResult =
+    private fun error(
+        code: String,
+        message: String,
+        candidates: JSONArray? = null,
+        /** 可执行的下一步；不含用户数据，允许跨 run 通过脱敏白名单保留。 */
+        advice: String? = null,
+    ): AgentModelClient.ToolResult =
         AgentModelClient.ToolResult(
             JSONObject()
                 .put("ok", false)
                 .put("code", code)
                 .put("message", message)
-                .also { payload -> candidates?.let { payload.put("candidates", it) } }
+                .also { payload ->
+                    candidates?.let { payload.put("candidates", it) }
+                    advice?.let { payload.put("advice", it) }
+                }
                 .toString(),
         )
 

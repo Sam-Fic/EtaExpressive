@@ -110,7 +110,6 @@ import io.github.mangi.eta.ui.settingsAnchorKeyForRoute
 import io.github.mangi.eta.ui.layout.rememberIsWideScreen
 import io.github.mangi.eta.ui.components.AppUpdateDialog
 import io.github.mangi.eta.ui.components.AgentPendingChildStopDialog
-import io.github.mangi.eta.ui.model.AgentChatAction
 import io.github.mangi.eta.ui.model.AgentHomeAction
 import io.github.mangi.eta.ui.model.AgentMemoryAction
 import io.github.mangi.eta.ui.model.AgentSkillsAction
@@ -134,7 +133,6 @@ import io.github.mangi.eta.ui.screens.assistants.AssistantSearchScreen
 import io.github.mangi.eta.ui.screens.assistants.AssistantsScreen
 import io.github.mangi.eta.ui.screens.backup.DataBackupScreen
 import io.github.mangi.eta.ui.screens.browser.AgentBrowserScreen
-import io.github.mangi.eta.ui.screens.chat.AgentChatScreen
 import io.github.mangi.eta.ui.screens.chat.ConversationTokenUsageScreen
 import io.github.mangi.eta.ui.screens.chat.ManageChatsScreen
 import io.github.mangi.eta.ui.screens.chat.ManageFoldersScreen
@@ -185,13 +183,11 @@ import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
  */
 @Composable
 fun AgentAppRoot(
-    assistantConversationKey: String? = null,
     /** 完成横幅点击直达的会话 id；路由落地后由 [onLiveTargetConsumed] 复位。 */
     liveTargetConversationId: String? = null,
     /** 助手浮窗口述「去配置」请求令牌；语音设置页落地后由 [onVoiceSettingsRequestConsumed] 复位。 */
     openVoiceSettingsRequest: Int = 0,
     inboundShareUris: List<String> = emptyList(),
-    onAssistantConversationOpened: (Boolean) -> Unit = {},
     onInboundShareConsumed: () -> Unit = {},
     onLiveTargetConsumed: () -> Unit = {},
     onVoiceSettingsRequestConsumed: () -> Unit = {},
@@ -256,22 +252,31 @@ fun AgentAppRoot(
     // 常亮只在「对话页可见 + 正在流式回复 + Runtime 还有活着的 run」三者同时成立时挂上；
     // 设置页、空闲会话与纯后台任务不额外保持常亮，GUI 浮层由 Runtime 服务自己维护。
     val runtimeActive by AgentRuntimeService.keepScreenOn.collectAsState()
-    // 系统助手在主应用前台唤醒：直接应用内响应——落到会话输入区（其它路由先切到会话；
-    // Home/Chat 原地），听写/聚焦由聊天输入区按令牌分派。令牌单调递增不复位；composer
+    // 系统助手在主应用前台唤醒：直接应用内响应——落到会话输入区（其它路由先切回主页），
+    // 听写/聚焦由聊天输入区按令牌分派。令牌单调递增不复位；composer
     // 实例随切会话整树销毁重建（实例内记账一并丢失），已消费水位供重建实例播种，
     // 旧令牌不再被重放（否则每次切会话都会误开听写/重弹键盘）。
     val inAppDictationRequest by MainActivity.inAppDictationRequest.collectAsState()
     val inAppFocusRequest by MainActivity.inAppFocusRequest.collectAsState()
     val inAppDictationConsumed by MainActivity.consumedInAppDictationRequest.collectAsState()
     val inAppFocusConsumed by MainActivity.consumedInAppFocusRequest.collectAsState()
+    /**
+     * 外部入口（系统助手应用内唤醒 / 完成横幅 / 搜索跳转）指名了具体会话时，主页那一次
+     * 「进主页即落调度台」的复位要让位，否则刚被打开的会话会被立刻换成调度台。
+     *
+     * 存的是被指名的会话 id：主页条目下次组合时若该会话仍是选中项就只消费不复位，
+     * 否则照常落调度台（一次性，用完即清）。
+     */
+    var homeEntryPinnedConversationId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(inAppDictationRequest, inAppFocusRequest) {
         if (inAppDictationRequest == 0 && inAppFocusRequest == 0) return@LaunchedEffect
-        if (currentRoute !is AppRoute.Chat && currentRoute !is AppRoute.Home) {
-            navigator.replace(AppRoute.Chat)
+        if (currentRoute !is AppRoute.Home) {
+            homeEntryPinnedConversationId = agentState.conversationPaneState.selectedConversationId
+            navigator.replace(AppRoute.Home)
         }
     }
     val keepScreenOnView = LocalView.current
-    val keepScreenOn = (currentRoute is AppRoute.Home || currentRoute is AppRoute.Chat) &&
+    val keepScreenOn = currentRoute is AppRoute.Home &&
         agentState.homeState.isStreaming && runtimeActive
     DisposableEffect(keepScreenOnView, keepScreenOn) {
         keepScreenOnView.keepScreenOn = keepScreenOn
@@ -564,21 +569,13 @@ fun AgentAppRoot(
         }
     }
 
-    LaunchedEffect(assistantConversationKey) {
-        val conversationKey = assistantConversationKey ?: return@LaunchedEffect
-        val opened = agentState.openAssistantConversation(conversationKey)
-        if (opened) {
-            navigator.replace(AppRoute.Chat)
-        }
-        onAssistantConversationOpened(opened)
-    }
-
     // 完成横幅直达会话：selectConversation 对未知/回收站会话是安全空操作（内部早退）。
     // replace 而非 push：从通知回来要的是「落在会话里」，回退仍回主页。
     LaunchedEffect(liveTargetConversationId) {
         val conversationId = liveTargetConversationId ?: return@LaunchedEffect
         agentState.selectConversation(conversationId)
-        navigator.replace(AppRoute.Chat)
+        homeEntryPinnedConversationId = conversationId
+        navigator.replace(AppRoute.Home)
         onLiveTargetConsumed()
     }
 
@@ -603,7 +600,7 @@ fun AgentAppRoot(
      * 这样从二级页再进三级页、四级页都只动右栏，左栏连重组都不会发生。
      */
     fun isSettingsDetailRoute(route: AppRoute): Boolean = when (route) {
-        AppRoute.Home, AppRoute.Chat, AppRoute.Browser, AppRoute.Terminal,
+        AppRoute.Home, AppRoute.Browser, AppRoute.Terminal,
         AppRoute.Settings, AppRoute.SettingsDetailEmpty,
         AppRoute.ManageChats, AppRoute.ManageFolders, AppRoute.ConversationTrash,
         AppRoute.ConversationTrashSearch, AppRoute.ConversationTokenUsage,
@@ -762,12 +759,14 @@ fun AgentAppRoot(
     }
 
     /**
-     * 回到承载对话的页面（首页或独立会话页）。
+     * 回到承载对话的页面（主页）。
      *
      * 搜索命中点开后要直接落在对话里：从管理聊天页进来时栈是
      * `Home → ManageChats → MessageSearch`，只弹一层会停在管理聊天页。
+     * 命中可能跨到别的会话，弹回主页时钉住该会话，避免主页的调度台复位把它换掉。
      */
     fun popToConversation() {
+        homeEntryPinnedConversationId = agentState.conversationPaneState.selectedConversationId
         navigator.popToConversationHost()
         exitGuard.reset()
         // 与 popRoute 同口径：被弹走的那几页还在退场，它们的顶栏仍可点，
@@ -1082,9 +1081,15 @@ fun AgentAppRoot(
             entry<AppRoute.Home>(swipeDismiss = NavSwipeDirection.None) {
                 val coordinator = appViewModel.remoteCoordinator
                 val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
-                // 主页纯化为调度台：每次回到主页都落到调度台会话（远程目标除外）。
+                // 主页是调度台：每次回到主页都落到调度台会话（远程目标除外）。
+                // 外部入口刚指名的会话仍在选中时不复位，见 [homeEntryPinnedConversationId]。
                 androidx.compose.runtime.LaunchedEffect(remote) {
-                    if (remote == null) agentState.ensureDispatchConsoleSelected()
+                    if (remote != null) return@LaunchedEffect
+                    val pinned = homeEntryPinnedConversationId
+                    homeEntryPinnedConversationId = null
+                    val keep = pinned != null &&
+                        agentState.conversationPaneState.selectedConversationId == pinned
+                    if (!keep) agentState.ensureDispatchConsoleSelected()
                 }
                 RoutedShell(route = AppRoute.Home, underlapTopBar = true) {
                     // 远程会话只有「服务器上那个助手」一个，本机无法切换。
@@ -1183,109 +1188,6 @@ fun AgentAppRoot(
                             }
                         },
                         isDrawerOpen = conversationPaneOpen,
-                        scrollToMessageId = if (remote != null) null else agentState.pendingScrollToMessageId,
-                        onScrollToMessageConsumed = agentState::consumePendingScrollToMessage,
-                        sentUserMessageEntranceId = if (remote != null) null else agentState.sentUserMessageEntranceId,
-                        onSentUserMessageEntranceConsumed = agentState::consumeSentUserMessageEntrance,
-                    )
-                    }
-                    }
-                    }
-                }
-            entry<AppRoute.Chat>(swipeDismiss = navSwipeDismiss) {
-                val coordinator = appViewModel.remoteCoordinator
-                val remote = agentState.selectedTarget as? io.github.mangi.eta.ui.remote.ChatTarget.Remote
-                RoutedShell(route = AppRoute.Chat, underlapTopBar = true) {
-                    // 重连/失败状态一并下传：断线期间输入框胶囊整体变成状态胶囊。
-                    val remoteComposerStatus = remoteComposerStatusOf(coordinator, remote) {
-                        pushRoute(AppRoute.RemoteAgents)
-                    }
-                    androidx.compose.runtime.CompositionLocalProvider(
-                        io.github.mangi.eta.ui.remote.LocalRemoteAgentName provides
-                            remoteAgentNameOf(coordinator, remote),
-                        io.github.mangi.eta.ui.remote.LocalRemoteComposerStatus provides remoteComposerStatus,
-                    ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                    AgentChatScreen(
-                        stateProvider = { if (remote != null) coordinator.chatState(remote) else agentState.homeState },
-                        conversationMentions = if (remote != null) {
-                            io.github.mangi.eta.ui.model.ConversationMentionInputUi()
-                        } else {
-                            io.github.mangi.eta.ui.model.ConversationMentionInputUi(
-                                conversations = agentState.conversationPaneState.historyConversations,
-                                currentConversationId = agentState.conversationPaneState.selectedConversationId,
-                                pending = shellHomeState.pendingConversationMentions,
-                                onAttach = agentState::attachConversationMention,
-                                onRemove = agentState::removeConversationMention,
-                            )
-                        },
-                        queuedMessages = if (remote != null) emptyList() else agentState.queuedMessages,
-                        onSteerQueuedMessage = agentState::steerQueuedMessage,
-                        onRecallQueuedMessage = agentState::recallQueuedMessage,
-                        onRemoveQueuedMessage = agentState::removeQueuedMessage,
-                        modelPickerState = if (remote != null) coordinator.modelPickerState(remote) else agentState.modelPickerState,
-                        autoCompressEnabled = if (remote != null) false else agentState.autoCompressEnabled,
-                        requestOverheadTokens = if (remote != null) 0 else agentState.requestOverheadTokens,
-                        measuredContextTokens = { if (remote != null) null else agentState.measuredContextTokens },
-                        billedOverheadTokens = if (remote != null) null else agentState.billedOverheadTokens,
-                        conversationKey = if (remote != null) coordinator.conversationKey(remote) else agentState.conversationPaneState.selectedConversationId,
-                        draftField = if (remote != null) coordinator.draftFieldFor(remote) else agentState.currentDraftField(),
-                        onAction = { action ->
-                            if (remote != null) {
-                                // Back navigation is a routing concern, not a remote command.
-                                if (action == AgentChatAction.NavigateBack) popRoute()
-                                else coordinator.handleChatAction(remote, action)
-                            } else when (action) {
-                                AgentChatAction.NavigateBack -> popRoute()
-                                AgentChatAction.CycleGptSpeedMode -> agentState.cycleGptSpeedMode()
-                                is AgentChatAction.ReasoningEffortChanged ->
-                                    agentState.updateReasoningEffort(action.effort)
-                                is AgentChatAction.ContextTaskSelected -> agentState.selectContextTask(action.taskId, usageConversationId)
-                                is AgentChatAction.OpenConversation -> agentState.selectConversation(action.conversationId)
-                                is AgentChatAction.ModelSelected -> agentState.selectModel(action.modelId, action.providerId)
-                                is AgentChatAction.SubmitMessage -> { requestExecutionNotifications(); agentState.sendCurrentMessage(action.text) }
-                                AgentChatAction.StopRun -> agentState.pauseCurrentRun()
-                                AgentChatAction.ContinueRun -> agentState.continuePausedGeneration()
-                                AgentChatAction.AbortPausedRun -> stopMainReply()
-                                is AgentChatAction.AssistantSelected -> agentState.selectAssistant(action.id)
-                                AgentChatAction.OpenBrowser -> pushRoute(AppRoute.Browser)
-                                is AgentChatAction.EditAssistant -> pushRoute(AppRoute.AssistantEdit(action.id))
-                                AgentChatAction.OpenModelProviders -> pushRoute(AppRoute.ModelProviders)
-                                AgentChatAction.OpenAssistants -> pushRoute(AppRoute.Assistants())
-                                // 「+」菜单「去搜索」：媒体语义搜索页，多选后可添加回当前会话。
-                                AgentChatAction.OpenMediaSearch -> pushRoute(AppRoute.MediaSearch)
-                                // 长按「助手与模型」入口复用设置页的子代理配置页，不单独做页面。
-                                AgentChatAction.OpenSubAgentSettings -> pushRoute(AppRoute.SubAgents)
-                                is AgentChatAction.ImageAttached -> agentState.attachImage(action.uri)
-                                is AgentChatAction.VideoAttached -> agentState.attachVideo(action.uri)
-                                is AgentChatAction.RemoveImage -> agentState.removePendingImage(action.id)
-                                is AgentChatAction.FilesAttached -> agentState.attachFiles(action.uris)
-                                is AgentChatAction.FolderAttached -> agentState.attachFolder(action.uri)
-                                is AgentChatAction.FilePathAttached -> agentState.attachFilePath(action.path)
-                                is AgentChatAction.RemoveFileReference ->
-                                    agentState.removePendingFileReference(action.id)
-                                is AgentChatAction.SteerQueuedMessage -> agentState.steerQueuedMessage(action.id)
-                                is AgentChatAction.RecallQueuedMessage -> agentState.recallQueuedMessage(action.id)
-                                is AgentChatAction.EditMessage -> agentState.beginMessageEdit(action.id)
-                                AgentChatAction.CancelMessageEdit -> agentState.cancelMessageEdit()
-                                is AgentChatAction.DeleteMessage -> {
-                                    agentState.messageDeleteImpact(action.id)?.let { impact ->
-                                        messageDeleteTarget = MessageMutationTarget(action.id, impact.laterTurnCount)
-                                    }
-                                }
-                                is AgentChatAction.RegenerateMessage -> {
-                                    val impact = agentState.messageRevisionImpact(action.id)
-                                    if (impact?.laterTurnCount == 0) {
-                                        agentState.regenerateMessage(action.id)
-                                    } else if (impact != null) {
-                                        messageRegenerateTarget = MessageMutationTarget(action.id, impact.laterTurnCount)
-                                    }
-                                }
-                                is AgentChatAction.BranchMessage -> agentState.branchConversation(action.id)
-                                is AgentChatAction.QuestionDraftChanged -> agentState.updateQuestionDraft(action.conversationId, action.questionId, action.answer)
-                                is AgentChatAction.SubmitQuestionAnswer -> agentState.submitQuestionAnswer(action.conversationId, action.questionId)
-                            }
-                        },
                         scrollToMessageId = if (remote != null) null else agentState.pendingScrollToMessageId,
                         onScrollToMessageConsumed = agentState::consumePendingScrollToMessage,
                         sentUserMessageEntranceId = if (remote != null) null else agentState.sentUserMessageEntranceId,

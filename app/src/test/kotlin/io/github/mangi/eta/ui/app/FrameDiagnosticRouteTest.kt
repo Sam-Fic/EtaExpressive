@@ -7,9 +7,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FrameDiagnosticRouteTest {
-    @Test fun settingsAndChatHaveDistinctStableLabels() {
+    @Test fun settingsAndSubPagesHaveDistinctStableLabels() {
         assertEquals(FrameDiagnosticPage.Settings, AppRoute.Settings.frameDiagnosticPage())
-        assertEquals(FrameDiagnosticPage.Chat, AppRoute.Chat.frameDiagnosticPage())
         assertEquals(FrameDiagnosticPage.SubAgents, AppRoute.SubAgents.frameDiagnosticPage())
         assertEquals(FrameDiagnosticPage.McpServerAdd, AppRoute.McpServerAdd.frameDiagnosticPage())
         assertEquals(FrameDiagnosticPage.ModelProviderModelEdit, AppRoute.ModelProviderModelEdit("p", "m", true).frameDiagnosticPage())

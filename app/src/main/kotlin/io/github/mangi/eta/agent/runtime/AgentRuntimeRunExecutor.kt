@@ -53,6 +53,7 @@ import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.AssistantRepository
+import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.data.repository.LinuxEnvironmentSettingsRepository
 import io.github.mangi.eta.agent.terminal.LinuxDistribution
 import kotlinx.coroutines.runBlocking
@@ -231,8 +232,20 @@ internal class AgentRuntimeRunExecutor(
             val calendarGroupUsable = calendarIntentHit && allowPersonal && runCatching {
                 AgentToolCapabilities.capture(appContext)
             }.getOrNull()?.let { it.rootAvailable || it.calendarReadable || it.calendarWritable } == true
-            val presetToolNames: Set<String>? = voicePreset?.toolNames
-                ?: AgentCalendarIntent.toolNames.takeIf { calendarGroupUsable }
+            // 「添加日程」快速路径：语音 chip 显式命中，或主界面指令里有明确的写入动词。
+            // 只读/识别类请求（如「识别截图中的日程」）不进快速路径，也不预热写入目录。
+            // 前置要求个人数据开关真的开着：否则目录会被投影清空、complete 退化回普通对话，
+            // 而这里已经压低了思考档，就会出现「完整常驻提示 + 关思考」的错配。
+            val calendarToolsEnabled = allowPersonal && request.config.personalTools
+            val calendarFastTask = calendarToolsEnabled && (
+                voicePreset?.fastPath == true ||
+                    (calendarGroupUsable && AgentCalendarIntent.writeIntent(request.prompt))
+            )
+            val presetToolNames: Set<String>? = when {
+                calendarFastTask -> AgentVoiceToolPresets.calendarFastToolNames
+                else -> voicePreset?.toolNames
+                    ?: AgentCalendarIntent.toolNames.takeIf { calendarGroupUsable }
+            }
             val presetOpenedGroups: Set<String>? = voicePreset?.openedGroups
                 ?: AgentCalendarIntent.openedGroups.takeIf { calendarGroupUsable }
             val presetRun = presetToolNames != null
@@ -691,7 +704,18 @@ internal class AgentRuntimeRunExecutor(
                 terminalTools = allowTerminal && request.config.terminalTools,
                 deviceTools = allowDevice && request.config.deviceTools,
                 personalTools = allowPersonal && request.config.personalTools,
-            )
+            ).let { base ->
+                if (!calendarFastTask) return@let base
+                // 快捷任务的目标、时间口径与失败口径都已由专用短规则讲死，不需要长链推理；
+                // 把思考档压到最低是这类任务最大的一段提速（曾观测到 4400 reasoning token
+                // 全花在给互相冲突的常驻规则做仲裁上）。模型强制推理时退到 LOW——
+                // ModelConfig.validate 会拒绝强制推理模型上的 OFF。
+                val mandatoryReasoning = base.reasoningCapabilities?.mandatory == true
+                base.copy(
+                    thinkingEnabled = mandatoryReasoning,
+                    reasoningEffort = if (mandatoryReasoning) ReasoningEffort.LOW else ReasoningEffort.OFF,
+                )
+            }
             // 日程预热运行不跑判断模型：工具集已由预设/关键词确定，再收窄只会让模型看不到工具。
             // 唤起即屏幕上下文（硬边界：仅助手弹窗 run，主程序不做该判断）：判断模型判定或指令
             // 正则命中「需要看屏幕」且消息未附图时，预开屏幕组 + 注入首轮 observe_screen 引导，
@@ -761,6 +785,9 @@ internal class AgentRuntimeRunExecutor(
                 // 唤起即屏幕上下文：屏幕组已预开（上面并入 plan/打开组），再注入首轮
                 // observe_screen 引导——模型一步到位带截图观察，省一次解锁往返。
                 screenObservationRule = screenLookHint,
+                // 日程快速路径：专用短提示 + 最低思考档 + 有界轮次，目录退化时由 complete 自动失效。
+                calendarFastTask = calendarFastTask,
+                fastPathMaxRounds = AgentVoiceToolPresets.CALENDAR_FAST_MAX_ROUNDS,
                 sessionId = request.effectiveModelSessionId,
                 capabilitiesProvider = { AgentToolCapabilities.captureForRound(appContext).copy(virtualDisplay = runVirtualDisplay()) },
                 // 延迟工具域：tools_use_group 成功后由执行器累积，下一轮重建目录时生效。

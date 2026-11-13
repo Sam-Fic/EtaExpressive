@@ -54,7 +54,6 @@
   <string name="action_launch_kimi_web">Launch Kimi Web</string>
   <string name="action_sub_agent_status">Sub-agent status</string>
   <string name="sub_agent_status_empty">This conversation has no sub-agents</string>
-  <string name="route_chat">Chat</string>
   <string name="route_browser">Agent browser</string>
   <string name="route_tools">Tools</string>
   <string name="haptics_title">Haptics</string>
