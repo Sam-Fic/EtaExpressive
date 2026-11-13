@@ -115,5 +115,7 @@ object EtaDimens {
     // - 连接式按钮组：EtaConnectedInnerCornerRadius 8 / 按压态 4（EtaExpressiveKit.kt）
     // - 聊天域：用户气泡 24（ChatMessageItem）、输入条组合 36（AgentChatComposerM3）、
     //   文件 chip 12/接缝 4（AgentChatFileAttachments）等，各自在文件顶部命名私藏
+    // - 语音浮窗：面板顶角 28（EtaVoicePanel，同 BottomSheetDefaults）、屏幕上下文预览卡
+    //   15 / 内图 11（同心，差 = 卡片内边距 4，EtaVoicePanel 顶部派生）
     // 新圆角先对照上面找同语义值；确实全新才就近命名，不新增一次性字面量。
 }

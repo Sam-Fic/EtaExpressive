@@ -424,7 +424,8 @@ internal fun AgentChatBody(
             aggressiveGrouping = aggressiveFold,
         )
     }
-    val timelineEntries = remember(visibleMessages) {
+    // 同上：档位参与 key，避免切换折叠档后沿用旧档算出的 entry 结构。
+    val timelineEntries = remember(visibleMessages, aggressiveFold) {
         StreamPerformanceDiagnostics.measure("timeline.project", visibleMessages.size.toLong()) { timelineProjection.project(visibleMessages) }
     }
     val hasCompactingChildContext = remember(childContexts) { childContexts.any { it.isCompacting } }
@@ -561,17 +562,7 @@ internal fun AgentChatBody(
                     onSubmit(text)
                     submitScrollScope.launch {
                         // Cancel an old fling, then anchor the edited/replaced list after layout.
-                        scrollState.scroll(androidx.compose.foundation.MutatePriority.PreventUserInput) { }
-                        withFrameNanos { }
-                        keepBottomAnchored = true
-                        val last = scrollState.layoutInfo.totalItemsCount - 1
-                        // 回到底部走平滑动画：跨项用翻页曲线赶路，可见差额用弹簧逐像素收拢，
-                        // 末尾仍由 settle 内的精修收在精确贴底，替换原来的瞬跳定位。
-                        if (last >= 0) settleListToBottom(
-                            scrollState,
-                            last,
-                            scrollSpec = ChatSendSettleSpec,
-                        )
+                        settleListToBottomAfterSubmit(scrollState) { keepBottomAnchored = true }
                     }
                 },
                 onReasoningEffortChange = onReasoningEffortChange,
@@ -932,7 +923,10 @@ internal fun AgentConversationMessages(
                 aggressiveGrouping = aggressiveFold,
             )
         }
-        remember(visibleMessages) {
+        // 缓存 key 必须带 aggressiveFold：投影实例按档位重建，但这里若只认 messages 引用，
+        // 档位切换后仍会返回旧实例算出的旧结构。主列表通常因换会话/换引用自愈，语音浮窗的
+        // state.messages 引用长期不变，会一直停在旧档——表现为本该连续的卡片中间多出正文/缝隙。
+        remember(visibleMessages, aggressiveFold) {
             StreamPerformanceDiagnostics.measure("timeline.project", visibleMessages.size.toLong()) {
                 standaloneTimelineProjection.project(visibleMessages)
             }
@@ -2815,6 +2809,28 @@ internal fun AnchorChatTailOnViewportChange(
                 }
             }
     }
+}
+
+/**
+ * 提交消息后回底：掐掉残余惯性 → 落一帧让新内容进布局 → 重新锚定 → 平滑赶到底。
+ *
+ * 提交方只置 `keepBottomAnchored = true` 是回不了底的：用户上翻后 `hasLeftBottom` 已闩锁，
+ * 列表状态机下一帧会把它反杀回 false，跟底控制器随即冻结。所以两条路径都要靠这段动画，
+ * 而且必须是**动画**回底（动画不读锚定，飞行中被反杀也无妨，反而免掉跟底双驱动）；
+ * 落底贴住静止线那一帧会自动重锚并清闩锁，之后流式跟底无缝接管。
+ *
+ * 主界面提交与系统语音浮窗提交共用这一份；[reanchor] 由调用方传自己的状态写入。
+ */
+internal suspend fun settleListToBottomAfterSubmit(
+    listState: LazyListState,
+    reanchor: () -> Unit,
+) {
+    // 先掐掉残余惯性，否则用户刚甩过列表时动画起点是漂的。
+    listState.scroll(androidx.compose.foundation.MutatePriority.PreventUserInput) { }
+    withFrameNanos { }
+    reanchor()
+    val last = listState.layoutInfo.totalItemsCount - 1
+    if (last >= 0) settleListToBottom(listState, last, scrollSpec = ChatSendSettleSpec)
 }
 
 /**

@@ -19,7 +19,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -113,7 +112,6 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.components.AgentConversationMessages
 import io.github.mangi.eta.ui.components.ChatImagePreviewHost
 import io.github.mangi.eta.ui.components.ChatInputPopupMargin
-import io.github.mangi.eta.ui.components.ChatSendSettleSpec
 import io.github.mangi.eta.ui.components.ComposerVoiceEntry
 import io.github.mangi.eta.ui.components.Material3ComposerBody
 import io.github.mangi.eta.ui.components.PendingFileReferenceStrip
@@ -122,7 +120,7 @@ import io.github.mangi.eta.ui.components.collectPreviewableChatImages
 import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.components.rememberDataUrlBitmap
 import io.github.mangi.eta.ui.components.rememberImeVisible
-import io.github.mangi.eta.ui.components.settleListToBottom
+import io.github.mangi.eta.ui.components.settleListToBottomAfterSubmit
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.ConversationMentionInputUi
@@ -287,6 +285,28 @@ private val AssistantInputBackdropHeight = 104.dp
 
 /** 渐变压暗在输入区实测高度之上再多出一小截，让顶端透明段落在输入框上方可见。 */
 private val AssistantInputBackdropExtraHeight = 16.dp
+
+// ── 屏幕上下文预览卡的几何 ──
+//
+// 同心圆角：外层卡片圆角 = 内层图片圆角 + 两层间距（EtaDimens 的圆角同心规则）。
+// 四个几何值互相派生，避免「改了卡片高却忘了改图」或两个 4dp 各自漂移。
+
+/** 预览卡总高。 */
+private val ScreenContextPreviewCardHeight = 60.dp
+
+/** 卡片内边距，同时是内外圆角的差值。 */
+private val ScreenContextPreviewInset = 4.dp
+
+/** 卡片容器圆角（15dp）：非分段列表 / 按钮组那两档，属聊天域卡片自有值，就近命名。 */
+private val ScreenContextPreviewCardCorner = 15.dp
+
+/** 内层图片边长：横纵都内缩一个内边距，四段弧线才与卡片同圆心。 */
+private val ScreenContextPreviewImageSize =
+    ScreenContextPreviewCardHeight - ScreenContextPreviewInset * 2
+
+/** 内层图片圆角 = 卡片圆角 − 内边距，弧心与卡片圆角圆心重合。 */
+private val ScreenContextPreviewImageCorner =
+    ScreenContextPreviewCardCorner - ScreenContextPreviewInset
 
 @Composable
 internal fun EtaVoicePanel(
@@ -876,19 +896,10 @@ private fun BoxScope.AssistantPanel(
                     // 末尾；服务注入的新消息不再重锚，上翻阅读不会被拽回去。
                     keepBottomAnchored = true
                     onSubmit(text)
-                    // 只置标志回不了底：用户上翻后 hasLeftBottom 已闩锁，列表状态机下一帧
-                    // 会走 resolveKeepBottomAnchored 的 hasLeftBottom -> false 分支把锚定反杀
-                    // 回 false，跟底控制器随即冻结。主界面靠提交自带的 settleListToBottom 动画
-                    // 回底（动画不读锚定，飞行中锚定被反杀也无妨，反而免掉跟底双驱动）；
-                    // 落底贴住静止线那一帧 when2 自动重锚并清闩锁，之后流式跟底无缝接管。
-                    // 这里镜像主界面提交的同一段（同 ChatSendSettleSpec 软弹簧 + 精修贴底）。
+                    // 与主界面共用同一段提交回底（掐惯性 → 落一帧 → 重锚 → 平滑赶到底）。
+                    // 只置标志回不了底的原因见 settleListToBottomAfterSubmit 的 KDoc。
                     scope.launch {
-                        // 与主界面同构：先掐掉残余惯性，布局落一帧后再锚定并赶路。
-                        listState.scroll(MutatePriority.PreventUserInput) { }
-                        withFrameNanos { }
-                        keepBottomAnchored = true
-                        val last = listState.layoutInfo.totalItemsCount - 1
-                        if (last >= 0) settleListToBottom(listState, last, scrollSpec = ChatSendSettleSpec)
+                        settleListToBottomAfterSubmit(listState) { keepBottomAnchored = true }
                     }
                 },
                 onStop = onStop,
@@ -1294,10 +1305,13 @@ private fun SelectedScreenContext(
     val removeColor = if (enabled) scheme.onSurfaceVariant else scheme.outline
     Row(
         modifier = Modifier
-            .height(60.dp)
-            // 卡片圆角 15dp：与 4dp 内边距一起给内层图片定同心基准（见下方图片 clip）。
-            .background(scheme.surfaceContainerHigh, RoundedCornerShape(15.dp))
-            .padding(4.dp),
+            .height(ScreenContextPreviewCardHeight)
+            // 卡片圆角 15dp：与 [ScreenContextPreviewInset] 一起给内层图片定同心基准。
+            .background(
+                scheme.surfaceContainerHigh,
+                RoundedCornerShape(ScreenContextPreviewCardCorner),
+            )
+            .padding(ScreenContextPreviewInset),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         previewBitmap?.let { bitmap ->
@@ -1305,12 +1319,12 @@ private fun SelectedScreenContext(
                 bitmap = bitmap,
                 contentDescription = stringResource(R.string.voice_screen_preview),
                 modifier = Modifier
-                    // 52 = 卡片 60 − 上下内边距 4×2：横纵内缩一致，四段弧线才与卡片同圆心
+                    // 边长按「卡片高 − 上下内边距」派生：横纵内缩一致，四段弧线才与卡片同圆心
                     // （旧值 50 在纵向上缩 5dp ≠ 横向 4dp，同心被破坏）。
-                    .size(52.dp)
-                    // 同心：图片圆角 = 卡片圆角 15dp − 卡片内边距 4dp = 11dp，
-                    // 弧心与卡片圆角圆心重合（与输入条图框同一套「半径差 = 间距」的同心规则）。
-                    .clip(RoundedCornerShape(11.dp)),
+                    .size(ScreenContextPreviewImageSize)
+                    // 同心：图片圆角 = 卡片圆角 − 内边距，弧心与卡片圆角圆心重合
+                    // （与输入条图框同一套「半径差 = 间距」的同心规则）。
+                    .clip(RoundedCornerShape(ScreenContextPreviewImageCorner)),
                 contentScale = ContentScale.Crop,
             )
         }
