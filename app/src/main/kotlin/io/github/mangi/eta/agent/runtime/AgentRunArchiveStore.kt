@@ -10,6 +10,9 @@ import io.github.mangi.eta.data.db.RuntimeArchiveEventEntity
 import io.github.mangi.eta.data.db.RuntimeArchiveRunEntity
 import io.github.mangi.eta.data.db.RuntimeRunDao
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 
@@ -24,6 +27,25 @@ import org.json.JSONArray
 internal object AgentRunArchiveStore {
     private const val MAX_ARCHIVED = 32
     private const val MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
+
+    /**
+     * 归档落库通知（进程内总线，值 = runId）。
+     *
+     * 归档只在 run 到终态时写一次，所以这一条通告同时就是「该 run 结束了」的信号。主程序
+     * 正开着时靠它立刻重跑恢复，把思考 / 工具卡补进对话；只等 `ON_RESUME` 会漏掉「用户
+     * 已经在主程序里、run 在浮窗里跑完」这一段——那一刻没有生命周期事件，归档落库后也
+     * 没人重跑导入，对话会一直空到下一次切前台。
+     *
+     * 只发 id，内容由订阅方自己读库：总线不持有事件流，避免把大对象挂在进程常驻单例上。
+     * Runtime 与 UI 同在主进程（清单里 [AgentRuntimeService] 未声明 `android:process`），
+     * 进程内 SharedFlow 即可；跨进程场景由 `ON_RESUME` 兜底。
+     */
+    private val _archived = MutableSharedFlow<String>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    val archived: SharedFlow<String> = _archived
 
     data class ArchivedRun(
         val handoff: AgentRuntimeWire.EntryHandoff,
@@ -50,6 +72,10 @@ internal object AgentRunArchiveStore {
                 "Runtime archive add: run=$archiveRunId runs=${retained.size} " +
                     "pruned=${(before + 1 - retained.size).coerceAtLeast(0)}",
             )
+            // 事务返回之后再发：订阅方收到就会读库，此刻必须已经能读到这条归档。
+            if (!_archived.tryEmit(archiveRunId)) {
+                AndroidAgentLogger.warn("Runtime archive notice dropped: run=$archiveRunId")
+            }
         }
     }
 

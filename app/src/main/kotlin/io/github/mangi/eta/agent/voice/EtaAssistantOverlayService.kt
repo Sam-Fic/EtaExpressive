@@ -66,6 +66,7 @@ import io.github.mangi.eta.agent.overlay.AgentHapticFeedback
 import io.github.mangi.eta.agent.overlay.AgentOverlayVisibilityPolicy
 import io.github.mangi.eta.agent.runtime.AgentEvent
 import io.github.mangi.eta.agent.runtime.AgentExternalArchivePayload
+import io.github.mangi.eta.agent.runtime.AgentLiveRunHandoff
 import io.github.mangi.eta.agent.runtime.AgentRuntimeClient
 import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
 import io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig
@@ -145,6 +146,15 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     private var runScope: CoroutineScope? = null
     private var entryCaptureJob: Job? = null
     private var activeRunId: String? = null
+
+    /**
+     * 在跑的 run 的交接信息：关闭浮窗时发布给主程序，让它接管这一单的实时事件。
+     *
+     * 与 [activeRunId] 同生命周期：run 开跑时写入、终态时清除。runScope 在 IO 线程上结束、
+     * 关闭浮窗在主线程上读，所以标 `@Volatile`。
+     */
+    @Volatile private var activeRunHandoff: AgentLiveRunHandoff.Notice? = null
+
     private var entryGeneration = 0L
     private var presentedEntryGeneration = -1L
     private var screenContextAttachment: EtaScreenContextAttachment? = null
@@ -249,6 +259,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         // onCreate 之前就被销毁（例如启动即失败）时这些对象还不存在，不能直接访问。
         if (::voiceController.isInitialized) voiceController.stop()
         removeWindow()
+        // 服务被销毁而 run 还活着（例如被系统回收窗口）：同样把实时流交给主程序。
+        handoffActiveRun()
         scope.cancel()
         cancellationExecutor.shutdown()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
@@ -781,6 +793,15 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                 thinkingEnabled = config.thinkingEnabled,
                 reasoningEffort = config.effectiveReasoningEffort,
             )
+            // 关闭浮窗后要把这一单交给主程序：先备好交接信息（runId + 首轮输入 + 展示档位），
+            // 终态时清掉，避免把已完成的单当成「还在跑」交给应用内。
+            activeRunHandoff = AgentLiveRunHandoff.Notice(
+                runId = runId,
+                source = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
+                payload = payload,
+                userImagePreviews = previewImages,
+                createdAt = System.currentTimeMillis(),
+            )
             val result = runtimeClient.run(
                 request = AgentRuntimeWire.RunRequest(
                     runId = runId,
@@ -811,6 +832,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                 if (activeRunId != runId) return@withContext false
                 activeRunId = null
                 runJob = null
+                // 已在浮窗里跑完：没有可交接的实时流了，结果由归档进应用内历史。
+                if (activeRunHandoff?.runId == runId) activeRunHandoff = null
                 if (result.ok) {
                     conversationHistory = conversationHistory +
                         AgentModelClient.buildUserHistoryMessage(runtimePrompt, runImages) +
@@ -1330,8 +1353,23 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
 
     private fun hideForForegroundOperation(onComplete: ((Boolean) -> Unit)? = null) {
         hiddenForForegroundOperation = true
+        // 浮窗这一去不再回来（见 shouldStopAfterResult）：run 的后续输出不能只留在看不见的
+        // uiState 里，交给主程序接着写。
+        handoffActiveRun()
         EtaVoiceInteractionSession.requestHideForForegroundOperation(this)
         removeWindow(onComplete)
+    }
+
+    /**
+     * 把仍在跑的 run 交给主程序（一次性）。
+     *
+     * 浮窗消失（用户关闭 / 让位前台操作 / 服务被销毁）时调用；run 已终态则什么都不做——
+     * 那种情况结果由 Runtime 归档，走归档导入路径。
+     */
+    private fun handoffActiveRun() {
+        val handoff = activeRunHandoff?.takeIf { it.runId == activeRunId } ?: return
+        activeRunHandoff = null
+        AgentLiveRunHandoff.publish(handoff)
     }
 
     private fun removeWindow(onComplete: ((Boolean) -> Unit)? = null) {
@@ -1412,8 +1450,10 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         entryGeneration++
         entryCaptureJob?.cancel()
         entryCaptureJob = null
-        // 关闭浮窗只结束 UI 承载：把运行与 UI 解绑但不取消，对话继续在 Runtime 中推进，
-        // 结果由 Runtime 归档并进入应用内历史。
+        // 关闭浮窗只结束 UI 承载：把运行与 UI 解绑但不取消，对话继续在 Runtime 中推进；
+        // 有在跑的单就把实时流交给主程序（attach → 事件投影 → 终态落库），
+        // 用户接着打开应用能看到它正在写，而不是等终态后一次性冒出全过程。
+        handoffActiveRun()
         activeRunId = null
         // 浮窗关闭即收声：自动朗读不跨浮窗生命周期继续。
         ReplyReadAloudController.stop()

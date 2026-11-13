@@ -5,6 +5,8 @@
 - outbox（AgentRuntimeResultStore）：只有最终 result，折叠后是一条纯文本助手消息。
 
 这两条路径的处理顺序与「已导入」判据决定了中间过程能否保留，本文件把它们钉住。
+另外钉住终态通告：归档落库要通知主程序重跑恢复，否则「用户已在主程序里、run 在浮窗里
+跑完」这一段没有生命周期事件可用，过程要等到下一次切前台才出现。
 """
 from pathlib import Path
 import unittest
@@ -72,6 +74,42 @@ class VoiceArchiveTraceContract(unittest.TestCase):
         # 归档先导入后，recover 对同一 run 会被判 alreadyApplied（无新消息），
         # 但 outbox 条目仍必须清掉，否则每次启动都重读同一份结果。
         self.assertIn('|| acknowledgeAfterSave.isNotEmpty()', self.state)
+
+    def test_archive_landing_notifies_the_ui_bus(self):
+        # 归档在 run 终态写一次，所以「归档落库」本身就是终态信号：主程序正开着时要靠它
+        # 立刻重跑恢复，否则内容要等到下一次切前台。
+        store = (ROOT / 'agent/runtime/AgentRunArchiveStore.kt').read_text()
+        self.assertIn('val archived: SharedFlow<String> = _archived', store)
+        body = store.split('fun add(context: Context, run: ArchivedRun)', 1)[1].split(
+            'fun list(context: Context)', 1)[0]
+        self.assertIn('_archived.tryEmit(archiveRunId)', body)
+        # 通告必须在事务之后：订阅方收到就立刻读库，早发会读不到刚写的事件流。
+        self.assertGreater(
+            body.index('_archived.tryEmit(archiveRunId)'),
+            body.index('dao.replaceArchivedRun('),
+            '归档通告必须在落库之后发出',
+        )
+
+    def test_main_app_listens_for_terminal_archives(self):
+        # 订阅方挂一次，收到通告只触发恢复；是否有内容由读库判定。
+        self.assertIn('observeRuntimeArchiveCompletions()\n', self.state)
+        body = self.state.split('private fun observeRuntimeArchiveCompletions()', 1)[1].split(
+            'fun refreshMemory(', 1)[0]
+        self.assertIn('AgentRunArchiveStore.archived.collect', body)
+        self.assertIn('refreshRuntimeResults()', body)
+        # 构造期的早到通告要等会话表水合：空种子会把归档导入误判成新会话并写歪持久化。
+        self.assertIn('awaitConversationsHydrated()', body)
+
+    def test_running_recovery_absorbs_new_requests_instead_of_dropping(self):
+        # 「已在恢复中就直接 return」会让紧跟 ON_RESUME 恢复之后的终态落库被吞掉；
+        # 恢复必须单飞但不丢请求：pending 标志 + 跑完再补一遍。
+        body = self.state.split('fun refreshRuntimeResults()', 1)[1].split(
+            'fun refreshMemory(', 1)[0]
+        self.assertIn('runtimeRefreshPending.set(true)', body)
+        self.assertIn('pumpRuntimeRecovery()', body)
+        self.assertIn('while (runtimeRefreshPending.compareAndSet(true, false))', body)
+        # 关闸后进来的请求撞上 CAS：补泵一次，否则它要等下一次外部触发。
+        self.assertIn('if (runtimeRefreshPending.get()) pumpRuntimeRecovery()', body)
 
 
 if __name__ == '__main__':

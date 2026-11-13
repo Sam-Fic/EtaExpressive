@@ -579,6 +579,15 @@ fun AgentAppRoot(
         onLiveTargetConsumed()
     }
 
+    // 浮窗关闭时把在跑的 run 交接给了应用内（见 AgentLiveRunHandoff）：这里只留主页钉子，
+    // 不强行导航——用户可能正在别的页面做事，下一次进主页时落进这一单即可。
+    // 选中与否由状态层按「当时还在调度台」判断，界面层不重复决定。
+    LaunchedEffect(agentState.liveExternalConversationRequest) {
+        val conversationId = agentState.liveExternalConversationRequest ?: return@LaunchedEffect
+        homeEntryPinnedConversationId = conversationId
+        agentState.consumeLiveExternalConversationRequest(conversationId)
+    }
+
     // 助手浮窗口述「去配置」：落地语音设置页（push，回退仍回原页），随后复位请求令牌。
     // 直接走 navigator.push：pushRoute 是下方才声明的局部函数，不能前向引用，
     // 且 VoiceSettings 不需要 pushRoute 里 Browser 的失焦特判。

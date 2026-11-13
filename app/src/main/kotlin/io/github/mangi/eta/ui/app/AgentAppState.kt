@@ -68,6 +68,7 @@ import io.github.mangi.eta.ui.model.ErrorReconnectStatus
 import io.github.mangi.eta.agent.runtime.AgentExecutionService
 import io.github.mangi.eta.agent.runtime.AgentConversationIdentity
 import io.github.mangi.eta.agent.runtime.AgentExternalArchivePayload
+import io.github.mangi.eta.agent.runtime.AgentLiveRunHandoff
 import io.github.mangi.eta.agent.runtime.AgentRunArchiveStore
 import io.github.mangi.eta.agent.runtime.AgentRunCheckpointStore
 import io.github.mangi.eta.agent.runtime.AgentRuntimeClient
@@ -371,6 +372,8 @@ internal class AgentAppState(
     private var bindingRefreshAfterArchive = false
     private val deferredArchiveSaves = mutableListOf<Pair<kotlinx.coroutines.CompletableDeferred<Boolean>, (() -> Unit)?>>()
     private val runtimeRecoveryInProgress = AtomicBoolean(false)
+    /** 恢复进行中又来了新请求：不丢弃、合并成「跑完再来一遍」。 */
+    private val runtimeRefreshPending = AtomicBoolean(false)
     // Main-thread cursor: bounded recovery passes rotate rather than dropping older owners.
     private var questionRecoveryQueryOffset = 0
     private val defaultThinkingEnabled = agentBooleanForUi(Prefs.Keys.AGENT_THINKING_ENABLED)
@@ -1796,6 +1799,15 @@ internal class AgentAppState(
     var pendingScrollToMessageId by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * 外部入口把**在跑**的 run 交接过来时的目标会话：主页下一次进入要落在这里
+     * （一次性，由 `AgentAppRoot` 取走并转成 `homeEntryPinnedConversationId`）。
+     *
+     * 只有值，不在这里做导航：路由由界面层决定，状态层只负责说「这一单该被看见」。
+     */
+    var liveExternalConversationRequest by mutableStateOf<String?>(null)
+        private set
+
     var toolsState by mutableStateOf(buildToolsState(appContext))
         private set
 
@@ -1844,6 +1856,8 @@ internal class AgentAppState(
         refreshConversationSummaries()
         observeConversationSummaryDates()
         observeRuntimeSelection()
+        observeRuntimeArchiveCompletions()
+        observeLiveRunHandoffs()
         observeAutoCompressEnabled()
         scope.launch(Dispatchers.Main.immediate) {
             conversationSubAgentPreferences.revision.collectLatest { refreshRequestOverhead() }
@@ -1876,6 +1890,8 @@ internal class AgentAppState(
                 recoverRuntimeRuns()
             } finally {
                 runtimeRecoveryInProgress.set(false)
+                // 构造期恢复进行中落库的终态：同 [pumpRuntimeRecovery] 的关闸补泵口径。
+                if (runtimeRefreshPending.get()) pumpRuntimeRecovery()
             }
         }
     }
@@ -2273,23 +2289,141 @@ internal class AgentAppState(
             runtimeRefreshAfterArchive = true
             return
         }
+        runtimeRefreshPending.set(true)
+        pumpRuntimeRecovery()
+    }
+
+    /**
+     * 单飞 + 合并的恢复泵：恢复不并发，但进行中的请求不会被丢。
+     *
+     * 原来「已在恢复中就直接 return」会让紧跟在 `ON_RESUME` 恢复之后的终态落库被吞掉——
+     * 归档刚写完、恢复刚好还在跑，这一次通告就白发了，内容要等到下一次切前台才出现。
+     */
+    private fun pumpRuntimeRecovery() {
         if (!runtimeRecoveryInProgress.compareAndSet(false, true)) return
         scope.launch(Dispatchers.IO) {
             try {
-                // 归档必须先于 outbox 折叠：外部入口（系统语音浮窗、小爱、Breeno）的 run 同时留下
-                // 两份记录——归档带完整事件流（思考 / 工具卡），outbox 只有最终 result。先跑 recover
-                // 会用 result 折出一条「只有最终答复、连用户消息都没有」的助手消息，随后归档导入
-                // 因 alreadyImported（assistant-$runId-1 且非 streaming）直接早退并被删掉，
-                // 中间过程永久丢失。反过来先导入归档，recover 的 history reducer 会判 alreadyApplied
-                // 而只做收尾，不重复追加。
-                importArchivedExternalRuns()
-                recoverRuntimeRuns()
+                while (runtimeRefreshPending.compareAndSet(true, false)) {
+                    // 归档必须先于 outbox 折叠：外部入口（系统语音浮窗、小爱、Breeno）的 run 同时留下
+                    // 两份记录——归档带完整事件流（思考 / 工具卡），outbox 只有最终 result。先跑 recover
+                    // 会用 result 折出一条「只有最终答复、连用户消息都没有」的助手消息，随后归档导入
+                    // 因 alreadyImported（assistant-$runId-1 且非 streaming）直接早退并被删掉，
+                    // 中间过程永久丢失。反过来先导入归档，recover 的 history reducer 会判 alreadyApplied
+                    // 而只做收尾，不重复追加。
+                    importArchivedExternalRuns()
+                    recoverRuntimeRuns()
+                }
             } finally {
                 runtimeRecoveryInProgress.set(false)
+                // 关闸那一刻进来并撞上 CAS 的请求：再泵一次，否则它要等下一次外部触发。
+                if (runtimeRefreshPending.get()) pumpRuntimeRecovery()
             }
         }
     }
 
+    /**
+     * 外部入口的 run 到终态就会在 [AgentRunArchiveStore.archived] 上通告。
+     *
+     * 订阅方只负责触发一次恢复，是否真有内容由读库决定。`awaitConversationsHydrated()` 是
+     * 为了构造期的早到通告：此时会话表还是空种子，导入会误判成「新会话」并把持久化写歪。
+     */
+    private fun observeRuntimeArchiveCompletions() {
+        scope.launch {
+            AgentRunArchiveStore.archived.collect {
+                awaitConversationsHydrated()
+                refreshRuntimeResults()
+            }
+        }
+    }
+
+    /**
+     * 浮窗关闭时把**还在跑**的 run 交接过来（见 [AgentLiveRunHandoff]）。
+     *
+     * 只做「接管 + 挂接」：首轮用户消息按归档同一口径补进会话，之后的事件全部走
+     * [subscribeAttachedRun] 的 attach → 投影 → 终态落库通路，与派发子 run 完全同一套，
+     * 不新开第二条渲染路径。
+     */
+    private fun observeLiveRunHandoffs() {
+        scope.launch {
+            AgentLiveRunHandoff.notices.collect { notice -> adoptLiveExternalRun(notice) }
+        }
+    }
+
+    private fun adoptLiveExternalRun(notice: AgentLiveRunHandoff.Notice) {
+        scope.launch(Dispatchers.IO) {
+            awaitConversationsHydrated()
+            // 通告带 replay：用户可能先关浮窗、过一阵才打开应用。只有 run 仍活跃才接管；
+            // 已终态的单交给归档导入（那里有完整事件流），不拿半截状态占位。
+            if (!awaitRunActive(notice.runId)) return@launch
+            withContext(Dispatchers.Main) { bindLiveExternalRun(notice) }
+        }
+    }
+
+    /**
+     * 探询该 run 是否仍在跑。
+     *
+     * 两个方向都要挡：通告可能早于 Runtime 建好 session（提交后立刻关浮窗），也可能晚到
+     * （replay 给新构造的状态）。三次探询覆盖前者；三次都不在就判终态，交给归档路径——
+     * 那时接管只会拿一条没有事件流的半截消息占位。Runtime 不可达同样不算活跃。
+     */
+    private suspend fun awaitRunActive(runId: String): Boolean {
+        if (runId.isBlank()) return false
+        val client = AgentRuntimeClient(appContext, AndroidAgentLogger)
+        repeat(3) { attempt ->
+            val active = client.queryActiveRun()
+            if (active is AgentRuntimeClient.ActiveRunQuery.Known && runId in active.runIds) return true
+            if (attempt < 2) delay(250)
+        }
+        return false
+    }
+
+    private fun bindLiveExternalRun(notice: AgentLiveRunHandoff.Notice) {
+        val runId = notice.runId
+        if (runId.isBlank() || runId in runJobs) return
+        val payload = notice.payload
+        val conversationId = archiveConversationId(notice.source, payload.conversationKey)
+        val effort = payload.reasoningEffort
+            ?: payload.thinkingEnabled?.let(ReasoningEffort::fromLegacy)
+            ?: ReasoningEffort.fromLegacy(defaultThinkingEnabled)
+        val existingState = conversationState(conversationId)
+            ?: emptyChatState(effort.enablesReasoning).copy(reasoningEffort = effort)
+        if (AgentRuntimeHistoryReducer.wasApplied(existingState, runId)) return
+        if (conversationTitles[conversationId].isNullOrBlank()) {
+            conversationTitles = conversationTitles + (conversationId to payload.title)
+        }
+        if (conversationId !in conversationCreatedAt) {
+            conversationCreatedAt = conversationCreatedAt + (conversationId to notice.createdAt)
+        }
+        updateConversation(
+            conversationId,
+            existingState.copy(
+                input = "",
+                thinkingEnabled = effort.enablesReasoning,
+                reasoningEffort = effort,
+                // 同一单被交接两次（浮窗重开又关）不能叠两条同 id 的用户消息：列表 key 会冲突。
+                messages = existingState.messages.filterNot { it.id == "user-$runId" } +
+                    UserMessageUi(
+                        id = "user-$runId",
+                        content = payload.userText,
+                        images = notice.userImagePreviews,
+                    ),
+            ),
+        )
+        // 与「派发子 run 挂到工作会话」同一套：置 streaming / 绑用量归属 / attach 订阅。
+        startAttachedRun(runId, conversationId)
+        refreshConversationSummaries()
+        persistConversations()
+        // 用户此刻多半不在聊天页：还在调度台或空会话时就顺手选中，并留一次性的主页钉子
+        // （[liveExternalConversationRequest]），下次进主页直接落在这一单上。
+        if (selectedConversationId == null || selectedConversationId == dispatchConsoleId()) {
+            selectConversation(conversationId)
+        }
+        liveExternalConversationRequest = conversationId
+    }
+
+    fun consumeLiveExternalConversationRequest(conversationId: String) {
+        if (liveExternalConversationRequest == conversationId) liveExternalConversationRequest = null
+    }
 
     fun refreshMemory(assistantId: String = AssistantRepository.active().id) {
         val owner = assistantId
