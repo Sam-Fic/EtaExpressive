@@ -3,11 +3,22 @@ package io.github.mangi.eta.ui.screens.settings
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -16,9 +27,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Deselect
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
@@ -31,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +61,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.LocalNetworkPermission
 import io.github.mangi.eta.agent.remote.RemoteConnectionStatus
@@ -51,8 +74,12 @@ import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
+import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
+import io.github.mangi.eta.ui.adaptive.EtaIconButton
+import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -60,11 +87,13 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
+import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaTooltipIconButton
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.adaptive.etaConnectedColor
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.remote.RemoteCoordinator
 import io.github.mangi.eta.ui.remote.remoteStatusLabel
@@ -93,6 +122,11 @@ internal fun RemoteAgentsScreen(
     val servers = coordinator.servers
 
     var deleteTarget by remember { mutableStateOf<RemoteServerConfig?>(null) }
+    // 多选态与勾选集合：入口在顶栏（Checklist→Close 原位切换），长按行也可进入。
+    // 批量删除 = 一次 setRemoteServers 整表覆写（数据层天然批量）。
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var showBatchDeleteDialog by remember { mutableStateOf(false) }
 
     // 本地网络闸门：页面顶部常驻一行。它必须能自己刷新——用户去系统设置里改完回来，
     // 页面不能还显示旧的「被拦截」。
@@ -126,16 +160,54 @@ internal fun RemoteAgentsScreen(
         scope.launch { SettingsDataStore.setRemoteServers(updated) }
     }
 
+    val allSelected = servers.isNotEmpty() && selectedIds.containsAll(servers.map { it.id })
+
+    // 返回键优先退出多选，不退页面。
+    val selectionBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = selectionBackState,
+        isBackEnabled = selectionMode,
+        onBackCompleted = {
+            selectionMode = false
+            selectedIds = emptySet()
+        },
+    )
+
+    fun exitSelection() {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
     EtaScaffoldPage(
         title = stringResource(R.string.route_remote_agents),
         onBack = onBack,
         listState = listState,
-        floatingActionButton = {
-            EtaExtendedFab(
-                text = stringResource(R.string.remote_agents_add),
-                icon = Icons.Rounded.Add,
-                expanded = fabExpanded,
-                onClick = { TouchHaptics.click(view); onOpenEditor(null) },
+        // 多选态隐藏新增入口：批量操作栏占住底部，FAB 让位。
+        floatingActionButton = if (!selectionMode) {
+            {
+                EtaExtendedFab(
+                    text = stringResource(R.string.remote_agents_add),
+                    icon = Icons.Rounded.Add,
+                    expanded = fabExpanded,
+                    onClick = { TouchHaptics.click(view); onOpenEditor(null) },
+                )
+            }
+        } else {
+            null
+        },
+        actions = {
+            // 多选入口原位切换：Checklist→Close，退出并清空勾选。无服务器可管时禁用。
+            TopBarIconButton(
+                icon = if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist,
+                contentDescription = stringResource(
+                    if (selectionMode) R.string.action_cancel else R.string.media_action_multiselect,
+                ),
+                onClick = {
+                    TouchHaptics.click(view)
+                    if (selectionMode) exitSelection() else selectionMode = true
+                },
+                enabled = servers.isNotEmpty() || selectionMode,
+                shapes = IconButtonDefaults.shapes(),
             )
         },
     ) {
@@ -176,7 +248,12 @@ internal fun RemoteAgentsScreen(
                     end = EtaGroupHorizontalPadding,
                     bottom = EtaSegmentedGroupSpacing,
                 ),
-                title = stringResource(R.string.remote_agents_configured_servers, servers.size),
+                title = if (selectionMode) {
+                    stringResource(R.string.remote_agents_configured_servers, servers.size) + " · " +
+                        stringResource(R.string.media_selected_count, selectedIds.size)
+                } else {
+                    stringResource(R.string.remote_agents_configured_servers, servers.size)
+                },
             ) {
                 if (servers.isEmpty()) {
                     // 空态是「非行」内容，用分段容器承载；新增入口交给右下角 FAB，避免重复按钮。
@@ -196,7 +273,24 @@ internal fun RemoteAgentsScreen(
                                 title = config.name,
                                 summary = "${RemoteProtocols.displayNameOf(config.protocolId)} · " +
                                     "${config.host}:${config.port} · ${remoteStatusLabel(status)}",
-                                onClick = { onOpenEditor(config.id) },
+                                onClick = {
+                                    if (selectionMode) {
+                                        selectedIds = if (config.id in selectedIds) {
+                                            selectedIds - config.id
+                                        } else {
+                                            selectedIds + config.id
+                                        }
+                                    } else {
+                                        onOpenEditor(config.id)
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!selectionMode) {
+                                        selectionMode = true
+                                        selectedIds = setOf(config.id)
+                                    }
+                                },
+                                onLongClickLabel = stringResource(R.string.action_enter_selection),
                                 // 行首是「服务器」类别图标（与 MCP 服务器页的 Dns 同族）；
                                 // 连接状态属于状态标记，挪到行尾，不与类别图标抢行首槽。
                                 leading = {
@@ -208,19 +302,33 @@ internal fun RemoteAgentsScreen(
                                     )
                                 },
                                 endActions = {
-                                    // 连接状态圆点靠右、删除按钮最右，与「会话列表」尾槽节奏一致。
-                                    Box(modifier = Modifier.padding(end = 8.dp)) {
-                                        StatusDot(status)
+                                    if (selectionMode) {
+                                        // 多选态：状态点与删除按钮让位，行尾只剩官方 Checkbox。
+                                        Checkbox(
+                                            checked = config.id in selectedIds,
+                                            onCheckedChange = {
+                                                selectedIds = if (config.id in selectedIds) {
+                                                    selectedIds - config.id
+                                                } else {
+                                                    selectedIds + config.id
+                                                }
+                                            },
+                                        )
+                                    } else {
+                                        // 连接状态圆点靠右、删除按钮最右，与「会话列表」尾槽节奏一致。
+                                        Box(modifier = Modifier.padding(end = 8.dp)) {
+                                            StatusDot(status)
+                                        }
+                                        // 破坏性删除改成纯图标按钮，与「会话列表」尾槽一致：
+                                        // 官方 48dp IconButton + error 内容色 + 统一 Tooltip/无障碍包装。
+                                        EtaTooltipIconButton(
+                                            icon = Icons.Rounded.DeleteOutline,
+                                            contentDescription = stringResource(R.string.action_delete),
+                                            onClick = { deleteTarget = config },
+                                            destructive = true,
+                                            shapes = IconButtonDefaults.shapes(),
+                                        )
                                     }
-                                    // 破坏性删除改成纯图标按钮，与「会话列表」尾槽一致：
-                                    // 官方 48dp IconButton + error 内容色 + 统一 Tooltip/无障碍包装。
-                                    EtaTooltipIconButton(
-                                        icon = Icons.Rounded.DeleteOutline,
-                                        contentDescription = stringResource(R.string.action_delete),
-                                        onClick = { deleteTarget = config },
-                                        destructive = true,
-                                        shapes = IconButtonDefaults.shapes(),
-                                    )
                                 },
                             )
                         }
@@ -235,6 +343,68 @@ internal fun RemoteAgentsScreen(
                 modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
             )
         }
+        item(key = "bottom_spacer", contentType = "spacer") {
+            // 多选操作栏悬浮在底部时预留高度，避免遮挡最后一个列表项。
+            Spacer(
+                modifier = Modifier
+                    .height(if (selectionMode) 88.dp else 24.dp)
+                    .navigationBarsPadding(),
+            )
+        }
+    }
+
+    // 批量操作栏：官方 M3E HorizontalFloatingToolbar 纯图标药丸，底部居中悬浮。
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = selectionMode,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            // 批量选择栏的进退场：位移走 M3E Spatial（轻微过冲），透明度走 Effects（无过冲）。
+            enter = slideInVertically(
+                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            ) { it } + fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = slideOutVertically(
+                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+            ) { it } + fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
+            RemoteAgentSelectionBar(
+                selectedCount = selectedIds.size,
+                allSelected = allSelected,
+                onSelectAll = {
+                    TouchHaptics.click(view)
+                    selectedIds = if (allSelected) {
+                        emptySet()
+                    } else {
+                        servers.map { it.id }.toSet()
+                    }
+                },
+                onDelete = {
+                    TouchHaptics.click(view)
+                    showBatchDeleteDialog = true
+                },
+            )
+        }
+    }
+
+    // 批量删除二次确认：一次 setRemoteServers 整表覆写即批量删（数据层天然批量）。
+    if (showBatchDeleteDialog) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.remote_agents_delete_title),
+            summary = stringResource(R.string.remote_agents_batch_delete_message, selectedIds.size),
+            onDismissRequest = { showBatchDeleteDialog = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.action_delete),
+                    destructive = true,
+                    onCancel = { showBatchDeleteDialog = false },
+                    onConfirm = {
+                        persist(servers.filterNot { it.id in selectedIds })
+                        showBatchDeleteDialog = false
+                        exitSelection()
+                    },
+                )
+            },
+        ) {}
     }
 
     deleteTarget?.let { target ->
@@ -429,4 +599,71 @@ private fun StatusDot(status: RemoteConnectionStatus) {
             .clip(CircleShape)
             .background(color),
     )
+}
+
+
+/**
+ * 远程设备多选批量操作栏：官方 M3E [HorizontalFloatingToolbar]（纯图标药丸），底部居中悬浮，
+ * 与模型管理页（ProviderModelsTab.ModelSelectionBar）同款装配。
+ * 动作序：全选（全不选）→ 删除（error 色标破坏性，执行前另有确认弹窗）；
+ * 「取消」不落底栏，由顶栏多选入口原位切换（Checklist→Close）承载，已选数量并入分组标题。
+ * 组件结论同 ChatSelectionBar 的 KDoc（同版本依赖既有调用核证）。
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun RemoteAgentSelectionBar(
+    selectedCount: Int,
+    allSelected: Boolean,
+    onSelectAll: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        HorizontalFloatingToolbar(
+            expanded = true,
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 12.dp),
+            leadingContent = {},
+            // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
+            contentPadding = EtaFloatingToolbarConcentricPadding(
+                IconButtonDefaults.smallContainerSize().width,
+            ),
+        ) {
+            // 动作组：固定 8dp 间距的一行图标按钮（EtaIconButton 的 `Standard` 档裸图标）。
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EtaIconButton(
+                    icon = if (allSelected) Icons.Rounded.Deselect else Icons.Rounded.SelectAll,
+                    contentDescription = stringResource(
+                        if (allSelected) R.string.media_action_deselect_all else R.string.media_action_select_all,
+                    ),
+                    onClick = onSelectAll,
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
+                )
+                // 删除是破坏性操作：图标用 error 色区分（官方裸 IconButton，容器/图标尺寸
+                // 与 EtaIconButton 的 `Standard` + S 档一致），执行前另有确认弹窗。
+                val deleteDescription = stringResource(R.string.action_delete)
+                EtaTooltip(text = deleteDescription) {
+                    androidx.compose.material3.IconButton(
+                        onClick = onDelete,
+                        enabled = selectedCount > 0,
+                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                        shapes = IconButtonDefaults.shapes(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = deleteDescription,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

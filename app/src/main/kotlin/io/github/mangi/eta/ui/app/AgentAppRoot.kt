@@ -981,7 +981,6 @@ fun AgentAppRoot(
             onSelectFolder = { folderId -> agentState.selectFolder(folderId) },
             onRestoreConversation = { conversationId -> agentState.restoreConversationFromTrash(conversationId) },
             onConversationDeleteForever = { conversationId -> agentState.deleteConversationForever(conversationId) },
-            onEmptyTrash = { agentState.emptyTrash() },
             onOpenTrash = { pushFromDrawer(AppRoute.ConversationTrash) },
             onSelectAssistant = { id -> agentState.selectAssistant(id) },
             onEditAssistant = { id -> pushFromDrawer(AppRoute.AssistantEdit(id)) },
@@ -1474,7 +1473,6 @@ fun AgentAppRoot(
                     onDeleteConversation = { conversation ->
                         agentState.deleteConversation(conversation.id)
                     },
-                    onDeleteAll = { agentState.deleteAllConversations() },
                     onOpenSearchHistory = { pushRoute(AppRoute.MessageSearch()) },
                 )
             }
@@ -1500,7 +1498,6 @@ fun AgentAppRoot(
                     onDeleteForever = { conversationId ->
                         agentState.deleteConversationForever(conversationId)
                     },
-                    onEmptyTrash = { agentState.emptyTrash() },
                     onPurgeExpired = { agentState.purgeExpiredTrash() },
                     onOpenSearch = { pushRoute(AppRoute.ConversationTrashSearch) },
                 )

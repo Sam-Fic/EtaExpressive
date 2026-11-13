@@ -287,6 +287,7 @@
   <string name="folders_page_remote_summary">Connected %1$d of %2$d</string>
   <string name="folders_page_empty">No categories yet. Use the button at the bottom right to create one</string>
   <string name="folders_page_empty_open_remote_agents">Manage remote agents</string>
+  <string name="folders_page_batch_delete_message">Delete the %1$d selected categories? Conversations in them will be moved back to Chats</string>
   <string name="folders_page_delete_message">Conversations in “%1$s” will be moved back to Chats. The category will be deleted</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="one">%d conversation</item>
@@ -300,6 +301,7 @@
   <string name="drawer_trash_restore">Restore</string>
   <string name="drawer_trash_delete_forever">Delete forever</string>
   <string name="drawer_trash_delete_forever_title">Delete forever?</string>
+  <string name="drawer_trash_batch_purge_message">Permanently delete the %1$d selected conversations? This cannot be undone</string>
   <string name="drawer_trash_delete_forever_message">Permanently delete "%1$s"? This cannot be undone</string>
   <string name="conversation_move_to_trash">Move to trash</string>
   <string name="trash_deleted_today">Deleted today</string>
@@ -1760,6 +1762,7 @@
   <string name="remote_agents_error_host">Enter a server address</string>
   <string name="remote_agents_error_host_invalid">Invalid address: enter an IP or host name (for example 192.168.1.10)</string>
   <string name="remote_agents_error_port">Invalid port</string>
+  <string name="remote_agents_batch_delete_message">Delete the %1$d selected servers?</string>
   <string name="remote_agents_delete_title">Delete server</string>
   <string name="remote_agents_delete_message">Delete \"%1$s\"?</string>
   <string name="remote_agents_status_connected">Connected</string>
@@ -1787,6 +1790,7 @@
   <string name="recipe_state_disabled">Disabled</string>
   <string name="recipe_state_root">Needs Root</string>
   <string name="recipe_steps_count">%1$d steps</string>
+  <string name="recipe_disable">Disable selected</string>
   <string name="recipe_enable">Enable</string>
   <string name="recipe_enable_summary">An enabled recipe appears in the model tool list from the next request on</string>
   <string name="recipe_edit_one">Edit this recipe</string>
@@ -1800,6 +1804,7 @@
   <string name="recipe_description">What it does</string>
   <string name="recipe_steps_section">Steps · %1$d</string>
   <string name="recipe_delete_title">Delete recipe</string>
+  <string name="recipe_batch_delete_message">Delete the %1$d selected recipes? The model will no longer be able to call them. This cannot be undone</string>
   <string name="recipe_delete_confirm">Delete %1$s? The model can no longer call it. This cannot be undone</string>
   <string name="recipe_delete_one">Delete this recipe</string>
   <string name="recipe_saved">Saved %1$s</string>
@@ -1869,6 +1874,7 @@
   <string name="mcp_tools_count">Tools · %1$d</string>
   <string name="mcp_no_tools">No compatible tools</string>
   <string name="mcp_refresh_tools_hint">Refresh after the server publishes tools</string>
+  <string name="mcp_batch_delete_message">Delete the %1$d selected servers? Their tokens will be cleared. This cannot be undone</string>
   <string name="mcp_delete_server">Delete server</string>
   <string name="mcp_delete_server_summary">Remove this endpoint, its token, and tool settings</string>
   <string name="mcp_enable_risky_tool">Enable this tool?</string>
@@ -2345,6 +2351,8 @@
   <string name="sas_applied_to_conversation">Applied to this conversation</string>
   <string name="sas_apply_failed">Failed to apply the group. Please try again</string>
   <string name="dv_recording_selected">Recording selected</string>
+  <string name="dv_batch_target">%1$d voices</string>
+  <string name="dv_batch_removed">Removed %1$d local records</string>
   <string name="dv_remove_title">Remove “%1$s”?</string>
   <string name="dv_delete_local_note">This removes the local record only. The cloud voice is not deleted and the cloud task is not canceled. If it is currently used for read-aloud, you will need to select a voice again</string>
   <string name="dv_local_removed">Local record removed</string>

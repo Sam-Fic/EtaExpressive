@@ -316,6 +316,7 @@
   <string name="folders_page_remote_summary">已连接 %1$d / 共 %2$d</string>
   <string name="folders_page_empty">还没有分类，点右下角的按钮新建一个分类</string>
   <string name="folders_page_empty_open_remote_agents">管理远程智能体</string>
+  <string name="folders_page_batch_delete_message">删除已选的 %1$d 个分类？其中的对话会移回「聊天」</string>
   <string name="folders_page_delete_message">「%1$s」中的对话会移回「聊天」，分类将被删除</string>
   <plurals name="folders_page_conversation_count">
     <item quantity="other">%d 个对话</item>
@@ -328,6 +329,7 @@
   <string name="drawer_trash_restore">恢复</string>
   <string name="drawer_trash_delete_forever">彻底删除</string>
   <string name="drawer_trash_delete_forever_title">彻底删除？</string>
+  <string name="drawer_trash_batch_purge_message">永久删除已选的 %1$d 个对话？此操作无法撤销</string>
   <string name="drawer_trash_delete_forever_message">永久删除「%1$s」？此操作无法撤销</string>
   <string name="conversation_move_to_trash">移入回收站</string>
   <string name="trash_deleted_today">今天删除</string>
@@ -1769,6 +1771,7 @@
   <string name="remote_agents_error_host">请填写服务器地址</string>
   <string name="remote_agents_error_host_invalid">地址无效：请填 IP 或主机名（如 192.168.1.10）</string>
   <string name="remote_agents_error_port">端口无效</string>
+  <string name="remote_agents_batch_delete_message">删除已选的 %1$d 台服务器？</string>
   <string name="remote_agents_delete_title">删除服务器</string>
   <string name="remote_agents_delete_message">确定删除「%1$s」？</string>
   <string name="remote_agents_status_connected">已连接</string>
@@ -1796,6 +1799,7 @@
   <string name="recipe_state_disabled">已停用</string>
   <string name="recipe_state_root">需要 Root</string>
   <string name="recipe_steps_count">%1$d 个步骤</string>
+  <string name="recipe_disable">停用所选</string>
   <string name="recipe_enable">启用</string>
   <string name="recipe_enable_summary">启用后，这份配方会从下一轮请求起出现在模型的工具列表里</string>
   <string name="recipe_edit_one">编辑这份配方</string>
@@ -1809,6 +1813,7 @@
   <string name="recipe_description">它做什么</string>
   <string name="recipe_steps_section">步骤 · %1$d</string>
   <string name="recipe_delete_title">删除配方</string>
+  <string name="recipe_batch_delete_message">删除已选的 %1$d 个配方？删除后模型不再能调用它们，且无法撤销</string>
   <string name="recipe_delete_confirm">删除 %1$s？删除后模型不再能调用它，且无法撤销</string>
   <string name="recipe_delete_one">删除这份配方</string>
   <string name="recipe_saved">已保存 %1$s</string>
@@ -1878,6 +1883,7 @@
   <string name="mcp_tools_count">工具 · %1$d</string>
   <string name="mcp_no_tools">没有兼容工具</string>
   <string name="mcp_refresh_tools_hint">服务器发布工具后可在此刷新</string>
+  <string name="mcp_batch_delete_message">删除已选的 %1$d 台服务器？其令牌将被清除，此操作无法撤销</string>
   <string name="mcp_delete_server">删除服务器</string>
   <string name="mcp_delete_server_summary">移除此地址、Token 和工具设置</string>
   <string name="mcp_enable_risky_tool">启用这个工具？</string>
@@ -2511,6 +2517,8 @@
   <string name="sas_applied_to_conversation">已应用到本会话</string>
   <string name="sas_apply_failed">应用分组失败，请重试</string>
   <string name="dv_recording_selected">已选择录音</string>
+  <string name="dv_batch_target">%1$d 个音色</string>
+  <string name="dv_batch_removed">已移除 %1$d 条本地记录</string>
   <string name="dv_remove_title">移除“%1$s”？</string>
   <string name="dv_delete_local_note">仅移除本地记录。云端音色不会被删除，云端任务也不会取消。如果它正在用于朗读，需要重新选择音色</string>
   <string name="dv_local_removed">已移除本地记录</string>

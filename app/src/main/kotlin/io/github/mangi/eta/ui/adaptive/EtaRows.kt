@@ -133,6 +133,10 @@ fun EtaClickableRow(
     modifier: Modifier = Modifier,
     summary: String? = null,
     onClick: (() -> Unit)? = null,
+    // 官方 SegmentedListItem 原生带 onLongClick 槽：多选等「长按是唯一入口」的功能
+    // 必须给出标签，否则 TalkBack 读不到、普通用户也不知道长按可用。
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
     endActions: (@Composable RowScope.() -> Unit)? = null,
     bottomAction: (@Composable () -> Unit)? = null,
     holdDownState: Boolean = false,
@@ -167,10 +171,14 @@ fun EtaClickableRow(
         null
     }
     Column(modifier = modifier.fillMaxWidth()) {
-        if (hapticClick != null) {
+        // onClick 为空但给了长按的行（多选列表里点行切勾选由 Checkbox 承载、行本体只留长按入口）
+        // 同样走官方可点分支：只有「既无点击也无长按」才落到不可点分支。
+        if (hapticClick != null || onLongClick != null) {
             SegmentedListItem(
                 verticalAlignment = Alignment.CenterVertically,
-                onClick = hapticClick,
+                onClick = hapticClick ?: {},
+                onLongClick = onLongClick,
+                onLongClickLabel = onLongClickLabel,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = enabled,
                 shapes = etaSegmentedRowShapes(),

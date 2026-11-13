@@ -6,10 +6,13 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,12 +24,17 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Deselect
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.*
@@ -44,6 +52,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig
@@ -56,7 +67,11 @@ import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
+import io.github.mangi.eta.ui.adaptive.EtaIconButton
+import io.github.mangi.eta.ui.adaptive.EtaIconSize
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
@@ -85,6 +100,11 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var deleteVoice by remember { mutableStateOf<PersonalVoices.Voice?>(null) }
+    // 多选态与勾选集合：入口在顶栏（Checklist→Close 原位切换），长按行也可进入。
+    // 多选只作用于首页「我的音色」列表（home 态）；进任何子页即视为退出多选。
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var showBatchRemoveDialog by remember { mutableStateOf(false) }
     var showSync by remember { mutableStateOf(false) }
     var manualId by remember { mutableStateOf(false) }
     var advanced by remember { mutableStateOf(false) }
@@ -95,6 +115,11 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
     var notice by remember { mutableStateOf("") }
     var showAccount by remember { mutableStateOf(false) }
     var settingsMenu by remember { mutableStateOf(false) }
+    fun exitSelection() {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
     val back: () -> Unit = {
         when (voiceSettingsBackTarget(showSync, showAccount, mode, step)) {
             VoiceSettingsBackTarget.SYNC_PARENT -> showSync = false
@@ -114,6 +139,18 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
     var consent by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val home = mode == null && !showAccount && !showSync
+
+    // 返回键优先退出多选（仅 home 态有多选）；其余返回路径保持原有层级逻辑。
+    val selectionBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = selectionBackState,
+        isBackEnabled = home && selectionMode,
+        onBackCompleted = {
+            selectionMode = false
+            selectedIds = emptySet()
+        },
+    )
+
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     // 内部页快照驱动 AnimatedContent：退场页只读快照，不会跟着外部状态提前变成下一页。
     val page = DoubaoVoicePage(mode = mode, step = step, account = showAccount, sync = showSync)
@@ -174,7 +211,13 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
         showSync = false; postpaid = false; advanced = false; audio = null
         fileName = ""; consent = false; notice = ""
     }
-    LaunchedEffect(home) { if (!home) preview.stop() }
+    LaunchedEffect(home) {
+        if (!home) preview.stop()
+        // 离开首页即退出多选：多选只属于「我的音色」列表。
+        if (!home && selectionMode) exitSelection()
+    }
+    // 勾选 key = account + "/" + id（同一音色 id 可能跨账户）。
+    fun voiceKey(voice: PersonalVoices.Voice) = voice.account + "/" + voice.id
     // 列表铺到屏幕底缘，导航栏高度只补在滚动内容末尾（与抽屉/兄弟页同口径）。
     val navigationBarBottom =
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -188,6 +231,21 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
         },
         onBack = { TouchHaptics.click(view); back() },
         actions = {
+            if (home) {
+                // 多选入口原位切换：Checklist→Close，退出并清空勾选。无音色可管时禁用。
+                TopBarIconButton(
+                    icon = if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist,
+                    contentDescription = stringResource(
+                        if (selectionMode) R.string.action_cancel else R.string.media_action_multiselect,
+                    ),
+                    onClick = {
+                        TouchHaptics.click(view)
+                        if (selectionMode) exitSelection() else selectionMode = true
+                    },
+                    enabled = voices.any { it.showInMyVoices } || selectionMode,
+                    shapes = IconButtonDefaults.shapes(),
+                )
+            }
             if (home) Box {
                 TopBarIconButton(
                     icon = Icons.Rounded.MoreVert,
@@ -509,6 +567,21 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                                 PersonalVoiceRow(
                                                     voice = voice,
                                                     enabled = !importBusy,
+                                                    selectionMode = selectionMode,
+                                                    checked = voiceKey(voice) in selectedIds,
+                                                    onToggleChecked = {
+                                                        selectedIds = if (voiceKey(voice) in selectedIds) {
+                                                            selectedIds - voiceKey(voice)
+                                                        } else {
+                                                            selectedIds + voiceKey(voice)
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        if (!selectionMode) {
+                                                            selectionMode = true
+                                                            selectedIds = setOf(voiceKey(voice))
+                                                        }
+                                                    },
                                                     previewActive = previewState.matches(voice.account, voice.id),
                                                     previewLoading = previewState.matches(voice.account, voice.id) && previewState.loading,
                                                     onRefresh = { PersonalVoices.refresh(voice, config.cloneKey) },
@@ -528,6 +601,140 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                             }
                         }
                         if (notice.isNotBlank()) VoiceNote(notice)
+                    }
+                }
+            }
+        }
+    }
+
+    // 批量操作栏：官方 M3E HorizontalFloatingToolbar 纯图标药丸，底部居中悬浮。
+    // 只在 home 态 + 多选态出现；进子页自动消失（selectionMode 已被 LaunchedEffect 复位）。
+    val batchVoices = voices.filter { it.account == PersonalVoices.account(config.cloneKey) && it.showInMyVoices }
+    val allSelected = batchVoices.isNotEmpty() && selectedIds.containsAll(batchVoices.map { voiceKey(it) })
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = home && selectionMode,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            // 批量选择栏的进退场：位移走 M3E Spatial（轻微过冲），透明度走 Effects（无过冲）。
+            enter = slideInVertically(
+                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            ) { it } + fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = slideOutVertically(
+                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+            ) { it } + fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
+            VoiceSelectionBar(
+                selectedCount = selectedIds.size,
+                allSelected = allSelected,
+                onSelectAll = {
+                    TouchHaptics.click(view)
+                    selectedIds = if (allSelected) {
+                        emptySet()
+                    } else {
+                        batchVoices.map { voiceKey(it) }.toSet()
+                    }
+                },
+                onRemove = {
+                    TouchHaptics.click(view)
+                    showBatchRemoveDialog = true
+                },
+            )
+        }
+    }
+
+    // 批量移除二次确认：口径与单条移除一致（仅删本地记录，云端不受影响）。
+    if (showBatchRemoveDialog) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.dv_remove_title, stringResource(R.string.dv_batch_target, selectedIds.size)),
+            summary = stringResource(R.string.dv_delete_local_note),
+            onDismissRequest = { showBatchRemoveDialog = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.dv_remove_record),
+                    destructive = true,
+                    onCancel = { showBatchRemoveDialog = false },
+                    onConfirm = {
+                        try {
+                            batchVoices
+                                .filter { voiceKey(it) in selectedIds }
+                                .forEach { voice ->
+                                    PersonalVoices.removeLocal(voice)
+                                    if (previewState.matches(voice.account, voice.id)) preview.stop(5)
+                                }
+                            notice = context.getString(R.string.dv_batch_removed, selectedIds.size)
+                        } catch (_: Exception) {
+                            notice = context.getString(R.string.dv_local_remove_failed)
+                        }
+                        showBatchRemoveDialog = false
+                        exitSelection()
+                    },
+                )
+            },
+        ) {
+        }
+    }
+}
+
+/**
+ * 音色多选批量操作栏：官方 M3E [HorizontalFloatingToolbar]（纯图标药丸），底部居中悬浮，
+ * 与模型管理页（ProviderModelsTab.ModelSelectionBar）同款装配。
+ * 动作序：全选（全不选）→ 移除本地记录（error 色标破坏性，执行前另有确认弹窗）；
+ * 「取消」不落底栏，由顶栏多选入口原位切换（Checklist→Close）承载。
+ * 组件结论同 ChatSelectionBar 的 KDoc（同版本依赖既有调用核证）。
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun VoiceSelectionBar(
+    selectedCount: Int,
+    allSelected: Boolean,
+    onSelectAll: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        HorizontalFloatingToolbar(
+            expanded = true,
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 12.dp),
+            leadingContent = {},
+            // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
+            contentPadding = EtaFloatingToolbarConcentricPadding(
+                IconButtonDefaults.smallContainerSize().width,
+            ),
+        ) {
+            // 动作组：固定 8dp 间距的一行图标按钮（EtaIconButton 的 `Standard` 档裸图标）。
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EtaIconButton(
+                    icon = if (allSelected) Icons.Rounded.Deselect else Icons.Rounded.SelectAll,
+                    contentDescription = stringResource(
+                        if (allSelected) R.string.media_action_deselect_all else R.string.media_action_select_all,
+                    ),
+                    onClick = onSelectAll,
+                    size = EtaIconSize.S,
+                    style = EtaButtonStyle.Standard,
+                )
+                // 移除本地记录是破坏性操作：图标用 error 色区分（官方裸 IconButton，
+                // 容器/图标尺寸与 EtaIconButton 的 `Standard` + S 档一致），执行前另有确认弹窗。
+                val removeDescription = stringResource(R.string.dv_remove_local)
+                EtaTooltip(text = removeDescription) {
+                    IconButton(
+                        onClick = onRemove,
+                        enabled = selectedCount > 0,
+                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                        shapes = IconButtonDefaults.shapes(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Delete,
+                            contentDescription = removeDescription,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
+                        )
                     }
                 }
             }
@@ -819,6 +1026,10 @@ private fun VoiceSlotSync(apiKey: String, onBusy: (Boolean) -> Unit, onResult: (
 private fun PersonalVoiceRow(
     voice: PersonalVoices.Voice,
     enabled: Boolean,
+    selectionMode: Boolean,
+    checked: Boolean,
+    onToggleChecked: () -> Unit,
+    onLongClick: () -> Unit,
     previewActive: Boolean,
     previewLoading: Boolean,
     onRefresh: () -> Unit,
@@ -833,10 +1044,20 @@ private fun PersonalVoiceRow(
         summary = if (previewLoading) stringResource(R.string.dv_preview_loading) else if (previewActive) stringResource(R.string.dv_previewing) else when (voice.status) {
             -2 -> stringResource(R.string.dv_status_rejected); 0 -> stringResource(R.string.dv_status_notfound); 1 -> stringResource(R.string.dv_status_training); 2 -> stringResource(R.string.dv_status_train_ok); 3 -> stringResource(R.string.dv_status_train_fail); 4 -> stringResource(R.string.dv_status_accepted); else -> stringResource(R.string.dv_status_pending)
         },
-        onClick = null,
+        onClick = if (selectionMode) onToggleChecked else null,
+        onLongClick = onLongClick,
+        onLongClickLabel = stringResource(R.string.action_enter_selection),
         showChevron = false,
         leading = { Icon(Icons.Rounded.Mic, contentDescription = null) },
         endActions = {
+            if (selectionMode) {
+                // 多选态：播放按钮让位，行尾只剩官方 Checkbox。
+                Checkbox(
+                    checked = checked,
+                    onCheckedChange = { onToggleChecked() },
+                    enabled = enabled,
+                )
+            } else {
             val previewDescription = if (previewActive) {
                 stringResource(R.string.dv_preview_stop)
             } else {
@@ -887,6 +1108,7 @@ private fun PersonalVoiceRow(
                         )
                     },
                 )
+            }
             }
         },
     )
