@@ -24,7 +24,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.annotation.GraphicsMode
 
 /**
  * Material3ComposerBody 唤起令牌消费闸门（`AgentChatComposerM3` 的
@@ -42,11 +41,14 @@ import org.robolectric.annotation.GraphicsMode
  * 测试环境未配置识别引擎：ComposerDictation.start() 走「未配置」分支只置提示条，
  * 不碰麦克风（DoubaoSecretStore 在无 Keystore 环境显式退化），因此 active(false)
  * 的回落是确定性的，可安全断言。
+ *
+ * 不用 NATIVE 图形模式：本测试只断言回调序列，不采样像素；NATIVE 的 nativeruntime
+ * DLL 在中文用户名机器的 temp 路径下会 GBK 乱码加载失败（Windows-only 环境失败清单），
+ * shadow 模式下 createComposeRule 的 effect/回调照常运转。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [34], qualifiers = "w480dp-h900dp-mdpi")
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class Material3ComposerBodyTokenGateTest {
     @get:Rule val compose = createComposeRule()
 

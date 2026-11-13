@@ -133,6 +133,17 @@ class AgentAutomaticCompactionTest {
         assertTrue(events.any { it is AgentEvent.AutoCompactWaiting })
     }
 
+    @Test fun summaryCompactionTellsThePrefixHookItIsNotPruning() {
+        // onHistoryCompacted(false) = 摘要压缩：挂在回执上的前缀外内容（结果解读规则）此刻回到
+        // system 是免费的——压缩本身已重写整段历史。对照值 true 只应来自修剪路径
+        // （见 AgentLoop.onHistoryCompacted 的 KDoc）：修剪跳过敏感结果，派发回执不可能被它替换。
+        val flags = mutableListOf<Boolean>()
+        val events = mutableListOf<AgentEvent>()
+        val provider = ScriptedProvider(listOf({ _, _ -> assistant(promptTokens = AUTO_PRESSURE) }))
+        runLoop(smallHistory(), provider, events, onHistoryCompacted = { flags += it })
+        assertEquals(listOf(false), flags)
+    }
+
     @Test fun observedReceiptJumpWaitsInItsCallbackAndCompactsAtFinalWithoutAnotherRequest() {
         val events = mutableListOf<AgentEvent>()
         val order = mutableListOf<String>()
@@ -1120,6 +1131,7 @@ class AgentAutomaticCompactionTest {
         compactHistory: (List<AgentModelClient.ConversationMessage>, AgentLoop.CompactPolicy) -> List<AgentModelClient.ConversationMessage> = ::summarize,
         calibratedInputTokens: Int? = null,
         allowUnmeasuredContextSend: Boolean = false,
+        onHistoryCompacted: ((Boolean) -> Unit)? = null,
     ): AgentLoop.Result = AgentLoop(
         config = config, messages = messages, tools = tools(), provider = provider,
         toolExecutor = toolExecutor, runController = controller, traceFormatter = AgentTraceFormatter(),
@@ -1132,6 +1144,7 @@ class AgentAutomaticCompactionTest {
         compactionArchive = archive, turnId = "current-turn", compactHistory = compactHistory,
         calibratedInputTokens = calibratedInputTokens,
         allowUnmeasuredContextSend = allowUnmeasuredContextSend,
+        onHistoryCompacted = onHistoryCompacted ?: {},
     ).run()
 
     private fun storedChars(messages: JSONArray): Long = AgentConversationCodec.transcript(messages, 0)
