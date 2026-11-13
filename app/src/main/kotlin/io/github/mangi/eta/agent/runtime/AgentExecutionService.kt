@@ -158,6 +158,20 @@ internal class AgentExecutionService : Service() {
                     toggle,
                 ).build(),
             )
+            // 岛「补充」键（Number444 fork 真机验证链路）：展开胶囊直进补充输入模式。
+            // RemoteInput 在岛上无映射（T32 测定），插入走悬浮窗输入 fallback。
+            val supplement = PendingIntent.getService(
+                this, 3,
+                AgentRuntimeService.startActionIntent(this, AgentRuntimeService.ACTION_ISLAND_SUPPLEMENT),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(
+                Notification.Action.Builder(
+                    null,
+                    getString(R.string.live_supplement),
+                    supplement,
+                ).build(),
+            )
         }
         builder.addAction(Notification.Action.Builder(null, getString(R.string.execution_stop), stop).build())
         if (icon != null) builder.setLargeIcon(icon)

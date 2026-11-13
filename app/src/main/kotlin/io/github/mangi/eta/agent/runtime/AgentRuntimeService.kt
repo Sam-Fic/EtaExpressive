@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.platform.ComposeView
@@ -183,6 +184,8 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     /** 后台 run 的 owner 副屏存在性；非空时胶囊手势改投 owner。 */
     private var ownerPresence: OwnerDisplayPresence? = null
     private val capsuleExpanded = mutableStateOf(false)
+    /** 超级岛「补充」键触发计数：胶囊观察它展开并直进补充输入模式（UI 态在胶囊内部）。 */
+    private val islandSupplementRequests = mutableIntStateOf(0)
     private val capsuleSupplementFocusable = mutableStateOf(false)
     private val capsuleYielded = mutableStateOf(false)
     /**
@@ -426,6 +429,14 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
         if (intent.action == ACTION_ISLAND_TOGGLE_PAUSE) {
             toggleIslandPause()
+            if (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive()) stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        if (intent.action == ACTION_ISLAND_SUPPLEMENT) {
+            // 岛「补充」键：有活 run 时展开胶囊直进补充输入；无 run 说明通知是残留，只收尾。
+            if (overlaySession?.isTerminal == false) {
+                islandSupplementRequests.intValue += 1
+            }
             if (sessions.isEmpty() && !AgentChildTaskGroups.hasAnyActive()) stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -1856,6 +1867,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 state = state.value,
                 expanded = capsuleExpanded.value,
                 yielded = capsuleYielded.value,
+                supplementRequestCount = islandSupplementRequests.intValue,
                 onToggleExpanded = ::toggleCapsule,
                 onCollapsedSettled = ::onCapsuleCollapsedSettled,
                 onPause = {
@@ -2738,6 +2750,9 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
 
         /** 执行通知卡上「暂停/继续」按钮的回跳入口；只切换浮层归属的那个 run。 */
         const val ACTION_ISLAND_TOGGLE_PAUSE = "io.github.mangi.eta.agent.runtime.ISLAND_TOGGLE_PAUSE"
+
+        /** 超级岛「补充」按钮的回跳入口：展开胶囊并直进补充输入模式。 */
+        const val ACTION_ISLAND_SUPPLEMENT = "io.github.mangi.eta.agent.runtime.ISLAND_SUPPLEMENT"
 
         /** start 面能力令牌：进程存活期随机一次，仅本应用组件经 [startActionIntent] 携带。 */
         private val startActionToken: String = UUID.randomUUID().toString()

@@ -16,4 +16,5 @@
     <string name="live_question_waiting_title">A dispatched subtask is waiting for your answer</string>
     <string name="live_pause">Pause</string>
     <string name="live_resume">Resume</string>
+    <string name="live_supplement">Add input</string>
 </resources>

@@ -16,4 +16,5 @@
     <string name="live_question_waiting_title">派發的子任務在等你回答</string>
     <string name="live_pause">暫停</string>
     <string name="live_resume">繼續</string>
+    <string name="live_supplement">補充</string>
 </resources>

@@ -138,6 +138,8 @@ internal fun AgentOverlayCapsule(
     state: AgentOverlayState,
     expanded: Boolean,
     yielded: Boolean,
+    /** 超级岛「补充」键触发计数：递增时展开胶囊并直进补充输入模式。 */
+    supplementRequestCount: Int = 0,
     onToggleExpanded: () -> Unit,
     onCollapsedSettled: () -> Unit,
     onPause: () -> Unit,
@@ -174,6 +176,9 @@ internal fun AgentOverlayCapsule(
     LaunchedEffect(Unit) { visible = true }
     var supplementMode by remember { mutableStateOf(false) }
     var supplementText by remember { mutableStateOf("") }
+    // 本次补充输入是否由岛「补充」键唤起：外部唤起的输入结束后要自动收拢胶囊，
+    // 交还控制权（用户没碰过胶囊，不能让它停在展开态挡住 agent 注入点按）。
+    var supplementExternal by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -191,7 +196,20 @@ internal fun AgentOverlayCapsule(
         scope.launch {
             delay(80)
             setSupplementMode(false)
+            if (supplementExternal) {
+                supplementExternal = false
+                onToggleExpanded()
+            }
             then()
+        }
+    }
+
+    // 岛「补充」键：展开胶囊并直进补充输入模式（窗口可聚焦/可触摸由 onSupplementModeChange 驱动）。
+    LaunchedEffect(supplementRequestCount) {
+        if (supplementRequestCount > 0) {
+            supplementExternal = true
+            if (!expanded) onToggleExpanded()
+            setSupplementMode(true)
         }
     }
 
