@@ -56,6 +56,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -869,7 +874,18 @@ internal fun MediaSearchScreen(
         }
 
         // 多选批量操作栏：底部官方浮动图标工具栏（纯图标），常驻承载全选与批量操作。
-        if (selectionMode) {
+        // 进退场与模型列表页同款：AnimatedVisibility 承载上浮/下沉——位移走 M3E Spatial
+        // （轻微过冲），透明度走 Effects（无过冲）；不用 if 直切硬蹦。
+        AnimatedVisibility(
+            visible = selectionMode,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically(
+                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+            ) { it } + fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
+            exit = slideOutVertically(
+                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+            ) { it } + fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
             MediaSelectionBar(
                 selectedCount = selectedHits.size,
                 allSelected = hits.isNotEmpty() && selectedHits.size == hits.size,
@@ -910,7 +926,6 @@ internal fun MediaSearchScreen(
                     TouchHaptics.click(view)
                     confirmDeleteFiles = true
                 },
-                modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
     }

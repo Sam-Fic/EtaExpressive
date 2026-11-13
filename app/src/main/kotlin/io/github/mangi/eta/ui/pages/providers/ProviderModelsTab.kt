@@ -350,7 +350,11 @@ internal fun ProviderModelsTab(
             } else {
                 item(key = "models_title", contentType = "section_title") {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        // 尾部留出与搜索页计数行同档的边距：多选入口按钮不贴屏幕右缘
+                        // （标题起点由 EtaSectionTitle 自带内边距保证，不受影响）。
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = EtaGroupHorizontalPadding),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         // 多选态把「已选 n 项」并入标题（居中点号隔开），与自然语言搜索文件页
