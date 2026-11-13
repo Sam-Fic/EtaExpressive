@@ -57,6 +57,8 @@ internal object AgentPromptBuilder {
          * 已打开组的指引块仍按实际目录下发。
          */
         openableGroupLimit: Set<String>? = null,
+        /** 决策闲聊态逃生通道；见 [buildSystemMessages]。 */
+        groupDiscoveryUnrestricted: Boolean = false,
         /** 动态延迟组（MCP server）；见 [buildSystemMessages]。 */
         dynamicToolGroups: List<AgentToolGroup> = emptyList(),
         /**
@@ -79,6 +81,7 @@ internal object AgentPromptBuilder {
             callableTools = callableTools,
             trimChatSections = trimChatSections,
             openableGroupLimit = openableGroupLimit,
+            groupDiscoveryUnrestricted = groupDiscoveryUnrestricted,
             dynamicToolGroups = dynamicToolGroups,
             presetRunAt = presetRunAt,
             screenObservationRule = screenObservationRule,
@@ -241,6 +244,16 @@ internal object AgentPromptBuilder {
         /** 决策收窄后的可打开组上限；null 不限制。 */
         openableGroupLimit: Set<String>? = null,
         /**
+         * 决策闲聊态（chatOnly）逃生通道：true 时组索引不随 trimChatSections 被裁掉，
+         * 并附「本轮未预载组但可自行打开」的说明。
+         *
+         * 没有这条通道时（2026-11-14 日志取证）：判断模型把「运行一个空程序」判成闲聊 →
+         * 组索引被裁 → 模型看不到终端组存在 → 只能谎称「我没有终端工具」。闲聊关段的
+         * 本意是省注意力，不是剥夺工具发现能力——索引只有几百 token，且 chatOnly 轮的
+         * 前缀本就因关段而不同，不额外伤缓存。
+         */
+        groupDiscoveryUnrestricted: Boolean = false,
+        /**
          * 动态延迟组（MCP server）：与静态组共用同一份可用性判定与索引，
          * 成员由各 run 的 MCP 快照决定。索引列出未打开的 server，模型可
          * tools_use_group 打开或 tools_search 命中后自动解锁。
@@ -282,7 +295,9 @@ internal object AgentPromptBuilder {
             }
         }
         val availability = AgentToolGroups.availability(openedToolGroups, dynamicToolGroups, gate).let { full ->
-            if (openableGroupLimit == null) {
+            // 闲聊逃生态：索引按 gate 全集渲染（与 AgentToolCatalog 的 groupDiscoveryUnrestricted
+            // 同源），决策收窄不再过滤——模型必须能看到「终端组存在且可打开」。
+            if (groupDiscoveryUnrestricted || openableGroupLimit == null) {
                 full
             } else {
                 // 决策收窄：索引不能宣传一个 gate 允许、但被判断模型排除的组。
@@ -657,9 +672,26 @@ internal object AgentPromptBuilder {
         // [availability] 与上面各段指引用的是同一份判定，也与 AgentToolCatalog.build 同源：
         // 索引宣传一个「能打开」的组，打开后下一轮却拿不到工具，是最糟的体验
         // （模型白花一轮且被反复误导）。入口收窄、子代理最小配置都走这条路径。
-        if (!trimChatSections && !pureChat) {
-            AgentToolGroups.indexMessage(availability, dynamicToolGroups, groupCallsViaToolCall)?.let { index ->
-                messages.put(systemMessage(index))
+        //
+        // 闲聊逃生态例外（groupDiscoveryUnrestricted）：trimChatSections 只省技能/记忆/委派段，
+        // 组索引必须保留——它是模型在闲聊误判后发现自己有终端、浏览器等能力的唯一线索。
+        if (!trimChatSections || groupDiscoveryUnrestricted) {
+            if (!pureChat) {
+                AgentToolGroups.indexMessage(availability, dynamicToolGroups, groupCallsViaToolCall)?.let { index ->
+                    messages.put(
+                        systemMessage(
+                            if (groupDiscoveryUnrestricted) {
+                                index +
+                                    "\n本次运行被判断为无需工具，因此没有预载任何组；" +
+                                    "但以上组都可以由你直接打开。若用户请求实际需要其中某个能力" +
+                                    "（例如执行命令、读文件），先用 tools_use_group 打开对应组，" +
+                                    "不要声称自己不具备该能力——用户并未关闭这些功能。"
+                            } else {
+                                index
+                            },
+                        ),
+                    )
+                }
             }
         }
 

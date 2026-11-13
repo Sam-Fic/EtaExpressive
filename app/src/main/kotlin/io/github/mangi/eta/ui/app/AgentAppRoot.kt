@@ -329,6 +329,9 @@ fun AgentAppRoot(
             cachedTokens = it.cached,
             cacheCreationTokens = it.cacheCreation,
             lastInputTokens = shellHomeState.tokenUsage.lastInputTokens,
+            // 账本只存累计值不存标志；cached > 0 必然是 provider 上报过才累计出来的，
+            // 再并上实时投影的标志兜住「本轮上报了 0」的情况，否则命中率恒显示占位。
+            cachedReported = it.cached > 0 || shellHomeState.tokenUsage.cachedReported,
         )
     } ?: shellHomeState.tokenUsage
 

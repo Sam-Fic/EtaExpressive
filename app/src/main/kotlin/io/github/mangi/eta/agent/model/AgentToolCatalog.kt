@@ -69,6 +69,20 @@ internal object AgentToolCatalog {
          */
         presetToolNames: Set<String>? = null,
         /**
+         * 决策闲聊态（chatOnly）逃生通道：true 时「工具发现面」（tools_use_group 枚举、
+         * tools_search 下发、组索引）不再按决策收窄过滤，改按用户开关全集渲染。
+         *
+         * 背景（2026-11-14 日志取证）：control 模式把「运行一个空程序」判成闲聊后，
+         * openableGroupLimit 收窄到空集 → tools_use_group 空枚举、tools_search 消失、
+         * 组索引整段被裁，模型既看不到终端组存在、也没有任何自救通道，只能如实回答
+         * 「我没有终端工具」（假话）。原则：决策收窄管「schema 是否原生下发」，
+         * 不管「能不能发现」——模型主动打开的组仍逐次经过执行侧闸门复查。
+         *
+         * 只影响发现面；`schemaUnlocked`/原生 schema 下发仍严格按决策与已打开集合，
+         * 用户组开关（groupGate）是任何情况下都不可翻越的上限。
+         */
+        groupDiscoveryUnrestricted: Boolean = false,
+        /**
          * 缓存优先转发的会话级原生组集合（search/group 档共用）；null = 关闭该路径，
          * 保持既有渐进加载（off 档）。
          *
@@ -152,9 +166,20 @@ internal object AgentToolCatalog {
         // 决策收窄（control）时再按 openableGroupLimit 过滤：提示里不能点名一个 gate 允许、
         // 但被判断模型排除的组，否则模型会反复尝试一个必然被拒的组。
         // 动态组（MCP）不受决策枚举约束：决策模型只认识静态组，见 availability 注释。
+        // 闲聊逃生态（groupDiscoveryUnrestricted）例外：枚举回到 gate 全集，让模型在
+        // 决策判闲聊后仍能发现并打开它实际需要的组（执行侧会按同一次决策复查放行）。
         val openable = if (presetToolNames != null) {
             // 快捷功能运行跳过渐进加载：没有可搜索/可解锁的组，目录一次到位。
             emptyList<String>()
+        } else if (groupDiscoveryUnrestricted) {
+            AgentToolGroups.openableIds(
+                AgentToolGroups.availability(
+                    if (suffixMode) nativeGroups.orEmpty() else openedToolGroups,
+                    dynamicGroups,
+                    groupGate,
+                ),
+                dynamicGroups,
+            )
         } else if (suffixMode) {
             // 枚举必须与「本轮已打开」无关：否则开一个组就改 tools 字节，整段前缀失效。
             // 这里以会话级原生组当作「已解锁」，只看用户开关与决策收窄。

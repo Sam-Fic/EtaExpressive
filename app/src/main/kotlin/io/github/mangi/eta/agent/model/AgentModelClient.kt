@@ -263,31 +263,49 @@ internal object AgentModelClient {
                     emptySet()
                 }
         }
-        // 预设运行由 Runtime 显式给出组状态：不读历史/决策推出来的组，避免把无关组带进来。
-        // 常规 run 必须并上 openedToolGroupsProvider()：调用方（会话恢复）在第 1 轮就依赖它
-        // 下发延迟组工具——只读 historyOpenedGroups 会让第 1 轮目录缺组，模型调用即被拒，
-        // 第 2 轮才恢复（toolsForRound 里 provider 与 initial 的并集就是这个教训，见下）。
-        var initialOpenedGroups =
-            presetOpenedGroups ?: (openedToolGroupsProvider() + historyOpenedGroups())
         // 缓存优先转发：与会话锁定互斥——off 档已下发完整目录，预设运行自己管工具集。
         val suffixMode = toolLoadingSuffixMode && !toolLoadingFullCatalog && presetToolNames == null
         // control 成功/fail-closed 时限制 tools_use_group 的枚举；null 表示不接管。
         val decisionOpenableLimit = decision?.openableGroupLimit
+        /** 用户开关闸门：与目录构建同一套映射，不含决策收窄——那是 allowed 的职责。 */
+        fun userSwitchAllowed(id: String): Boolean = when (id) {
+            AgentToolGroups.SCREEN_GROUP.id -> config.screenTools
+            AgentToolGroups.WEB_GROUP.id -> config.browserTools
+            AgentToolGroups.TERMINAL_GROUP.id -> config.terminalTools
+            AgentToolGroups.DEVICE_GROUP.id -> config.deviceTools
+            AgentToolGroups.CALENDAR_GROUP.id -> config.personalTools
+            AgentToolGroups.PERSONAL_GROUP.id -> config.personalTools
+            AgentToolGroups.DEVICE_STATE_GROUP.id -> config.personalTools
+            AgentToolGroups.EXTENSIONS_GROUP.id -> Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
+            else -> false
+        }
         /** 预开/增长只认用户开关与决策收窄，和目录构建用同一套组闸门。 */
         fun nativeGroupAllowed(id: String): Boolean {
             if (decisionOpenableLimit != null && id !in decisionOpenableLimit) return false
-            return when (id) {
-                AgentToolGroups.SCREEN_GROUP.id -> config.screenTools
-                AgentToolGroups.WEB_GROUP.id -> config.browserTools
-                AgentToolGroups.TERMINAL_GROUP.id -> config.terminalTools
-                AgentToolGroups.DEVICE_GROUP.id -> config.deviceTools
-                AgentToolGroups.CALENDAR_GROUP.id -> config.personalTools
-                AgentToolGroups.PERSONAL_GROUP.id -> config.personalTools
-                AgentToolGroups.DEVICE_STATE_GROUP.id -> config.personalTools
-                AgentToolGroups.EXTENSIONS_GROUP.id -> Prefs.isEnabled(Prefs.Keys.AGENT_EXTENSIONS_TOOLS)
-                else -> false
-            }
+            return userSwitchAllowed(id)
         }
+        // 词面预测预开：只用于决策真正锁死工具发现的两类场景——决策降级（failureReason）与
+        // 收窄到空集（闲聊误判 / fail-closed）。这两类下模型既没有组索引也没有可用枚举，
+        // 用户话里的强信号词是最后一条自救通道。
+        // 常规 control 收窄不需要它：sticky 关键词新增（AgentDecisionStickyStore）已把
+        // 强信号组带回 allowed 并预开；决策缺席时更不能开——否则「看看文件」这类请求
+        // 会被弱词「文件」静默打开终端组（AgentDeferredToolGroupLoopTest 的既有约定）。
+        val literalPredictedGroups = if (presetToolNames == null && !toolLoadingFullCatalog &&
+            decision != null &&
+            (decision.failureReason != null || decision.openableGroupLimit?.isEmpty() == true)
+        ) {
+            AgentToolGroups.predictFromText(prompt, ::userSwitchAllowed)
+        } else {
+            emptySet()
+        }
+        // 预设运行由 Runtime 显式给出组状态：不读历史/决策推出来的组，避免把无关组带进来。
+        // 常规 run 必须并上 openedToolGroupsProvider()：调用方（会话恢复）在第 1 轮就依赖它
+        // 下发延迟组工具——只读 historyOpenedGroups 会让第 1 轮目录缺组，模型调用即被拒，
+        // 第 2 轮才恢复（toolsForRound 里 provider 与 initial 的并集就是这个教训，见下）。
+        // 词面预测并入（见 literalPredictedGroups）：决策误判闲聊时，用户话里的强信号词
+        // 仍能把组带进第一轮目录。
+        var initialOpenedGroups =
+            presetOpenedGroups ?: (openedToolGroupsProvider() + historyOpenedGroups() + literalPredictedGroups)
         // 会话级原生组集合：run 内冻结，只在「前缀还小」的窗口里允许把历史用过的组升进来。
         // 升级会让 tools 变一次、缓存重写一次；前缀小的时候这笔重写很便宜，所以用字符预算
         // 而不是轮数来控制这个窗口。
@@ -295,11 +313,16 @@ internal object AgentModelClient {
             sessionId = sessionId,
             prompt = prompt,
             history = outboundHistory,
-            historyGroups = historyOpenedGroups(),
+            historyGroups = historyOpenedGroups() + literalPredictedGroups,
             decisionGroups = decision?.openedGroups.orEmpty(),
             allowed = ::nativeGroupAllowed,
             approxChars = prompt.length + outboundHistory.sumOf { it.content.length + it.toolCallsJson.length },
         )
+        // 决策闲聊态（chatOnly）逃生通道：发现面按用户开关全集渲染。
+        // 判断模型把请求判成闲聊时（openableGroupLimit=空集 + 组索引被裁），模型必须仍能
+        // 经 tools_use_group / tools_search 发现并打开它需要的组——见 AgentToolCatalog
+        // 的 groupDiscoveryUnrestricted KDoc（2026-11-14 日志取证的死锁链）。
+        val discoveryUnrestricted = decision?.chatOnly == true
         fun toolsFor(
             capabilities: AgentToolCapabilities,
             memoryEnabled: Boolean = memoryContext.enabled,
@@ -326,6 +349,8 @@ internal object AgentModelClient {
                 openedToolGroups = openedToolGroups,
                 // 决策收窄后的可打开组；null 时不限制（advise / fail-open）。
                 openableGroupLimit = decisionOpenableLimit,
+                // 决策判闲聊：发现面不按决策收窄（用户开关仍是上限），模型可自救开组。
+                groupDiscoveryUnrestricted = discoveryUnrestricted,
                 // control 收窄到空集时是否仍保留 tools_use_group（默认开，见 Prefs）。
                 allowEmptyGroupTool = Prefs.isEnabled(Prefs.Keys.AGENT_DECISION_EMPTY_GROUP_RESCUE),
                 // 单工具禁用集：每轮重读，用户在两轮之间改工具清单页也能生效。
@@ -418,6 +443,7 @@ internal object AgentModelClient {
             onSystemCount = { systemCount = it },
             trimChatSections = trimChatSections,
             openableGroupLimit = decisionOpenableLimit,
+            groupDiscoveryUnrestricted = discoveryUnrestricted,
             dynamicToolGroups = mcpGroups,
             presetRunAt = effectivePresetRunAt,
             screenObservationRule = screenObservationRule,
@@ -562,6 +588,7 @@ internal object AgentModelClient {
                             // 决策 overlay 在本 run 内不变：每轮重建继续沿用同一裁剪与枚举上限。
                             trimChatSections = trimChatSections,
                             openableGroupLimit = decisionOpenableLimit,
+                            groupDiscoveryUnrestricted = discoveryUnrestricted,
                             dynamicToolGroups = mcpGroups,
                             // 预设运行的时间口径跨轮稳定：复用 run 建立时捕获的同一份。
                             presetRunAt = effectivePresetRunAt,

@@ -323,6 +323,11 @@ internal class AgentRuntimeRunExecutor(
                 }?.let { AgentUiHandoffPayload.from(it.payload).conversationId }.orEmpty(),
                 agentConversationId = request.effectiveModelSessionId,
                 decisionAllowedGroups = { decisionPlanRef.get()?.openableGroupLimit },
+                // 决策闲聊态逃生通道：目录（AgentToolCatalog.groupDiscoveryUnrestricted）与
+                // 提示（组索引）都按用户开关全集宣传了可打开的组，执行侧闸门必须同步放行，
+                // 否则模型照索引打开组会被拒——三处读同一个 plan 字段，保证目录、提示、
+                // 执行一致。用户组开关仍是执行侧的独立上限（toolGroupGate）。
+                decisionDiscoveryUnrestricted = { decisionPlanRef.get()?.chatOnly == true },
                 // 与 AgentModelClient.suffixMode 对齐：preset 排除必须两侧一致，否则预设运行
                 // 目录发原生 schema、执行器却按转发出回执（含中途退化回普通对话的路径——
                 // 模型侧的 suffixMode 用原始 presetToolNames 判定，同样保持 false）。

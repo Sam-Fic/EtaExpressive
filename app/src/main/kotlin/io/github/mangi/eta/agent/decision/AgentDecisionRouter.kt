@@ -315,6 +315,17 @@ internal object AgentDecisionStickyStore {
             next.remove(group)
             next[group] = ttl
         }
+        // 关键词新增：输入明写了某组的强信号词（如「终端」），即使决策没选它也粘进来。
+        // 没有这条时（2026-11-14 日志取证），决策把「在终端里运行程序」判成闲聊后，
+        // 用户第二三轮改口重试，sticky 只会续命已有组、永远无法把 terminal 组带回来。
+        // 命中即给满 TTL，话题切走后自然衰减；仍受 gateIds（用户开关）与容量上限约束。
+        for ((group, keywords) in KEYWORDS) {
+            if (group !in gateIds || group in next) continue
+            if (keywords.any { loweredInput.contains(it.lowercase(Locale.ROOT)) }) {
+                next.remove(group)
+                next[group] = ttl
+            }
+        }
         val capped = LinkedHashMap<String, Int>()
         next.entries.toList().takeLast(MAX_STICKY_GROUPS).forEach { capped[it.key] = it.value }
         if (capped.isEmpty()) {
@@ -633,9 +644,14 @@ internal object AgentDecisionRouter {
             opened = selected + stickyAfter + protectedAfter
         }
         // 唤起即屏幕上下文蕴含「非闲聊」：要真看屏幕就绝不能把组索引等提示段关掉。
+        // 词面强信号同理：用户话里明写了某延迟组的关键词（如「终端」「命令」「脚本」），
+        // 即使判断模型给低 needs_tools 也不判闲聊——闲聊分类会裁掉组索引并清空
+        // tools_use_group 枚举，让模型只能谎称「我没有终端工具」（2026-11-14 日志取证）。
+        // 判断模型分类错了，词面证据是比它更硬的信号。
+        val literalSignals = AgentToolGroups.predictFromText(request.prompt) { it in gateIds }
         val chatOnly = mode == Prefs.Keys.AGENT_DECISION_MODE_CONTROL &&
             selected.isEmpty() && evaluation.needsTools < AgentDecisionEvaluator.NEEDS_TOOLS_THRESHOLD &&
-            !evaluation.needsScreenContext
+            !evaluation.needsScreenContext && literalSignals.isEmpty()
         val disabledSections = if (chatOnly) {
             listOf(SECTION_SKILL_INDEX, SECTION_MEMORY, SECTION_GROUP_INDEX, SECTION_DELEGATION_RULE)
         } else {

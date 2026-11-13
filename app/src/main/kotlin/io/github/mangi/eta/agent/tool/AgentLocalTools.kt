@@ -189,6 +189,13 @@ internal class AgentLocalTools(
      */
     private val decisionAllowedGroups: () -> Set<String>? = { null },
     /**
+     * 决策闲聊态（chatOnly）逃生通道：true 时本 run 内模型主动打开的组（tools_use_group /
+     * tools_search 命中）放行——目录已按用户开关全集宣传了可打开的组，执行侧拒绝会把
+     * 目录与执行打成两套真相，模型拿着「组索引说能开」的提示连续被拒。
+     * 用户组开关（toolGroupGate）仍是不可翻越的上限，开关关闭的组照旧拒绝。
+     */
+    private val decisionDiscoveryUnrestricted: () -> Boolean = { false },
+    /**
      * 缓存优先转发（search/group 档）：延迟组的工具不下发原生 schema，改为经 `tool_call` 转发。
      *
      * 打开组时把每个工具的 `name / description / parameters` 作为工具结果回传（历史尾部），
@@ -431,8 +438,12 @@ internal class AgentLocalTools(
         // 决策收窄：gate 允许、但判断模型本轮没有选中它。与「用户关闭」区分来源，
         // 否则用户会以为是自己误关了开关，找不到恢复入口。
         // MCP 组不受决策枚举约束：决策模型只认识静态组（同 AgentToolCatalog 的注释）。
+        // 闲聊逃生态（decisionDiscoveryUnrestricted）：目录的组索引与枚举按用户开关全集
+        // 渲染（groupDiscoveryUnrestricted），执行侧必须同步放行，否则模型照着索引打开
+        // 一个被宣传为可用的组却被拒——目录与执行两套真相比决策误判本身更伤。
         val decisionLimit = decisionAllowedGroups()
-        if (decisionLimit != null && !AgentToolGroups.isMcpGroupId(group.id) &&
+        if (!decisionDiscoveryUnrestricted() && decisionLimit != null &&
+            !AgentToolGroups.isMcpGroupId(group.id) &&
             toolGroupGate(group) && group.id !in decisionLimit
         ) {
             // 空集 = fail-closed：判断模型不可用且用户选择了保守策略，此时「一键放行」
@@ -691,8 +702,12 @@ internal class AgentLocalTools(
         val availability = AgentToolGroups.availability(openedToolGroups, dynamic, ::toolGroupGate)
         val decisionLimit = decisionAllowedGroups()
         // 候选范围 = gate 允许、尚未打开的组；决策收窄只挡静态组（与目录的枚举同一判定）。
+        // 闲聊逃生态下目录的枚举按 gate 全集下发（groupDiscoveryUnrestricted），搜索候选
+        // 必须同步放行，否则目录宣传可搜、执行侧却搜不到——解锁语义见 unlockGroup。
+        val unrestricted = decisionDiscoveryUnrestricted()
         val openable = AgentToolGroups.openableIds(availability, dynamic).filter { groupId ->
-            decisionLimit == null || groupId in decisionLimit || AgentToolGroups.isMcpGroupId(groupId)
+            unrestricted || decisionLimit == null || groupId in decisionLimit ||
+                AgentToolGroups.isMcpGroupId(groupId)
         }
         // 候选工具再按「本设备此刻真能下发」预收窄（同 usableToolsOf 的判定）：
         // 搜到一个永远无法交付的工具，解锁整组也只是白付一轮。
