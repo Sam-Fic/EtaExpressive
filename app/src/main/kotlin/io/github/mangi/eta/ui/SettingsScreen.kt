@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Handyman
 import androidx.compose.material.icons.rounded.HealthAndSafety
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.Lan
@@ -710,6 +711,17 @@ internal fun SettingsScreen(
                         summary = stringResource(R.string.capability_workspace_summary),
                         leading = { PreferenceIcon(Icons.Rounded.Folder) },
                         onClick = { onNavigate(AppRoute.Workspace) },
+                    )
+                }
+
+                row(key = SettingsKeys.LIVE_ACTIVITY) {
+                    // 目录（SettingsCatalog groupRuntimeEnvironment）与宽屏锚点早已登记，
+                    // 主页行曾漏配——主页因此看不到「实时活动」入口、搜索跳转也不落行。
+                    EtaClickableRow(
+                        title = stringResource(R.string.live_activity_settings_title),
+                        summary = stringResource(R.string.live_activity_settings_summary),
+                        leading = { PreferenceIcon(Icons.Rounded.NotificationsActive) },
+                        onClick = { onNavigate(AppRoute.LiveActivitySettings) },
                     )
                 }
             }
