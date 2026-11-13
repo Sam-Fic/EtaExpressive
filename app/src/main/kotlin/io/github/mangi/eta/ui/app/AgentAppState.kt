@@ -1870,8 +1870,10 @@ internal class AgentAppState(
                 if (conversationsHydrated) {
                     chatImageCache.deleteOrphans(conversationsById.keys)
                 }
-                recoverRuntimeRuns()
+                // 与 [refreshRuntimeResults] 同一口径：归档（完整事件流）先于 outbox（只有
+                // 最终 result）导入，否则语音浮窗等外部入口的思考 / 工具卡会被折叠结果顶掉。
                 importArchivedExternalRuns()
+                recoverRuntimeRuns()
             } finally {
                 runtimeRecoveryInProgress.set(false)
             }
@@ -2274,8 +2276,14 @@ internal class AgentAppState(
         if (!runtimeRecoveryInProgress.compareAndSet(false, true)) return
         scope.launch(Dispatchers.IO) {
             try {
-                recoverRuntimeRuns()
+                // 归档必须先于 outbox 折叠：外部入口（系统语音浮窗、小爱、Breeno）的 run 同时留下
+                // 两份记录——归档带完整事件流（思考 / 工具卡），outbox 只有最终 result。先跑 recover
+                // 会用 result 折出一条「只有最终答复、连用户消息都没有」的助手消息，随后归档导入
+                // 因 alreadyImported（assistant-$runId-1 且非 streaming）直接早退并被删掉，
+                // 中间过程永久丢失。反过来先导入归档，recover 的 history reducer 会判 alreadyApplied
+                // 而只做收尾，不重复追加。
                 importArchivedExternalRuns()
+                recoverRuntimeRuns()
             } finally {
                 runtimeRecoveryInProgress.set(false)
             }
@@ -2718,7 +2726,10 @@ internal class AgentAppState(
         // missed QuestionResolved can correct an Interrupted card even on alreadyApplied runs.
         val questionChanges = reconcileRecoveredQuestions(client, questionConversationIds,
             completedRuns.map(::completedRunConversationId))
-        if (changed || questionChanges) {
+        // 消息无变化也可能有待 ACK 的终态：外部入口的 run 由归档先一步完整导入后，这里的
+        // 折叠会被 history reducer 判为 alreadyApplied（不产生新消息），但 outbox 条目仍要清掉，
+        // 否则每次启动都会重新读一遍同一份结果。
+        if (changed || questionChanges || acknowledgeAfterSave.isNotEmpty()) {
             val saved = withContext(Dispatchers.Main) { persistConversations() }.await()
             if (saved) {
                 acknowledgeAfterSave.forEach(client::ackResult)
@@ -2966,6 +2977,17 @@ internal class AgentAppState(
         }
         if (archivedRuns.isEmpty()) return
 
+        // 归档是往已有会话里追加内容：先把目标会话从 Room 读进内存。否则 conversationState()
+        // 只能拿到「有预览、内容未加载」的条目或直接退化到 emptyChatState，随后的持久化会用
+        // 空历史把该会话覆盖掉（语音浮窗的归档会话尤其容易撞上）。
+        preloadArchivedConversations(
+            archivedRuns.mapNotNull { archived ->
+                AgentExternalArchivePayload.from(archived.handoff.payload)?.let { payload ->
+                    archiveConversationId(archived.handoff.source, payload.conversationKey)
+                }
+            },
+        )
+
         withContext(Dispatchers.Main) {
             if (conversationArchiveBusy) return@withContext // Keep archive files for the next replay.
             val importedRunIds = archivedRuns.mapNotNull { archivedRun ->
@@ -3014,12 +3036,20 @@ internal class AgentAppState(
         val existingState = conversationState(conversationId) ?: emptyChatState(
             archivedEffort.enablesReasoning
         ).copy(reasoningEffort = archivedEffort)
-        val alreadyImported = AgentRuntimeHistoryReducer.wasApplied(existingState, runId) ||
+        // 归档带完整事件流（思考 / 工具卡），outbox 只带最终 result。恢复路径先折叠过 result 时，
+        // 会话里会留下一条 assistant-$runId-1 的纯文本，若只凭「已有完成的助手消息」判定已导入，
+        // 中间过程就再也补不回来。因此再加一条：归档里有可见工作轨迹、而会话里该 run 一条都没有，
+        // 就必须重放——下面的 restoreRunEvents 会先 reset 该 run 的旧投影，不会重复堆消息。
+        val archivedHasWorkTrace = archivedRun.events.any { it.isVisibleWorkTrace() }
+        val stateHasWorkTrace = existingState.messages.any { message ->
+            message.id.startsWith("$runId-thinking-") || message.id.startsWith("$runId-tool-")
+        }
+        val alreadyImported = (AgentRuntimeHistoryReducer.wasApplied(existingState, runId) ||
             existingState.messages.any {
                 it is AgentMessageUi &&
                     (it.id == "assistant-$runId" || it.id.startsWith("assistant-$runId-")) &&
                     !it.isStreaming
-            }
+            }) && !(archivedHasWorkTrace && !stateHasWorkTrace)
         if (alreadyImported) return runId
 
         if (conversationTitles[conversationId].isNullOrBlank()) {
@@ -3034,7 +3064,8 @@ internal class AgentAppState(
                 thinkingEnabled = archivedEffort.enablesReasoning,
                 reasoningEffort = archivedEffort,
                 pendingImages = emptyList(),
-                messages = existingState.messages +
+                // 重导路径下 user-$runId 可能已存在（上一次折叠留下的）：同 id 两条会让列表 key 冲突。
+                messages = existingState.messages.filterNot { it.id == "user-$runId" } +
                     UserMessageUi(
                         id = "user-$runId",
                         content = payload.userText,
@@ -3048,10 +3079,24 @@ internal class AgentAppState(
                     ),
             )
         )
-        archivedRun.events.forEach { event -> applyRunEvent(runId, event) }
+        // 批量回放：单次可变快照 + resetForReplay（清掉该 run 已有投影）+ replaying 事件，
+        // 末尾只刷一次摘要；逐事件 apply 会让每个增量都走一遍列表投影与摘要。
+        restoreRunEvents(runId, archivedRun.events)
         applyRunResult(runId, archivedRun.result)
         conversationUpdatedAt = conversationUpdatedAt + (conversationId to archivedRun.createdAt)
         return runId
+    }
+
+    /**
+     * 归档事件里是否存在「用户可见的工作过程」：工具调用或思考块。纯文本轮流
+     * （只有文本事件）不算——那种 run 折叠 result 与回放事件的结果一致，没有补导的价值。
+     */
+    private fun AgentEvent.isVisibleWorkTrace(): Boolean = when (this) {
+        is AgentEvent.ToolStarted, is AgentEvent.ToolFinished,
+        is AgentEvent.HostedToolStarted, is AgentEvent.HostedToolFinished -> true
+        is AgentEvent.AssistantBlockStart -> kind == AgentEvent.AssistantBlockKind.THINKING
+        is AgentEvent.AssistantBlockEnd -> kind == AgentEvent.AssistantBlockKind.THINKING
+        else -> false
     }
 
     fun updateThinkingEnabled(enabled: Boolean) {
@@ -8594,6 +8639,35 @@ internal class AgentAppState(
      * fill an entry that is still unloaded, so a concurrent edit/delete is never clobbered.
      * Values published here are exactly what [conversationState] would have produced.
      */
+    /**
+     * 归档导入前的会话预加载：与 [preloadConversationsForRecovery] 同一套读盘规则，区别是
+     * 「完全不在内存」的会话也要装进来——归档导入要改的正是这类会话（例如系统语音浮窗
+     * 刚建出来的 `assistant-<hash>`）。Room 里查不到就是真新会话，交给调用方建空态。
+     */
+    private suspend fun preloadArchivedConversations(conversationIds: Collection<String>) {
+        val pending = withContext(Dispatchers.Main.immediate) {
+            conversationIds.distinct().filter { id ->
+                conversationsById[id]?.conversationContentLoaded != true
+            }
+        }
+        if (pending.isEmpty()) return
+        val loaded = withContext(Dispatchers.IO) {
+            pending.mapNotNull { id ->
+                AgentConversationStore.loadConversation(appContext, id)?.let { id to it }
+            }
+        }
+        if (loaded.isEmpty()) return
+        withContext(Dispatchers.Main.immediate) {
+            loaded.forEach { (id, state) ->
+                val current = conversationsById[id]
+                if (current == null || !current.conversationContentLoaded) {
+                    conversationsById = conversationsById +
+                        (id to orderedTerminalState(state).withCurrentGptSpeedBinding())
+                }
+            }
+        }
+    }
+
     private suspend fun preloadConversationsForRecovery(conversationIds: Collection<String>) {
         val pending = withContext(Dispatchers.Main.immediate) {
             conversationIds.filter { id ->
