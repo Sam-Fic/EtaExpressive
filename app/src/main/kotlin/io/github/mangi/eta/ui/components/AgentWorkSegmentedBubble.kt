@@ -140,6 +140,15 @@ internal fun AgentWorkSegmentedBubble(
     /** 挂在本行在连续分段列表里的位置（连续工具/思考调用为一组，同设置页同组项）。 */
     position: SegmentedRowPosition = SegmentedRowPosition.Whole,
     /**
+     * 与相邻分段卡片行的接缝修正：与 [AgentChatSpacing.WorkSeamHalf] 量级的薄边相接的
+     * 一侧不按 [position] 取外圆，而是取内圆（与相接侧的内圆语义一致）。上下都不贴卡时
+     * 两个标记同为 false，与原行为完全一致。适用于任意相邻卡片行（跨批次组、折叠摘要、
+     * 派发回报卡等），由投影层的 [ReceiptCardSeams] 统一给出。
+     */
+    seamAboveCard: Boolean = false,
+    /** 同 [seamAboveCard]，作用于下沿。 */
+    seamBelowCard: Boolean = false,
+    /**
      * Supporting 槽出现/消失引起行高变化时，用一条连续的总行高曲线平滑（special 仅用于
      * 没有详情子条目的摘要行）：行高在实测的收起高与展开高之间插值，supporting 自身高度
      * 同步收缩并裁切揭示，两者共用同一弹簧。外框矩形因此无缝伸缩，标题 / 图标 / 行尾箭头
@@ -160,12 +169,15 @@ internal fun AgentWorkSegmentedBubble(
     // 分段几何与设置页 EtaSegmentedList 同值：组首/末项外圆 16dp、相接处内圆 4dp。
     val outerCorner = 16.dp
     val innerCorner = 4.dp
-    val topCorner =
+    // 相邻卡片行接缝：只隔 1dp 薄边的一侧按内圆相接（分段列表相接角语义），
+    // 优先级高于按组位置推导的外圆。缝不在时维持原几何，无接缝路径零变化。
+    val topBase =
         if (position == SegmentedRowPosition.Whole || position == SegmentedRowPosition.First) {
             outerCorner
         } else {
             innerCorner
         }
+    val topCorner = if (seamAboveCard) innerCorner else topBase
     val bottomBase =
         if (position == SegmentedRowPosition.Whole || position == SegmentedRowPosition.Last) {
             outerCorner
@@ -173,10 +185,11 @@ internal fun AgentWorkSegmentedBubble(
             innerCorner
         }
     // 圆角 morph：自身展开出详情子条目时下沿让位（内圆，子条目接着本组），收起时
-    // 回到组位置的原值；随弹簧过渡，不整块换形状硬切。
+    // 回到组位置的原值；随弹簧过渡，不整块换形状硬切。下沿缝在展开时同样让位：
+    // 缝侧内圆与详情子条目内圆同值，morph 端点重合，动画自然。
     val detailsChildVisible = expandable && expanded && detailsContent != null
     val rowBottomRadius by animateDpAsState(
-        targetValue = if (detailsChildVisible) innerCorner else bottomBase,
+        targetValue = if (detailsChildVisible) innerCorner else if (seamBelowCard) innerCorner else bottomBase,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow,
@@ -392,13 +405,14 @@ internal fun AgentWorkSegmentedBubble(
                     modifier = Modifier.fillMaxWidth(),
                     colors = colors,
                     // 与父项同一套分段几何：上沿接父项（内圆），下沿用本行组位置的原值
-                    // （组末外圆 / 组中内圆，接下一行）。
+                    // （组末外圆 / 组中内圆，接下一行）；下沿缝在时同样取内圆，
+                    // 子条目与下一张相接的卡片保持小圆角相接。
                     shapes = ListItemDefaults.segmentedShapes(index = 1, count = 1).copy(
                         shape = RoundedCornerShape(
                             topStart = innerCorner,
                             topEnd = innerCorner,
-                            bottomStart = bottomBase,
-                            bottomEnd = bottomBase,
+                            bottomStart = if (seamBelowCard) innerCorner else bottomBase,
+                            bottomEnd = if (seamBelowCard) innerCorner else bottomBase,
                         ),
                     ),
                     content = { Column { detailsContent?.invoke(animationScope) } },

@@ -1041,6 +1041,13 @@ internal fun AgentConversationMessages(
     val finalResultMessageIds = remember(turnFooters) {
         turnFooters.values.mapTo(mutableSetOf()) { it.id }
     }
+    // 相邻分段卡片行的接缝投影：任意两张相邻卡片行（含跨批次组末↔组首、折叠摘要↔
+    // 步骤、回报卡↔卡片行）相接处取内圆 + 1dp 薄边（组缝节奏）；页脚锚在两行之间时
+    // 按钮行隔开了它们，缝不成立、行尾维持外圆收边。
+    // 随行投影与页脚锚点重算，回报卡与步骤行的位置/间距由同一份投影驱动。
+    val receiptSeams = remember(timelineRows, turnFooters) {
+        timelineRows.receiptCardSeams(footerKeys = turnFooters.keys)
+    }
     // Reveal dependencies follow the projection's existing anchors, not a
     // second ownership heuristic. A stopped notice can own actions while an
     // earlier answer in that same turn is still revealing. New user boundaries
@@ -1937,6 +1944,9 @@ internal fun AgentConversationMessages(
                             // 播过即作废：滚动回收后重新组合不再重播。
                             LaunchedEffect(message.id) { onSentUserMessageEntranceConsumed(message.id) }
                         }
+                        // 派发回报卡：接缝布局由投影给出（缝侧内圆 + 1dp 薄边、回复起点 8dp、
+                        // 轮内 2dp、轮间基准 8dp）；非回报卡行为 null，走原路径。
+                        val receiptRowLayout = receiptSeams.receiptLayout(entry.key)
                         ChatMessageItem(
                             message = message,
                             speechPreface = "",
@@ -1969,6 +1979,7 @@ internal fun AgentConversationMessages(
                             justSent = sentEntrance,
                             userBubblePosition = userBubblePositions[message.id]
                                 ?: UserBubblePosition.Single,
+                            receiptLayout = receiptRowLayout,
                             isPaused = isPaused,
                             onThinkingToggle = if (message is ThinkingMessageUi) {
                                 { _, willExpand -> onThinkingRowToggle(entry.key, willExpand) }
@@ -2015,22 +2026,30 @@ internal fun AgentConversationMessages(
                             },
                             // 组首与相邻内容的上间距：紧邻用户气泡（回复起点）抬到基准半距
                             // 8dp（与文字侧一致合成 16dp），否则 2dp 薄边（与文字行底 8 合成 10dp）。
-                            // 展开后与步骤行之间是 2dp 露缝（1+1）；展开后首步若是纯文本回复，
-                            // 列表不接摘要，摘要下沿仍是 2dp。
+                            // 展开后与步骤行之间是 2dp 露缝（1+1）；展开后首步若是断开件
+                            // （纯文本回复 / 分界行），列表不接摘要，摘要下沿仍是 2dp。
                             // 用 visualExpanded：收起进行中摘要已回到单独一条的间距/形状，
                             // 与步骤行退场同帧。
                             modifier = Modifier.padding(
-                                top = if (workRowFollowsUser[entry.key] == true) {
-                                    AgentChatSpacing.RowBaseHalf
-                                } else {
-                                    AgentChatSpacing.TurnInnerEdge
+                                top = when {
+                                    // 摘要行上沿与上方卡片行相接：薄边改由本行出（上方卡片行
+                                    // 下外距也是 1dp，合成 2dp 组缝）。
+                                    receiptSeams.hasSeamAbove(entry.key) -> AgentChatSpacing.WorkSeamHalf
+                                    workRowFollowsUser[entry.key] == true -> AgentChatSpacing.RowBaseHalf
+                                    else -> AgentChatSpacing.TurnInnerEdge
                                 },
-                                bottom = if (visualExpanded && entry.group.summaryContinuesIntoSteps()) {
-                                    AgentChatSpacing.WorkSeamHalf
-                                } else {
-                                    AgentChatSpacing.TurnInnerEdge
+                                bottom = when {
+                                    visualExpanded && entry.group.summaryContinuesIntoSteps() ->
+                                        AgentChatSpacing.WorkSeamHalf
+                                    // 摘要行下沿与下方卡片行相接：薄边改由本行出；
+                                    // 展开续接步骤行时缝让位给组内露缝。
+                                    receiptSeams.hasSeamBelow(entry.key) -> AgentChatSpacing.WorkSeamHalf
+                                    else -> AgentChatSpacing.TurnInnerEdge
                                 },
                             ),
+                            seamAboveCard = receiptSeams.hasSeamAbove(entry.key),
+                            seamBelowCard = receiptSeams.hasSeamBelow(entry.key) &&
+                                !(visualExpanded && entry.group.summaryContinuesIntoSteps()),
                         )
                     }
                     is AgentTimelineRow.WorkStep -> {
@@ -2051,10 +2070,18 @@ internal fun AgentConversationMessages(
                             modifier = Modifier.padding(
                                 top = when {
                                     !entry.isFirst -> AgentChatSpacing.WorkSeamHalf
+                                    // 组首步骤行上沿与上方卡片行相接：薄边改由本行出。
+                                    receiptSeams.hasSeamAbove(entry.key) -> AgentChatSpacing.WorkSeamHalf
                                     workRowFollowsUser[entry.key] == true -> AgentChatSpacing.RowBaseHalf
                                     else -> AgentChatSpacing.TurnInnerEdge
                                 },
-                                bottom = if (entry.isLast) AgentChatSpacing.TurnInnerEdge else AgentChatSpacing.WorkSeamHalf,
+                                bottom = when {
+                                    entry.isLast && receiptSeams.hasSeamBelow(entry.key) ->
+                                        // 组末步骤行下沿与下方卡片行相接：薄边改由本行出。
+                                        AgentChatSpacing.WorkSeamHalf
+                                    entry.isLast -> AgentChatSpacing.TurnInnerEdge
+                                    else -> AgentChatSpacing.WorkSeamHalf
+                                },
                             ),
                         ) {
                             ChatMessageItem(
@@ -2074,6 +2101,8 @@ internal fun AgentConversationMessages(
                                     entry.isLast -> SegmentedRowPosition.Last
                                     else -> SegmentedRowPosition.Middle
                                 },
+                                seamAboveReceipt = receiptSeams.hasSeamAbove(entry.key),
+                                seamBelowReceipt = receiptSeams.hasSeamBelow(entry.key),
                                 // 包装层已给薄边/组缝：运行轨迹等双上下文行据此收零自身纵向外距。
                                 inWorkGroup = true,
                                 modifier = Modifier,

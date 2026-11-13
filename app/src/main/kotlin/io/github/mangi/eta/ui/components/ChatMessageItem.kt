@@ -472,6 +472,19 @@ internal fun ChatMessageItem(
     /** 本行在连续分段列表（同组步骤）里的位置，传给思考 / 工具气泡。 */
     segmentedPosition: SegmentedRowPosition = SegmentedRowPosition.Whole,
     /**
+     * 派发回报卡的接缝布局（null = 非回报卡路径）：给出分段位置、缝侧内圆标记与上下外距
+     * （见 [ReceiptCardLayout]）。仅 Message 行的回报卡路径消费。
+     */
+    receiptLayout: ReceiptCardLayout? = null,
+    /**
+     * 本行上/下沿与相邻分段卡片行按组缝相接：对应沿取内圆并出 1dp 薄边
+     * （外距由调用方 padding 负责，气泡只改圆角）。仅工作组步骤行使用。
+     * 参数名沿用「派发回报卡接缝」的历史来源，现覆盖跨批次组末↔组首、摘要↔步骤等
+     * 任意相邻卡片行（见 [ReceiptCardSeams]）。
+     */
+    seamAboveReceipt: Boolean = false,
+    seamBelowReceipt: Boolean = false,
+    /**
      * 本行是否渲染在工作组包装层之内（WorkStep 路径）：包装层已给薄边，
      * 运行轨迹这类双上下文行据此把自身纵向外距收零，避免叠进组缝体系。
      */
@@ -480,14 +493,27 @@ internal fun ChatMessageItem(
     when (message) {
         is io.github.mangi.eta.ui.model.AgentQuestionMessageUi -> AgentQuestionCard(message, modifier,
             position = segmentedPosition,
+            seamAboveCard = seamAboveReceipt,
+            seamBelowCard = seamBelowReceipt,
             onDraftChanged = { draft -> actions.onQuestionDraftChanged(message.request.conversationId, message.request.questionId, draft) },
             onSubmit = { actions.onSubmitQuestionAnswer(message.request.conversationId, message.request.questionId) })
         is UserMessageUi -> if (
             io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.isConsoleReceipt(message.content)
         ) {
             // 派发回报：身份仍是 UserMessageUi（模型输入/历史/编辑边界不变），
-            // 但不用用户气泡，改用工具卡同一套视觉语言呈现。
-            DispatchReceiptCard(message = message, modifier = modifier)
+            // 但不用用户气泡，改用工具卡同一套视觉语言呈现。接缝布局由投影层给出：
+            // 与相邻卡片行相接的缝侧取内圆 + 1dp 薄边，独立时维持 Whole + 轮内薄边。
+            DispatchReceiptCard(
+                message = message,
+                layout = receiptLayout ?: ReceiptCardLayout(
+                    position = SegmentedRowPosition.Whole,
+                    seamAbove = false,
+                    seamBelow = false,
+                    topPadding = AgentChatSpacing.TurnInnerEdge,
+                    bottomPadding = AgentChatSpacing.TurnInnerEdge,
+                ),
+                modifier = modifier,
+            )
         } else UserMessageBubble(
             message = message,
             actionsEnabled = messageActionsEnabled,
@@ -567,6 +593,8 @@ internal fun ChatMessageItem(
             isPaused = isPaused,
             onToggle = onThinkingToggle,
             position = segmentedPosition,
+            seamAboveCard = seamAboveReceipt,
+            seamBelowCard = seamBelowReceipt,
         )
         is RunTraceMessageUi -> RunTraceRow(
             message = message,
@@ -582,6 +610,8 @@ internal fun ChatMessageItem(
             enableLivePreview = enableLivePreview,
             modifier = modifier,
             position = segmentedPosition,
+            seamAboveCard = seamAboveReceipt,
+            seamBelowCard = seamBelowReceipt,
         )
         is ToolSummaryMessageUi -> ToolSummaryInline(message = message, modifier = modifier)
         is ContextCompactedMessageUi -> ContextCompactedDivider(message = message, modifier = modifier)
@@ -3259,6 +3289,9 @@ private fun ThinkingRow(
     isPaused: Boolean = false,
     onToggle: ((String, Boolean) -> Unit)? = null,
     position: SegmentedRowPosition = SegmentedRowPosition.Whole,
+    /** 上/下沿与相邻卡片行按组缝相接：对应沿取内圆（外距由调用方 padding 负责）。 */
+    seamAboveCard: Boolean = false,
+    seamBelowCard: Boolean = false,
 ) {
     val bodyTraceMount = remember { nextChatBodyTraceMount() }
     SideEffect { traceChatBodyRun("thinking", bodyTraceMount) }
@@ -3358,6 +3391,8 @@ private fun ThinkingRow(
         details = thinkingDetails,
         expandAnimationModifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
         position = position,
+        seamAboveCard = seamAboveCard,
+        seamBelowCard = seamBelowCard,
     )
 }
 
@@ -3374,6 +3409,9 @@ internal fun AgentWorkProcessSummary(
     expanded: Boolean,
     modifier: Modifier = Modifier,
     isPaused: Boolean = false,
+    /** 上/下沿与相邻卡片行按组缝相接：对应沿取内圆（外距由调用方 padding 负责）。 */
+    seamAboveCard: Boolean = false,
+    seamBelowCard: Boolean = false,
     onToggle: () -> Unit,
 ) {
     val messages = group.messages
@@ -3465,12 +3503,14 @@ internal fun AgentWorkProcessSummary(
         expanded = expanded,
         onToggle = onToggle,
         // 折叠态是单独一条（外圆）；展开后步骤行接在下面，摘要行成为组首（下沿内圆）——
-        // 但首步若是纯文本回复，列表断开，摘要仍是单独一条。
+        // 但首步若是断开件（纯文本回复 / 分界行），列表断开，摘要仍是单独一条。
         position = if (expanded && group.summaryContinuesIntoSteps()) {
             SegmentedRowPosition.First
         } else {
             SegmentedRowPosition.Whole
         },
+        seamAboveCard = seamAboveCard,
+        seamBelowCard = seamBelowCard,
     )
 }
 
@@ -3626,6 +3666,7 @@ private fun ToolStatusIndicator(status: ToolActivityStatusUi) {
 @Composable
 private fun DispatchReceiptCard(
     message: UserMessageUi,
+    layout: ReceiptCardLayout,
     modifier: Modifier = Modifier,
 ) {
     val text = message.content.trimStart()
@@ -3640,62 +3681,75 @@ private fun DispatchReceiptCard(
     // 长文本默认收起：只露首行；展开后限高滚动，不撑爆消息流。
     var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
     val failed = headline.contains("失败") || headline.contains("已停止")
-    AgentWorkSegmentedBubble(
-        leading = {
-            // 与工具行同款裸 Icon（默认 24dp 几何）：常态 onSurfaceVariant，失败用官方 error。
-            Icon(
-                imageVector = ToolPresentation.icon(
-                    io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME,
-                ),
-                contentDescription = null,
-                tint = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        title = "派发回报",
-        modifier = modifier,
-        // 失败原因（最多 200 字）拼在首行里，收起态截断到一行，不靠展开才看得见结论。
-        supporting = headline.takeIf { it.isNotBlank() }?.let {
-            if (it.length > 60) it.take(60) + "…" else it
-        },
-        supportingColor = if (failed) MaterialTheme.colorScheme.error else null,
-        titleMaxLines = 1,
-        trailingStatus = {
-            ToolStatusIndicator(
-                if (failed) ToolActivityStatusUi.Failed else ToolActivityStatusUi.Success,
-            )
-        },
-        expanded = expanded,
-        onToggle = if (reportBody.isNotBlank()) {
-            { expanded = !expanded }
-        } else {
-            null
-        },
-        details = if (reportBody.isNotBlank()) {
-            {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "汇报正文",
-                        style = chatQuaternaryStyle(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    val scrollState = rememberScrollState()
-                    HapticSelectionContainer {
+    // 回报卡与相邻卡片行（工具/思考/提问/摘要/另一张回报卡）按组缝相接：包装层给 1dp 薄边、
+    // 气泡给缝侧内圆；无缝一侧维持轮内节奏（2dp）或轮间基准（紧邻用户气泡/列表末行 8dp）。
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                top = layout.topPadding,
+                bottom = layout.bottomPadding,
+            ),
+    ) {
+        AgentWorkSegmentedBubble(
+            leading = {
+                // 与工具行同款裸 Icon（默认 24dp 几何）：常态 onSurfaceVariant，失败用官方 error。
+                Icon(
+                    imageVector = ToolPresentation.icon(
+                        io.github.mangi.eta.agent.dispatch.AgentDispatchReport.TOOL_NAME,
+                    ),
+                    contentDescription = null,
+                    tint = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            title = "派发回报",
+            // 失败原因（最多 200 字）拼在首行里，收起态截断到一行，不靠展开才看得见结论。
+            supporting = headline.takeIf { it.isNotBlank() }?.let {
+                if (it.length > 60) it.take(60) + "…" else it
+            },
+            supportingColor = if (failed) MaterialTheme.colorScheme.error else null,
+            titleMaxLines = 1,
+            trailingStatus = {
+                ToolStatusIndicator(
+                    if (failed) ToolActivityStatusUi.Failed else ToolActivityStatusUi.Success,
+                )
+            },
+            expanded = expanded,
+            onToggle = if (reportBody.isNotBlank()) {
+                { expanded = !expanded }
+            } else {
+                null
+            },
+            details = if (reportBody.isNotBlank()) {
+                {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = reportBody,
-                            style = chatExpandedBodyStyle(),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = ToolDetailMaxHeight)
-                                .verticalScrollEdgeFade(scrollState)
-                                .verticalScroll(scrollState),
+                            text = "汇报正文",
+                            style = chatQuaternaryStyle(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        val scrollState = rememberScrollState()
+                        HapticSelectionContainer {
+                            Text(
+                                text = reportBody,
+                                style = chatExpandedBodyStyle(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = ToolDetailMaxHeight)
+                                    .verticalScrollEdgeFade(scrollState)
+                                    .verticalScroll(scrollState),
+                            )
+                        }
                     }
                 }
-            }
-        } else {
-            null
-        },
-    )
+            } else {
+                null
+            },
+            position = layout.position,
+            seamAboveCard = layout.seamAbove,
+            seamBelowCard = layout.seamBelow,
+        )
+    }
 }
 
 @Composable
@@ -3707,6 +3761,9 @@ private fun ToolActivityInline(
     enableLivePreview: Boolean = true,
     modifier: Modifier = Modifier,
     position: SegmentedRowPosition = SegmentedRowPosition.Whole,
+    /** 上/下沿与相邻卡片行按组缝相接：对应沿取内圆（外距由调用方 padding 负责）。 */
+    seamAboveCard: Boolean = false,
+    seamBelowCard: Boolean = false,
 ) {
     val bodyTraceMount = remember { nextChatBodyTraceMount() }
     SideEffect { traceChatBodyRun("tool", bodyTraceMount) }
@@ -3982,6 +4039,8 @@ private fun ToolActivityInline(
         details = toolDetails,
         expandAnimationModifier = Modifier.toggleProbe(toggleProbeRef, "visible"),
         position = position,
+        seamAboveCard = seamAboveCard,
+        seamBelowCard = seamBelowCard,
     )
 }
 

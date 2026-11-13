@@ -410,14 +410,15 @@ class AgentTimelineProjectionTest {
         // 重连分割线把组内连续分段列表断开：断点前后的步骤行各自取段末/段首
         // （isLast/isFirst），映射到 Last/First/Whole 位置后两侧都是大圆角；
         // 分割线本身不带卡片壳，位置标记只影响它的露缝 padding。
+        // 用 cardMessage 造纯卡片步骤，避免 workMessage 混入工具汇总行造成第二次断开。
         val turn = listOf(
             UserMessageUi("user-1", "task"),
-            workMessage(0),
-            workMessage(1),
+            cardMessage(0),
+            cardMessage(1),
             ErrorReconnectMessageUi("reconnect-1", runId = "run", reconnectId = "r1", round = 1,
                 status = ErrorReconnectStatus.Succeeded),
-            workMessage(2),
-            workMessage(3),
+            cardMessage(2),
+            cardMessage(3),
             AgentMessageUi("answer-1", "answer"),
         )
         val group = turn.toTimelineEntries(aggressive = true)
@@ -441,6 +442,281 @@ class AgentTimelineProjectionTest {
         assertTrue(rows.first { it.message.id == "step-2" }.isFirst)
     }
 
+    @Test
+    fun systemNoticeBreaksTheSegmentedListInsideAGroup() {
+        // 系统通知渲染成裸文本行（不带分段卡片壳），激进档把它折进工作组后必须把列表断开：
+        // 断点两侧的步骤行取段末/段首外圆，不与通知行相接成小圆角。
+        // 用 cardMessage 造纯卡片步骤，避免 workMessage 混入工具汇总行造成第二次断开。
+        val turn = listOf(
+            UserMessageUi("user-1", "task"),
+            cardMessage(0),
+            cardMessage(1),
+            SystemNoticeMessageUi("notice-1", SystemNoticeCode.Stopped),
+            cardMessage(2),
+            cardMessage(3),
+            AgentMessageUi("answer-1", "answer"),
+        )
+        val group = turn.toTimelineEntries(aggressive = true)
+            .filterIsInstance<AgentTimelineEntry.WorkProcess>().single()
+        val rows = listOf(group).toLazyTimelineRows().filterIsInstance<AgentTimelineRow.WorkStep>()
+        val positions = rows.associate { it.message.id to segmentPosition(it) }
+        assertEquals(
+            mapOf(
+                "step-0" to SegmentedRowPosition.First,
+                "step-1" to SegmentedRowPosition.Last,
+                // 通知自身前后都是步骤（Middle）：裸行不带卡片壳，位置只影响露缝 padding。
+                "notice-1" to SegmentedRowPosition.Middle,
+                "step-2" to SegmentedRowPosition.First,
+                "step-3" to SegmentedRowPosition.Last,
+            ),
+            positions,
+        )
+        assertTrue(rows.first { it.message.id == "step-1" }.isLast)
+        assertTrue(rows.first { it.message.id == "step-2" }.isFirst)
+
+        // 首步是系统通知时，摘要不接进列表（摘要保持单独一条的外圆）。
+        val headNotice = AgentTimelineEntry.WorkProcess(
+            key = "work-head-notice",
+            messages = listOf(
+                SystemNoticeMessageUi("notice-head", SystemNoticeCode.Interrupted),
+                cardMessage(1),
+            ),
+        )
+        assertFalse(headNotice.summaryContinuesIntoSteps())
+    }
+
+    @Test
+    fun contextCompactedMarkerBreaksTheSegmentedListOnlyWhenVisible() {
+        // 有可见分界行（compactedCount > 0）的压缩标记把列表断开：两侧步骤取外圆。
+        val visibleGroup = AgentTimelineEntry.WorkProcess(
+            key = "work-compacted",
+            messages = listOf(
+                workMessage(0),
+                ContextCompactedMessageUi("compacted", 3, "saved summary"),
+                workMessage(1),
+            ),
+        )
+        val visibleSteps = listOf(visibleGroup).toLazyTimelineRows()
+            .filterIsInstance<AgentTimelineRow.WorkStep>()
+        assertTrue(visibleSteps.first { it.message.id == "step-0" }.isLast)
+        assertTrue(visibleSteps.first { it.message.id == "step-1" }.isFirst)
+
+        // 零计数标记什么都不渲染（ContextCompactedDivider 直接 return），不算断开件：
+        // 两侧步骤仍按连续分段列表相接（内圆），不能凭空断开。
+        val invisibleGroup = AgentTimelineEntry.WorkProcess(
+            key = "work-compacted-zero",
+            messages = listOf(
+                workMessage(0),
+                ContextCompactedMessageUi("compacted-zero", 0, "saved summary"),
+                workMessage(1),
+            ),
+        )
+        val invisibleSteps = listOf(invisibleGroup).toLazyTimelineRows()
+            .filterIsInstance<AgentTimelineRow.WorkStep>()
+        assertFalse(invisibleSteps.first { it.message.id == "step-0" }.isLast)
+        assertFalse(invisibleSteps.first { it.message.id == "step-1" }.isFirst)
+    }
+
+    @Test
+    fun dispatchReceiptBetweenCardRowsTakesInnerCorners() {
+        // 派发回报卡夹在相邻卡片行之间：两侧缝成立，回报卡取 Middle（双内圆）、
+        // 各侧 1dp 薄边；相邻步骤组末行与下一组首行同条缝的另一侧也记入缝集合。
+        val rows = listOf<AgentTimelineRow>(
+            AgentTimelineRow.WorkStep("work-1", workMessage(1), isFirst = true, isLast = true),
+            AgentTimelineRow.Message(receipt("receipt-1")),
+            AgentTimelineRow.WorkStep("work-2", workMessage(0), isFirst = true, isLast = true),
+        )
+        val seams = rows.receiptCardSeams()
+        val layout = seams.receiptLayout("receipt-1")!!
+        assertEquals(SegmentedRowPosition.Middle, layout.position)
+        assertTrue(layout.seamAbove)
+        assertTrue(layout.seamBelow)
+        assertEquals(AgentChatSpacing.WorkSeamHalf, layout.topPadding)
+        assertEquals(AgentChatSpacing.WorkSeamHalf, layout.bottomPadding)
+        // WorkStep 行键是 workStepRowKey(message.id) 派生键，不是裸消息 id。
+        assertTrue(seams.hasSeamBelow(workStepRowKey("step-1")))
+        assertTrue(seams.hasSeamAbove(workStepRowKey("step-0")))
+        // 卡片行自身的分段位置不因回报卡缝而改变（corner 修正由 seam 标记单独负责）。
+        assertFalse(seams.hasSeamAbove(workStepRowKey("step-1")))
+        assertFalse(seams.hasSeamBelow(workStepRowKey("step-0")))
+    }
+
+    @Test
+    fun dispatchReceiptLayoutFollowsNeighbors() {
+        // 上贴步骤卡、下贴用户气泡：上缝成立（Last + 1dp 薄边），下沿抬轮间基准半距。
+        val afterWork = listOf<AgentTimelineRow>(
+            AgentTimelineRow.WorkStep("work-1", workMessage(1), isFirst = true, isLast = true),
+            AgentTimelineRow.Message(receipt("receipt-1")),
+            AgentTimelineRow.Message(UserMessageUi("user-2", "next task")),
+        )
+        val afterLayout = afterWork.receiptCardSeams().receiptLayout("receipt-1")!!
+        assertEquals(SegmentedRowPosition.Last, afterLayout.position)
+        assertTrue(afterLayout.seamAbove)
+        assertFalse(afterLayout.seamBelow)
+        assertEquals(AgentChatSpacing.WorkSeamHalf, afterLayout.topPadding)
+        assertEquals(AgentChatSpacing.RowBaseHalf, afterLayout.bottomPadding)
+
+        // 上贴用户气泡（回复起点）：上外距抬基准半距 8dp、无缝（Whole 下沿外圆）。
+        val afterUser = listOf<AgentTimelineRow>(
+            AgentTimelineRow.Message(UserMessageUi("user-1", "task")),
+            AgentTimelineRow.Message(receipt("receipt-1")),
+        )
+        val userLayout = afterUser.receiptCardSeams().receiptLayout("receipt-1")!!
+        assertEquals(SegmentedRowPosition.Whole, userLayout.position)
+        assertFalse(userLayout.seamAbove)
+        assertEquals(AgentChatSpacing.RowBaseHalf, userLayout.topPadding)
+
+        // 独立回报卡（上下都是非卡片行）：Whole + 轮内薄边 2dp。
+        val standalone = listOf<AgentTimelineRow>(
+            AgentTimelineRow.Message(AgentMessageUi("answer", "done")),
+            AgentTimelineRow.Message(receipt("receipt-1")),
+            AgentTimelineRow.Message(AgentMessageUi("next", "tail")),
+        )
+        val alone = standalone.receiptCardSeams().receiptLayout("receipt-1")!!
+        assertEquals(SegmentedRowPosition.Whole, alone.position)
+        assertFalse(alone.seamAbove)
+        assertFalse(alone.seamBelow)
+        assertEquals(AgentChatSpacing.TurnInnerEdge, alone.topPadding)
+        assertEquals(AgentChatSpacing.TurnInnerEdge, alone.bottomPadding)
+    }
+
+    @Test
+    fun footerBetweenCardRowsBreaksTheReceiptSeam() {
+        // 页脚锚在上行下方：按钮行隔开了两行卡片，缝不成立、行尾维持外圆收边。
+        val rows = listOf<AgentTimelineRow>(
+            AgentTimelineRow.WorkStep("work-1", workMessage(1), isFirst = true, isLast = true),
+            AgentTimelineRow.Message(receipt("receipt-1")),
+        )
+        val seams = rows.receiptCardSeams(footerKeys = setOf(workStepRowKey("step-1")))
+        assertFalse(seams.hasSeamBelow(workStepRowKey("step-1")))
+        val layout = seams.receiptLayout("receipt-1")!!
+        assertEquals(SegmentedRowPosition.Whole, layout.position)
+        assertFalse(layout.seamAbove)
+        assertEquals(AgentChatSpacing.TurnInnerEdge, layout.topPadding)
+    }
+
+    @Test
+    fun receiptAfterNoticeStepTakesNoSeam() {
+        // 回报卡上邻是系统通知行（裸文本，不是卡片）：不拼缝，回报卡保持外圆独立收边。
+        val rows = listOf<AgentTimelineRow>(
+            AgentTimelineRow.WorkStep(
+                "work-1",
+                SystemNoticeMessageUi("notice", SystemNoticeCode.Stopped),
+                isFirst = true,
+                isLast = true,
+            ),
+            AgentTimelineRow.Message(receipt("receipt-1")),
+        )
+        val seams = rows.receiptCardSeams()
+        assertFalse(seams.hasSeamAbove("receipt-1"))
+        val layout = seams.receiptLayout("receipt-1")!!
+        assertEquals(SegmentedRowPosition.Whole, layout.position)
+        assertEquals(AgentChatSpacing.TurnInnerEdge, layout.topPadding)
+    }
+
+    @Test
+    fun consecutiveReceiptsFormOneSeam() {
+        // 连续两张回报卡（一次派发多子任务）：中间缝两侧都取内圆 + 1dp 薄边。
+        val rows = listOf<AgentTimelineRow>(
+            AgentTimelineRow.Message(receipt("receipt-1")),
+            AgentTimelineRow.Message(receipt("receipt-2")),
+        )
+        val seams = rows.receiptCardSeams()
+        val first = seams.receiptLayout("receipt-1")!!
+        val second = seams.receiptLayout("receipt-2")!!
+        // receipt-1 下缝成立：下沿内圆（First），上沿独立（外圆）；receipt-2 上缝成立：
+        // 上沿内圆（Last），下沿独立。与组首/组末的分段语义同向。
+        assertEquals(SegmentedRowPosition.First, first.position)
+        assertTrue(first.seamBelow)
+        assertEquals(AgentChatSpacing.WorkSeamHalf, first.bottomPadding)
+        assertEquals(SegmentedRowPosition.Last, second.position)
+        assertTrue(second.seamAbove)
+        assertEquals(AgentChatSpacing.WorkSeamHalf, second.topPadding)
+    }
+
+    @Test
+    fun adjacentCardRowsWithoutReceiptFormOneSeam() {
+        // 跨批次 / 跨组的相邻步骤卡（都不是回报卡）也必须拼成一条组缝：组末下沿与
+        // 下一组首上沿都取内圆 + 1dp 薄边，而不是两张大圆角卡贴 4dp。
+        val rows = listOf<AgentTimelineRow>(
+            AgentTimelineRow.WorkStep("work-1", cardMessage(1), isFirst = true, isLast = true),
+            AgentTimelineRow.WorkStep("work-2", cardMessage(0), isFirst = true, isLast = true),
+        )
+        val seams = rows.receiptCardSeams()
+        assertTrue(seams.hasSeamBelow(workStepRowKey("step-1")))
+        assertTrue(seams.hasSeamAbove(workStepRowKey("step-0")))
+        assertFalse(seams.hasSeamAbove(workStepRowKey("step-1")))
+        assertFalse(seams.hasSeamBelow(workStepRowKey("step-0")))
+        // 两张都不是回报卡：不产生回报卡布局，缝只作用于步骤行自己的圆角与外距。
+        assertEquals(null, seams.receiptLayout(workStepRowKey("step-1")))
+        assertEquals(null, seams.receiptLayout(workStepRowKey("step-0")))
+    }
+
+    @Test
+    fun footerStillBreaksTheSeamBetweenOrdinaryCardRows() {
+        // 泛化后页脚锚点仍然优先：按钮行隔开的两张卡片不拼缝、行尾维持外圆收边。
+        val rows = listOf<AgentTimelineRow>(
+            AgentTimelineRow.WorkStep("work-1", cardMessage(1), isFirst = true, isLast = true),
+            AgentTimelineRow.WorkStep("work-2", cardMessage(0), isFirst = true, isLast = true),
+        )
+        val seams = rows.receiptCardSeams(footerKeys = setOf(workStepRowKey("step-1")))
+        assertFalse(seams.hasSeamBelow(workStepRowKey("step-1")))
+        assertFalse(seams.hasSeamAbove(workStepRowKey("step-0")))
+    }
+
+    @Test
+    fun foldedSummaryAndAdjacentStepFormOneSeam() {
+        // 折叠摘要与相邻未折叠步骤卡同样落在通用接缝口径里，不再只对回报卡生效。
+        val rows = listOf<AgentTimelineRow>(
+            AgentTimelineRow.WorkSummary(
+                AgentTimelineEntry.WorkProcess("work-1", listOf(cardMessage(1))),
+                expanded = false,
+            ),
+            AgentTimelineRow.WorkStep("work-2", cardMessage(0), isFirst = true, isLast = true),
+        )
+        val seams = rows.receiptCardSeams()
+        assertTrue(seams.hasSeamBelow("work-1"))
+        assertTrue(seams.hasSeamAbove(workStepRowKey("step-0")))
+    }
+
+    @Test
+    fun toolSummaryAndRunTraceBreakTheSegmentedList() {
+        // 工具汇总芯片行与运行轨迹入口卡都没有分段卡片壳：两侧步骤取外圆，
+        // 不与它们相接成小圆角；两者也不参与相邻卡片行的组缝投影。
+        val group = AgentTimelineEntry.WorkProcess(
+            key = "work-mixed",
+            messages = listOf(
+                cardMessage(0),
+                ToolSummaryMessageUi("summary", listOf("read_file")),
+                cardMessage(1),
+                io.github.mangi.eta.ui.model.RunTraceMessageUi("trace", emptyList()),
+                cardMessage(2),
+            ),
+        )
+        val rows = listOf(group).toLazyTimelineRows()
+        val steps = rows.filterIsInstance<AgentTimelineRow.WorkStep>()
+        assertEquals(listOf(true, false, true, false, true), steps.map { it.isFirst })
+        assertEquals(listOf(true, false, true, false, true), steps.map { it.isLast })
+        assertEquals(
+            listOf(
+                SegmentedRowPosition.Whole, SegmentedRowPosition.Middle,
+                SegmentedRowPosition.Whole, SegmentedRowPosition.Middle,
+                SegmentedRowPosition.Whole,
+            ),
+            steps.map(::segmentPosition),
+        )
+        assertTrue(group.summaryContinuesIntoSteps())
+        val seams = rows.receiptCardSeams()
+        assertTrue(seams.seamAboveKeys.isEmpty())
+        assertTrue(seams.seamBelowKeys.isEmpty())
+    }
+
+    private fun receipt(id: String): AgentChatMessageUi = UserMessageUi(
+        id = id,
+        content = io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.CONSOLE_TEXT_PREFIX +
+            "工作会话「子任务」已完成。\n汇报正文。\n完整记录见会话「子任务」。\n（来源声明）",
+    )
+
     private fun segmentPosition(row: AgentTimelineRow.WorkStep): SegmentedRowPosition = when {
         row.isFirst && row.isLast -> SegmentedRowPosition.Whole
         row.isFirst -> SegmentedRowPosition.First
@@ -459,6 +735,23 @@ class AgentTimelineProjectionTest {
             status = status,
             answer = if (status == AgentQuestionStatus.Answered) AgentQuestionAnswer("option", "a") else null,
         )
+
+    /** 纯分段卡片步骤：只验证某一种断开件时用它，避免 workMessage 混入工具汇总行。 */
+    private fun cardMessage(index: Int): AgentChatMessageUi = when (index % 2) {
+        0 -> ThinkingMessageUi(
+            id = "step-$index",
+            content = "payload-$index-end",
+            isStreaming = true,
+        )
+        else -> ToolActivityMessageUi(
+            id = "step-$index",
+            toolName = "read_file",
+            status = ToolActivityStatusUi.Running,
+            argumentsSummary = "payload-$index-end",
+            command = "cat step-$index.txt",
+            resultSummary = "result-$index-end",
+        )
+    }
 
     private fun workMessage(index: Int): AgentChatMessageUi = when (index % 3) {
         0 -> ThinkingMessageUi(

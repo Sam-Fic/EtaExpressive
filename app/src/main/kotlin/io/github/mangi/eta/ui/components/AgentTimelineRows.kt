@@ -4,12 +4,19 @@ import io.github.mangi.eta.agent.question.AgentQuestionStatus
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentIncrementalList
 import io.github.mangi.eta.ui.model.AgentQuestionMessageUi
+import io.github.mangi.eta.ui.model.ContextCompactedMessageUi
 import io.github.mangi.eta.ui.model.ErrorReconnectMessageUi
+import io.github.mangi.eta.ui.model.RunTraceMessageUi
+import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
+import io.github.mangi.eta.ui.model.ThinkingMessageUi
+import io.github.mangi.eta.ui.model.ToolActivityMessageUi
+import io.github.mangi.eta.ui.model.ToolSummaryMessageUi
 import io.github.mangi.eta.ui.model.incrementalSnapshot
 import io.github.mangi.eta.ui.model.AgentMessageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import io.github.mangi.eta.ui.model.isResumeAfterCompress
 import io.github.mangi.eta.ui.model.isSteerSupplement
+import androidx.compose.ui.unit.Dp
 
 /**
  * Flat lazy-list rows：思考 / 工具步骤各自成为一条独立的可展开 SegmentedListItem
@@ -44,8 +51,9 @@ internal sealed interface AgentTimelineRow {
         val message: AgentChatMessageUi,
         /**
          * 本行在组内可见分段列表中的位置（连续工具/思考调用是设置页「同组项」样式）。
-         * 组内夹进的纯文本模型回复与重连分割线不算连续列表成员：它们把工具调用断开，
-         * 前后的步骤各自重新起段（见 [isSegmentBreak]），断点两侧取段末/段首外圆。
+         * 组内夹进的纯文本模型回复、重连分割线、系统通知、可见的压缩分界、工具汇总
+         * 芯片行与运行轨迹入口卡都不算连续列表成员：它们把工具调用断开，前后的步骤
+         * 各自重新起段（见 [isSegmentBreak]），断点两侧取段末/段首外圆。
          */
         val isFirst: Boolean,
         val isLast: Boolean,
@@ -55,15 +63,29 @@ internal sealed interface AgentTimelineRow {
 }
 
 /**
- * 工作组里夹着的「断开件」：模型纯文本回复与重连分割线。连续分段列表在它们两侧断开，
- * 断点前后的步骤行各自取段末/段首的大圆角（外圆），不与断开件相接成小圆角。
+ * 工作组里夹着的「断开件」：模型纯文本回复、重连分割线、系统通知、有可见分界行的
+ * 上下文压缩标记，以及不带分段卡片容器壳的工具汇总芯片行与运行轨迹入口卡。它们要么
+ * 渲染成裸文本 / 分割线 / 空行 / 标签行，要么是属于另一套圆角与配色的独立描边卡；
+ * 连续分段列表在它们两侧断开，断点前后的步骤行各自取段末/段首的大圆角（外圆），
+ * 不与断开件相接成小圆角。
+ *
+ * 零计数的压缩标记（`compactedCount <= 0`）不渲染任何内容（见 [ContextCompactedDivider]），
+ * 不算断开件——否则两张相邻卡片之间会凭空出现一次看不见的断开。
  */
-internal fun AgentChatMessageUi?.isSegmentBreak(): Boolean =
-    (this is AgentMessageUi && content.isNotBlank()) || this is ErrorReconnectMessageUi
+internal fun AgentChatMessageUi?.isSegmentBreak(): Boolean = when {
+    this is AgentMessageUi -> content.isNotBlank()
+    this is ErrorReconnectMessageUi -> true
+    this is SystemNoticeMessageUi -> true
+    this is ContextCompactedMessageUi -> compactedCount > 0
+    this is ToolSummaryMessageUi -> true
+    this is RunTraceMessageUi -> true
+    else -> false
+}
 
 /**
  * 折叠组展开后摘要行是否与首个步骤行露缝相接（摘要成为组首）。首步若是断开件
- * （纯文本回复 / 重连分割线），列表在它前面就断开，摘要保持单独一条。
+ * （纯文本回复 / 重连分割线 / 系统通知 / 可见的压缩分界 / 工具汇总芯片行 /
+ * 运行轨迹入口卡），列表在它前面就断开，摘要保持单独一条。
  */
 internal fun AgentTimelineEntry.WorkProcess.summaryContinuesIntoSteps(): Boolean =
     !messages.firstOrNull().isSegmentBreak()
@@ -414,6 +436,148 @@ internal fun List<AgentTimelineRow>.userBubblePosition(index: Int): UserBubblePo
         stickyDown -> UserBubblePosition.GroupFirst
         else -> UserBubblePosition.Single
     }
+}
+
+/**
+ * 相邻卡片行的接缝投影：分段卡片行（思考 / 工具 / 提问步骤、工作组摘要、派发回报卡）
+ * 两两相邻时只有工作组缝量级的薄边——按「相邻工具卡相接处取小圆角」的原则，这类缝
+ * 两侧都取内圆，并各出 1dp 薄边合成 2dp 组缝；与其余行（正文、分割线、芯片行、
+ * 轨迹入口卡、真实用户气泡）之间维持轮内 / 轮间节奏不变。跨批次 / 跨组的相邻步骤卡、
+ * 折叠摘要与相邻步骤卡同样落在这一条口径里，不再只对派发回报卡生效。
+ *
+ * 判定只看相邻行（与 [userBubblePosition] 同一判定法）：流式更新只改自身一侧，缝不随
+ * 远端内容跳变。锚在行下方的页脚（[footerKeys]）会把该行与下一行隔开，那条缝不成立——
+ * 行尾保持外圆收边，与工作组行锚页脚的节奏一致。
+ */
+internal data class ReceiptCardSeams(
+    /** 上沿与相邻卡片行相接的行键集合：这些行上沿取内圆、上外距出 1dp。 */
+    val seamAboveKeys: Set<String>,
+    /** 下沿与相邻卡片行相接的行键集合：这些行下沿取内圆、下外距出 1dp。 */
+    val seamBelowKeys: Set<String>,
+    /** 渲染为回报卡的 Message 行键集合。 */
+    val receiptRowKeys: Set<String>,
+    /** 上一行是真实用户气泡的回报卡行键集合：上外距抬到回复起点半距（回复起点节奏）。 */
+    val afterUserKeys: Set<String>,
+    /**
+     * 下一行是真实用户气泡（或本行是列表末行）的回报卡行键集合：下外距抬到基准半距，
+     * 与下一轮的用户气泡合成 16dp 轮间间隙；无缝且下邻非气泡时保持 2dp 轮内薄边。
+     */
+    val beforeUserKeys: Set<String>,
+) {
+    fun hasSeamAbove(rowKey: String): Boolean = rowKey in seamAboveKeys
+    fun hasSeamBelow(rowKey: String): Boolean = rowKey in seamBelowKeys
+
+    /** 本行是否渲染为派发回报卡（Message 行工具卡）。 */
+    fun isReceiptRow(rowKey: String): Boolean = rowKey in receiptRowKeys
+
+    /**
+     * 回报卡行的布局：分段位置由两侧缝推导（双缝 Middle / 仅上缝 Last / 仅下缝 First /
+     * 无缝 Whole），上下外距按 回复起点 8dp / 组缝 1dp / 轮内薄边 2dp / 轮间基准 8dp 四档。
+     * 非回报卡行返回 null。
+     */
+    fun receiptLayout(rowKey: String): ReceiptCardLayout? {
+        if (rowKey !in receiptRowKeys) return null
+        val above = hasSeamAbove(rowKey)
+        val below = hasSeamBelow(rowKey)
+        return ReceiptCardLayout(
+            position = when {
+                above && below -> SegmentedRowPosition.Middle
+                above -> SegmentedRowPosition.Last
+                below -> SegmentedRowPosition.First
+                else -> SegmentedRowPosition.Whole
+            },
+            seamAbove = above,
+            seamBelow = below,
+            topPadding = when {
+                rowKey in afterUserKeys -> AgentChatSpacing.RowBaseHalf
+                above -> AgentChatSpacing.WorkSeamHalf
+                else -> AgentChatSpacing.TurnInnerEdge
+            },
+            bottomPadding = when {
+                below -> AgentChatSpacing.WorkSeamHalf
+                rowKey in beforeUserKeys -> AgentChatSpacing.RowBaseHalf
+                else -> AgentChatSpacing.TurnInnerEdge
+            },
+        )
+    }
+}
+
+/** 回报卡行的分段位置与上下外距（由 [ReceiptCardSeams.receiptLayout] 推导）。 */
+internal data class ReceiptCardLayout(
+    val position: SegmentedRowPosition,
+    /** 上沿与相邻卡片行相接：上沿取内圆、上外距出 1dp 薄边。 */
+    val seamAbove: Boolean,
+    /** 下沿与相邻卡片行相接：下沿取内圆、下外距出 1dp 薄边。 */
+    val seamBelow: Boolean,
+    val topPadding: Dp,
+    val bottomPadding: Dp,
+)
+
+/**
+ * 步骤行是否渲染成分段卡片表面：思考、工具与提问卡是；正文、系统通知、压缩分界、
+ * 工具汇总芯片行与运行轨迹入口卡不是——它们没有分段卡片的容器壳，不能与相邻卡片
+ * 拼出内圆缝（断开口径见 [isSegmentBreak]）。
+ */
+private fun AgentChatMessageUi.rendersSegmentedCardSurface(): Boolean = when (this) {
+    is ThinkingMessageUi, is ToolActivityMessageUi, is AgentQuestionMessageUi -> true
+    else -> false
+}
+
+/**
+ * 计算 [ReceiptCardSeams]：卡片行 = 工作组摘要 / 分段卡片步骤 / 派发回报卡。任意两张
+ * 相邻卡片行之间都构成一条接缝（不再要求其中一侧是回报卡），上行记入 seamBelowKeys、
+ * 下行记入 seamAboveKeys；组内连续步骤本就按 [SegmentedRowPosition] 取内圆，重复的
+ * 缝标记落到同一组数值上，不改变既有行距与形状。
+ */
+internal fun List<AgentTimelineRow>.receiptCardSeams(
+    footerKeys: Set<String> = emptySet(),
+): ReceiptCardSeams {
+    fun isReceipt(row: AgentTimelineRow?): Boolean =
+        row is AgentTimelineRow.Message &&
+            row.message is UserMessageUi &&
+            io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.isConsoleReceipt(row.message.content)
+
+    fun isCardRow(row: AgentTimelineRow?): Boolean = when (row) {
+        is AgentTimelineRow.WorkSummary -> true
+        is AgentTimelineRow.WorkStep -> row.message.rendersSegmentedCardSurface()
+        else -> isReceipt(row)
+    }
+
+    val seamAbove = mutableSetOf<String>()
+    val seamBelow = mutableSetOf<String>()
+    for (index in 0 until lastIndex) {
+        val row = this[index]
+        val next = this[index + 1]
+        if (!isCardRow(row) || !isCardRow(next)) continue
+        // 页脚锚在本行下方时，本行与下一行之间被按钮行隔开：缝不成立，行尾取外圆收边。
+        if (row.key in footerKeys) continue
+        seamBelow += row.key
+        seamAbove += next.key
+    }
+    val receiptRows = mutableSetOf<String>()
+    val afterUser = mutableSetOf<String>()
+    val beforeUser = mutableSetOf<String>()
+    forEachIndexed { index, row ->
+        if (!isReceipt(row)) return@forEachIndexed
+        receiptRows += row.key
+        val previous = getOrNull(index - 1)
+        if (previous is AgentTimelineRow.Message && previous.message.isRenderedAsUserBubble()) {
+            afterUser += row.key
+        }
+        val next = getOrNull(index + 1)
+        if (index == lastIndex ||
+            (next is AgentTimelineRow.Message && next.message.isRenderedAsUserBubble())
+        ) {
+            beforeUser += row.key
+        }
+    }
+    return ReceiptCardSeams(
+        seamAboveKeys = seamAbove,
+        seamBelowKeys = seamBelow,
+        receiptRowKeys = receiptRows,
+        afterUserKeys = afterUser,
+        beforeUserKeys = beforeUser,
+    )
 }
 
 internal fun AgentTimelineRow.containsMessageId(id: String): Boolean = when (this) {

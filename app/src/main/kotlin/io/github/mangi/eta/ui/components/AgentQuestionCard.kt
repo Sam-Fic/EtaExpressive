@@ -67,12 +67,15 @@ internal fun AgentQuestionCard(
     message: AgentQuestionMessageUi,
     modifier: Modifier = Modifier,
     position: SegmentedRowPosition = SegmentedRowPosition.Whole,
+    /** 上/下沿与相邻卡片行按组缝相接：对应沿取内圆（外距由调用方 padding 负责）。 */
+    seamAboveCard: Boolean = false,
+    seamBelowCard: Boolean = false,
     onDraftChanged: (AgentQuestionAnswer) -> Unit,
     onSubmit: () -> Unit,
 ) {
     // A recycled chat slot must not inherit another conversation/run/call/question's controls.
     key(AgentQuestionProjection.messageId(message.request)) {
-        AgentQuestionCardContent(message, modifier, position, onDraftChanged, onSubmit)
+        AgentQuestionCardContent(message, modifier, position, seamAboveCard, seamBelowCard, onDraftChanged, onSubmit)
     }
 }
 
@@ -81,6 +84,8 @@ private fun AgentQuestionCardContent(
     message: AgentQuestionMessageUi,
     modifier: Modifier,
     position: SegmentedRowPosition,
+    seamAboveCard: Boolean,
+    seamBelowCard: Boolean,
     onDraftChanged: (AgentQuestionAnswer) -> Unit,
     onSubmit: () -> Unit,
 ) {
@@ -195,6 +200,8 @@ private fun AgentQuestionCardContent(
         details = questionDetails,
         modifier = modifier.testTag("question-card-surface"),
         position = position,
+        seamAboveCard = seamAboveCard,
+        seamBelowCard = seamBelowCard,
     )
 }
 
