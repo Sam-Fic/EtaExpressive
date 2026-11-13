@@ -46,10 +46,12 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         self.assertNotIn("TopAppBar(", page)
         self.assertIn("Row(", page)
         self.assertIn("FlowRow(", page)
-        # 四个操作各只有一个入口；按钮文字不允许折行。
-        self.assertEqual(4, page.count("TouchHaptics.click(view)"))
-        self.assertEqual(4, page.count("maxLines = 1"))
-        self.assertEqual(2, page.count("FlowRow("))
+        # 恢复组重排（2f5a57211）：预览两钮与「刷新」自带触感（3 处 click），恢复/强制重置
+        # 改为 EtaSegmentedRow 动作行（触感由行自带，不重复触发）；强制重置改走标准
+        # EtaDialog 二次确认，不再有内联两段武装确认。按钮文字不允许折行。
+        self.assertEqual(3, page.count("TouchHaptics.click(view)"))
+        self.assertEqual(3, page.count("maxLines = 1"))
+        self.assertEqual(1, page.count("FlowRow("))
         self.assertIn("EtaSegmentedColumn(", page)
         self.assertIn("EtaSegmentedItemContainer {", page)
         self.assertNotIn("Card(", page)
@@ -58,12 +60,15 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         self.assertNotIn("VirtualDisplayWebPreview.open(context)", page)
         self.assertNotIn("vd_preview_control_open", page)
         self.assertNotIn("WindowDialog", page)
-        self.assertNotIn("AlertDialog", page)
+        # 禁止直用 AlertDialog 组件（标准对话框走 EtaDialog/EtaDialogActions 封装）。
+        self.assertNotIn("AlertDialog(", page)
+        self.assertIn("EtaDialogActions(", page)
         self.assertIn("LaunchedEffect(Unit) { refresh() }", page)
         self.assertIn('snapshot.optBoolean("recoverable")', page)
         self.assertIn("VirtualDisplaySession::recoverAndFinishManually", page)
         self.assertNotIn("VirtualDisplayWebPreview.stop()", page)
-        for action in ("vd_preview_open", "vd_preview_revoke", "vd_recovery_refresh", "vd_recovery_action"):
+        for action in ("vd_preview_open", "vd_preview_revoke", "vd_recovery_refresh", "vd_recovery_action",
+                       "vd_recovery_force_reset", "vd_recovery_force_reset_confirm", "vd_recovery_force_reset_summary"):
             self.assertIn("R.string." + action, page)
         self.assertIn('snapshot?.optBoolean("busy")', page)
         self.assertIn("busy -> R.string.vd_recovery_busy", page)

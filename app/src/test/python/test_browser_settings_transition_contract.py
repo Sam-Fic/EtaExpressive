@@ -11,12 +11,19 @@ class BrowserSettingsTransitionContractTest(unittest.TestCase):
 
     def test_settings_page_animates_like_a_pushed_page(self):
         # 设置页与浏览器共用同一个 BrowserTabPool，不能拆成独立路由；
-        # 页内覆盖层必须补齐与 miuix NavDisplay 路由转场一致的入栈/出栈动画。
+        # 页内覆盖层必须逐项对齐 miuix NavDisplay 程序化转场（docs/RULES.md §3.3）：
+        # 位移与进度统一 tween(NavigationFallbackDurationMillis, NavProgrammaticEasing)，
+        # 顶页全程不透明，effects 层补全（被盖页 scrim 压暗 + 进入页 leading 角圆角裁切）。
         self.assertIn('AnimatedVisibility(', self.sheet)
         self.assertIn('visible = showSettings', self.sheet)
-        for required in ('slideInHorizontally', 'slideOutHorizontally', 'fadeIn', 'fadeOut',
-                         'defaultSpatialSpec', 'defaultEffectsSpec', 'settingsProgress'):
+        for required in ('slideInHorizontally', 'slideOutHorizontally',
+                         'EtaMotion.NavigationFallbackDurationMillis', 'NavProgrammaticEasing',
+                         'NavDisplayEffects.Default.dimAmount', 'rememberNavSystemCornerRadius',
+                         'settingsProgress'):
             self.assertIn(required, self.sheet)
+        # 顶页全程不透明：给顶页加淡入淡出会在运动中透出底页（§3.3 第 2 条）。
+        self.assertNotIn('fadeIn', self.sheet)
+        self.assertNotIn('fadeOut', self.sheet)
         self.assertIn('translationX = (if (rtl) 1f else -1f) * settingsProgress * size.width / 4f', self.sheet)
         self.assertIn('BrowserSettingsPage(', self.sheet)
         self.assertIn('tabPool = tabPool', self.sheet)

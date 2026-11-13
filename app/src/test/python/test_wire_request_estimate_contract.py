@@ -46,11 +46,17 @@ class WireRequestEstimateContractTest(unittest.TestCase):
         # Display-only calibration must never reach the silent send/compaction budget.
         self.assertNotIn('overheadCalibrationTokens', preview.split('\n}\n', 1)[0])
 
-    def test_ring_consumes_only_the_cloud_receipt_and_screens_forward_the_measurement(self):
+    def test_usage_display_consumes_only_the_cloud_receipt_and_screens_forward_the_measurement(self):
         bar = self.text('ui/components/AgentChatInputBar.kt')
-        ring = bar.split('AgentContextUsageButton(', 1)[1].split(')', 1)[0]
-        self.assertIn('usage = liveUsage,', ring)
-        self.assertNotIn('else sendBudget', ring)
+        # 旧进度环按钮（AgentContextUsageButton）已收敛为页面上直接书写的用量行；
+        # 数据入口仍是只吃云端回执的 liveUsage：经 Material3ComposerBody 一路传到
+        # ContextUsageRow，没有实测回执时不投影本地估算，也不回落 sendBudget。
+        self.assertNotIn('AgentContextUsageButton(', bar)
+        receipt = bar.split('val liveUsage = remember(', 1)[1].split('val contextSendBlocked', 1)[0]
+        self.assertIn('liveContextUsage(', receipt)
+        self.assertIn('billedContextTokens = billedContextTokens,', receipt)
+        self.assertNotIn('sendBudget', receipt)
+        self.assertIn('usage = liveUsage,', bar)
         screen = self.text('ui/screens/home/AgentHomeScreen.kt')
         self.assertIn('measuredContextTokens: () -> Int? = { null },', screen)
         self.assertIn('measuredContextTokens = measuredContextTokens(),', screen)

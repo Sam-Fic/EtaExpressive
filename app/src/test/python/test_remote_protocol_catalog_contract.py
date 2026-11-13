@@ -69,7 +69,10 @@ class RemoteProtocolCatalogContractTest(unittest.TestCase):
 
 class RemoteProtocolPickerContractTest(unittest.TestCase):
     def setUp(self):
-        self.screen = read("ui/screens/settings/RemoteAgentsScreen.kt")
+        # 协议选择与保存随「添加/编辑」页面化搬进了 RemoteAgentEditorScreen；
+        # 列表页只剩服务器行上的协议名展示。
+        self.screen = read("ui/screens/settings/RemoteAgentEditorScreen.kt")
+        self.list = read("ui/screens/settings/RemoteAgentsScreen.kt")
 
     def test_save_uses_the_selected_protocol_not_a_hardcoded_pi(self):
         self.assertIn("protocolId = selectedProtocolId", self.screen)
@@ -78,11 +81,12 @@ class RemoteProtocolPickerContractTest(unittest.TestCase):
         self.assertIn("selectedProtocolId = config.protocolId", self.screen)
 
     def test_single_available_protocol_stays_a_plain_row(self):
-        # 只有一个已适配协议时不做成可点的选择器：点开只看到一行，白点一次。
-        # 第二个协议注册进来后这里自动变成选择器，不用再改界面。
-        self.assertIn("protocolOptions.size > 1 || !protocolKnown", self.screen)
-        self.assertIn("EtaTextButton(", self.screen)
-        self.assertIn("protocolPickerOpen = true", self.screen)
+        # 协议行现在是行内下拉（EtaSegmentedDropdownRow，选中值显示在行尾），
+        # 但选项仍来自注册表的 selectable()：第二个协议注册进来后自动多一行，
+        # 不用再改界面。
+        self.assertIn("val protocolOptions = RemoteProtocols.selectable()", self.screen)
+        self.assertIn("EtaSegmentedDropdownRow(", self.screen)
+        self.assertIn("protocolOptions.map { it.displayName }", self.screen)
 
     def test_unsupported_protocol_is_editable_not_rewritten(self):
         # 认不出的协议也要能点开选择器——那是用户唯一的改法；并且要说明为什么连不上。
@@ -90,7 +94,7 @@ class RemoteProtocolPickerContractTest(unittest.TestCase):
         self.assertIn("!protocolKnown", self.screen)
 
     def test_server_row_shows_the_protocol_name(self):
-        self.assertIn("RemoteProtocols.displayNameOf(config.protocolId)", self.screen)
+        self.assertIn("RemoteProtocols.displayNameOf(config.protocolId)", self.list)
 
     def test_unknown_protocol_never_silently_falls_back(self):
         # 不认识的协议必须报 UnsupportedProtocol，不能悄悄按 pi 去连——

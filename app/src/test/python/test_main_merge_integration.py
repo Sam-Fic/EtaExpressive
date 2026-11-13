@@ -15,8 +15,10 @@ class MainMergeIntegrationTest(unittest.TestCase):
         self.assertIn('VirtualDisplayWebPreview.revoke(context)', installation_gate)
         self.assertIn('error("Backend module removed")', installation_gate)
         self.assertNotIn('VirtualDisplayWebPreview.stop()', page)
-        # 四个操作各只有一个入口，且仍在同一页内联展示（不是独立页面）。
-        self.assertEqual(4, page.count('TouchHaptics.click(view)'))
+        # 三个自带触感的按钮入口（打开预览 / 撤销预览 / 刷新）各只有一个；
+        # 恢复与强制重置改走 EtaSegmentedRow 行（触感由行自带，不重复打点），
+        # 强制重置确认交给标准对话框——动作仍都在同一页内联展示（不是独立页面）。
+        self.assertEqual(3, page.count('TouchHaptics.click(view)'))
         self.assertNotIn('VirtualDisplayWebPreview.open(context)', page)
         self.assertNotIn('Scaffold(', page)
 

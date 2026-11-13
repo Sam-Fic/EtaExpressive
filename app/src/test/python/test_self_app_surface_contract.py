@@ -48,15 +48,18 @@ class SelfAppSurfaceContractTest(unittest.TestCase):
 
     def test_prompt_and_launch_schema_explain_scope_not_global_override(self):
         s = (BASE / 'agent/device/AgentTaskSurface.kt').read_text()
-        self.assertIn('SELF_APP_CLAUSE + when (stored)', s)
+        # 自身例外条款已从常量 SELF_APP_CLAUSE 改为函数 selfAppClause(named)（按工具目录裁剪示例）。
+        self.assertIn('selfAppClause(named) + when (stored)', s)
         self.assertIn('io.github.mangi.eta', s)
         self.assertIn('不把整轮改成前台', s)
         self.assertIn('task_surface_scope=self_app', s)
         self.assertIn('task_surface_scope=ordinary_run', s)
         self.assertNotIn('表示之后都在主屏直接操作', s)
         schema = (BASE / 'agent/model/AgentContextAppToolCatalog.kt').read_text()
-        self.assertIn('不触发ASK', schema)
-        self.assertIn('不改变其它应用的ASK/后台偏好', schema)
+        # launch_app 的 schema 描述已译成英文，语义不变：自身目标不触发 ASK，
+        # 也不改变其它应用的 ASK/后台偏好。
+        self.assertIn('without triggering ASK', schema)
+        self.assertIn('do not change the ASK/background preference of other apps', schema)
 
     def test_all_preference_translations_describe_self_only_exception(self):
         for folder, token in [('values', 'Eta itself'), ('values-b+zh+Hans', 'Eta自身'), ('values-b+zh+Hant', 'Eta自身')]:

@@ -38,11 +38,12 @@ class OfflineSpeechWarmupContractTest(unittest.TestCase):
 
     def test_recording_starts_before_engine_acquire(self):
         source = read(OFFLINE / 'OfflineSpeechSession.kt')
-        # 先开麦并让 UI 进入 Listening，再去 native 线程取引擎，冷启动不再把麦克风压在装载之后。
-        self.assertLess(source.index('startRecording()'), source.index('OfflineSpeechEngineCache.acquire('))
+        # 开麦与装载并行化后仍保序：开麦任务先于装载任务派发，UI 进入 Listening 后才 await 引擎槽位，
+        # 冷启动不再把麦克风压在装载之后。
+        self.assertLess(source.index('opened.startRecording()'), source.index('OfflineSpeechEngineCache.acquire('))
         self.assertLess(
             source.index('withContext(Dispatchers.Main) { onListening() }'),
-            source.index('OfflineSpeechEngineCache.acquire('),
+            source.index('slot.await()'),
         )
         self.assertIn('Channel<FloatArray>(Channel.UNLIMITED)', source)
         self.assertIn('launch(Dispatchers.IO)', source)
@@ -95,7 +96,7 @@ class OfflineSpeechWarmupContractTest(unittest.TestCase):
         router = read('agent/voice/SpeechInputSession.kt')
         self.assertIn('diagnostic: VoiceDiagnostics? = null', router)
         self.assertIn(
-            'OfflineSpeechSession.recognize(context, onListening, onText, mode, diagnostic)',
+            'OfflineSpeechSession.recognize(context, onListening, onText, mode, diagnostic, onLevel, stop)',
             router,
         )
 

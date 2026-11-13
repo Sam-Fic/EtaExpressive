@@ -93,7 +93,7 @@ class ErrorReconnectSettingsContractTest(unittest.TestCase):
             for key in ("reconnect_running", "reconnect_elapsed_format"):
                 self.assertEqual(1, strings[locale][key].count("%1$s"))
         self.assertEqual(
-            "出错后自动重试，直到成功或超时。所有模型通用。",
+            "出错后自动重试，直到成功或超时。所有模型通用",
             strings["values-b+zh+Hans"]["error_reconnect_description"],
         )
         self.assertEqual("总重试时长", strings["values-b+zh+Hans"]["error_reconnect_duration"])

@@ -31,9 +31,9 @@ class ComposerLoadingConcentricContractTest(unittest.TestCase):
         # AnimatedVisibility 会被解析成 RowScope 成员重载并触发 DSL_SCOPE_VIOLATION。
         self.assertIn("AnimatedContent(", slot)
         self.assertNotIn("AnimatedVisibility(", slot)
-        # 语音态的聆听条起始侧已有麦克风状态圆钮，不能再叠一枚加载指示器。
+        # 语音态 / 口述态的聆听条起始侧已有麦克风状态圆钮，不能再叠一枚加载指示器。
         self.assertIn("targetState = leadingState", slot)
-        self.assertIn("voiceActive -> ComposerLeading.NONE", slot)
+        self.assertIn("conversationActive || dictating || dictationNotice -> ComposerLeading.NONE", slot)
         self.assertIn("isEditingMessage -> ComposerLeading.CANCEL", slot)
         self.assertIn("showMorphLoading -> ComposerLeading.LOADING", slot)
         # 编辑态优先：取消编辑不能被生成中加载指示器盖住。
@@ -61,14 +61,19 @@ class ComposerLoadingConcentricContractTest(unittest.TestCase):
         trailing = self.composer.split("// 尾部按钮槽：", 1)[1]
         trailing = trailing.split("AnimatedContent(", 1)[0]
         self.assertIn("Alignment.BottomEnd", trailing)
-        self.assertIn(
-            "padding(end = ComposerConcentricGap, bottom = ComposerConcentricGap)",
-            trailing,
-        )
+        # 端距动画化：bottom / end 两条 animateDpAsState 的正常态 / 收尾态 / 失败提示态
+        # 都保持同一 8dp 同心端距（与起始侧槽对称），仅听写态（✓ 胶囊移出胶囊、贴住
+        # 工具栏内容区末端）归零；0↔8dp 过冲的负值必须先 coerce 再进 padding。
+        self.assertEqual(4, trailing.count("-> ComposerConcentricGap"))
+        self.assertEqual(2, trailing.count("dictating -> 0.dp"))
+        self.assertIn("trailingBottomSafe = trailingBottom.coerceAtLeast(0.dp)", trailing)
+        self.assertIn("trailingEndSafe = trailingEnd.coerceAtLeast(0.dp)", trailing)
+        self.assertIn(".padding(end = trailingEndSafe, bottom = trailingBottomSafe)", trailing)
 
     def test_cancel_button_no_longer_sits_in_the_toolbar_row(self):
         # 编辑态分支只让动作组整组不组合，取消按钮不再占工具栏 Row 的宽度。
-        self.assertIn("if (!isEditingMessage || voiceActive) {", self.composer)
+        # （语音对话 / 口述态同样收起动作组：聆听条与口述流光占据同一左侧区域。）
+        self.assertIn("if (!isEditingMessage || conversationActive || dictating) {", self.composer)
         # 全文件里只应有「函数定义 + 共享槽里那一处调用」两个出现点。
         self.assertEqual(2, self.composer.count("M3ComposerCancelButton("))
         slot = self.composer.split("// 起始侧槽：", 1)[1]

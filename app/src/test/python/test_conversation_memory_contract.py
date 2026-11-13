@@ -25,7 +25,9 @@ class ConversationMemoryContractTest(unittest.TestCase):
         text = (SRC / "ui/app/AgentConversationStore.kt").read_text()
         save = text[text.index("suspend fun save("):text.index("fun searchStoredConversation(")]
         self.assertIn("if (!state.conversationContentLoaded) continue", save)
-        self.assertLess(save.index("if (!state.conversationContentLoaded) continue"), save.index("dao.deleteMessagesForConversation"))
+        # 内容重写入口改为按分页边界的 deleteMessagesFrom（0 = 历史全量重写）；
+        # 未加载会话的守卫仍在任何消息删除之前。
+        self.assertLess(save.index("if (!state.conversationContentLoaded) continue"), save.index("dao.deleteMessagesFrom("))
         self.assertNotIn("dao.deleteMessages()", save)
         self.assertNotIn("dao.insertConversations(", save)
 

@@ -27,10 +27,12 @@ class FinalDeliveryIntegrationTest(unittest.TestCase):
         self.assertNotIn('cloudHistoryTokens = null', prune)
         self.assertIn('AgentContextCompactionUi.applyMarker(', handler)
 
-    def test_four_inline_actions_only_preview_uses_full_preview_entry(self):
+    def test_inline_actions_only_preview_uses_full_preview_entry(self):
         controls = self.source('ui/screens/virtualdisplay/VirtualDisplaySections.kt')
         actions = controls.split('FlowRow(', 1)[1]
-        self.assertEqual(4, actions.count('TouchHaptics.click(view)'))
+        # 唯一的 FlowRow 里是三个自带触感的按钮（打开预览 / 撤销预览 / 刷新）；
+        # 恢复与强制重置改走 EtaSegmentedRow 行，触感由行自带、不再单独打点。
+        self.assertEqual(3, actions.count('TouchHaptics.click(view)'))
         self.assertEqual(1, actions.count('VirtualDisplayWebPreview.openWithManualClose(context)'))
         self.assertNotIn('VirtualDisplayWebPreview.open(context)', actions)
         self.assertIn('VirtualDisplayWebPreview.revoke(context)', actions)

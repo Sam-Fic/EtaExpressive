@@ -109,7 +109,7 @@ class VoiceSettingsContractTest(unittest.TestCase):
         self.assertNotIn('Prefs.getString', playback)
         asr = read('agent/voice/SpeechInputSession.kt')
         self.assertIn('val selectedConfig = settings ?: configFor(mode)', asr)
-        self.assertIn('DoubaoAsrSession.recognize(onListening, onText, selectedConfig)', asr)
+        self.assertIn('DoubaoAsrSession.recognize(onListening, onText, selectedConfig, onLevel, stop)', asr)
         self.assertIn('VoiceEntryPolicy.enabled(it, mode)', asr)
         self.assertIn('settings == null && configFor(mode, it).cloudAsr != selected', asr)
 
@@ -139,11 +139,15 @@ class VoiceSettingsContractTest(unittest.TestCase):
         load_block = config[config.index('fun load('):config.index('private fun migrateDictationIntoConversation')]
         migration = config[config.index('private fun migrateDictationIntoConversation'):config.index('fun save(')]
         save_block = config[config.index('fun save('):]
-        for key in ('voice_conversation_asr_cloud', 'voice_conversation_asr_key', 'voice_conversation_asr_resource'):
+        for key in ('voice_conversation_asr_cloud', 'voice_conversation_asr_resource'):
             # 旧听写配置只迁移一次；进入语音对话后由 load/save 各自持久化。
             self.assertIn(f'"{key}"', migration)
             self.assertIn(f'"{key}"', load_block)
             self.assertIn(f'"{key}"', save_block)
+        # 识别密钥不再落 prefs 明文，改由 DoubaoSecretStore 槽位加密持久化；
+        # load / 一次性迁移 / save 三处同样各自经手该槽位。
+        for slice_ in (load_block, migration, save_block):
+            self.assertIn('DoubaoSecretStore.SLOT_CONVERSATION_ASR_KEY', slice_)
         for field in ('conversationCloudAsr', 'conversationAsrKey', 'conversationResource'):
             self.assertIn(f'config.{field}', ui)
             self.assertIn(f'config.{field}', router)

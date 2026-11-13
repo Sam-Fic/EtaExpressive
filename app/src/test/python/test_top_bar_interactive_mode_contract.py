@@ -118,7 +118,9 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
             "divider", "conversation_move_to_trash",
             "divider", "capability_kimi_stop",
         ], self.sequence)
-        stop_at = self.content.index("if (canStopKimiWeb)")
+        # 计数行 `val sectionSixthCount = if (canStopKimiWeb) 1 else 0` 也含该条件，
+        # 所以取最后一次出现，即真正的收尾「停止 Kimi Web」条件块。
+        stop_at = self.content.rindex("if (canStopKimiWeb)")
         stop = balanced(self.content, self.content.index("{", stop_at))
         self.assertEqual(1, stop.count("TopBarMenuSection {"))
         self.assertIn("R.string.capability_kimi_stop", stop)
@@ -153,7 +155,8 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
 
     def test_row_and_switch_are_both_clickable_without_dismissing_the_popup(self):
         self.assertIn('modifier = Modifier.testTag("top-bar-interactive-mode-row")', self.interactive)
-        self.assertIn("imageVector = Icons.Rounded.TouchApp", self.interactive)
+        # 图标改为位置参数写法（无需命名 imageVector）。
+        self.assertIn("Icon(Icons.Rounded.TouchApp,", self.interactive)
         switch = arguments(self.interactive, "EtaSwitch")
         self.assertIn("checked = interactiveModeEnabled", switch)
         self.assertIn("interactiveModePreference.setEnabled(enabled)", callback(switch, "onCheckedChange"))

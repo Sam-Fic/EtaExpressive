@@ -7,7 +7,8 @@ SOURCE = ROOT / 'src/main/kotlin/io/github/mangi/eta'
 class WebViewRendererExitContractTest(unittest.TestCase):
     def test_all_installed_clients_handle_renderer_exit(self):
         sources = [p for p in SOURCE.rglob('*.kt') if 'object : WebViewClient()' in p.read_text()]
-        self.assertEqual(2, len(sources))
+        # Antigravity 后端已退役（14225a5a2），全仓只剩 BrowserUseManager 一个匿名 WebViewClient。
+        self.assertEqual(1, len(sources))
         for path in sources:
             self.assertIn('override fun onRenderProcessGone', path.read_text(), str(path))
 

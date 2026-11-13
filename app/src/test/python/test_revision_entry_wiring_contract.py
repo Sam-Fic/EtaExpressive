@@ -127,7 +127,8 @@ class RevisionEntryWiringContract(unittest.TestCase):
         prepare = method(self.app, "launchConversationRevision")
         self.assertIn("failure is BranchArchiveCopyException", prepare)
         self.assertIn("branch_archive_copy", prepare)
-        self.assertIn("历史归档或附件未能完整复制", prepare)
+        # 复制失败提示收敛为本地化资源（原硬编码文案已迁入 strings.xml）。
+        self.assertIn("R.string.appst_branch_archive_copy_failed", prepare)
         self.assertIn("else showRevisionHistoryUnavailableNotice()", prepare)
 
     def test_runtime_suffix_matching_is_only_within_verified_turn(self):

@@ -41,8 +41,13 @@ class ThreePageHotpathContract(unittest.TestCase):
                 label = f'"settings.permission.{name}.{phase}"'
                 self.assertIn(label, labels)
         # 主页权限分组只保留「强制无障碍」开关的状态读取。
-        for phase in ('initial', 'resume'):
-            self.assertIn(f'"settings.permission.protection.{phase}"', s)
+        # 组合期只读 SP 缓存（isEnabledCached），Settings.Global 的 binder 往返挪到
+        # LaunchedEffect 的 Dispatchers.IO 回填，主线程不再吃进转场起步帧；
+        # .initial 打点随组合期 binder 读一起移除，ON_RESUME 刷新保留 .resume 打点。
+        protection = s[s.index('var accessibilityProtectionEnabled'):s.index('val initialPreferences = remember')]
+        self.assertIn('AccessibilityProtectionClient.isEnabledCached(context)', protection)
+        self.assertIn('withContext(Dispatchers.IO)', protection)
+        self.assertIn('"settings.permission.protection.resume"', protection)
         self.assertNotIn('settings.permission.overlay', s)
         self.assertNotIn('settings.permission.accessibility', s)
         # 悬浮窗/无障碍状态改由权限页呈现；助手活跃状态随四个 hook 分组迁到系统接管子页。

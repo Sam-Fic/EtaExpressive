@@ -68,6 +68,8 @@ class FrozenMarkdownInputContract(unittest.TestCase):
         from test_agent_chat_viewport_contract import balanced_end
         end = balanced_end(text, opening, '{', '}')
         body = text[opening:end]
-        self.assertIn('remember(freeze)', body)
+        # 冻结入场补账从 remember(freeze) 换成 LaunchedEffect(freeze)：不换渲染器、
+        # 也不重挂 FrozenMarkdownElement，冻结翻转当帧就地补完块内 reveal。
+        self.assertIn('LaunchedEffect(freeze)', body)
         self.assertIn('revealCoordinator?.completeAttachedRecordsIn(node.startOffset, node.endOffset)', body)
         self.assertEqual(1, body.count('FrozenMarkdownElement('))

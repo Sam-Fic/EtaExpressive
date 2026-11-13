@@ -43,7 +43,8 @@ class RemoteConnectionContractTest(unittest.TestCase):
             self.assertIn(needle, source)
 
     def test_settings_page_parses_address_into_port_and_token(self):
-        source = read(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        # 「添加/编辑」弹窗已页面化，地址解析随表单搬进了 RemoteAgentEditorScreen。
+        source = read(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         self.assertIn("RemoteServerAddress.parse(host)", source)
         self.assertIn("fun onAddressChanged(raw: String)", source)
         self.assertIn("parsed.port?.let { port = it.toString() }", source)
@@ -83,7 +84,10 @@ class RemoteConnectionContractTest(unittest.TestCase):
         # 可自愈的失败重试到上限也必须判死（Failed），不能无限转圈；
         # 复活交给用户——胶囊重试钮或点会话行都会整颗重建监管器（计数归零）。
         self.assertIn("MAX_RECONNECT_ATTEMPTS", source)
-        self.assertIn("RemoteConnectionStatus.Failed(lastKind, lastDetail)", source)
+        self.assertIn(
+            "RemoteConnectionStatus.Failed(lastKind ?: RemoteFailure.Kind.Unknown, lastDetail)",
+            source,
+        )
 
     def test_failure_classification_splits_connect_and_read_timeout(self):
         # 老实现把两种超时一律写成「确认手机与服务器连的是同一个局域网」，
@@ -137,7 +141,8 @@ class RemoteConnectionContractTest(unittest.TestCase):
         # 「默认路由不通、绑 Wi-Fi 就通」这一对照必须留着：它是唯一能自证的根因。
         self.assertIn("probeTcpViaWifi(", probe)
         self.assertIn("wifiRouteWorkaround", probe)
-        screen = read(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        # 诊断（测试连接）随「添加/编辑」页面化搬进了 RemoteAgentEditorScreen。
+        screen = read(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         self.assertIn("RemoteConnectionProbe.run(", screen)
         self.assertIn("R.string.remote_probe_test", screen)
         self.assertIn("R.string.remote_probe_conclusion_wifi", screen)
@@ -180,14 +185,14 @@ class RemoteConnectionContractTest(unittest.TestCase):
         self.assertIn("probeRoute(", probe)
         self.assertIn("routeDiverted", probe)
         self.assertIn("serverRoute", probe)
-        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         self.assertIn("R.string.remote_probe_route_chosen", screen)
         self.assertIn("R.string.remote_probe_conclusion_diverted", screen)
 
     def test_probe_always_renders_the_arp_verdict(self):
         # ARP 是唯一不受「防火墙静默丢弃」影响的判据。读不到表时也必须写出来，
         # 否则用户看到那行消失，会以为这一条压根没测。
-        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         self.assertIn("R.string.remote_probe_arp_unknown", screen)
         self.assertNotIn("private fun probeArpText(arp: RemoteConnectionProbe.Arp, host: String): String?",
                          screen)
@@ -211,7 +216,7 @@ class RemoteConnectionContractTest(unittest.TestCase):
         )
         # ARP 必须在 TCP 尝试之后读：内核正是被那次 connect 触发去解析 MAC 的。
         self.assertLess(probe.index("val tcp = probeTcp"), probe.index("val hostArp ="))
-        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         self.assertIn("probeArpText(", screen)
         self.assertIn("R.string.remote_probe_conclusion_host_on_lan", screen)
         self.assertIn("R.string.remote_probe_conclusion_host_missing", screen)
@@ -219,7 +224,7 @@ class RemoteConnectionContractTest(unittest.TestCase):
     def test_probe_report_puts_the_layers_above_the_environment(self):
         # 报告一屏放不下时，被挤到折叠线以下的行等于没写。
         # 「断在哪一层」必须紧跟结论，环境信息（网络/网卡/同网段）排最后。
-        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         self.assertLess(
             screen.index("rows.forEach"),
             screen.index("probeGatewayText(report)"),
@@ -230,11 +235,12 @@ class RemoteConnectionContractTest(unittest.TestCase):
         )
 
     def test_probe_report_does_not_waste_rows(self):
-        # 前一层断掉时 HTTP/WS 必然「未执行」，写出来只占位置；
+        # 前一层断掉时 HTTP/长连接必然「未执行」，写出来只占位置；
         # 报告一屏放不下，关键判据就会被挤到折叠线以下——这个坑踩过一次。
-        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        screen = read_code(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         self.assertIn("if (report.http !is RemoteConnectionProbe.Step.Skipped)", screen)
-        self.assertIn("if (report.websocket !is RemoteConnectionProbe.Step.Skipped)", screen)
+        # 长连接层改叫 stream（随协议是 WebSocket 或 SSE），不再叫 websocket。
+        self.assertIn("if (report.stream !is RemoteConnectionProbe.Step.Skipped)", screen)
 
     def test_pi_adapter_builds_urls_with_okhttp(self):
         source = read(KOTLIN / "agent/remote/pi/PiRemoteAdapter.kt")
@@ -277,8 +283,9 @@ class RemoteConnectionContractTest(unittest.TestCase):
         self.assertIn('item(key = "local-network")', screen)
         self.assertIn("lanPermissionLauncher.launch(LocalNetworkPermission.PERMISSION)", screen)
         # 申请结果回来要先刷新状态、再决定跑不跑探测——被拒时跑出来只会是
-        # 一次与「服务器不回应」无法区分的超时。
-        self.assertIn("!LocalNetworkPermission.blocksConnection(lanState)", screen)
+        # 一次与「服务器不回应」无法区分的超时。这段随探测流程搬进了编辑器子页。
+        editor = read(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
+        self.assertIn("!LocalNetworkPermission.blocksConnection(lanState)", editor)
 
         # 权限总览页也要有一项，否则用户只在远程智能体页才看得到。
         state = read(KOTLIN / "ui/app/AgentAppState.kt")
@@ -308,7 +315,8 @@ class RemoteConnectionContractTest(unittest.TestCase):
     def test_lan_blocked_surfaces_before_every_other_conclusion(self):
         # 被系统拦时，网关照样有应答、ARP 照样读不到——所有下游判据都会指向
         # 「服务器不回应」。这一条必须排在结论链最前面，否则整份报告把人带偏。
-        screen = read(KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt")
+        # 结论链随诊断报告搬进了 RemoteAgentEditorScreen。
+        screen = read(KOTLIN / "ui/screens/settings/RemoteAgentEditorScreen.kt")
         blocked = screen.index("report.lanBlockedBySystem ->")
         for later in (
             "report.wifiRouteWorkaround ->",
@@ -322,7 +330,9 @@ class RemoteConnectionContractTest(unittest.TestCase):
                 f"{later} 必须排在「被系统拦」之后",
             )
         self.assertIn("remote_probe_local_network_denied", screen)
-        self.assertIn("ACTION_APPLICATION_DETAILS_SETTINGS", screen)
+        # 兜底入口（应用信息页）在列表页那个共用的 openAppPermissionSettings 里。
+        self.assertIn("ACTION_APPLICATION_DETAILS_SETTINGS", read(
+            KOTLIN / "ui/screens/settings/RemoteAgentsScreen.kt"))
 
     def test_new_strings_exist_in_every_locale(self):
         keys = {

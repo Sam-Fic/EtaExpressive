@@ -39,7 +39,12 @@ class TimelineProjectionCacheContract(unittest.TestCase):
         self.assertIn('val timelineRowsProjection = remember { AgentTimelineRowsCache() }', text)
         self.assertIn('val timelineRows = remember(projectedTimelineEntries, foldedWorkKeys, workExpansionOverrides) {', text)
         self.assertIn('timelineRowsProjection.project(', text)
-        self.assertIn('projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled && isTurnSettled)', text)
+        # 折叠分轮：更早的轮次只要出现过正文回复，生成过程中也保持收起；
+        # 最新一轮等整轮停下（isTurnSettled）再收，避免「收了又摊开」的回跳。
+        self.assertIn(
+            'projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled, foldLatestTurn = isTurnSettled)',
+            text,
+        )
         # Row-only policy reduction must not become a run-state or footer reduction.
         footers = text.split('val turnFooters =', 1)[1].split('val finalResultMessageIds =', 1)[0]
         self.assertIn('isStreaming = isStreaming', footers)

@@ -14,7 +14,8 @@ class PruningUsageContractTest(unittest.TestCase):
         for forbidden in ('lastUsage = null', 'requestBudget.contextReplaced()', 'silentBudget.contextReplaced()'):
             self.assertNotIn(forbidden, prune)
         self.assertIn('pruningOnly = true', prune)
-        self.assertIn('onHistoryCompacted()', prune)
+        # 仅修剪路径传 true（见 onHistoryCompacted 的 KDoc），不重开本地展示边界。
+        self.assertIn('onHistoryCompacted(true)', prune)
         self.assertIn('archive.save(', prune)
         self.assertIn('archive.record(it, "committed")', prune)
         self.assertIn('systemCount until endExclusive', prune)
@@ -45,11 +46,12 @@ class PruningUsageContractTest(unittest.TestCase):
     def test_wire_has_explicit_kind_and_old_label_fallback(self):
         event = self.read('agent/runtime/AgentEvent.kt')
         self.assertIn('val pruningOnly: Boolean', event)
-        self.assertIn('compressorLabel == "工具输出预算修剪（原文可回读）"', event)
+        # 协议标记收敛为常量（旧字面量判定被替换），展示文案仍由 UI 映射。
+        self.assertIn('compressorLabel == PRUNING_ONLY_COMPRESSOR_LABEL', event)
         wire = self.read('agent/runtime/AgentRuntimeWire.kt')
         self.assertIn('putBoolean("pruning_only", event.pruningOnly)', wire)
         self.assertIn('pruningOnly = bundle.getBoolean("pruning_only",', wire)
-        self.assertIn('bundle.getString("compressor_label") == "工具输出预算修剪（原文可回读）"', wire)
+        self.assertIn('bundle.getString("compressor_label") == AgentEvent.PRUNING_ONLY_COMPRESSOR_LABEL', wire)
 
     def test_subagent_does_not_count_pruning_as_summary_compaction(self):
         code = self.read('agent/delegation/SubAgentContextStats.kt')

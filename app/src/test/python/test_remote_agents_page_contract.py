@@ -35,10 +35,11 @@ class RemoteAgentsPageContractTest(unittest.TestCase):
         self.assertIn("R.string.remote_agents_empty", source)
         self.assertIn("R.string.remote_agents_configured_servers, servers.size", source)
         self.assertIn("text = stringResource(R.string.remote_agents_add)", source)
-        self.assertIn("onClick = { TouchHaptics.click(view); openNew() }", source)
+        # 新增/编辑已页面化：FAB 只负责跳编辑器子页（null = 新建）。
+        self.assertIn("onClick = { TouchHaptics.click(view); onOpenEditor(null) }", source)
         # 列表里不再重复放「添加」行：新增只有一个入口。
         self.assertNotIn('item(key = "add")', source)
-        self.assertEqual(1, source.count("TouchHaptics.click(view); openNew()"))
+        self.assertEqual(1, source.count("TouchHaptics.click(view); onOpenEditor(null)"))
 
     def test_page_keeps_its_own_behaviour(self):
         source = read(SCREEN)

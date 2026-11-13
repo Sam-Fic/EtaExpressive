@@ -42,14 +42,20 @@ class ChatImeLifecycleContractTest(unittest.TestCase):
     def test_no_pending_submit_flag_survives_into_stream_updates(self):
         self.assertNotIn("sentFromKeyboard", self.chat)
 
-    def test_keyboard_hide_is_synchronous_and_confined_to_submit(self):
+    def test_keyboard_hide_is_synchronous_and_confined_to_user_actions(self):
         submit = block_after(self.chat, r"onSubmit\s*=\s*\{\s*text\s*->")
         hides = re.findall(r"keyboard\s*\?\.\s*hide\s*\(\s*\)", self.chat)
-        self.assertEqual(len(hides), 1, "No hidden keyboard side effects outside submit")
+        # 收起键盘只允许两处显式用户动作：发送提交、进入语音模式（语音输入法的录音
+        # 会话会与语音对话抢同一支麦克风）。流式/工具等异步事件仍然一律不收起键盘。
+        self.assertEqual(len(hides), 2, "Keyboard hides must stay on explicit user actions only")
         self.assertRegex(submit, r"keyboard\s*\?\.\s*hide\s*\(\s*\)")
         self.assertLess(submit.index("keyboard"), submit.index("onSubmit(text)"))
         self.assertNotIn("LaunchedEffect", submit)
         self.assertNotIn("launch {", submit[:submit.index("onSubmit(text)")])
+        # 语音入口同样同步收起，不借协程延迟。
+        voice = block_after(self.chat, r"onStartVoiceMode\s*=\s*\{")
+        self.assertRegex(voice, r"keyboard\s*\?\.\s*hide\s*\(\s*\)")
+        self.assertNotIn("LaunchedEffect", voice)
 
     def test_drawer_keeps_its_explicit_hide_and_clear_focus_path(self):
         effect = block_after(self.chat, r"LaunchedEffect\s*\(\s*isDrawerOpen\s*\)\s*\{")

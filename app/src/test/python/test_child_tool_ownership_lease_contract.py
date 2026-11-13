@@ -18,8 +18,10 @@ class ChildToolOwnershipLeaseContract(unittest.TestCase):
 
     def test_parent_cancel_and_finally_keep_the_same_parent_release(self):
         executor = (ROOT / 'AgentRuntimeRunExecutor.kt').read_text()
-        self.assertIn('runController.register { ownership.release() }', executor)
-        self.assertIn('toolsOwner?.release()', executor)
+        # 取消回调先关入口/桥接执行器，再释放与 finally 路径同一份 ownership。
+        self.assertIn('toolsBinding = runController.register {', executor)
+        self.assertIn('entryExecutor?.close()\n                xiaomiToolsBridgeExecutor?.close()\n                ownership.release()', executor)
+        self.assertIn('runCatching { toolsOwner?.release() }', executor)
         self.assertIn('registeredChildGenerations.forEach(AgentChildTaskGroups::detach)', executor)
 
     def test_both_configuration_groups_remain_distinct_when_needed(self):

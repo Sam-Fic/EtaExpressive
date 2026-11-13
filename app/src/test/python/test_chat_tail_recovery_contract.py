@@ -35,27 +35,28 @@ class ChatTailRecoveryContractTest(unittest.TestCase):
 
     def test_recovery_keeps_user_and_navigation_interrupt_guards(self):
         code = self.controller
+        # 滚动追平的两处守卫都含同一组中断：用户滚动 / 手指按住（长按选字）/ 消息导航。
         self.assertEqual(2, code.count(
-            'if (!shouldFollowBottom || isUserScrolling || messageNavigationJob != null)'))
+            'if (!shouldFollowBottom || isUserScrolling || pointerDown.value || messageNavigationJob != null)'))
         scroll = code.split('scrollState.scroll {', 1)[1]
         self.assertLess(scroll.index(
             'if (!isUserScrolling && messageNavigationJob == null && shouldFollowBottom)'),
             scroll.index('scrollBy(currentStep)'))
-        # 纯按住手指不再算中断：按住期间补偿停摆会让上提累积到超过尾部留白。
-        self.assertNotIn('pointerDown.value', code)
 
-    def test_touch_hold_no_longer_pauses_strict_bottom_anchor(self):
+    def test_touch_hold_freezes_follow_and_lift_together(self):
         self.assertIn('val pointerDown = remember { mutableStateOf(false) }', self.body)
         self.assertIn('if (!shouldFollowBottom) return@snapshotFlow InactiveBottomFollowLayout', self.body)
         self.assertNotIn('if (!shouldFollowBottom || pointerDown.value) return@snapshotFlow', self.body)
         self.assertIn('pointerDown = pointerDown.value,', self.body)
         self.assertIn('pointerDown -> heldPx.coerceAtLeast(0)', self.body)
         self.assertIn('finally {\n                        pointerDown.value = false', self.body)
-        # 绘制层一次补满，冻结条件换成「真实滚动 / 导航」，不再有缓动预算。
+        # 绘制层一次补满，冻结条件为「真实滚动 / 手指按住 / 导航」，不再有缓动预算；
+        # 按住期间上提停在当前 heldPx（nextHeldTailLift 的 pointerDown 分支不累积），
+        # 溢出由裁剪层兜住，松手后滚动控制器按实测差额一次追平。
         lift = self.body.split('.then(if (shouldLiftTail) {', 1)[1].split('} else {', 1)[0]
         self.assertIn('val overflow = scrollState.followTailOverflow()', lift)
         self.assertIn('nextHeldTailLift(', lift)
-        self.assertIn('pointerDown = isUserScrolling || messageNavigationJob != null', lift)
+        self.assertIn('pointerDown = isUserScrolling || pointerDown.value || messageNavigationJob != null', lift)
         self.assertNotIn('maxRisePx', lift)
         self.assertNotIn('tailLiftMotion', lift)
 

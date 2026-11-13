@@ -10,16 +10,17 @@ class RecoveryDispatchScopeContractTest(unittest.TestCase):
 
     def test_new_user_run_normalizes_only_historical_recovery(self):
         builder = self.read("agent/model/AgentPromptBuilder.kt")
-        self.assertIn("?.let(AgentRecoveryContext::forNewRun)?.let(messages::put)", builder)
-        self.assertLess(builder.index("AgentRecoveryContext::forNewRun"),
+        # 历史恢复归一化收敛进 appendHistoryMessage（逐条 put 前 forNewRun），调用点仍在用户消息之前。
+        self.assertIn("?.let(AgentRecoveryContext::forNewRun)?.let { put(it) }", builder)
+        self.assertLess(builder.index("appendHistoryForModel(history, messages)"),
                         builder.index("messages.put(AgentConversationCodec.userMessage(prompt, images))"))
         for path in ("agent/model/AgentLoop.kt", "agent/model/AgentModelRetry.kt"):
             self.assertNotIn("forNewRun", self.read(path))
 
-    def test_active_run_keeps_transport_restriction_and_replay_guard(self):
+    def test_active_run_keeps_transport_restriction(self):
+        # 回放守卫已删除（dd7d02455）：重复 tool_call 改为普通调用，靠 tool_call/tool_result 配对保护。
         loop = self.read("agent/model/AgentLoop.kt")
         self.assertIn("private var localOnlyRecovery = AgentRecoveryContext.isActive(messages)", loop)
-        self.assertIn("validateResponse = toolReplayGuard::validate", loop)
         self.assertIn("localOnlyRecovery = localOnlyRecovery || completedRound.reconnectLocalToolsOnly", loop)
         self.assertIn("if (localOnlyRecovery) next.copy(hostedWebSearchEnabled = false)", loop)
         payload = self.read("agent/model/AgentProvider.kt")

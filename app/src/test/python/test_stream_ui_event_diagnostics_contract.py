@@ -72,13 +72,15 @@ class StreamUiEventDiagnosticsContractTest(unittest.TestCase):
             'AssistantBlockStart': {'start.text', 'start.thinking', 'start.toolCall'},
             'AssistantBlockDelta': {'delta.text', 'delta.thinking', 'delta.toolCall'},
             'AssistantBlockEnd': {'end.text', 'end.thinking', 'end.toolCall'},
-            'RunStarted': {'runStarted'}, 'RoundStarted': {'roundStarted'},
+            'RunStarted': {'runStarted'}, 'GuiControlChanged': {'guiControl'},
+            'DecisionFallback': {'decisionFallback'}, 'RoundStarted': {'roundStarted'},
             'ModelRetryScheduled': {'modelRetry'}, 'ErrorReconnectChanged': {'reconnect'},
             'ProviderRequestStarted': {'providerRequest'},
             'ProviderResponseStarted': {'providerResponse'},
             'AssistantReceived': {'assistantReceived'}, 'ChildContextUpdated': {'childContext'},
             'UsageReceived': {'usage.projected', 'usage.receipt'},
             'UserSupplementReceived': {'supplement'},
+            'DispatchCreated': {'dispatchCreated'},
             'ToolStarted': {'toolStarted'}, 'ToolFinished': {'toolFinished'},
             'HostedToolStarted': {'hostedToolStarted'}, 'HostedToolFinished': {'hostedToolFinished'},
             'ToolImagesAttached': {'toolImages'}, 'AutoCompactWaiting': {'compactWaiting'},
@@ -98,7 +100,7 @@ class StreamUiEventDiagnosticsContractTest(unittest.TestCase):
         self.assertNotIn('$', mapping)
         self.assertNotRegex(masked(mapping), r'\belse\s*->|javaClass|::class|toLogLine|toString')
 
-    def test_new_stage_family_is_bounded_to_43_and_has_no_mutable_registry(self):
+    def test_new_stage_family_is_bounded_to_46_and_has_no_mutable_registry(self):
         event_labels = set(re.findall(r'"(ui\.event\.[A-Za-z.]+)"', self.helper))
         stages = set(re.findall(r'StreamUiEventDiagnostics\.measure\("([^"]+)"', self.app))
         stages.update(re.findall(r'diagnosticStage = "([^"]+)"', self.app))
@@ -109,8 +111,8 @@ class StreamUiEventDiagnosticsContractTest(unittest.TestCase):
             'ui.conversation.owner', 'ui.conversation.publish', 'ui.summaries.refresh',
         }
         self.assertEqual(stages, expected)
-        self.assertEqual(len(event_labels), 32)
-        self.assertLessEqual(len(event_labels | stages), 43)
+        self.assertEqual(len(event_labels), 35)
+        self.assertLessEqual(len(event_labels | stages), 46)
         self.assertNotRegex(masked(self.helper), r'\bvar\b|mutableMapOf|mutableSetOf|ThreadLocal')
         for api in ('System.nanoTime', 'AndroidAgentLogger', 'Trace.', 'record(', 'note('):
             self.assertNotIn(api, masked(self.helper))

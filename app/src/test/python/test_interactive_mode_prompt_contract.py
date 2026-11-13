@@ -128,7 +128,9 @@ class InteractiveModePromptContractTest(unittest.TestCase):
             for _, arguments in calls:
                 self.assertNotIn('interactiveModeEnabled', arguments)
                 self.assertNotIn('InteractiveModePreference', arguments)
-        client_tools = self.client.split('fun toolsFor(', 1)[1].split('val tools = toolsFor(initialCapabilities', 1)[0]
+        # 首次取目录改为 `var initialTools = toolsFor(initialCapabilities, ...)`（预设退档重建
+        # 后 `val tools = initialTools`），切片仍止于第一次真正调用 toolsFor 之前。
+        client_tools = self.client.split('fun toolsFor(', 1)[1].split('var initialTools = toolsFor(initialCapabilities', 1)[0]
         overhead_tools = self.overhead.split('val tools = AgentToolCatalog.build(', 1)[1].split(
             'AgentPromptBuilder.buildSystemMessages', 1)[0]
         for tool_assembly in (client_tools, overhead_tools):
