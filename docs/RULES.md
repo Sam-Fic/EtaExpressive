@@ -127,6 +127,25 @@ R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改�
 1. 官方 `MaterialTheme.motionScheme`（spatial / effects 弹簧）优先；官方没有的项目自有时间轴只在 `EtaMotion` 登记单一出处（每个值带成文理由），不得在他处写第二份。
 2. 页面级导航转场（含不能路由的页内子页的手补转场）规格见 §3.3；`EtaMotion.NavigationFallbackDurationMillis` 是转场时长单一出处。
 
+### 2.9 顶栏动作
+
+顶栏（大标题栏右上角）动作按钮**一律走 `ui/components/TopBarIconButton.kt`**（唯一实现，内部含 tooltip、触觉、破坏色），禁止手搓 `IconButton` + `Icon`；顶栏动作一律纯图标不用文字按钮，破坏性动作传 `destructive = true`。二级页「保存」放顶栏动作位，返回即取消（不弹确认）。
+
+### 2.10 滚动截断淡出
+
+滚动区边缘淡出统一走 `ui/components/ScrollEdgeFade.kt`，修饰符放在滚动修饰符**之前**。两条硬性实现约束（组件内部已落实，自绘类似效果时必须同样遵守）：
+
+1. **DstIn 蒙版必须落在独立离屏纹理**（`CompositingStrategy.Offscreen`）：共画布会把 DstIn 削到窗底透出纯黑。
+2. 盖板类渐变（浮在内容之上的渐隐层）必须把 DstIn 下沉到内容层，不能只削盖板自身。
+
+### 2.11 UI 文案与产品名
+
+用户可见 UI 文案**禁止写死「Eta」字样**：统一用 `_named` 后缀的文案资源 + `LocalRemoteAgentName`（`ui/remote/`）在组合期解析产品名，保证远端智能体可自定义名称时文案跟随。
+
+### 2.12 宽屏判定
+
+宽屏 / 双栏布局的宽度阈值判定**单一出处 `ui/layout/AdaptivePageLayout.kt` 的 `WideScreenMinWidth`（600dp）**；任何页面不得自设断点或用 `BoxWithConstraints` 自判宽屏。设置页宽屏形态为标准 list-detail（左栏原 `SettingsScreen`、右栏独立 `NavDisplay`，默认栈底 = 模型提供方页），左右栏共用同一套 entry 注册，禁止复制 entry 列表。
+
 ## 3. 行为红线
 
 ### 3.1 内置助手
@@ -157,6 +176,10 @@ R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改�
   5. 被盖页固定 1/4 视差 + alpha 淡到 0.9；所有随进度变化的读取走 `graphicsLayer` 延迟块，逐帧零重组。
   6. 底部 `ModalBottomSheet` 与系统弹窗动画属 Sheet / 弹窗语义，不适用本条。
 - 样板：`BrowserSheet.kt`（AnimatedVisibility 版）、`DoubaoVoiceSettings.kt`（AnimatedContent 版）。
+
+### 3.3.1 边缘横滑返回（miuix）
+
+页面级横滑返回手势用 miuix `NavBackStack` 的 `entry<T>(swipeDismiss = direction)` 能力，**不自研手势层**。方向参数必须在 builder 外读成普通值再传入（builder 内读 State 会破坏快照一致性）。Home 页固定 `swipeDismiss = None`。外观设置里的 `appearance_swipe_back_enabled` 开关走 DataStore，不得被 API 版本门槛包住（低版本也要能关）。
 
 ### 3.4 胶囊动画与窗口
 
