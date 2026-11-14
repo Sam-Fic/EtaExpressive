@@ -19,9 +19,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Save
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
@@ -64,6 +61,7 @@ import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.remote.RemoteCoordinator
 import io.github.mangi.eta.ui.remote.remoteFailureText
@@ -281,16 +279,13 @@ internal fun RemoteAgentEditorScreen(
         onBack = onBack,
         actions = {
             // M3：保存走顶栏图标按钮（KernelSU 模板编辑器同款），页面底部留给表单。
-            IconButton(
-                onClick = { TouchHaptics.click(view); save() },
+            // 顶栏动作统一走 TopBarIconButton（自带 Tooltip + 触觉 + 官方默认 shapes）。
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(R.string.action_save),
                 enabled = !saving && !missing,
-                shapes = IconButtonDefaults.shapes(),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Save,
-                    contentDescription = stringResource(R.string.action_save),
-                )
-            }
+                onClick = ::save,
+            )
         },
     ) { paddingValues, scrollConnection, sidePadding ->
         if (missing) {
