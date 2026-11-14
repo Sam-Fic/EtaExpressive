@@ -48,8 +48,8 @@ android {
         // 停在 36 的下场是系统照样按 app-op 静默丢包、却不给任何开关，用户无从自助。
         targetSdk = 37
         // versionCode 规则：yyyyMMdd + 两位当日序号（01 起），发版时随 versionName 一起手动递增。
-        versionCode = 2026111102
-        versionName = "5.4.1"
+        versionCode = 2026111401
+        versionName = "5.5.0"
         val diagnosticSha = System.getenv("GITHUB_SHA")?.takeIf { it.matches(Regex("[0-9a-fA-F]{40}")) } ?: "unknown"
         buildConfigField("String", "GIT_SHA", "\"$diagnosticSha\"")
 

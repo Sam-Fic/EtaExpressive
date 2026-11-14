@@ -4,6 +4,104 @@ All notable changes to **EtaExpressive** are documented here. Entries are groupe
 
 <!-- Ordered newest-first; generated from git tag history. -->
 
+## [v5.5.0] - 2026-11-14
+
+v5.4.1 之后 70 个提交的功能批：新增米家直连、管理列表批量多选、宽屏设置 list-detail、
+前缀缓存归因落库，工具调用审查收敛为四档；许可证由 PolyForm Noncommercial 1.0.0
+改为 GPL-3.0；三项安全加固。
+
+### Added
+
+- feat(mijia): 米家直连工具与设置页（取自 yooma1/Eta666），顺带修复电源键拦截两处遗留
+
+- feat(ui): 七个管理列表页统一多选批量操作，模型列表多选入口不贴屏幕右缘，媒体搜索
+  多选工具栏补进退场动画
+
+- feat(settings): 宽屏设置页 list-detail——左栏常驻设置主页，右栏独立返回栈承载
+  二级/三级页
+
+- feat(usage): 前缀缓存归因随账单落库并进入会话导出；工具目录缓存优先档（suffix）
+  与「看屏幕」意图、缓存命中率占位
+
+- feat(context): 归档历史支持 query 聚焦检索 + 摘要标注压缩覆盖范围；摘要请求禁调
+  工具保前缀缓存，新增关键实体与线索段
+
+- feat(agent): 工具加载并档——suffix 并入 search/group，转发回执与原生组集合三档底座
+
+- feat(dispatch): 派发 run 盲区收口——ASK 档豁免走副屏，操作权等待与排队单同步调度台；
+  子会话 ask_user 等待同步——调度台等待横幅/角标 + 系统通知提示
+
+- feat(live): 超级岛「补充」键——岛按钮展开胶囊直进补充输入
+
+- feat(tools-ui/mcp-ui/providers-ui): 配方编辑、MCP server 添加、模型编辑三个整屏页
+  路由化，列表页瘦身
+
+- feat(voice): 流光胶囊——流动速度双通道、深色音量增亮与色散仅深色
+
+### Changed
+
+- 许可证由 PolyForm Noncommercial 1.0.0 改为 GPL-3.0（README / README_EN 同步）
+
+- fix(agent): 工具调用审查五档收敛为四档（strict/auto 并入标准，新增完全放行档）；
+  判断提示补执行类意图判据，含糊时偏向需要工具；决策闲聊误判不再锁死工具发现
+  （渐进加载自救通道）；delegate 回答带自决指引——按最合理默认推进
+
+- refactor(compress): 「压缩会话」立即压缩不进设置页——菜单直连压缩，设置页只留配置
+
+- refactor(voice): 语音入口收敛普通助手身份 · 日程快路径 · 删除上拉交接与独立对话页；
+  移除 pickerYield 参数并简化让位逻辑
+
+- refactor(ui): 应用壳/导航/组件批量调整——溢出菜单与路由接线、SubAgent 行共享箭头、
+  状态卡语言上下文防泄漏、终端与虚拟屏细节；远程智能体编辑页保存钮改走
+  TopBarIconButton；ChatIconAction 补官方 shapes 按压 morph
+
+- docs(rules): 增补顶栏动作、滚动截断淡出、UI 文案命名、宽屏判定与边缘横滑返回规则；
+  补 sherpa-onnx/OpenMinis 等致谢与第三方声明；README 结构与文案润色；新增发版流程
+  文档，工程纪律与构建测试入口入 AGENTS/TECHNICAL
+
+### Security
+
+- fix(security): provider 与豆包密钥静态加密，备份链路同步适配；虚拟屏强制重置
+  root kill 前先验 owner 身份并过 root 门禁；运行时服务 start 面加能力令牌门禁，
+  网络与通知杂项收紧
+
+### Fixed
+
+- fix(voice): 切会话误入听写——唤起令牌重放改进程级消费水位播种/上报，聚焦令牌同修；
+  浮窗关闭把在跑的 run 交接给主程序实时续显；归档轨迹先于 outbox 折叠导入，修复
+  语音浮窗关闭后中间过程丢失；浮窗投影缓存补档位 key · 圆角令牌化 · 提交回底共享；
+  系统选择器让位——附件/权限跳板隐身穿透浮窗，主应用前台唤醒在应用内响应；
+  悬浮窗提交回底、「+」菜单地板
+
+- fix(chat): 口述 ✓ 改「停录等尾」收尾；落字同帧交接，尾部槽升级 DICTATION 真 morph
+
+- fix(analysis): 导入保留回合结构——runId 重映射进导出文档并还原
+
+- fix(workspace): 文件写路径加 O_NOFOLLOW symlink 逃逸硬化，桌面端退化兼容
+
+- fix(backup): 备份完整性收口——MCP/网页工具密钥受开关控制，模型选型进包
+
+- fix(live): 岛「补充」键接线三处缺陷
+
+- fix(ui): 配色规范审查修复——预览映射并轨官方工厂、删速度档品牌色死代码、Markdown
+  行内样式强制显式取色；UI/UX 评审落地——硬编码文案外化、远程重命名反馈、触摸目标
+  收敛、加载失败旁路、暂停态提示；相邻工具卡片圆角——接缝投影泛化与断开件补齐；
+  语音设置页默认落「朗读」分节；离线语音包下载进度改用 EtaProgressBar（M3E wavy）；
+  米家设置页对齐兄弟页口径；任务画布选择弹窗确认按钮补 M3E shapes 按压 morph
+
+### Performance
+
+- perf(chat): 流式正文增长不再重算八份全时间线投影
+
+- perf(ui): 消除动画与高频路径上的逐帧重组与重复分配
+
+- perf(providers): provider 列表映射段挂 flowOn 上游——Keystore 解密移出主线程重组
+
+- perf(a11y): 强制无障碍状态读 SP 缓存——Settings.Global 的 binder 往返挪出组合期
+  主线程
+
+- perf(voice): 唤起即听写预热——配置 IO 预载与解密 memo
+
 ## [v5.4.1] - 2026-11-11
 
 首个实际发布的 5.4.x：`v5.4.0` 标签已推送，但那轮发版 CI 被 75 分钟超时取消，
