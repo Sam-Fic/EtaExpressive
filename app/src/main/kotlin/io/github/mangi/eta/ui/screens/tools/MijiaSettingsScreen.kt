@@ -75,7 +75,6 @@ import io.github.mangi.eta.agent.mijia.MijiaHomeInfo
 import io.github.mangi.eta.agent.mijia.MijiaRoomInfo
 import io.github.mangi.eta.agent.mijia.MijiaStore
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
-import androidx.compose.material3.Switch
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
@@ -84,17 +83,23 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
+import io.github.mangi.eta.ui.adaptive.EtaPageSurface
+import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaStatus
+import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.adaptive.EtaText
+import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.foregroundColor
+import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 /**
@@ -324,6 +329,13 @@ internal fun MijiaSettingsScreen(onBack: () -> Unit) {
     )
 }
 
+/** 分段列表分组的统一页边距与组间距（引用项目自适应令牌，不手写数值）。 */
+private fun mijiaGroupModifier(): Modifier = Modifier.padding(
+    start = EtaGroupHorizontalPadding,
+    end = EtaGroupHorizontalPadding,
+    bottom = EtaSegmentedGroupSpacing,
+)
+
 @Composable
 private fun MijiaSettingsScreenContent(
     onBack: () -> Unit,
@@ -378,22 +390,16 @@ private fun MijiaSettingsScreenContent(
         if (!loaded) return@EtaScaffoldPage
 
         item(key = "capability") {
-            Column(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-            ) {
-                EtaNoticeText(
-                    title = "mijia_control 工具",
-                    summary = "启用后 Agent 与子代理可直接查询/控制全屋米家设备；关闭时不向模型下发该工具。",
-                )
-            }
+            // 组说明文案走兄弟页同款 EtaText(Secondary)，不用 NoticeText（那是「异常说明」的口气）。
+            EtaText(
+                text = "启用后 Agent 与子代理可直接查询/控制全屋米家设备；关闭时不向模型下发该工具。",
+                style = EtaTextStyle.Secondary,
+                modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
+            )
         }
 
         item(key = "tool_switch") {
-            EtaSegmentedColumn(modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding)) {
+            EtaSegmentedColumn(modifier = mijiaGroupModifier()) {
                 item {
                     EtaSwitchRow(
                         title = "启用米家直连工具",
@@ -409,44 +415,47 @@ private fun MijiaSettingsScreenContent(
             }
         }
 
-        item(key = "auth_title") {
-            MijiaSectionTitle("小米账号授权")
-        }
         item(key = "auth_card") {
-            Column(
-                modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
-                verticalArrangement = Arrangement.spacedBy(EtaSegmentedGroupSpacing),
+            EtaSegmentedColumn(
+                modifier = mijiaGroupModifier(),
+                title = "小米账号授权",
             ) {
-                EtaSegmentedColumn {
+                item {
+                    EtaClickableRow(
+                        title = if (authState?.isAuthorized == true) {
+                            "已授权：${authState.nickname.ifBlank { "小米账号" }}"
+                        } else {
+                            "登录小米账号"
+                        },
+                        summary = if (authState?.isAuthorized == true) {
+                            "UID ${authState.uid.ifBlank { "-" }} · ${authState.cloudServer}"
+                        } else {
+                            "OAuth2 授权后自动同步家庭与设备"
+                        },
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Login) },
+                        onClick = onLogin,
+                        enabled = !exchangingToken,
+                    )
+                }
+                if (authState?.isAuthorized == true) {
                     item {
                         EtaClickableRow(
-                            title = if (authState?.isAuthorized == true) {
-                                "已授权：${authState.nickname.ifBlank { "小米账号" }}"
-                            } else {
-                                "登录小米账号"
-                            },
-                            summary = if (authState?.isAuthorized == true) {
-                                "UID ${authState.uid.ifBlank { "-" }} · ${authState.cloudServer}"
-                            } else {
-                                "OAuth2 授权后自动同步家庭与设备"
-                            },
-                            leading = { MijiaPrefIcon(Icons.Rounded.Login) },
-                            onClick = onLogin,
-                            enabled = !exchangingToken,
+                            title = "退出授权",
+                            leading = { PreferenceIcon(icon = Icons.Rounded.Logout) },
+                            onClick = onLogout,
+                            enabled = !syncing && !exchangingToken,
+                            destructive = true,
                         )
                     }
-                    if (authState?.isAuthorized == true) {
-                        item {
-                            EtaClickableRow(
-                                title = "退出授权",
-                                leading = { MijiaPrefIcon(Icons.Rounded.Logout) },
-                                onClick = onLogout,
-                                enabled = !syncing && !exchangingToken,
-                                destructive = true,
-                            )
-                        }
-                    }
                 }
+            }
+        }
+
+        item(key = "status_lines") {
+            Column(
+                modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 statusMessage?.let {
                     MijiaStatusLine(it, EtaStatus.Success)
                 }
@@ -457,26 +466,6 @@ private fun MijiaSettingsScreenContent(
         }
 
         if (authState?.isAuthorized == true || allDevices.isNotEmpty()) {
-            if (favoriteDeviceList.isNotEmpty()) {
-                item(key = "fav_title") {
-                    MijiaSectionTitle("常用设备（${favoriteDeviceList.size}/${MijiaStore.MAX_FAVORITES}）")
-                }
-                item(key = "fav_grid") {
-                    MijiaFavoriteRow(
-                        devices = favoriteDeviceList,
-                        powerStates = devicePowerStates,
-                        togglingDids = togglingDids,
-                        favoriteDids = favoriteDids,
-                        onTogglePower = onQuickPowerToggle,
-                        onToggleFavorite = onToggleFavorite,
-                    )
-                }
-            }
-
-            item(key = "filter_title") {
-                val onlineCount = filteredDevices.count { it.online }
-                MijiaSectionTitle("全屋设备（在线 $onlineCount / 共 ${filteredDevices.size} 台）")
-            }
             item(key = "filter_bar") {
                 MijiaFilterBar(
                     homes = homes,
@@ -490,24 +479,60 @@ private fun MijiaSettingsScreenContent(
                 )
             }
 
-            if (syncing && allDevices.isEmpty()) {
-                item(key = "loading_devices") {
-                    MijiaCenteredHint("正在从米家云端同步家庭与设备列表…")
-                }
-            } else if (filteredDevices.isEmpty()) {
-                item(key = "empty_devices") {
-                    MijiaCenteredHint(if (allDevices.isEmpty()) "暂未同步到米家设备" else "没有匹配的设备")
-                }
-            } else {
-                items(filteredDevices, key = { it.did }) { device ->
-                    MijiaDeviceRow(
-                        device = device,
-                        isFavorite = device.did in favoriteDids,
-                        powerState = devicePowerStates[device.did],
-                        toggling = togglingDids[device.did] == true,
-                        onTogglePower = { onQuickPowerToggle(device) },
-                        onToggleFavorite = { onToggleFavorite(device) },
+            if (favoriteDeviceList.isNotEmpty()) {
+                item(key = "fav_grid") {
+                    // LazyRow 自带水平留白：不套 mijiaGroupModifier（会双层 padding）。
+                    MijiaFavoriteRow(
+                        devices = favoriteDeviceList,
+                        powerStates = devicePowerStates,
+                        togglingDids = togglingDids,
+                        favoriteDids = favoriteDids,
+                        onTogglePower = onQuickPowerToggle,
+                        onToggleFavorite = onToggleFavorite,
                     )
+                }
+            }
+
+            item(key = "device_list") {
+                // 设备列表是「一整组分段卡」：标题用 EtaSegmentedColumn 的 title 参数
+                // （兄弟页 McpServers 同款），行们平铺在同一个组内，首末自动接管外圆角。
+                // 不用每行单独包一层 EtaSegmentedColumn——那会变成一行一卡。
+                EtaSegmentedColumn(
+                    modifier = mijiaGroupModifier(),
+                    title = run {
+                        val onlineCount = filteredDevices.count { it.online }
+                        "全屋设备（在线 $onlineCount / 共 ${filteredDevices.size} 台）"
+                    },
+                ) {
+                    if (syncing && allDevices.isEmpty()) {
+                        item {
+                            EtaSegmentedItemContainer {
+                                ListEmptyState(title = "正在从米家云端同步家庭与设备列表…")
+                            }
+                        }
+                    } else if (filteredDevices.isEmpty()) {
+                        item {
+                            EtaSegmentedItemContainer {
+                                ListEmptyState(
+                                    title = if (allDevices.isEmpty()) "暂未同步到米家设备" else "没有匹配的设备",
+                                    summary = "登录授权后点击顶栏同步",
+                                )
+                            }
+                        }
+                    } else {
+                        filteredDevices.forEach { device ->
+                            item(key = device.did) {
+                                MijiaDeviceRow(
+                                    device = device,
+                                    isFavorite = device.did in favoriteDids,
+                                    powerState = devicePowerStates[device.did],
+                                    toggling = togglingDids[device.did] == true,
+                                    onTogglePower = { onQuickPowerToggle(device) },
+                                    onToggleFavorite = { onToggleFavorite(device) },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -544,31 +569,6 @@ private fun MijiaDevicePowerFetcher(
             }
         }
     }
-}
-
-@Composable
-private fun MijiaSectionTitle(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(
-            start = EtaGroupHorizontalPadding,
-            end = EtaGroupHorizontalPadding,
-            top = EtaSegmentedGroupSpacing,
-            bottom = EtaSegmentedGroupSpacing / 2,
-        ),
-    )
-}
-
-@Composable
-private fun MijiaPrefIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Icon(
-        imageVector = icon,
-        contentDescription = null,
-        modifier = Modifier.size(24.dp),
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable
@@ -754,7 +754,7 @@ private fun MijiaDeviceRow(
                     device.model.ifBlank { null },
                     if (device.online) null else "离线",
                 ).joinToString(" · ").ifBlank { null }?.let { { Text(text = it) } },
-                leadingContent = { MijiaPrefIcon(Icons.Rounded.Hub) },
+                leadingContent = { PreferenceIcon(icon = Icons.Rounded.Hub) },
                 trailingContent = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -769,7 +769,7 @@ private fun MijiaDeviceRow(
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
                         )
-                        Switch(
+                        EtaSwitch(
                             checked = powerState == true,
                             onCheckedChange = { onTogglePower() },
                             enabled = device.online && !toggling && powerState != null,
@@ -781,22 +781,6 @@ private fun MijiaDeviceRow(
                 Text(text = device.name)
             }
         }
-    }
-}
-
-@Composable
-private fun MijiaCenteredHint(text: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 28.dp, horizontal = EtaGroupHorizontalPadding),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -842,131 +826,93 @@ private fun MijiaOAuthWebViewOverlay(
         return false
     }
 
-    // 全屏 Dialog 承载：独立窗口，返回键先回退网页历史。
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-                .windowInsetsPadding(
-                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-                )
-                .navigationBarsPadding(),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TopBarIconButton(
-                    icon = Icons.Rounded.Close,
-                    contentDescription = "关闭授权页",
-                    onClick = onDismiss,
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "小米账号 OAuth2 授权",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = if (loadProgress in 1..99) "加载中 $loadProgress%" else currentUrl,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+    // 全屏页面式表面（EtaPageSurface，兄弟 SubAgentProfileConfigDialog 同款）：
+    // 独立窗口 + 0.94 缩放入场，返回键先回退网页历史。不用手接 Dialog + 手写顶栏。
+    EtaPageSurface(onDismissRequest = onDismiss) {
+        EtaScaffold(
+            title = "小米账号 OAuth2 授权",
+            onBack = onDismiss,
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                pageError?.let { err ->
+                    MijiaStatusLine(err, EtaStatus.Warning)
                 }
-                TopBarIconButton(
-                    icon = Icons.Rounded.Refresh,
-                    contentDescription = "重新加载",
-                    onClick = {
-                        pageError = null
-                        webViewRef?.reload()
-                    },
-                )
-            }
-
-            pageError?.let { err ->
-                MijiaStatusLine(err, EtaStatus.Warning)
-            }
-
-            Row(
+            },
+        ) { paddingValues, _, sidePadding ->
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = EtaGroupHorizontalPadding),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .fillMaxSize()
+                    .padding(top = paddingValues.calculateTopPadding()),
             ) {
-                EtaSegmentedRow(
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        pageError = null
-                        clearWebViewCookies()
-                        webViewRef?.apply {
-                            clearCache(true)
-                            clearHistory()
-                            loadUrl(MijiaCloudClient.buildAuthorizeUrl(context, skipConfirm = false))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = sidePadding),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    EtaSegmentedRow(
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            pageError = null
+                            clearWebViewCookies()
+                            webViewRef?.apply {
+                                clearCache(true)
+                                clearHistory()
+                                loadUrl(MijiaCloudClient.buildAuthorizeUrl(context, skipConfirm = false))
+                            }
+                        },
+                    ) {
+                        Text(
+                            text = "清 Cookie 重载",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(vertical = 10.dp),
+                        )
+                    }
+                    EtaSegmentedRow(
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenManualPaste,
+                    ) {
+                        Text(
+                            text = "外部浏览器 / 粘贴回调",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(vertical = 10.dp),
+                        )
+                    }
+                }
+
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    factory = { viewContext ->
+                        FrameLayout(viewContext).apply {
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                            setBackgroundColor(android.graphics.Color.WHITE)
+                            val webView = createOAuthWebView(
+                                viewContext,
+                                authorizeUrl,
+                                onProgress = { loadProgress = it },
+                                onUrlChanged = { currentUrl = it },
+                                onError = { pageError = it },
+                                consumeRedirect = ::tryConsumeRedirectUrl,
+                                onCreated = { webViewRef = it },
+                            )
+                            addView(webView)
                         }
                     },
-                ) {
-                    Text(
-                        text = "清 Cookie 重载",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(vertical = 10.dp),
-                    )
-                }
-                EtaSegmentedRow(
-                    modifier = Modifier.weight(1f),
-                    onClick = onOpenManualPaste,
-                ) {
-                    Text(
-                        text = "外部浏览器 / 粘贴回调",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(vertical = 10.dp),
-                    )
-                }
+                    onRelease = { container ->
+                        runCatching {
+                            container.removeAllViews()
+                            webViewRef?.stopLoading()
+                            webViewRef?.destroy()
+                            webViewRef = null
+                        }
+                    },
+                )
             }
-
-            AndroidView(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                factory = { viewContext ->
-                    FrameLayout(viewContext).apply {
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                        setBackgroundColor(android.graphics.Color.WHITE)
-                        val webView = createOAuthWebView(
-                            viewContext,
-                            authorizeUrl,
-                            onProgress = { loadProgress = it },
-                            onUrlChanged = { currentUrl = it },
-                            onError = { pageError = it },
-                            consumeRedirect = ::tryConsumeRedirectUrl,
-                            onCreated = { webViewRef = it },
-                        )
-                        addView(webView)
-                    }
-                },
-                onRelease = { container ->
-                    runCatching {
-                        container.removeAllViews()
-                        webViewRef?.stopLoading()
-                        webViewRef?.destroy()
-                        webViewRef = null
-                    }
-                },
-            )
         }
     }
 
