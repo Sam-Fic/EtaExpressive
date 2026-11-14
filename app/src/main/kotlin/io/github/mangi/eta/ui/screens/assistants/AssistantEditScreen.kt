@@ -152,19 +152,35 @@ internal fun AssistantEditScreen(
     }
 
     fun save() {
-        if (!dirty || saving || memoryOverLimit || memoryRevision.isBlank()) return
+        // 人格提示词存在 index.json，记忆存在 MEMORY.md，两者互不相干。
+        // 原先这里用 memoryRevision.isBlank() 把整条保存链锁死：没有 MEMORY.md 时
+        // snapshot() 返回 null、revision 恒为空串，连取锁都走不到，于是「点保存毫无反应」
+        // 且没有任何日志。这里只保留真正该拦的条件。
+        if (!dirty || saving || memoryOverLimit) return
         val targetMemory = memoryDraft
         val baseRevision = memoryRevision
         val targetProfile = original.copy(name = name, prompt = prompt, avatarFileName = avatarFileName,
             memoryEnabled = memoryEnabled, enabledSkillIds = enabledSkillIds.toList(),
             toolGroupSwitches = toolSwitches)
         val memoryChanged = targetMemory != memorySaved
+        io.github.mangi.eta.core.AndroidAgentLogger.info(
+            "assistant-save start id=$assistantId memoryChanged=$memoryChanged " +
+                "revisionBlank=${baseRevision.isBlank()} promptChars=${targetProfile.prompt.length}"
+        )
         saving = true
         scope.launch {
             var savedSnapshot: io.github.mangi.eta.data.repository.AgentMemorySnapshot? = null
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    if (memoryChanged) savedSnapshot = AgentMemoryRepository.replaceAll(targetMemory, assistantId, baseRevision)
+                    // 记忆没改动就不碰记忆存储；改动但 revision 为空（还没有 MEMORY.md）
+                    // 走无并发校验的写入，而不是直接拒绝保存。
+                    if (memoryChanged) {
+                        savedSnapshot = if (baseRevision.isBlank()) {
+                            AgentMemoryRepository.replaceAll(targetMemory)
+                        } else {
+                            AgentMemoryRepository.replaceAll(targetMemory, baseRevision)
+                        }
+                    }
                     AssistantRepository.update(targetProfile)
                     RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
                 }
@@ -174,8 +190,24 @@ internal fun AssistantEditScreen(
                 memorySaved = snapshot.content
             }
             saving = false
-            if (result.isSuccess) onBack()
-            else android.widget.Toast.makeText(context, result.exceptionOrNull()?.message ?: context.getString(R.string.aes_save_failed_draft_kept), android.widget.Toast.LENGTH_LONG).show()
+            result.fold(
+                onSuccess = {
+                    io.github.mangi.eta.core.AndroidAgentLogger.info(
+                        "assistant-save ok id=$assistantId promptChars=${targetProfile.prompt.length}"
+                    )
+                    onBack()
+                },
+                onFailure = { error ->
+                    io.github.mangi.eta.core.AndroidAgentLogger.warn(
+                        "assistant-save failed id=$assistantId: ${error::class.java.simpleName}: ${error.message}"
+                    )
+                    android.widget.Toast.makeText(
+                        context,
+                        error.message ?: context.getString(R.string.aes_save_failed_draft_kept),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                },
+            )
         }
     }
 
