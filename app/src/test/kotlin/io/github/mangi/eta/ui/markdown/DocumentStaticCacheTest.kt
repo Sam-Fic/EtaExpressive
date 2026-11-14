@@ -15,8 +15,13 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36])
 class DocumentStaticCacheTest {
-    /** 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致走显式传参）。 */
-    private val testStyle = MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)
+    /**
+     * 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致走显式传参）。
+     * linkColor 用黑，让用例里 `copy(linkColor = Color.Red)` 是一次真实变更——
+     * DocumentCache 的 key 按 MarkdownInlineStyle 等值组成，基准与变更色相同会把
+     * 两个 key 塌成一个，缓存互相覆盖。
+     */
+    private val testStyle = MarkdownInlineStyle(linkColor = Color.Black, codeBackground = Color.Gray)
 
     @get:Rule val compose = createComposeRule()
 

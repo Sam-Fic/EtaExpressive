@@ -112,15 +112,15 @@ class ContextOverheadBudgetTest {
     fun enabledCapabilitiesCostNothingUntilTheirGroupIsOpened() {
         // 开关全开但一个组都没打开：第一轮只付基础交互 + 一行索引。
         // 这正是「除基础交互外全延迟」要买到的东西——成本跟着需要走，不跟着开关走。
-        // 当前实测 5506（system 3022 + tools 2484 / 13 个工具）：tools_search（按工具渐进
-        // 加载档）常驻下发贡献 +217；同一份配置全部打开是 40905 上下。
+        // 当前实测 system 3111（2026-11-14 CI）：相比 3022 的增量来自归档历史的 query
+        // 聚焦检索指引（9d7ebc449 扩写定向回读段）；同一份配置全部打开是 40905 上下。
         val resident = measure(allOn, extensionsTools = true, personalTools = true)
         assertTrue(
             "resident prefix grew to ${resident}",
             resident.total <= 5_700,
         )
         // 常驻开销里系统提示占大头，单独钉一条上界：它是唯一每轮必付、且与任务无关的部分。
-        assertTrue("resident system prompt grew to ${resident.system}", resident.system <= 3_100)
+        assertTrue("resident system prompt grew to ${resident.system}", resident.system <= 3_200)
         val screenOpened = measure(
             allOn,
             extensionsTools = true,

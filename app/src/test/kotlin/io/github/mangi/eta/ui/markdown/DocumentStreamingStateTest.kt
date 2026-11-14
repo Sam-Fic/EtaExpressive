@@ -6,9 +6,14 @@ import org.junit.Test
 
 /** Publication/target latch tests; real reveal/layout coverage lives in StreamingRowPinningTest. */
 class DocumentStreamingStateTest {
-    /** 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致走显式传参）。 */
+    /**
+     * 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致走显式传参）。
+     * linkColor 用黑，让用例里 `copy(linkColor = Color.Red)` 是一次真实变更——
+     * DocumentCache 的 key 与完成发布登记都按 MarkdownInlineStyle 等值组成，
+     * 基准与变更色相同会把「换主题」塌成重复提交。
+     */
     private val testStyle = MarkdownInlineStyle(
-        linkColor = androidx.compose.ui.graphics.Color.Red,
+        linkColor = androidx.compose.ui.graphics.Color.Black,
         codeBackground = androidx.compose.ui.graphics.Color.Gray,
     )
 

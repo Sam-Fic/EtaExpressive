@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.voice.VoiceModeState
@@ -27,7 +28,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
-import org.robolectric.annotation.GraphicsMode
 
 /**
  * 「+」菜单改用 Material 3 Expressive 官方写法（`DropdownMenuPopup` + `DropdownMenuGroup`）后的运行时行为。
@@ -39,11 +39,14 @@ import org.robolectric.annotation.GraphicsMode
  *  3. 点条目会派发动作并收起菜单。
  *
  * 断言文案全部取自字符串资源（而不是写死英文），这样在中文 / 英文两种语言环境下都成立。
+ *
+ * 不用 NATIVE 图形模式：本测试只断言语义节点（不采样像素），NATIVE 的 nativeruntime
+ * 在 Windows 本地（中文用户名 temp 路径 GBK 乱码）加载失败，shadow 模式断言等价，
+ * 与 Material3ComposerBodyTokenGateTest 同一处理。
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [34], qualifiers = "w480dp-h900dp-mdpi")
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AgentChatComposerAttachMenuTest {
     @get:Rule val compose = createComposeRule()
 
@@ -73,7 +76,11 @@ class AgentChatComposerAttachMenuTest {
         ).forEach { compose.onNodeWithText(string(it)).assertExists() }
 
         // 点一项：动作派发、菜单收起（分享在空草稿下没有副作用，正好用来验证菜单收起）。
-        compose.onNodeWithText(string(R.string.composer_share)).performClick()
+        // 触摸注入改语义层 OnClick：菜单自 v5.5.0 起 Above 锚定（独立弹层窗口），Robolectric
+        // 的触摸注入落点全部脱靶（shadow / NATIVE 一致，2026-11-14 发版 verify 取证），
+        // 语义 OnClick 与条目 onClick 是同一个动作，断言等价。
+        compose.onNodeWithText(string(R.string.composer_share))
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         repeat(20) { advanceFrames() }
         compose.onNodeWithText(string(R.string.composer_share)).assertDoesNotExist()
         compose.onNodeWithText(string(R.string.attachment_enter_path)).assertDoesNotExist()
