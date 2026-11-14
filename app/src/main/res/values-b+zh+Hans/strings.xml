@@ -3365,4 +3365,5 @@
   <string name="remote_probe_conclusion_host_missing">ARP 完全解析不到 %1$s：当前局域网里没有任何设备认领这个地址。请确认电脑接的是同一个网络、地址没有被改动，以及路由器没有开启访客网络或 AP 隔离。</string>
     <string name="remote_probe_conclusion_host_silent">网关有应答，局域网这条路是通的，但 %1$s:%2$d 对来自本应用的连接没有任何回应。包到底有没有到达那台机器，在手机这一侧分不出来——请在那台机器上抓包（Linux：sudo tcpdump -ni any port %2$d）后再点一次「测试连接」。</string>
   <string name="remote_probe_checklist">如果同一台手机的浏览器能打开该地址、只有本应用连不上，那网络和服务器都没问题，是本应用被单独拦了：检查系统的「联网控制 / 流量管理」里是否给 Eta 放行了 Wi-Fi、有没有按应用拦截的防火墙或广告拦截类 App、有没有分应用代理或分流规则。如果浏览器也打不开，再查电脑那一侧（防火墙入站规则、监听地址、端口）。</string>
+  <string name="memory_view_mode_preview">预览</string>
 </resources>

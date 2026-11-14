@@ -3365,4 +3365,5 @@
   <string name="remote_probe_conclusion_host_missing">ARP 完全解析不到 %1$s：目前區域網路裡沒有任何裝置認領這個位址。請確認電腦接的是同一個網路、位址沒有被改動，以及路由器沒有開啟訪客網路或 AP 隔離。</string>
     <string name="remote_probe_conclusion_host_silent">閘道有回應，區域網路這條路是通的，但 %1$s:%2$d 對來自本應用程式的連線沒有任何回應。封包到底有沒有到達那台機器，在手機這一側分不出來——請在那台機器上抓包（Linux：sudo tcpdump -ni any port %2$d）後再點一次「測試連線」。</string>
   <string name="remote_probe_checklist">如果同一台手機的瀏覽器能開啟該位址、只有本應用連不上，那網路和伺服器都沒問題，是本應用被單獨攔了：檢查系統的「連網控制 / 流量管理」裡是否給 Eta 放行了 Wi-Fi、有沒有依應用攔截的防火牆或廣告阻擋類 App、有沒有分應用代理或分流規則。如果瀏覽器也打不開，再查電腦那一側（防火牆入站規則、監聽位址、連接埠）。</string>
+  <string name="memory_view_mode_preview">預覽</string>
 </resources>
