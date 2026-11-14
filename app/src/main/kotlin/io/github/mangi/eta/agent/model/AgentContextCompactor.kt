@@ -582,28 +582,55 @@ internal object AgentContextCompactor {
         val prepared = summaryInput(messages, model, replay, context)
         val outbound = prepared.messages
         val requestTools = prepared.tools
+        val sessionId = replay?.sessionId ?: java.util.UUID.randomUUID().toString()
+        val usageId = config.usageConversationId ?: replay?.sessionId
         require(prepared.tokens <= summaryInputLimit(requireNotNull(model.contextWindow), requireNotNull(model.summaryOutputLimit))) {
             "摘要请求超过输入预算，未修改历史"
         }
-        val (resolved, response) = completeCompression(
-            base = model,
-            outbound = outbound,
-            tools = requestTools,
-            sessionId = replay?.sessionId ?: java.util.UUID.randomUUID().toString(),
-            controller = controller,
-            summaryProvider = config.summaryProvider,
-            diagnosticGroup = diagnosticGroup,
-            diagnosticPhase = diagnosticPhase,
-            usageConversationId = config.usageConversationId ?: replay?.sessionId,
-            onErrorReconnect = config.onErrorReconnect,
-        )
+        fun runSummary(messagesOutbound: org.json.JSONArray, tools: org.json.JSONArray, phase: String, noTools: Boolean) =
+            completeCompression(
+                base = model,
+                outbound = messagesOutbound,
+                tools = tools,
+                sessionId = sessionId,
+                controller = controller,
+                summaryProvider = config.summaryProvider,
+                diagnosticGroup = diagnosticGroup,
+                diagnosticPhase = phase,
+                usageConversationId = usageId,
+                onErrorReconnect = config.onErrorReconnect,
+                toolChoiceNone = noTools,
+            )
+        // 摘要请求沿用主会话前缀与工具目录以命中服务商前缀缓存，并显式禁调工具。
+        // 个别端点不接受 tool_choice=none，或模型仍尝试调用工具：单次退回无工具隔离摘要。
+        // 取证：上游 Mangi-11/Eta 01d2148（Chat Completions/Responses/Gemini 下发 none，
+        // Anthropic 保留原 tool_choice；异常时单次退回无工具隔离摘要）。
+        val (resolved, response) = try {
+            runSummary(outbound, requestTools, diagnosticPhase, noTools = true)
+        } catch (failure: Exception) {
+            if (replay == null || requestTools.length() == 0 || !shouldFallbackToIsolatedSummary(failure)) throw failure
+            val isolated = summaryInput(messages, model, null, context)
+            require(isolated.tokens <= summaryInputLimit(requireNotNull(model.contextWindow), requireNotNull(model.summaryOutputLimit))) {
+                "隔离摘要请求超过输入预算，未修改历史"
+            }
+            runSummary(isolated.messages, isolated.tools, "$diagnosticPhase/isolated", noTools = false)
+        }
         val text = response.assistantMessage.optString("content").trim().takeIf { it.isNotBlank() }
             ?: error("摘要模型返回为空")
         coerceSummary(text)?.let { return it }
-        val repaired = repairSummaryWithModel(text, resolved, controller, config.summaryProvider, diagnosticGroup, "$diagnosticPhase/repair", config.usageConversationId ?: replay?.sessionId, config.onErrorReconnect)
+        val repaired = repairSummaryWithModel(text, resolved, controller, config.summaryProvider, diagnosticGroup, "$diagnosticPhase/repair", usageId, config.onErrorReconnect)
         return coerceSummary(repaired)
             ?: error("摘要结构不完整或顺序无效，原历史保持不变")
     }
+
+    /** 只对「端点拒绝禁调工具」与「模型仍尝试调用工具」两类可归因失败退回；其余失败保持 fail-close。 */
+    private fun shouldFallbackToIsolatedSummary(failure: Throwable): Boolean =
+        generateSequence(failure) { it.cause?.takeIf { cause -> cause !== it } }
+            .take(4)
+            .any { item ->
+                (item is AgentModelFailure && item.code == "HTTP_400" && !item.retryable) ||
+                    item.message.orEmpty().contains("摘要模型返回了工具调用")
+            }
 
     private fun completeCompression(
         base: AgentModelClient.ModelConfig,
@@ -616,6 +643,8 @@ internal object AgentContextCompactor {
         diagnosticPhase: String,
         usageConversationId: String? = null,
         onErrorReconnect: (io.github.mangi.eta.agent.runtime.AgentEvent.ErrorReconnectChanged) -> Unit = {},
+        /** 摘要请求禁调工具：见 [ProviderRequest.toolChoiceNone] 的取证说明。 */
+        toolChoiceNone: Boolean = false,
     ): Pair<AgentModelClient.ModelConfig, ProviderResponse> {
         val ladder = io.github.mangi.eta.agent.runtime.AgentRuntimePolicy.compressionEffortLadder(base)
         val remembered = CompressionReasoningStore.effortFor(base)
@@ -703,7 +732,8 @@ internal object AgentContextCompactor {
                             "摘要接口：$diagnosticKey, attempt=$attemptNumber, endpoint=${provider.capabilities.endpoint}, streaming_text=${provider.capabilities.streamingText}") }
                         val response = AgentModelRetry().complete(
                             initialRound = attemptNumber,
-                            request = ProviderRequest(model, outbound, tools, sessionId, usageConversationId ?: sessionId),
+                            request = ProviderRequest(model, outbound, tools, sessionId, usageConversationId ?: sessionId,
+                                toolChoiceNone = toolChoiceNone),
                             provider = provider,
                             controller = timed,
                             onEvent = { event ->
@@ -882,8 +912,10 @@ internal object AgentContextCompactor {
             appendLine("- [Current Work: precisely what was in progress at this checkpoint]")
             appendLine("- [Next Step: the single next action, or (none)]")
             appendLine("- [Critical Context: decisions and rationale, constraints, user preferences, open questions]")
+            appendLine("- [Key Entities and Clues: key paths, package/control/IDs, concrete values, error codes, user constraints — a compact retrieval index for reopening the archived original. Write (none) when empty]")
             appendLine("Write in the conversation's language. Preserve exact file paths, commands, error strings, identifiers,")
             appendLine("numeric values, function signatures, and syntax fragments.")
+            appendLine("End the checkpoint with the Key Entities and Clues list: concrete identifiers the next model can pass to a keyword search over the archived originals. Never invent identifiers.")
             appendLine("Capture user feedback and explicit instructions faithfully, especially corrections.")
             appendLine("Do not mention this summarization request or that the context was compacted.")
             appendLine("Do not copy archive pointers, context-checkpoint IDs, or tool-output prune markers into the checkpoint.")
@@ -905,7 +937,7 @@ internal object AgentContextCompactor {
             appendLine(content)
             appendLine("</conversation>")
             appendLine("Output contract for this request (not historical data):")
-            append("Use all eight required headings in order. Keep fact density: paths, commands, errors, and corrections. Return only the checkpoint.")
+            append("Use all ${SUMMARY_SECTIONS.size} required headings in order. Keep fact density: paths, commands, errors, and corrections. Return only the checkpoint.")
         }
     }
 

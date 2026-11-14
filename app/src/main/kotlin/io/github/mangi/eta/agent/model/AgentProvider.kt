@@ -48,6 +48,16 @@ internal data class ProviderRequest(
     val reconnectTextOnly: Boolean = false,
     // Keep local function calls usable without reissuing unknown hosted operations.
     val reconnectLocalToolsOnly: Boolean = false,
+    /**
+     * 摘要请求：沿用主会话前缀与工具目录以命中服务商前缀缓存，但显式禁止模型发起工具调用。
+     *
+     * 取证：上游 Mangi-11/Eta 提交 01d2148 —— Chat Completions / Responses / Gemini
+     * 显式下发 `tool_choice=none`；Anthropic 保留原 tool_choice（即不下发该字段），
+     * 因为改动它会让 messages 前缀缓存失效，改由提示词与 fail-close 兜底。
+     * 本仓 ProviderRequest 无 purpose 字段，故用此标志表达；只在摘要请求且 tools 非空时为 true。
+     * 非摘要请求一律 false，不改变既有协议行为。
+     */
+    val toolChoiceNone: Boolean = false,
 )
 
 internal val ProviderRequest.requiresCompleteStream: Boolean

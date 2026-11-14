@@ -14,6 +14,8 @@ internal object ResponsesRequestBuilder {
         sessionId: String = "",
         singleToolCall: Boolean = false,
         localOnlyRecovery: Boolean = false,
+        /** 摘要请求禁调工具：见 [ProviderRequest.toolChoiceNone] 的取证说明。 */
+        toolChoiceNone: Boolean = false,
     ): JSONObject {
         val input = buildInput(messages, config, localOnlyRecovery)
         val responseTools = buildTools(tools, config.usesHostedWebSearch)
@@ -33,7 +35,8 @@ internal object ResponsesRequestBuilder {
         request.put("store", false)
         if (responseTools.length() > 0) {
             request.put("tools", responseTools)
-            request.put("tool_choice", "auto")
+            // 摘要请求沿用工具目录以命中前缀缓存，但显式禁调工具；放在自定义请求体合并之后保证权威。
+            request.put("tool_choice", if (toolChoiceNone) "none" else "auto")
         } else {
             request.remove("tools")
             request.remove("tool_choice")

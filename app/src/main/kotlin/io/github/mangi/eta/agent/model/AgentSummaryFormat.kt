@@ -4,6 +4,11 @@ package io.github.mangi.eta.agent.model
 internal object AgentSummaryFormat {
     private const val SUMMARY_PREFIX = "[Conversation summary]"
     private const val SUMMARY_PREFIX_ZH = "[对话摘要]"
+    /**
+     * 第 9 段「关键实体与线索」用于后续按关键词检索归档原文：路径、包名/控件/ID、
+     * 具体数值、错误码、用户约束集中列出，模型不必靠重读整段前缀找回标识。
+     * 取证：上游 Mangi-11/Eta 提交 01d2148 要求摘要末尾保留关键实体清单。
+     */
     val SUMMARY_SECTIONS = listOf(
         "Primary Request and Intent",
         "Key Technical Concepts",
@@ -13,6 +18,7 @@ internal object AgentSummaryFormat {
         "Current Work",
         "Next Step",
         "Critical Context",
+        "Key Entities and Clues",
     )
 
     fun validateSummary(text: String) {
@@ -61,6 +67,7 @@ internal object AgentSummaryFormat {
             "verified evidence" to 5, "已验证证据" to 5, "已核实证据" to 5,
             "next step" to 6, "下一步" to 6, "下一步行动" to 6,
             "critical context" to 7, "关键上下文" to 7, "constraints" to 7, "约束" to 7, "限制" to 7,
+            "key entities and clues" to 8, "关键实体与线索" to 8, "关键实体" to 8,
         )
         val heading = Regex("""^#{1,3}\s+(.+)$""")
         val buckets = MutableList(SUMMARY_SECTIONS.size) { StringBuilder() }

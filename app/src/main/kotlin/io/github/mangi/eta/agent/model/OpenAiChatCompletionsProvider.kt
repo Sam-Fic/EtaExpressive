@@ -57,7 +57,7 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
             .build()
 
         val requestJson = request.restrictReconnectPayload(
-            buildRequestJson(config, request.messages, request.tools, request.sessionId),
+            buildRequestJson(config, request.messages, request.tools, request.sessionId, request.toolChoiceNone),
             capabilities.endpoint,
         )
         val existingToolCallIds = ChatToolCallHistory.referencedIds(request.messages) +
@@ -95,6 +95,8 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
         tools: JSONArray,
         /** 会话级 id：官方 OpenAI 用它做 prompt_cache_key，让同一会话落回同一个缓存分片。 */
         sessionId: String = "",
+        /** 摘要请求禁调工具：见 [ProviderRequest.toolChoiceNone] 的取证说明。 */
+        toolChoiceNone: Boolean = false,
     ): JSONObject {
         val sourceType = ProviderSourceRegistry.resolve(
             providerId = config.providerId,
@@ -141,6 +143,9 @@ internal object OpenAiChatCompletionsProvider : AgentProviderClient {
                     request.remove("max_completion_tokens")
                     if (tools.length() == 0) { request.remove("tools"); request.remove("tool_choice") }
                 }
+                // 摘要请求沿用主会话工具目录以复用前缀缓存，但显式禁调工具。
+                // 放在所有分支之后：GROK 分支会重设 auto，自定义请求体也可能覆盖，此处保证权威。
+                if (toolChoiceNone && tools.length() > 0) request.put("tool_choice", "none")
             }
     }
 

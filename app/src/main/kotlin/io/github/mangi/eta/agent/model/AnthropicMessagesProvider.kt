@@ -43,6 +43,8 @@ internal object AnthropicMessagesProvider : AgentProviderClient {
                 ProviderRequestHeaders.mergeInto(this, config.baseUrl, config.customHeaders, request.sessionId)
             }
             .build()
+        // 摘要请求也保留原 tool_choice：本端点不下发 tool_choice 字段，改动它会让 messages
+        // 前缀缓存失效。取证见上游 Mangi-11/Eta 01d2148 与 [ProviderRequest.toolChoiceNone]。
         val requestJson = request.restrictReconnectPayload(buildRequestJson(config, request.messages, request.tools, request.sessionId), capabilities.endpoint)
         val serializedBody = requestJson.toString()
         val requestBody = serializedBody.toRequestBody(JSON_MEDIA_TYPE)

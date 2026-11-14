@@ -394,12 +394,15 @@ class AgentSummaryPipelineTest {
 - 修校验
 ## 关键上下文
 - 不要丢原文
+## 关键实体与线索
+- /workspace/Eta、failed、存档
 ```""".trimIndent()
         val coerced = AgentContextCompactor.coerceSummary(raw)
         assertNotNull(coerced)
         AgentContextCompactor.validateSummary(coerced!!)
         assertTrue(coerced.startsWith(AgentContextCompactor.SUMMARY_PREFIX_ZH))
         assertTrue(coerced.contains("## Critical Context"))
+        assertTrue(coerced.contains("## Key Entities and Clues"))
         assertTrue(coerced.contains("存档 failed"))
         assertFalse(coerced.contains("```"))
     }

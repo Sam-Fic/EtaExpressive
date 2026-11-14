@@ -37,7 +37,7 @@ internal object OpenAiResponsesProvider : AgentProviderClient {
         }
         val prepared = ResponsesToolEnvelopeRecovery.prepare(request)
         val requestJson = prepared.restrictReconnectPayload(buildRequestJson(config, prepared.messages, prepared.tools, prepared.sessionId, prepared.singleToolCall,
-            request.reconnectLocalToolsOnly || request.reconnectTextOnly), capabilities.endpoint)
+            request.reconnectLocalToolsOnly || request.reconnectTextOnly, prepared.toolChoiceNone), capabilities.endpoint)
         val serializedBody = requestJson.toString()
         val body = serializedBody
             .toRequestBody(JSON_MEDIA_TYPE)
@@ -104,7 +104,8 @@ internal object OpenAiResponsesProvider : AgentProviderClient {
         sessionId: String = "",
         singleToolCall: Boolean = false,
         localOnlyRecovery: Boolean = false,
-    ): JSONObject = ResponsesRequestBuilder.build(config, messages, tools, sessionId, singleToolCall, localOnlyRecovery)
+        toolChoiceNone: Boolean = false,
+    ): JSONObject = ResponsesRequestBuilder.build(config, messages, tools, sessionId, singleToolCall, localOnlyRecovery, toolChoiceNone)
 
     private fun readStreamingResponse(
         request: Request,
