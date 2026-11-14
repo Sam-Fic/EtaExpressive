@@ -18,19 +18,26 @@ internal interface AgentLogger {
 internal object AndroidAgentLogger : AgentLogger {
     private val logThrottle = LogThrottle()
 
+    // 诊断日志不允许把异常抛给调用方：无 mock 的 JUnit 环境里 android.util.Log 会直接抛
+    // RuntimeException（ProviderSecretCipher 的 Keystore 降级 warn 即因此炸穿测试），
+    // 写 logcat 失败只吞掉，AppFileLogger 侧由自身 enabled 门禁兜底。
+    private fun logcat(write: () -> Unit) {
+        runCatching(write)
+    }
+
     override fun debug(message: () -> String) {
         val text = message()
-        Log.d(ModuleConfig.TAG, text)
+        logcat { Log.d(ModuleConfig.TAG, text) }
         AppFileLogger.debug(text)
     }
 
     override fun info(message: String) {
-        Log.i(ModuleConfig.TAG, message)
+        logcat { Log.i(ModuleConfig.TAG, message) }
         AppFileLogger.info(message)
     }
 
     override fun warn(message: String) {
-        Log.w(ModuleConfig.TAG, message)
+        logcat { Log.w(ModuleConfig.TAG, message) }
         AppFileLogger.warn(message)
     }
 
@@ -45,10 +52,12 @@ internal object AndroidAgentLogger : AgentLogger {
     }
 
     override fun error(message: String, throwable: Throwable?) {
-        if (throwable == null) {
-            Log.e(ModuleConfig.TAG, message)
-        } else {
-            Log.e(ModuleConfig.TAG, message, throwable)
+        logcat {
+            if (throwable == null) {
+                Log.e(ModuleConfig.TAG, message)
+            } else {
+                Log.e(ModuleConfig.TAG, message, throwable)
+            }
         }
         AppFileLogger.error(message, throwable)
     }
