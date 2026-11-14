@@ -70,6 +70,9 @@ internal class McpSecretStore(context: Context) {
     }
 
     private fun secretKey(): SecretKey {
+        // 测试注入缝（与 VoiceCatalogSecretStore.testKey 同形态）：Robolectric/JVM 环境没有
+        // AndroidKeyStore，测试提供一个固定的进程内 AES 密钥代替；生产代码不得赋值。
+        testSecretKeyProvider?.let { return it() }
         val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE_PROVIDER).run {
@@ -89,8 +92,15 @@ internal class McpSecretStore(context: Context) {
 
     private fun tokenKey(serverId: String): String = "bearer_$serverId"
 
-    private companion object {
-        const val PREFERENCES_NAME = "eta_mcp_secrets"
+    internal companion object {
+        /**
+         * 测试专用密钥提供者：必须返回同一实例，否则先存后读会对不上密钥。
+         * 由测试在用例内设置并在 finally 里复位，生产代码永远为 null。
+         */
+        @Volatile
+        internal var testSecretKeyProvider: (() -> SecretKey)? = null
+
+        private const val PREFERENCES_NAME = "eta_mcp_secrets"
         const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         const val KEY_ALIAS = "eta_mcp_credentials_v1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

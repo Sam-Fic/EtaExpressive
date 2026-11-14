@@ -299,7 +299,19 @@ class EtaBackupRepositoryTest {
      * 这里只补 MCP 这条漏网之鱼。
      */
     @Test
-    fun mcpTokensFollowTheApiKeySwitchInBothDirections() = runBlocking {
+    fun mcpTokensFollowTheApiKeySwitchInBothDirections() {
+        // Robolectric 没有 AndroidKeyStore：注入固定进程内 AES 密钥（先存后读必须同一实例），
+        // 用完复位，避免泄漏到同 JVM 的其他用例。
+        val testKey = javax.crypto.KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        McpSecretStore.testSecretKeyProvider = { testKey }
+        try {
+            runBlocking { mcpTokensFollowTheApiKeySwitchInBothDirectionsBody() }
+        } finally {
+            McpSecretStore.testSecretKeyProvider = null
+        }
+    }
+
+    private suspend fun mcpTokensFollowTheApiKeySwitchInBothDirectionsBody() {
         val server = McpServerRepository.add(
             io.github.mangi.eta.data.model.McpServerSetting(
                 id = "mcp-backup-server", name = "备份服务器", url = "https://mcp.example.com",
