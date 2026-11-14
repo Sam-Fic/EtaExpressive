@@ -39,6 +39,9 @@ object EtaMotion {
      * 指示器最短可见时长：400ms。
      *
      * 一旦显示，就不要在下一帧又撤掉，否则闪烁比不显示更刺眼。
+     * 失败 / 出错路径例外：错误反馈要立刻跟进（错误气泡、Toast 等），
+     * 指示器再滞留 400ms 会让「明明已经失败却还在转」的错觉盖过错误本身，
+     * 见 `rememberEtaLoadingShown` 的 `failVisible` 参数。
      */
     const val LoadingMinVisibleMillis = 400L
 

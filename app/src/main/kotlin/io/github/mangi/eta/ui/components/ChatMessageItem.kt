@@ -1393,6 +1393,7 @@ private fun UserMessageBubble(
                                     enabled = true,
                                     index = index,
                                     count = count,
+                                    small = true,
                                 ) {
                                     Icon(
                                         imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
@@ -1416,6 +1417,7 @@ private fun UserMessageBubble(
                                     index = index,
                                     count = count,
                                     checked = isEditing,
+                                    small = true,
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Edit,
@@ -1435,6 +1437,7 @@ private fun UserMessageBubble(
                                     enabled = branchEnabled,
                                     index = index,
                                     count = count,
+                                    small = true,
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Rounded.CallSplit,
@@ -1454,6 +1457,7 @@ private fun UserMessageBubble(
                                     enabled = actionsEnabled,
                                     index = index,
                                     count = count,
+                                    small = true,
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Delete,
@@ -3724,7 +3728,7 @@ private fun DispatchReceiptCard(
                 {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "汇报正文",
+                            text = stringResource(R.string.dispatch_report_body),
                             style = chatQuaternaryStyle(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -3932,7 +3936,7 @@ private fun ToolActivityInline(
                                         onClick = { onOpenConversation(dispatchMeta.conversationId) },
                                     ) {
                                         Text(
-                                            text = "打开会话",
+                                            text = stringResource(R.string.dispatch_open_conversation),
                                             style = MaterialTheme.typography.labelLarge,
                                         )
                                     }

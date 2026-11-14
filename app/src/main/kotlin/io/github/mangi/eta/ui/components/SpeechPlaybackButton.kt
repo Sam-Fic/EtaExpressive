@@ -59,6 +59,8 @@ internal fun SpeechPlaybackButton(
                 count = count,
                 // 朗读中 / 自动朗读中保持官方 ToggleButton 选中态（胶囊 + primary 容器）。
                 checked = active,
+                // 消息操作条档位：40dp 容器（高频误触场景，见 EtaConnectedIconAction KDoc）。
+                small = true,
             ) {
                 if (active && state.preparing) {
                     // M3E Loading Indicator：官方 `LoadingIndicator` 的 indeterminate 重载——

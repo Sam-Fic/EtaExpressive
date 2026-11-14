@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.app
 
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -146,9 +147,17 @@ internal fun Material3HomeTopBar(
                 leadingButton = {
                     SplitButtonDefaults.TonalLeadingButton(
                         onClick = {
-                            // 远程智能体：标题左段不承担重命名（协议侧没有 rename），点击直接忽略。
-                            // 不改成 enabled=false：禁用态会把主标题降成低透明度，远程会话名会看不清。
-                            if (!isRemoteTarget) {
+                            // 远程智能体：标题左段不承担重命名（协议侧没有 rename），点击弹一次
+                            // Toast 说明去向。不改成 enabled=false：禁用态会把主标题降成低透明度，
+                            // 远程会话名会看不清。
+                            if (isRemoteTarget) {
+                                TouchHaptics.click(view)
+                                Toast.makeText(
+                                    view.context,
+                                    view.context.getString(R.string.remote_rename_unavailable),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            } else {
                                 TouchHaptics.click(view)
                                 onRenameCurrentConversation()
                             }
@@ -291,7 +300,11 @@ internal fun Material3HomeTopBar(
             // 调度台右槽：清空主会话（归档 + 开新篇）。危险确认由上层弹窗负责，这里只出按钮。
             Box(modifier = Modifier.align(Alignment.CenterEnd)) {
                 val clearDescription =
-                    if (canClearDispatchConsole) "清空主会话" else "当前没有可清空的内容"
+                    if (canClearDispatchConsole) {
+                        stringResource(R.string.clear_dispatch_console_title)
+                    } else {
+                        stringResource(R.string.clear_dispatch_console_empty)
+                    }
                 FooterTooltipBox(text = clearDescription, enabled = true) {
                     EtaIconButton(
                         icon = Icons.Rounded.RestartAlt,

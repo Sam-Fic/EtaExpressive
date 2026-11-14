@@ -191,6 +191,8 @@ internal fun AgentChatInputBar(
     isStreaming: Boolean,
     isCompressingContext: Boolean = false,
     showMorphLoading: Boolean = false,
+    /** 最后一轮已失败：加载指示器跳过最短可见立即收起（见 shouldBypassMorphLoadingMinVisible）。 */
+    morphLoadingFailVisible: Boolean = false,
     reasoningEffort: ReasoningEffort,
     availableReasoningEfforts: List<ReasoningEffort>,
     pendingImages: List<PendingImageUi>,
@@ -528,6 +530,7 @@ internal fun AgentChatInputBar(
             initialConsumedStartToken = assistantDictationConsumed,
             onDictationStartRequestConsumed = { MainActivity.markInAppDictationConsumed(it) },
             showMorphLoading = showMorphLoading,
+            morphLoadingFailVisible = morphLoadingFailVisible,
             pendingImages = pendingImages,
             pendingFileReferences = pendingFileReferences,
             conversationMentions = conversationMentions,
@@ -1385,11 +1388,17 @@ internal fun VoiceModeStatusPanel(
             )
             val stopDescription = stringResource(R.string.voice_mode_stop)
             EtaTooltip(text = stopDescription) {
-                IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
+                // 官方 S 档容器（40dp）+ 官方 shapes（按压 morph）；图标走官方 smallIconSize，
+                // 不再私定 36dp / 硬编图标尺寸。
+                IconButton(
+                    onClick = onStop,
+                    modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
+                    shapes = IconButtonDefaults.shapes(),
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Stop,
                         contentDescription = stopDescription,
-                        modifier = Modifier.size(EtaDimens.StatusIconSize),
+                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                     )
                 }
             }

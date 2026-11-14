@@ -35,11 +35,12 @@ class ComposerLoadingConcentricContractTest(unittest.TestCase):
         self.assertIn("targetState = leadingState", slot)
         self.assertIn("conversationActive || dictating || dictationNotice -> ComposerLeading.NONE", slot)
         self.assertIn("isEditingMessage -> ComposerLeading.CANCEL", slot)
-        self.assertIn("showMorphLoading -> ComposerLeading.LOADING", slot)
+        # 失败旁路：最后一轮已失败时加载指示器立即让位，不吃 400ms 最短可见。
+        self.assertIn("showMorphLoading && !morphLoadingFailVisible -> ComposerLeading.LOADING", slot)
         # 编辑态优先：取消编辑不能被生成中加载指示器盖住。
         self.assertLess(
             slot.index("isEditingMessage -> ComposerLeading.CANCEL"),
-            slot.index("showMorphLoading -> ComposerLeading.LOADING"),
+            slot.index("showMorphLoading && !morphLoadingFailVisible -> ComposerLeading.LOADING"),
         )
         # 两枚圆钮共用同一个槽位与同一套端距。
         self.assertIn("M3ComposerCancelButton(", slot)
@@ -82,8 +83,9 @@ class ComposerLoadingConcentricContractTest(unittest.TestCase):
 
     def test_leading_icon_slot_only_reserves_width(self):
         # 编辑态取消钮也要占位，否则多行原文会压到左下圆钮上。
+        # 失败旁路下加载圆钮立即让位，占位一并收回（!morphLoadingFailVisible）。
         self.assertIn(
-            "reserveLeadingSlot = showMorphLoading || isEditingMessage",
+            "reserveLeadingSlot = (showMorphLoading && !morphLoadingFailVisible) || isEditingMessage",
             self.composer,
         )
         field = self.composer.split("private fun M3ComposerTextField(", 1)[1]

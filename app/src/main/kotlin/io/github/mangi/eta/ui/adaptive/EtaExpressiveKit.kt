@@ -212,16 +212,6 @@ private fun EtaIconButtonBase(
                     content = content,
                 )
             }
-        EtaButtonStyle.TonalEmphasis -> FilledTonalIconButton(
-            onClick = onClick,
-            modifier = sizedModifier,
-            enabled = enabled,
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            ),
-            content = content,
-        )
         EtaButtonStyle.TonalEmphasis ->
             if (shapes == null) {
                 FilledTonalIconButton(
@@ -384,6 +374,14 @@ fun etaConnectedGroupColors() = ToggleButtonDefaults.colors(
  * [etaConnectedGroupColors] 的选中档（primary）。朗读中 / 编辑中这类「保持按下」
  * 的动作由调用方把自己的状态传进来，点击仍走 [onClick]（选中态由调用方持有）。
  *
+ * @param small 容器档位：默认官方 `extraSmallContainerSize`（32dp，顶栏等密集组）；
+ *   true 时取官方 `smallContainerSize`（40dp）。消息操作条这类「高频误触 + 动作密集」
+ *   的组应传 true——40dp 仍是官方认可档位，且连体形状 / 2dp 缝不变。不能改用官方
+ *   `minimumInteractiveComponentSize()` 补到 48dp（material3 1.5.0-alpha29
+ *   `InteractiveComponentSizeKt` / `MinimumInteractiveModifierNode.measure` javap 核实：
+ *   它把布局边界撑到 48dp、内容居中放置）——布局盒一撑大，相邻命中盒之间的视觉缝隙
+ *   从 2dp 拉到 34dp，连体形状断裂，与连体按钮组「紧凑无缝」的设计互斥。
+ *
  * 此前实现私藏在 `AgentTurnFooter.kt`（M3ConnectedIconAction / M3ConnectedGroupColors），
  * 现收编进本套件作为唯一出处。
  */
@@ -394,6 +392,7 @@ fun EtaConnectedIconAction(
     index: Int,
     count: Int,
     checked: Boolean = false,
+    small: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
     val shapes: ToggleButtonShapes? = when {
@@ -403,12 +402,15 @@ fun EtaConnectedIconAction(
         else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
     }
     val colors = etaConnectedGroupColors()
+    val containerModifier = Modifier.size(
+        if (small) IconButtonDefaults.smallContainerSize() else IconButtonDefaults.extraSmallContainerSize(),
+    )
     if (shapes == null) {
         ToggleButton(
             checked = checked,
             onCheckedChange = { onClick() },
             enabled = enabled,
-            modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
+            modifier = containerModifier,
             buttonSize = ToggleButtonSize.Small,
             contentPadding = PaddingValues(0.dp),
             colors = colors,
@@ -419,7 +421,7 @@ fun EtaConnectedIconAction(
             checked = checked,
             onCheckedChange = { onClick() },
             enabled = enabled,
-            modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
+            modifier = containerModifier,
             buttonSize = ToggleButtonSize.Small,
             shapes = shapes,
             contentPadding = PaddingValues(0.dp),

@@ -308,6 +308,8 @@ internal fun Material3ComposerBody(
      *  否则跳板与选择器 Activity 都压在全屏 TYPE_APPLICATION_OVERLAY 之下无法交互。 */
     onSystemPickerLaunch: () -> Unit = {},
     showMorphLoading: Boolean,
+    /** 最后一轮已失败：加载指示器跳过最短可见立即收起（见 shouldBypassMorphLoadingMinVisible）。 */
+    morphLoadingFailVisible: Boolean = false,
     pendingImages: List<PendingImageUi>,
     pendingFileReferences: List<PendingFileReferenceUi>,
     conversationMentions: ConversationMentionInputUi,
@@ -824,8 +826,10 @@ internal fun Material3ComposerBody(
                             textFieldState = textFieldState,
                             focusRequester = focusRequester,
                             isStreaming = isStreaming,
-                            // 左下角有 40dp 圆钮（编辑态取消 / 生成中加载）时留 48dp 起始占位。
-                            reserveLeadingSlot = showMorphLoading || isEditingMessage,
+                            isPaused = isPaused,
+                            // 左下角有 40dp 圆钮（编辑态取消 / 生成中加载）时留 48dp 起始占位；
+                            // 失败旁路下加载圆钮立即让位，占位一并收回。
+                            reserveLeadingSlot = (showMorphLoading && !morphLoadingFailVisible) || isEditingMessage,
                             assistantName = assistantName,
                         )
                     }
@@ -841,6 +845,8 @@ internal fun Material3ComposerBody(
                 // 左上角。挪到本共享容器后用 BottomStart 对齐，无论输入框多高都跟随下沉贴底。
                 // 语音进行中胶囊换成聆听条（起始侧是麦克风状态圆钮），两者都必须让位。
                 // 编辑态优先：取消编辑必须一眼可见、一键可点，不能被加载指示器盖住。
+                // 失败旁路次之：最后一轮已失败时加载指示器立即让位，错误反馈不被 400ms
+                // 最短可见滞留盖住（见 shouldBypassMorphLoadingMinVisible）。
                 // 用 AnimatedContent 而不是 AnimatedVisibility：外层工具栏内容是 RowScope，
                 // 在 Box 里直接调 AnimatedVisibility 会被解析成 RowScope 的成员重载并触发
                 // DSL_SCOPE_VIOLATION；与尾部槽同款写法还能共用同一条交叉淡化规格。
@@ -849,7 +855,7 @@ internal fun Material3ComposerBody(
                 val leadingState = when {
                     conversationActive || dictating || dictationNotice -> ComposerLeading.NONE
                     isEditingMessage -> ComposerLeading.CANCEL
-                    showMorphLoading -> ComposerLeading.LOADING
+                    showMorphLoading && !morphLoadingFailVisible -> ComposerLeading.LOADING
                     else -> ComposerLeading.NONE
                 }
                 AnimatedContent(
@@ -1475,11 +1481,18 @@ private val ComposerMorphIconSpec: FiniteAnimationSpec<Float> = tween(250, easin
 @Composable
 private fun composerHintText(
     isStreaming: Boolean,
+    /** 暂停态优先于「正在执行」：暂停的运行停在原地，提示必须说出来，否则用户不知道要按继续。 */
+    isPaused: Boolean,
     remoteAgentName: String?,
     assistantName: String,
 ): String {
     val displayName = (remoteAgentName ?: assistantName).trim()
     return when {
+        // 暂停态在 UI 上只有继续/停止按钮一个线索（消息流不动、加载指示器已让位），
+        // 输入框提示是最稳定的常驻位：把「已暂停 + 怎么恢复」写在这里。
+        isPaused && displayName.isNotEmpty() ->
+            stringResource(R.string.chat_eta_paused_named, displayName)
+        isPaused -> stringResource(R.string.chat_eta_paused_named, "Eta")
         isStreaming && displayName.isNotEmpty() ->
             stringResource(R.string.chat_eta_working_named, displayName)
         isStreaming -> stringResource(R.string.chat_eta_working)
@@ -1504,6 +1517,8 @@ private fun M3ComposerTextField(
     textFieldState: TextFieldState,
     focusRequester: FocusRequester,
     isStreaming: Boolean,
+    /** 暂停态提示语优先级最高：见 [composerHintText]。 */
+    isPaused: Boolean,
     /** 胶囊左下角是否有 40dp 圆钮；有则起始侧留同宽占位，避免多行文字压到圆钮上。 */
     reserveLeadingSlot: Boolean,
     /** 本机会话当前助手的名字；远程会话由 `LocalRemoteAgentName` 覆盖它。 */
@@ -1519,6 +1534,7 @@ private fun M3ComposerTextField(
             Text(
                 text = composerHintText(
                     isStreaming = isStreaming,
+                    isPaused = isPaused,
                     remoteAgentName = io.github.mangi.eta.ui.remote.LocalRemoteAgentName.current,
                     assistantName = assistantName,
                 ),

@@ -75,17 +75,21 @@ fun EtaProgressBar(
  * 可见后先等 [EtaMotion.LoadingShowDelayMillis]，真正慢的操作才显示；
  * 一旦显示，至少保留 [EtaMotion.LoadingMinVisibleMillis]，避免闪一下又消失。
  * 需要在「加载中」与「空态」之间切换时用它，避免指示器与空态同时出现。
+ *
+ * [failVisible] 为 true 时视为操作已失败：跳过最短可见滞留立即收起指示器，
+ * 让错误反馈马上顶上（400ms 的「还在转」错觉会盖过错误本身）。
  */
 @Composable
 fun rememberEtaLoadingShown(
     visible: Boolean,
     showAfterMillis: Long = EtaMotion.LoadingShowDelayMillis,
     minVisibleMillis: Long = EtaMotion.LoadingMinVisibleMillis,
+    failVisible: Boolean = false,
 ): Boolean {
     var shown by remember { mutableStateOf(false) }
     var shownAtMillis by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(visible) {
+    LaunchedEffect(visible, failVisible) {
         if (visible) {
             delay(showAfterMillis)
             shownAtMillis = SystemClock.uptimeMillis()
@@ -93,9 +97,12 @@ fun rememberEtaLoadingShown(
             // 保持窗口由下一次 visible=false 的分支消费；这里只负责把“已显示”撑满。
             delay(minVisibleMillis)
         } else if (shown) {
-            val elapsed = SystemClock.uptimeMillis() - shownAtMillis
-            if (elapsed < minVisibleMillis) {
-                delay(minVisibleMillis - elapsed)
+            // 失败旁路：失败态不等最短可见时长，指示器立即收起。
+            if (!failVisible) {
+                val elapsed = SystemClock.uptimeMillis() - shownAtMillis
+                if (elapsed < minVisibleMillis) {
+                    delay(minVisibleMillis - elapsed)
+                }
             }
             shown = false
         }
@@ -109,15 +116,17 @@ fun rememberEtaLoadingShown(
  * 一旦显示，至少保留 [EtaMotion.LoadingMinVisibleMillis]，避免闪一下又消失。
  *
  * 适用于本地图片解码、本地目录/统计首载这类“通常几十毫秒”的操作。
+ * [failVisible] 的失败旁路语义同 [rememberEtaLoadingShown]。
  */
 @Composable
 fun EtaLoadingGate(
     visible: Boolean,
     showAfterMillis: Long = EtaMotion.LoadingShowDelayMillis,
     minVisibleMillis: Long = EtaMotion.LoadingMinVisibleMillis,
+    failVisible: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    if (rememberEtaLoadingShown(visible, showAfterMillis, minVisibleMillis)) {
+    if (rememberEtaLoadingShown(visible, showAfterMillis, minVisibleMillis, failVisible)) {
         content()
     }
 }

@@ -30,6 +30,10 @@
   <string name="action_settings">Settings</string>
   <string name="action_new_conversation">New conversation</string>
   <string name="action_back_to_dispatch_console">Back to dispatch console</string>
+  <string name="clear_dispatch_console_title">Clear main conversation</string>
+  <string name="clear_dispatch_console_message">The current context will be moved to the trash, and the main conversation will continue from a blank slate. You can restore it from the trash and reattach it later.</string>
+  <string name="clear_dispatch_console_confirm">Clear and archive</string>
+  <string name="clear_dispatch_console_empty">Nothing to clear</string>
   <string name="action_conversation_history">Conversation history</string>
   <string name="action_more">More options</string>
   <string name="action_open_terminal">Open terminal</string>
@@ -1612,6 +1616,7 @@
   <string name="chat_edit_replace_message">Sending will replace this message</string>
   <string name="chat_eta_working">Eta is working…</string>
   <string name="chat_eta_working_named">%1$s is working…</string>
+  <string name="chat_eta_paused_named">%1$s is paused. Tap continue to resume</string>
   <string name="chat_input_hint">Ask Eta to do something</string>
   <string name="chat_input_hint_named">Ask %1$s to do something</string>
   <string name="chat_stop">Stop</string>
@@ -2249,6 +2254,9 @@
   <string name="tool_task_abort">Abort dispatched task</string>
   <string name="dispatch_question_waiting">Waiting for answer: %1$s</string>
   <string name="dispatch_question_waiting_label">Waiting for answer</string>
+  <string name="dispatch_report_body">Report body</string>
+  <string name="dispatch_open_conversation">Open conversation</string>
+  <string name="remote_rename_unavailable">Remote conversations can\'t be renamed from here. Rename it on the server device.</string>
   <string name="dispatch_question_waiting_badge">Dispatched subtask is waiting for your answer</string>
   <string name="dispatch_control_waiting">Waiting for phone control</string>
   <string name="dispatch_question_queued">Queued (position %1$d)</string>

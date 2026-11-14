@@ -1000,7 +1000,9 @@ private fun AssistantComposer(
             // 口述入口与聊天输入区同一套：mic → 流光听写条（× 丢弃 / ✓ 回填输入框 /
             // 说完停顿直接发送）。语音对话仍从主程序语音浮层进入，浮窗不再承载对话聆听条。
             voiceEntry = ComposerVoiceEntry.DICTATION,
+            // 失败旁路：ERROR 阶段加载圆钮立即让位，错误反馈不被最短可见滞留盖住。
             showMorphLoading = processing,
+            morphLoadingFailVisible = state.phase == EtaVoicePhase.ERROR,
             pendingImages = composer.pendingImages,
             pendingFileReferences = composer.pendingFileReferences,
             conversationMentions = ConversationMentionInputUi(),

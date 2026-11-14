@@ -292,6 +292,8 @@ internal fun AgentChatBody(
     canContinueDisconnected: Boolean = false,
     isCompressingContext: Boolean = false,
     isWaitingForCompression: Boolean = false,
+    /** 最后一轮已失败：加载指示器跳过最短可见立即收起（见 shouldBypassMorphLoadingMinVisible）。 */
+    morphLoadingFailVisible: Boolean = false,
     reasoningEffort: ReasoningEffort,
     availableReasoningEfforts: List<ReasoningEffort>,
     pendingImages: List<PendingImageUi>,
@@ -532,6 +534,7 @@ internal fun AgentChatBody(
                 isPaused = uiPaused,
                 isCompressingContext = isCompressingContext,
                 isWaitingForCompression = isWaitingForCompression,
+                morphLoadingFailVisible = morphLoadingFailVisible,
                 reasoningEffort = reasoningEffort,
                 availableReasoningEfforts = availableReasoningEfforts,
                 pendingImages = pendingImages,
@@ -631,6 +634,8 @@ internal fun AgentChatScaffold(
     isPaused: Boolean = false,
     isCompressingContext: Boolean = false,
     isWaitingForCompression: Boolean = false,
+    /** 最后一轮已失败：加载指示器跳过最短可见立即收起（见 shouldBypassMorphLoadingMinVisible）。 */
+    morphLoadingFailVisible: Boolean = false,
     reasoningEffort: ReasoningEffort,
     availableReasoningEfforts: List<ReasoningEffort>,
     pendingImages: List<PendingImageUi>,
@@ -715,6 +720,12 @@ internal fun AgentChatScaffold(
             beforeResponseOnly = appearance.morphLoadingBeforeResponseOnly,
         )
     }
+    // 失败旁路：最后一轮以可重试失败收尾（RuntimeFailed / 断线 Failed / Stopped）时，
+    // 加载指示器立即收起，不吃 400ms 最短可见——错误气泡马上出现，「还在转」的错觉
+    // 会盖过错误本身。与 showMorphLoading 同 key 记忆，列表不变时不重扫。
+    val morphLoadingFailVisible = remember(visibleMessages) {
+        shouldBypassMorphLoadingMinVisible(visibleMessages)
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -752,6 +763,7 @@ internal fun AgentChatScaffold(
                 },
                 isCompressingContext = isCompressingContext,
                 showMorphLoading = showMorphLoading,
+                morphLoadingFailVisible = morphLoadingFailVisible,
                 reasoningEffort = reasoningEffort,
                 availableReasoningEfforts = availableReasoningEfforts,
                 pendingImages = pendingImages,
@@ -2397,6 +2409,8 @@ private fun AgentChatBottomBar(
     canContinueDisconnected: Boolean = false,
     isCompressingContext: Boolean = false,
     showMorphLoading: Boolean = false,
+    /** 最后一轮已失败：加载指示器跳过最短可见立即收起（见 shouldBypassMorphLoadingMinVisible）。 */
+    morphLoadingFailVisible: Boolean = false,
     reasoningEffort: ReasoningEffort,
     availableReasoningEfforts: List<ReasoningEffort>,
     pendingImages: List<PendingImageUi>,
@@ -2514,6 +2528,7 @@ private fun AgentChatBottomBar(
                 canContinueDisconnected = canContinueDisconnected,
                 isCompressingContext = isCompressingContext,
                 showMorphLoading = showMorphLoading,
+                morphLoadingFailVisible = morphLoadingFailVisible,
                 reasoningEffort = reasoningEffort,
                 availableReasoningEfforts = availableReasoningEfforts,
                 pendingImages = pendingImages,
@@ -2568,6 +2583,27 @@ internal fun shouldShowMorphLoadingIndicator(
     if (!enabled || !isStreaming || isPaused || isCompressingContext) return false
     if (!beforeResponseOnly) return true
     return isWaitingForFirstModelOutput(messages)
+}
+
+/**
+ * 失败旁路判据：最后一轮已以可重试失败收尾（可重试失败 notice / 断线 Failed），
+ * 此刻若加载指示器还在显示，应立即收起而不吃 [EtaMotion.LoadingMinVisibleMillis] 的
+ * 最短可见滞留——错误气泡要马上顶上，「还在转」的错觉会盖过错误本身。
+ */
+internal fun shouldBypassMorphLoadingMinVisible(messages: List<AgentChatMessageUi>): Boolean {
+    val last = messages.lastOrNull { message ->
+        when (message) {
+            is UserMessageUi -> !message.isSteerSupplement()
+            is AgentMessageUi, is SystemNoticeMessageUi,
+            is io.github.mangi.eta.ui.model.ErrorReconnectMessageUi -> true
+            else -> false
+        }
+    } ?: return false
+    return when (last) {
+        is SystemNoticeMessageUi -> last.code.isRetryableFailure()
+        is io.github.mangi.eta.ui.model.ErrorReconnectMessageUi -> last.isRetryableFailure()
+        else -> false
+    }
 }
 
 internal fun isWaitingForFirstModelOutput(messages: List<AgentChatMessageUi>): Boolean {

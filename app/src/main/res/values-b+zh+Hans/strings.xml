@@ -29,6 +29,10 @@
   <string name="action_settings">设置</string>
   <string name="action_new_conversation">新建对话</string>
   <string name="action_back_to_dispatch_console">返回调度台</string>
+  <string name="clear_dispatch_console_title">清空主会话</string>
+  <string name="clear_dispatch_console_message">当前上下文会整体移入回收站，主会话从空白继续。之后可在回收站把这段内容恢复并接回顶部。</string>
+  <string name="clear_dispatch_console_confirm">清空并归档</string>
+  <string name="clear_dispatch_console_empty">当前没有可清空的内容</string>
   <string name="action_conversation_history">会话历史</string>
   <string name="action_more">更多选项</string>
   <string name="action_open_terminal">打开终端</string>
@@ -1621,6 +1625,7 @@
   <string name="chat_edit_replace_message">发送后将替换此消息</string>
   <string name="chat_eta_working">Eta 正在执行……</string>
   <string name="chat_eta_working_named">%1$s 正在执行……</string>
+  <string name="chat_eta_paused_named">%1$s 已暂停，点右侧继续</string>
   <string name="chat_input_hint">交给 Eta 去完成</string>
   <string name="chat_input_hint_named">交给 %1$s 去完成</string>
   <string name="chat_stop">停止</string>
@@ -2118,6 +2123,9 @@
   <string name="tool_task_abort">中止已派发的任务</string>
   <string name="dispatch_question_waiting">等待回答：%1$s</string>
   <string name="dispatch_question_waiting_label">等待回答</string>
+  <string name="dispatch_report_body">汇报正文</string>
+  <string name="dispatch_open_conversation">打开会话</string>
+  <string name="remote_rename_unavailable">远程会话无法在此重命名，请在服务器设备上修改。</string>
   <string name="dispatch_question_waiting_badge">派发的子任务在等待回答</string>
   <string name="dispatch_control_waiting">等待手机操作权</string>
   <string name="dispatch_question_queued">排队中（第 %1$d 位）</string>

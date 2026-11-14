@@ -180,7 +180,7 @@ internal fun AgentMessageActionRow(
             if (showCopyAction) {
                 add { index, count ->
                     FooterTooltipBox(copyTooltip, true) {
-                        EtaConnectedIconAction(onClick = onCopyClick, enabled = true, index = index, count = count) {
+                        EtaConnectedIconAction(onClick = onCopyClick, enabled = true, index = index, count = count, small = true) {
                             Icon(
                                 imageVector = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
                                 contentDescription = copyDescription,
@@ -198,7 +198,7 @@ internal fun AgentMessageActionRow(
             if (showMessageActions) {
                 add { index, count ->
                     FooterTooltipBox(branchLabel, branchEnabled) {
-                        EtaConnectedIconAction(onClick = onBranchClick, enabled = branchEnabled, index = index, count = count) {
+                        EtaConnectedIconAction(onClick = onBranchClick, enabled = branchEnabled, index = index, count = count, small = true) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.CallSplit,
                                 contentDescription = branchLabel,
@@ -209,7 +209,7 @@ internal fun AgentMessageActionRow(
                 }
                 add { index, count ->
                     FooterTooltipBox(regenerateTooltip, messageActionsEnabled) {
-                        EtaConnectedIconAction(onClick = onRegenerateClick, enabled = messageActionsEnabled, index = index, count = count) {
+                        EtaConnectedIconAction(onClick = onRegenerateClick, enabled = messageActionsEnabled, index = index, count = count, small = true) {
                             Icon(
                                 imageVector = Icons.Rounded.Refresh,
                                 contentDescription = regenerateDescription,
@@ -220,7 +220,7 @@ internal fun AgentMessageActionRow(
                 }
                 add { index, count ->
                     FooterTooltipBox(deleteTooltip, messageActionsEnabled) {
-                        EtaConnectedIconAction(onClick = onDeleteClick, enabled = messageActionsEnabled, index = index, count = count) {
+                        EtaConnectedIconAction(onClick = onDeleteClick, enabled = messageActionsEnabled, index = index, count = count, small = true) {
                             Icon(
                                 imageVector = Icons.Rounded.Delete,
                                 contentDescription = deleteDescription,
