@@ -787,7 +787,10 @@ internal fun SettingsScreen(
                         },
                         enabled = !exportingLogs && !clearingLogs,
                         leading = {
-                            PreferenceIcon(icon = Icons.Rounded.Share)
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Share,
+                                enabled = !exportingLogs && !clearingLogs,
+                            )
                         },
                         onClick = {
                             if (exportingLogs || clearingLogs) return@EtaClickableRow
@@ -809,7 +812,11 @@ internal fun SettingsScreen(
                         title = stringResource(R.string.settings_clear_logs),
                         enabled = !exportingLogs && !clearingLogs,
                         leading = {
-                            PreferenceIcon(icon = Icons.Rounded.DeleteSweep, destructive = true)
+                            PreferenceIcon(
+                                icon = Icons.Rounded.DeleteSweep,
+                                enabled = !exportingLogs && !clearingLogs,
+                                destructive = true,
+                            )
                         },
                         onClick = {
                             if (exportingLogs || clearingLogs) return@EtaClickableRow

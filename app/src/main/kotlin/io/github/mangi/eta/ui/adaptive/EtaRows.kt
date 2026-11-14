@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 
 /**
@@ -266,16 +267,11 @@ fun EtaSegmentedDropdownRow(
             choiceRow = true,
             onClick = rowClick,
             enabled = enabled,
-            // 官方默认几何：裸 Icon（24dp + ItemBetweenSpace 12dp）；着色统一设置页 onSurfaceVariant。
-            leadingContent = icon?.let {
-                {
-                    Icon(
-                        imageVector = it,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
+            // 官方默认几何：裸 Icon（24dp + ItemBetweenSpace 12dp）；着色走共享
+            // PreferenceIcon——禁用行随官方禁用档（onSurface × 0.38）压暗，与标题/
+            // 摘要的官方禁用态同步；此前硬编码 onSurfaceVariant，总开关关掉后
+            // 下拉行图标仍全亮，与周围禁用内容脱节。
+            leadingContent = icon?.let { { PreferenceIcon(icon = it, enabled = enabled) } },
             supportingContent = summary?.let { { Text(it) } },
             trailingContent = {
                 Text(
@@ -285,7 +281,10 @@ fun EtaSegmentedDropdownRow(
                     color = if (enabled) {
                         MaterialTheme.colorScheme.primary
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        // 禁用交给官方尾槽内容色（可交互变体随 enabled 动画，token 为
+                        // onSurface × 0.38），与标题/摘要的官方禁用档一致；不再硬编码
+                        // onSurfaceVariant 抢禁用态的亮度。
+                        Color.Unspecified
                     },
                 )
             },

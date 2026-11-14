@@ -113,7 +113,12 @@ internal fun ContextCompressionSettingsScreen(
                         summary = stringResource(R.string.ui_auto_compress_context_summary),
                         checked = enabled,
                         enabled = autoCompressPreference.isWritable,
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Compress) },
+                        leading = {
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Compress,
+                                enabled = autoCompressPreference.isWritable,
+                            )
+                        },
                         onCheckedChange = { value ->
                             autoCompressPreference.setEnabled(value)
                         },

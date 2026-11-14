@@ -79,6 +79,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.navigation.AppRoute
@@ -312,7 +313,7 @@ private fun McpServerRow(
         onClick = onClick,
         onLongClick = onLongClick,
         onLongClickLabel = stringResource(R.string.action_enter_selection),
-        leadingContent = { McpLeadingIcon(Icons.Rounded.Dns) },
+        leadingContent = { PreferenceIcon(icon = Icons.Rounded.Dns) },
         content = { M3Text(text = serverName) },
         supportingContent = { M3Text(text = summary) },
         trailingContent = {
@@ -461,7 +462,7 @@ internal fun McpServerDetailScreen(
                         title = stringResource(R.string.mcp_enable_server),
                         summary = server.url,
                         checked = server.enabled,
-                        leading = { McpLeadingIcon(Icons.Rounded.Dns) },
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Dns) },
                         onCheckedChange = { enabled ->
                             scope.launch(Dispatchers.IO) {
                                 McpServerRepository.update(server.copy(enabled = enabled))
@@ -479,7 +480,7 @@ internal fun McpServerDetailScreen(
                                 R.string.mcp_no_authentication
                             }
                         ),
-                        leading = { McpLeadingIcon(Icons.Rounded.Key) },
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Key) },
                         onClick = { showToken = true },
                     )
                 }
@@ -634,16 +635,6 @@ private fun mcpGroupModifier(): Modifier = Modifier.padding(
     end = EtaGroupHorizontalPadding,
     bottom = EtaSegmentedGroupSpacing,
 )
-
-/** 分段行前导图标：统一 primary 色。 */
-@Composable
-private fun McpLeadingIcon(icon: ImageVector) {
-    Icon(
-        imageVector = icon,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.primary,
-    )
-}
 
 /** 顶栏动作：官方 [M3IconButton]。 */
 @Composable

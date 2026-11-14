@@ -428,7 +428,9 @@ private fun MijiaSettingsScreenContent(
                         } else {
                             stringResource(R.string.mijia_auth_login_summary)
                         },
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Login) },
+                        leading = {
+                            PreferenceIcon(icon = Icons.Rounded.Login, enabled = !exchangingToken)
+                        },
                         onClick = onLogin,
                         enabled = !exchangingToken,
                     )
@@ -437,7 +439,15 @@ private fun MijiaSettingsScreenContent(
                     item {
                         EtaClickableRow(
                             title = stringResource(R.string.mijia_auth_logout),
-                            leading = { PreferenceIcon(icon = Icons.Rounded.Logout) },
+                            leading = {
+                                // 破坏性行：图标与标题同取官方 error 角色色；同步/换票期间
+                                // 行禁用，图标再落回官方禁用档（onSurface × 0.38）。
+                                PreferenceIcon(
+                                    icon = Icons.Rounded.Logout,
+                                    enabled = !syncing && !exchangingToken,
+                                    destructive = true,
+                                )
+                            },
                             onClick = onLogout,
                             enabled = !syncing && !exchangingToken,
                             destructive = true,
