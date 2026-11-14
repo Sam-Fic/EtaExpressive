@@ -79,6 +79,12 @@
 
 - `agent/browser/`（含 `ported/browser/`）；共享离屏 WebView，可加载 JS、操作元素与截图，不做额外 URL/DNS/重定向拦截；外部链接仍走 `open_uri`。
 
+## 构建与测试
+
+- 契约测试：`app/src/test/python/`；对 Kotlin 源码做文本级结构断言，源码结构与断言必须同步演进（见 `AGENTS.md` 工程纪律）。
+- 发版与 CI：版本号规则、tag 校验、草稿发布流程见 `docs/RELEASE.md`；workflow 为 `.github/workflows/android-release.yml`。
+- 组件与 API 取证工具链（sources jar 拉取、AAR 解包）见 `docs/RULES.md` §1.5。
+
 ## 终端、Linux 与下载
 
 - 终端：`agent/terminal/` + `ui/screens/terminal/`；分 `android`、Alpine musl、Debian glibc 三环境，守护任务与 PTY / 块式终端各有独立会话。
