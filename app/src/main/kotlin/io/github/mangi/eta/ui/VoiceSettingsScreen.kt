@@ -89,7 +89,7 @@ internal fun VoiceSettingsSectionPage(
 @Composable
 internal fun VoiceSettingsScreen(
     onBack: () -> Unit,
-    initialSection: VoiceSettingsSection = VoiceSettingsSection.CONVERSATION,
+    initialSection: VoiceSettingsSection = VoiceSettingsSection.READ_ALOUD,
     onOpenVoiceSubPage: (VoiceSubPage) -> Unit = {},
 ) {
     var selected by rememberSaveable { mutableStateOf(initialSection) }
