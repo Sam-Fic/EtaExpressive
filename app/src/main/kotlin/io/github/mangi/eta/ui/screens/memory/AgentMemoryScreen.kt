@@ -9,16 +9,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +62,20 @@ internal fun AgentMemoryScreen(
     val globalEnabled by enabledFlow.collectAsState(
         initial = AgentMemoryRepository.isGloballyEnabled(),
     )
+
+    // 预览/编辑双模式：整篇 MEMORY.md 塞进单个 TextField 时，一次排版要处理全部文本，
+    // 几十 KiB 就会让进入页面和每次输入都卡住。默认按内容自动选：有内容先预览，空文档直接进编辑。
+    var mode by rememberSaveable { mutableStateOf<MemoryViewMode?>(null) }
+    LaunchedEffect(state.isLoading) {
+        if (!state.isLoading && mode == null) {
+            mode = if (state.savedContent.isBlank() && state.draft.isBlank()) {
+                MemoryViewMode.Edit
+            } else {
+                MemoryViewMode.Preview
+            }
+        }
+    }
+    val viewMode = mode ?: MemoryViewMode.Preview
 
     EtaScaffold(
         title = if (state.assistantName.isBlank()) {
@@ -159,16 +176,55 @@ internal fun AgentMemoryScreen(
                     item {
                         EtaSegmentedItemContainer {
                         Column(modifier = Modifier.padding(16.dp)) {
-                        OutlinedTextField(
-                            value = state.draft,
-                            onValueChange = { onAction(AgentMemoryAction.DraftChanged(it)) },
-                            label = { M3Text(stringResource(R.string.ui_core_memory_user_name_long_term_preferences_aa6ff9)) },
-                            enabled = !state.isLoading && !state.isSaving,
-                            minLines = 6,
-                            maxLines = 12,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                        )
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            M3TextButton(
+                                onClick = { mode = MemoryViewMode.Preview },
+                                enabled = viewMode != MemoryViewMode.Preview,
+                            ) {
+                                M3Text(stringResource(R.string.memory_view_mode_preview))
+                            }
+                            M3TextButton(
+                                onClick = { mode = MemoryViewMode.Edit },
+                                enabled = viewMode != MemoryViewMode.Edit,
+                            ) {
+                                M3Text(stringResource(R.string.action_edit))
+                            }
+                        }
+                        if (viewMode == MemoryViewMode.Preview) {
+                            // 按行虚拟化：只组合视口内的行，长文档不再整篇排版。
+                            // 外层是 LazyColumn 的同向嵌套，必须有明确高度上限。
+                            val lines = remember(state.draft) { state.draft.lineSequence().toList() }
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 320.dp),
+                                contentPadding = PaddingValues(vertical = 6.dp),
+                            ) {
+                                items(count = lines.size) { index ->
+                                    M3Text(
+                                        text = lines[index].ifEmpty { " " },
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                        ),
+                                    )
+                                }
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = state.draft,
+                                onValueChange = { onAction(AgentMemoryAction.DraftChanged(it)) },
+                                label = { M3Text(stringResource(R.string.ui_core_memory_user_name_long_term_preferences_aa6ff9)) },
+                                enabled = !state.isLoading && !state.isSaving,
+                                minLines = 6,
+                                maxLines = 12,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -277,3 +333,6 @@ private fun formatBytes(bytes: Int): String = when {
 }
 
 private fun formatNumber(value: Int): String = NumberFormat.getIntegerInstance().format(value)
+
+/** MEMORY.md 的两种呈现方式：预览按行虚拟化，编辑才挂 TextField。 */
+private enum class MemoryViewMode { Preview, Edit }
