@@ -69,6 +69,14 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data object MijiaSettings : AppRoute
 
+    /** 米家 OAuth2 授权整屏子页；无不可序列化入参（授权 URL 由 context 派生），按 §3.3 做成路由复用 NavDisplay 转场。 */
+    @Serializable
+    data object MijiaOAuth : AppRoute
+
+    /** 米家设备独立搜索页；设备列表读 MijiaStore 本地缓存，无路由参数。 */
+    @Serializable
+    data object MijiaSearch : AppRoute
+
     @Serializable
     data object VoiceSettings : AppRoute
 

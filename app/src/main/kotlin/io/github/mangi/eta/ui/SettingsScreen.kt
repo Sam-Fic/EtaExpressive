@@ -407,14 +407,6 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row(key = SettingsKeys.MIJIA_SETTINGS) {
-                    EtaClickableRow(
-                        title = "米家直连",
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Hub) },
-                        onClick = { onNavigate(AppRoute.MijiaSettings) },
-                    )
-                }
-
                 row(key = SettingsKeys.THINKING_DEFAULT) {
                     SwitchPref(
                         context = context,
@@ -487,6 +479,14 @@ internal fun SettingsScreen(
                             )
                         },
                         onClick = { onNavigate(AppRoute.ToolRecipes) },
+                    )
+                }
+
+                row(key = SettingsKeys.MIJIA_SETTINGS) {
+                    EtaClickableRow(
+                        title = stringResource(R.string.mijia_title),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Hub) },
+                        onClick = { onNavigate(AppRoute.MijiaSettings) },
                     )
                 }
 

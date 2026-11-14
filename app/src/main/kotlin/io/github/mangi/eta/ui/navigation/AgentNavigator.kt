@@ -44,6 +44,8 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.LiveActivitySettings::class,
     AppRoute.WebToolsSettings::class,
     AppRoute.MijiaSettings::class,
+    AppRoute.MijiaOAuth::class,
+    AppRoute.MijiaSearch::class,
     AppRoute.SubAgents::class,
     AppRoute.SubAgentPresetDetail::class,
     AppRoute.VoiceModeSettings::class,

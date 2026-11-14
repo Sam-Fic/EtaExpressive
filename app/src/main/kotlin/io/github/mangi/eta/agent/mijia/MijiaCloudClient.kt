@@ -272,12 +272,6 @@ internal object MijiaCloudClient {
         ).optJSONObject("result") ?: error("gethome 缺少 result")
 
         val homes = mutableListOf<MijiaHomeInfo>()
-        data class DevicePlace(
-            val homeId: String,
-            val homeName: String,
-            val roomId: String,
-            val roomName: String,
-        )
         val didPlaceMap = LinkedHashMap<String, DevicePlace>()
         var primaryUid = ""
 
@@ -368,10 +362,18 @@ internal object MijiaCloudClient {
         homes to deviceList
     }
 
+    /** 设备归属地（家庭/房间）：同步时按 did 建立索引，供设备列表回填归属。 */
+    private data class DevicePlace(
+        val homeId: String,
+        val homeName: String,
+        val roomId: String,
+        val roomName: String,
+    )
+
     private fun fetchDeviceListPage(
         context: Context,
         dids: List<String>,
-        placeMap: Map<String, Any>,
+        placeMap: Map<String, DevicePlace>,
         outMap: MutableMap<String, MijiaDevice>,
         startDid: String? = null,
     ) {
@@ -406,11 +408,13 @@ internal object MijiaCloudClient {
             val roomId: String
             val roomName: String
             if (place != null) {
-                val pClass = place.javaClass
-                homeId = pClass.getDeclaredMethod("getHomeId").invoke(place) as? String ?: ""
-                homeName = pClass.getDeclaredMethod("getHomeName").invoke(place) as? String ?: ""
-                roomId = pClass.getDeclaredMethod("getRoomId").invoke(place) as? String ?: ""
-                roomName = pClass.getDeclaredMethod("getRoomName").invoke(place) as? String ?: ""
+                // 直接访问属性。曾按 yooma1 上游写法用 getDeclaredMethod("getHomeId") 反射——
+                // release 包 R8 把 DevicePlace 混淆改名（j16），反射必抛 NoSuchMethodException
+                // （界面报「j16.getHomeId []」），同步永远失败。
+                homeId = place.homeId
+                homeName = place.homeName
+                roomId = place.roomId
+                roomName = place.roomName
             } else if (ownerObj != null) {
                 homeId = ownerObj.optString("userid", "shared")
                 homeName = ownerObj.optString("nickname", "共享家庭").ifBlank { "共享设备" }
