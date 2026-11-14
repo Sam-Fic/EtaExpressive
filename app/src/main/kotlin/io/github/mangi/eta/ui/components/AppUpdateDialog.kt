@@ -81,36 +81,35 @@ internal fun AppUpdateDialog(
             if (!busy) onDismiss()
         },
         actions = {
-            // 四个按钮在 360dp + 大字号下放不进一行：交给 FlowRow 换行，避免被挤出屏幕。
+            // 未同意下载时三个按钮、下载中两个按钮：大字号 + 360dp 下仍可能放不进一行，交给 FlowRow 换行。
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(
-                    onClick = {
-                        if (busy) return@TextButton
-                        // 「稍后」只关掉本次提醒：下次冷启动仍会问。
-                        // 想彻底安静就用「忽略此版本」。
-                        onDismiss()
-                    },
-                    enabled = !busy,
-                ) {
-                    Text(text = stringResource(R.string.update_later))
-                }
-                TextButton(
-                    onClick = {
-                        if (busy) return@TextButton
-                        // 忽略此版本：持久化，后续自动检查不再弹出该版本及更低版本。
-                        val version = offer.versionName
-                        scope.launch {
-                            AppUpdateRepository.dismissVersion(version)
+                // 「稍后/忽略此版本」只在用户表达下载意愿前给出；一旦进入下载流程整体消失而不是禁用。
+                if (!busy) {
+                    TextButton(
+                        onClick = {
+                            // 「稍后」只关掉本次提醒：下次冷启动仍会问。
+                            // 想彻底安静就用「忽略此版本」。
                             onDismiss()
-                        }
-                    },
-                    enabled = !busy,
-                ) {
-                    Text(text = stringResource(R.string.update_ignore_version))
+                        },
+                    ) {
+                        Text(text = stringResource(R.string.update_later))
+                    }
+                    TextButton(
+                        onClick = {
+                            // 忽略此版本：持久化，后续自动检查不再弹出该版本及更低版本。
+                            val version = offer.versionName
+                            scope.launch {
+                                AppUpdateRepository.dismissVersion(version)
+                                onDismiss()
+                            }
+                        },
+                    ) {
+                        Text(text = stringResource(R.string.update_ignore_version))
+                    }
                 }
                 TextButton(
                     onClick = {
@@ -186,21 +185,25 @@ internal fun AppUpdateDialog(
                         },
                     )
                 }
-                TextButton(
-                    onClick = {
-                        if (busy) return@TextButton
-                        if (offer.apkUrl.isNullOrBlank()) {
-                            AppUpdateRepository.openReleasePage(context, offer)
-                        } else {
-                            AppUpdateService.startDownload(context, offer)
-                            // 服务端幂等，这里仍然锁住按钮，避免重复点出多份启动 intent。
-                            backgroundStarted = true
-                        }
-                        onDismiss()
-                    },
-                    enabled = !busy,
-                ) {
-                    Text(text = stringResource(R.string.update_background_download))
+                // 「后台下载」在用户同意下载（进入下载流程）后才出现：先同意，才有转后台的选项。
+                if (busy) {
+                    TextButton(
+                        onClick = {
+                            if (backgroundStarted) return@TextButton
+                            // 正常不会走到 apkUrl 为空：能看到本按钮说明已在前台下载中，空值早被「立即更新」入口拦下。
+                            if (offer.apkUrl.isNullOrBlank()) {
+                                AppUpdateRepository.openReleasePage(context, offer)
+                            } else {
+                                AppUpdateService.startDownload(context, offer)
+                                // 服务端幂等，这里仍然锁住按钮，避免重复点出多份启动 intent。
+                                backgroundStarted = true
+                            }
+                            onDismiss()
+                        },
+                        enabled = !backgroundStarted,
+                    ) {
+                        Text(text = stringResource(R.string.update_background_download))
+                    }
                 }
             }
         },
