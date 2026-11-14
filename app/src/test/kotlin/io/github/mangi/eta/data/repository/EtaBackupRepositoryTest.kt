@@ -293,6 +293,109 @@ class EtaBackupRepositoryTest {
         )
     }
 
+    /**
+     * MCP bearer token 与 provider apiKey 同密级：不勾「包含 API Key」时不得进包，
+     * 导入也不许拿空表清掉本机凭据；勾选时照常迁移。语音密钥走同一开关（已有覆盖），
+     * 这里只补 MCP 这条漏网之鱼。
+     */
+    @Test
+    fun mcpTokensFollowTheApiKeySwitchInBothDirections() = runBlocking {
+        val server = McpServerRepository.add(
+            io.github.mangi.eta.data.model.McpServerSetting(
+                id = "mcp-backup-server", name = "备份服务器", url = "https://mcp.example.com",
+                authorizationType = io.github.mangi.eta.data.model.McpAuthorizationType.BEARER,
+            ),
+            bearerToken = "sk-mcp-secret",
+        )
+        assertEquals("sk-mcp-secret", McpServerRepository.bearerToken(server.id))
+
+        // 默认导出（脱敏）：包里没有 token，导入后本机凭据必须原样保留。
+        val redacted = ByteArrayOutputStream()
+        EtaBackupRepository.export(context, redacted)
+        val redactedManifest = backupManifest(redacted)
+        assertTrue(redactedManifest.mcpTokens.isEmpty())
+        EtaBackupRepository.import(context, ByteArrayInputStream(redacted.toByteArray()))
+        assertEquals("脱敏导入不得清掉本机 MCP 凭据", "sk-mcp-secret", McpServerRepository.bearerToken(server.id))
+
+        // 勾选「包含 API Key」：token 明文进包，导入后原样还原。
+        val withKeys = ByteArrayOutputStream()
+        EtaBackupRepository.export(context, withKeys, EtaBackupExportOptions(includeApiKeys = true))
+        val withKeysManifest = backupManifest(withKeys)
+        assertEquals("sk-mcp-secret", withKeysManifest.mcpTokens[server.id])
+        McpServerRepository.delete(server.id)
+        EtaBackupRepository.import(context, ByteArrayInputStream(withKeys.toByteArray()))
+        assertEquals("sk-mcp-secret", McpServerRepository.bearerToken(server.id))
+    }
+
+    /**
+     * 网页工具凭据（Keystore 加密）与 provider apiKey / MCP token 同密级：脱敏备份不带、
+     * 导入保留本机；带密钥的备份整段迁移。Robolectric 没有 AndroidKeyStore 时凭据读写
+     * 会失败，此时退化为「快照为空 + 本机保留」的弱断言，与既有 Keystore 用例同口径。
+     */
+    @Test
+    fun webToolsCredentialsFollowTheApiKeySwitchInBothDirections() = runBlocking {
+        val appContext = context.applicationContext
+        val keystoreUsable = runCatching {
+            io.github.mangi.eta.data.repository.WebToolsSettingsRepository.saveCredentials(
+                appContext,
+                io.github.mangi.eta.data.model.WebToolsCredentials(
+                    deepSeekApiKey = "sk-web-deepseek",
+                    customSearchApiKey = "sk-web-search",
+                    customFetchApiKey = "sk-web-fetch",
+                ),
+            )
+        }.isSuccess
+        if (!keystoreUsable) return@runBlocking
+
+        // 脱敏导出：凭据段为空，导入后本机凭据原样保留。
+        val redacted = ByteArrayOutputStream()
+        EtaBackupRepository.export(context, redacted)
+        val redactedManifest = backupManifest(redacted)
+        assertTrue(redactedManifest.webToolsCredentials.isEmpty())
+        io.github.mangi.eta.data.repository.WebToolsSettingsRepository.saveCredentials(
+            appContext,
+            io.github.mangi.eta.data.model.WebToolsCredentials(deepSeekApiKey = "local-only"),
+        )
+        EtaBackupRepository.import(context, ByteArrayInputStream(redacted.toByteArray()))
+        assertEquals(
+            "local-only",
+            io.github.mangi.eta.data.repository.WebToolsSettingsRepository.credentials(appContext).deepSeekApiKey,
+        )
+
+        // 带密钥导出：凭据明文进清单，导入后整段还原。
+        val withKeys = ByteArrayOutputStream()
+        EtaBackupRepository.export(context, withKeys, EtaBackupExportOptions(includeApiKeys = true))
+        val withKeysManifest = backupManifest(withKeys)
+        assertEquals("sk-web-deepseek", withKeysManifest.webToolsCredentials["deepSeekApiKey"])
+        assertEquals("sk-web-search", withKeysManifest.webToolsCredentials["customSearchApiKey"])
+        assertEquals("sk-web-fetch", withKeysManifest.webToolsCredentials["customFetchApiKey"])
+        io.github.mangi.eta.data.repository.WebToolsSettingsRepository.saveCredentials(
+            appContext, io.github.mangi.eta.data.model.WebToolsCredentials(),
+        )
+        EtaBackupRepository.import(context, ByteArrayInputStream(withKeys.toByteArray()))
+        val restored = io.github.mangi.eta.data.repository.WebToolsSettingsRepository.credentials(appContext)
+        assertEquals("sk-web-deepseek", restored.deepSeekApiKey)
+        assertEquals("sk-web-search", restored.customSearchApiKey)
+        assertEquals("sk-web-fetch", restored.customFetchApiKey)
+    }
+
+    /** 从导出 ZIP 里解出清单，断言 mcpTokens 的进包行为。 */
+    private fun backupManifest(output: ByteArrayOutputStream): EtaBackupDocument {
+        ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (entry.name == EtaBackupDocument.MANIFEST_NAME) {
+                    val raw = zip.readBytes().toString(Charsets.UTF_8)
+                    return kotlinx.serialization.json.Json {
+                        ignoreUnknownKeys = true
+                        explicitNulls = true
+                    }.decodeFromString(EtaBackupDocument.serializer(), raw)
+                }
+            }
+        }
+        error("备份缺少清单")
+    }
+
     @Test
     fun fullBackupRestoresPresetDirectoryPayloadAndRefreshesObservedRevisions() = runBlocking {
         io.github.mangi.eta.config.Prefs.initLocal(context)

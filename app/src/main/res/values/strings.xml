@@ -1892,13 +1892,14 @@
   <string name="data_backup_include_app_data">App data</string>
   <string name="data_backup_include_app_data_summary">Conversations, providers, assistants and memory, skills, MCP servers, settings including speech, chat attachments, and files in the Linux workspace</string>
   <string name="data_backup_include_api_keys">Include API keys</string>
-  <string name="data_backup_include_api_keys_summary">Writes provider keys and Doubao speech keys in plain text. The archive is not encrypted, so anyone who opens the file can spend on your accounts. Leave this off and re-enter them after importing</string>
+  <string name="data_backup_include_api_keys_summary">Writes provider, MCP and Doubao speech keys in plain text. The archive is not encrypted, so anyone who opens the file can spend on your accounts. Leave this off and re-enter them after importing</string>
   <string name="data_backup_export">Export backup</string>
   <string name="data_backup_export_summary">Save the selected contents to a ZIP file</string>
   <string name="data_backup_import">Import backup</string>
   <string name="data_backup_import_summary">Restore from a backup file. A model-only backup only restores models, leaving conversations and settings untouched</string>
   <string name="data_backup_import_confirm_title">Import Eta data?</string>
   <string name="data_backup_import_confirm_summary">The backup replaces the conversations, assistants, providers, skills, settings, and attachments it contains. A single-conversation backup is merged into the current list. A complete Linux environment in the backup will overwrite the local one. The file may contain API keys</string>
+  <string name="data_backup_import_limits_summary">Compacted conversation archives (context-history) are not included in backups, so revision history and original-text lookup stop working after importing. Media scan sources restored from the backup must be re-authorized on the new device before indexing</string>
   <string name="data_backup_working">Working…</string>
   <string name="data_backup_single_conversation_note">If the backup only contains a single conversation, it is merged into the current list without overwriting other data</string>
   <string name="data_backup_transfer">Import and export</string>

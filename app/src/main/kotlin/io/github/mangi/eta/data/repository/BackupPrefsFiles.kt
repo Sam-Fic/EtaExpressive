@@ -37,6 +37,18 @@ internal object BackupPrefsFiles {
     val BROWSER = listOf("browser_prefs")
 
     /**
+     * 端侧模型选型：embedding 与动作模型各自的模型 / 下载源 / 推理后端 / 截断维度等。
+     *
+     * 模型**文件**由 EtaModelBackup 打包；这里搬**选型**，否则备份包里的向量索引可能
+     * 与恢复后的模型对不上（媒体搜索静默查不到），动作模型也得重新选源。Hugging Face
+     * 访问令牌是凭据，见 [MODEL_SELECTION_SECRET_KEYS]，受「包含 API Key」开关控制。
+     */
+    val MODEL_SELECTIONS = listOf("embedding_model", "mobile_actions_model")
+
+    /** 模型选型里的凭据键名：动作模型的 HF 访问令牌，随「包含 API Key」开关取舍。 */
+    val MODEL_SELECTION_SECRET_KEYS = setOf("token")
+
+    /**
      * 读取指定 prefs 文件的全量键值；空文件不进快照。
      *
      * [omitKeys] 里的键直接跳过，用于把明文密钥挡在包外（见 [VOICE_SECRET_KEYS]）。

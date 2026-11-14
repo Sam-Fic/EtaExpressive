@@ -1901,13 +1901,14 @@
   <string name="data_backup_include_app_data">应用数据</string>
   <string name="data_backup_include_app_data_summary">对话、提供商、助手与记忆、技能、MCP、设置（含语音）、聊天附件与 Linux 工作区文件</string>
   <string name="data_backup_include_api_keys">包含 API Key</string>
-  <string name="data_backup_include_api_keys_summary">把提供商与豆包语音的密钥以明文写入。归档本身不加密，任何拿到这个文件的人都能用它们花你的额度。不勾则导入后重新填写</string>
+  <string name="data_backup_include_api_keys_summary">把提供商、MCP 与豆包语音的密钥以明文写入。归档本身不加密，任何拿到这个文件的人都能用它们花你的额度。不勾则导入后重新填写</string>
   <string name="data_backup_export">导出备份</string>
   <string name="data_backup_export_summary">把勾选的内容保存为 ZIP 文件</string>
   <string name="data_backup_import">导入备份</string>
   <string name="data_backup_import_summary">从备份文件恢复；纯模型备份只恢复模型，不影响对话与设置</string>
   <string name="data_backup_import_confirm_title">导入 Eta 数据？</string>
   <string name="data_backup_import_confirm_summary">备份里包含的对话、助手、提供商、技能、设置与附件会被替换。单个会话备份会合并进当前列表。若备份含完整 Linux 环境，会覆盖本机环境。文件可能包含 API Key</string>
+  <string name="data_backup_import_limits_summary">对话的压缩原文存档（context-history）不在备份内，导入后修订历史与原文回看不可用。备份恢复的媒体扫描源需要在新设备上重新授权后才能继续索引</string>
   <string name="data_backup_working">处理中……</string>
   <string name="data_backup_single_conversation_note">若备份仅包含单个会话，会合并进当前列表，不会覆盖其他数据</string>
   <string name="data_backup_transfer">导入与导出</string>

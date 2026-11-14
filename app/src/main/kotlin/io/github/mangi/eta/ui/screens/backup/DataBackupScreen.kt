@@ -429,6 +429,7 @@ internal fun DataBackupScreen(
                 stringResource(R.string.backup_models_import_confirm_summary)
             } else {
                 stringResource(R.string.data_backup_import_confirm_summary) + "\n" +
+                    stringResource(R.string.data_backup_import_limits_summary) + "\n" +
                     stringResource(R.string.data_backup_single_conversation_note)
             },
             onDismissRequest = {

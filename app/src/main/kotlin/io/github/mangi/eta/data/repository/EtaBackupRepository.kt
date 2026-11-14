@@ -8,6 +8,7 @@ import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.device.RootSu
 import io.github.mangi.eta.agent.media.AgentChatImageCache
 import io.github.mangi.eta.agent.media.index.EmbeddingModelStore
+import io.github.mangi.eta.agent.mobileactions.MobileActionsModelStore
 import io.github.mangi.eta.agent.media.index.Float16VectorCodec
 import io.github.mangi.eta.agent.media.index.MediaExtraction
 import io.github.mangi.eta.agent.media.index.MediaSourceScanner
@@ -101,6 +102,13 @@ internal data class EtaBackupDocument(
     val skillRegistry: List<SkillRegistryEntity> = emptyList(),
     val skillFiles: Map<String, String> = emptyMap(),
     val mcpServers: List<McpServerEntity> = emptyList(),
+    /**
+     * MCP bearer token（`服务器 id → token`，明文，受 [apiKeysIncluded] 开关控制）。
+     *
+     * false 时导出恒为空表——那表示「包里没有凭据」而非「这些服务器本来就没有凭据」，
+     * 导入端（restoreMetadata）据此保留本机各服务器的既有 token，不做整表替换。
+     * 旧备份没有该开关信息、默认 true，行为与以前一致（整表替换）。
+     */
     val mcpTokens: Map<String, String> = emptyMap(),
     val settings: EtaSettingsBackup? = null,
     val mediaIndex: EtaBackupMediaIndex? = null,
@@ -136,9 +144,10 @@ internal data class EtaBackupDocument(
      */
     val appDataIncluded: Boolean = true,
     /**
-     * 归档是否带上了 API Key 明文（提供商的 `apiKey`、豆包的 ASR / 克隆 Key）。
+     * 归档是否带上了 API Key 明文（提供商的 `apiKey`、MCP bearer token、网页工具的
+     * DeepSeek / 搜索 / 抓取 Key、豆包的 ASR / 克隆 Key）。
      *
-     * false 表示导出时做了脱敏：提供商与语音配置都在，只有密钥留空，导入后需要用户重填。
+     * false 表示导出时做了脱敏：配置都在，只有密钥留空，导入后需要用户重填。
      * 默认 true 是为了对齐旧备份——schema 8 及以前一直是明文，读老包时不该误报「需要重填」。
      */
     val apiKeysIncluded: Boolean = true,
@@ -162,6 +171,21 @@ internal data class EtaBackupDocument(
      * 本机没有则按认证关闭处理。绝不用空串覆盖已有口令。
      */
     val remoteServers: List<EtaBackupRemoteServer>? = null,
+    /**
+     * 网页工具凭据（DeepSeek API Key、自定义搜索 / 抓取的 Key），`key → 明文`。
+     *
+     * 本机由 Keystore 加密存放在 `eta_web_tools_secrets` prefs（见 WebToolsSettingsRepository），
+     * 这里导出的是解密结果，受 [apiKeysIncluded] 开关控制：false 时恒为空表，导入端
+     * 据此保留本机加密存储、绝不拿空值覆盖。空表语义与 [mcpTokens] 一致；旧备份没有
+     * 该字段，反序列化取默认值空表，同样不动本机。
+     */
+    val webToolsCredentials: Map<String, String> = emptyMap(),
+    /**
+     * 端侧模型选型（embedding / 动作模型）：`prefs 文件名 → key → 编码值`，
+     * 编码约定同 [BackupPrefsFiles]。随应用数据走；`token`（HF 访问令牌）是凭据，
+     * 受 [apiKeysIncluded] 开关取舍。空表 = 旧备份没带，导入时保留本机选型。
+     */
+    val modelSelections: Map<String, Map<String, String>> = emptyMap(),
 ) {
     companion object {
         const val FORMAT = "eta-backup"
@@ -1100,7 +1124,13 @@ internal object EtaBackupRepository {
             skillRegistry = database.skillDao().registryEntries(),
             skillFiles = encodeFiles(SkillRuntime.exportUserSkills(context)),
             mcpServers = mcpServers,
-            mcpTokens = McpSecretStore(context).exportTokens(mcpServers.map { it.id }),
+            // MCP bearer token 与 provider apiKey 同密级、同开关：不勾「包含 API Key」时
+            // 整段留空，导入端保留本机各服务器的既有凭据（见 restoreMetadata 的空表语义）。
+            mcpTokens = if (options.includeApiKeys) {
+                McpSecretStore(context).exportTokens(mcpServers.map { it.id })
+            } else {
+                emptyMap()
+            },
             settings = settings,
             mediaIndex = mediaIndex,
             models = models,
@@ -1134,6 +1164,19 @@ internal object EtaBackupRepository {
             attachmentCount = countFiles(chatImages),
             importedFileCount = countFiles(imports),
             agentPreferences = Prefs.exportAgentPreferences(),
+            // 网页工具凭据与 provider apiKey / MCP token 同密级、同开关：不勾「包含 API Key」
+            // 时整段留空，导入端保留本机加密存储（见 restoreMetadata 的空表语义）。
+            webToolsCredentials = if (options.includeApiKeys) {
+                WebToolsSettingsRepository.exportForBackup(context)
+            } else {
+                emptyMap()
+            },
+            // 模型选型跟着应用数据走；HF 访问令牌是凭据，不勾开关时剔出包外。
+            modelSelections = BackupPrefsFiles.capture(
+                context,
+                BackupPrefsFiles.MODEL_SELECTIONS,
+                if (options.includeApiKeys) emptySet() else BackupPrefsFiles.MODEL_SELECTION_SECRET_KEYS,
+            ),
             mediaSources = database.mediaIndexDao().sources().map { source ->
                 EtaBackupMediaSource(
                     id = source.id,
@@ -1291,7 +1334,17 @@ internal object EtaBackupRepository {
                     AssistantRepository.importAvatars(decodeFiles(document.assistantAvatars))
                 }
                 SkillRuntime.importUserSkills(context, decodeFiles(document.skillFiles))
-                McpSecretStore(context).replaceAll(document.mcpTokens)
+                // 脱敏备份（apiKeysIncluded=false）的 mcpTokens 恒为空表：那表示「包里没有
+                // 凭据」，不是「这些服务器本来就没有凭据」，必须保留本机 token。
+                // 只有带密钥的备份（含回滚快照）才允许整表替换。
+                if (document.apiKeysIncluded) {
+                    McpSecretStore(context).replaceAll(document.mcpTokens)
+                }
+                // 网页工具凭据：空表 = 脱敏备份或旧备份没带，保留本机加密存储；
+                // 带了才整段替换（缺失的键视为用户清空）。
+                if (document.apiKeysIncluded && document.webToolsCredentials.isNotEmpty()) {
+                    WebToolsSettingsRepository.restoreFromBackup(context, document.webToolsCredentials)
+                }
                 // 语音配置属于应用数据；空快照表示旧备份没带，保留本机设置。
                 if (document.voicePreferences.isNotEmpty()) {
                     BackupPrefsFiles.restore(context, document.voicePreferences, BackupPrefsFiles.VOICE)
@@ -1303,6 +1356,16 @@ internal object EtaBackupRepository {
                     }
                     // 该配置在内存里有一份 StateFlow 投影，重读磁盘才会反映到运行中的语音入口。
                     DoubaoVoiceConfig.load(context)
+                }
+                // 端侧模型选型：空快照 = 旧备份没带，保留本机。带了就写回 prefs 并让
+                // 各 Store 重读磁盘——模型文件可能已由 models/ 条目恢复，选型必须对上，
+                // 否则向量索引会因模型错配查不到、动作模型也要重新选源。
+                if (document.modelSelections.isNotEmpty()) {
+                    BackupPrefsFiles.restore(context, document.modelSelections, BackupPrefsFiles.MODEL_SELECTIONS)
+                    // 只刷新本仓已知类型；未知类型由各自的存储在下次使用时读取。
+                    // HF 访问令牌在脱敏备份里已剔除（capture 时挡在包外），不受此处影响。
+                    if ("embedding_model" in document.modelSelections) EmbeddingModelStore.refresh(context)
+                    if ("mobile_actions_model" in document.modelSelections) MobileActionsModelStore.refresh(context)
                 }
                 document.settings?.let { SettingsDataStore.restoreBackup(it) }
                     ?: SettingsDataStore.setSelection(document.selectedProviderId, document.selectedModelId)
@@ -1432,8 +1495,8 @@ internal object EtaBackupRepository {
         }
         require(document.assistantAvatars.keys.none { '/' in it }) { "头像文件名无效" }
         require(document.assistantMemories.values.all { it.toByteArray().size <= 1024 * 1024 }) { "助手记忆超过限制" }
-        // 语音 / 浏览器配置是可选 prefs 快照：只做规模校验，真正的白名单在 BackupPrefsFiles.restore 里。
-        listOf(document.voicePreferences, document.browserPreferences).forEach { snapshot ->
+        // 语音 / 浏览器 / 模型选型是可选 prefs 快照：只做规模校验，真正的白名单在 BackupPrefsFiles.restore 里。
+        listOf(document.voicePreferences, document.browserPreferences, document.modelSelections).forEach { snapshot ->
             require(snapshot.size <= 8) { "备份中的配置文件过多" }
             snapshot.forEach { (name, values) ->
                 BackupArchiveSafety.relativePath(name)

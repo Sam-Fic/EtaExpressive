@@ -68,6 +68,39 @@ internal object WebToolsSettingsRepository {
         }
     }
 
+    /**
+     * 备份导出：解密当前凭据为明文键值（受「包含 API Key」开关控制，见调用方）。
+     *
+     * 只解密、不改本机状态；解密失败（KeyStore 异常等）按「没有可导出的凭据」处理，
+     * 宁可让用户导入后重填，也不让备份操作因凭据问题整体失败。
+     */
+    suspend fun exportForBackup(context: Context): Map<String, String> = withContext(Dispatchers.IO) {
+        val credentials = runCatching { credentials(context) }.getOrNull() ?: return@withContext emptyMap()
+        buildMap {
+            if (credentials.deepSeekApiKey.isNotBlank()) put("deepSeekApiKey", credentials.deepSeekApiKey)
+            if (credentials.customSearchApiKey.isNotBlank()) put("customSearchApiKey", credentials.customSearchApiKey)
+            if (credentials.customFetchApiKey.isNotBlank()) put("customFetchApiKey", credentials.customFetchApiKey)
+        }
+    }
+
+    /**
+     * 备份导入：把快照写回 Keystore 加密存储。
+     *
+     * 只在备份确实携带凭据段时调用（空表 = 备份没带或已脱敏，必须保留本机，见清单 KDoc）。
+     * 缺失的键视为「备份里就是空」，与用户在设置里手动清空同义；加密失败直接抛，
+     * 不留下静默的半份凭据。
+     */
+    suspend fun restoreFromBackup(context: Context, snapshot: Map<String, String>) = withContext(Dispatchers.IO) {
+        saveCredentials(
+            context,
+            WebToolsCredentials(
+                deepSeekApiKey = snapshot["deepSeekApiKey"].orEmpty().trim(),
+                customSearchApiKey = snapshot["customSearchApiKey"].orEmpty().trim(),
+                customFetchApiKey = snapshot["customFetchApiKey"].orEmpty().trim(),
+            ),
+        )
+    }
+
     /** 查找模型提供商中已配置的 DeepSeek API Key 与 Base URL，供网页工具零配置复用。 */
     suspend fun deepSeekProviderCredentials(): Pair<String, String>? = withContext(Dispatchers.IO) {
         runCatching {
