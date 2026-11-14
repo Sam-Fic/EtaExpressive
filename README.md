@@ -152,4 +152,4 @@ Provider 层支持 OpenAI-compatible Chat Completions、Responses API 和 Anthro
 - 源码与发版：[Sam-Fic/EtaExpressive](https://github.com/Sam-Fic/EtaExpressive)
 
 ## 许可证
-本项目与上游 Eta 一样采用 [PolyForm Noncommercial License 1.0.0](LICENSE)。未经 [原作者](https://github.com/Mangi-11) 书面授权，禁止贩卖、收费代装及其他商业使用。
+本项目与上游 Eta 一样采用 [GPL-3.0](LICENSE) 开源，详情请参阅 [LICENSE](LICENSE)。
