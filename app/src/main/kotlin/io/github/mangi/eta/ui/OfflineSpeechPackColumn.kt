@@ -7,7 +7,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -29,6 +28,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRadioRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.adaptive.EtaProgressBar
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 
@@ -122,7 +122,8 @@ internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
                 ) {
                     val progress = (state.downloadedBytes.toFloat() / state.totalBytes).coerceIn(0f, 1f)
                     Column(Modifier.fillMaxWidth().padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = 16.dp)) {
-                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                        // 确定型进度统一走 EtaProgressBar（M3E wavy），不再直用裸 LinearProgressIndicator。
+                        EtaProgressBar(progress = progress, modifier = Modifier.fillMaxWidth())
                         EtaText("${(progress * 100).toInt()}%", style = EtaTextStyle.Footnote,
                             modifier = Modifier.padding(top = 8.dp))
                     }
