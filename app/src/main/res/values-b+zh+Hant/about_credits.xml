@@ -6,6 +6,7 @@
     <string name="credits_entry_number444">參考分支，小米超級島的實作來源：焦點通知 param_v2 官方協議、雙通道島展開機制（新 id 首發才展開、8 秒自動撤銷）與真機全鏈路測定文件。</string>
     <string name="credits_entry_liyunkkk">參考分支，靈動島思維流的實作來源：思考/輸出串流預覽、工具語意化與通知卡呼吸計時。</string>
     <string name="credits_entry_natumragnag">參考分支，小米宿主橋接的實作來源：HyperOS 4 UIAgent 工具橋、內部 ToolsBridge 與 vision / 外部 Agent 服務。</string>
+    <string name="credits_entry_yooma1">參考分支，米家直連的實作來源：mijia 雲用戶端（OAuth2 授權 / 裝置同步 / 屬性讀寫 / 動作）、MIoT 規格解析與中文語音比對核心零改造移植，mijia_control 工具目錄原樣引入；設定介面按本倉 M3 分段清單口徑重寫。</string>
     <string name="credits_entry_pi">Agent Runtime 的核心參考，包括 Agent Loop、Tool Calling、steering 與 transcript 狀態管理。</string>
     <string name="credits_entry_dsh">DeepSeek 開源的主動式 agent 研究原型。「調度智慧體」的理念來源：主 Session 只路由與研判、工單/授權/准入流水線，以及結構化提問、如實彙報等行為律。</string>
     <string name="credits_entry_taiji">AI Agent 桌面工作台。「調度台」的會話形態與機制參考：受限工具白名單的調度模式、自包含 brief、notify-once 完成通知債權與防注入紀律。</string>

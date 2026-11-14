@@ -130,6 +130,7 @@ Provider 层支持 OpenAI-compatible Chat Completions、Responses API 和 Anthro
 - [Number444/Eta](https://github.com/Number444/Eta)：参考分支，小米超级岛的实现来源：焦点通知 param_v2 官方协议、双通道岛展开机制（新 ID 首发才展开、8 秒自动撤销）与真机全链路测试文档。
 - [liyunkkk/Eta](https://github.com/liyunkkk/Eta)：参考分支，灵动岛思维流的实现来源：思考/输出流式预览、工具语义化与通知卡片呼吸动效计时。
 - [NatumRagnag/Eta](https://github.com/NatumRagnag/Eta)：参考分支，小米宿主桥接的实现来源：HyperOS 4 UIAgent 工具桥、内部 ToolsBridge 与 Vision / 外部 Agent 服务。
+- [yooma1/Eta666](https://github.com/yooma1/Eta666)：参考分支，米家直连的实现来源：mijia 云客户端（OAuth2 授权 / 设备同步 / 属性读写 / 动作）、MIoT 规格解析与中文语音匹配核心零改造移植，`mijia_control` 工具目录原样引入；设置界面按本仓 M3 分段列表口径重写。
 - [Pi Coding Agent](https://github.com/earendil-works/pi)：Agent Runtime 的核心参考，包括 Agent Loop、Tool Calling、Steering 与 Transcript 状态管理。
 - [dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype)：DeepSeek 开源的主动式 Agent 研究原型。「调度智能体」的理念来源：主 Session 仅负责路由与研判、工单/授权/准入流水线，以及结构化提问、如实汇报等行为律。
 - [TaiJi（太极）](https://github.com/zhushanwen321/tai-ji)：AI Agent 桌面工作台。「调度台」的会话形态与机制参考：受限工具白名单的调度模式、自包含 Brief、Notify-once 完成通知债权与防注入规范。

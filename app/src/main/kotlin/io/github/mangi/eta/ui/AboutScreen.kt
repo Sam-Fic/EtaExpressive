@@ -268,6 +268,11 @@ internal fun AboutCreditsScreen(onBack: () -> Unit) {
             url = "https://github.com/NatumRagnag/Eta",
         ),
         CreditEntry(
+            name = "yooma1/Eta666",
+            summary = stringResource(R.string.credits_entry_yooma1),
+            url = "https://github.com/yooma1/Eta666",
+        ),
+        CreditEntry(
             name = "earendil-works/pi",
             summary = stringResource(R.string.credits_entry_pi),
             url = "https://github.com/earendil-works/pi",

@@ -56,8 +56,9 @@ v5.4.1 之后 70 个提交的功能批：新增米家直连、管理列表批量
   TopBarIconButton；ChatIconAction 补官方 shapes 按压 morph
 
 - docs(rules): 增补顶栏动作、滚动截断淡出、UI 文案命名、宽屏判定与边缘横滑返回规则；
-  补 sherpa-onnx/OpenMinis 等致谢与第三方声明；README 结构与文案润色；新增发版流程
-  文档，工程纪律与构建测试入口入 AGENTS/TECHNICAL
+  补 sherpa-onnx/OpenMinis 等致谢与第三方声明，参考与致谢补入 yooma1/Eta666（米家
+  直连来源）；README 结构与文案润色；新增发版流程文档，工程纪律与构建测试入口入
+  AGENTS/TECHNICAL
 
 ### Security
 
