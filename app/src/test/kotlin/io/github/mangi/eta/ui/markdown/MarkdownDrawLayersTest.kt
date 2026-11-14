@@ -49,7 +49,7 @@ class MarkdownDrawLayersTest {
     @Test fun fractionalTailFramesAndAppendsDoNotRecordOrRecomposeCompletedBlocks() {
         val parser = DocumentGfmParserSession()
         val source = "Completed paragraph.\n\nTail has enough words for several frames."
-        val initial = parser.parse(source, false).document
+        val initial = parser.parse(source, false, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
         val document = mutableStateOf(initial)
         val coordinator = SmoothTextRevealCoordinator().apply { pauseAnimationsAndCatchUp() }
         var completedCompositions = 0
@@ -99,7 +99,7 @@ class MarkdownDrawLayersTest {
             assertTrue("only the tail text remains live inside the clip", tailTargetDraws > cachedTargetDraws)
         }
 
-        val appended = parser.parse(source + " Appended network text.", false).document
+        val appended = parser.parse(source + " Appended network text.", false, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
         assertSame("parser preserves the completed block's composition identity", initial.blocks.first(), appended.blocks.first())
         compose.runOnIdle { document.value = appended }
         capture()

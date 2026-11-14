@@ -25,7 +25,7 @@ class MarkdownDocumentLinkMapCacheTest {
         val source = "# Heading\n\nPlain **bold** and `code`.\n\n> Quote body.\n\n" +
             "- one\n- two\n\n```kotlin\nval n = 1\n```\n\n" +
             "| A | B |\n| --- | --- |\n| one | two |\n\nTail"
-        val streaming = parser.parse(source, false)
+        val streaming = parser.parse(source, false, testStyle)
         val stable = streaming.document.blocks.dropLast(1)
         assertTrue(stable.any { it is MarkdownHeading })
         assertTrue(stable.any { it is MarkdownParagraph })
@@ -33,11 +33,11 @@ class MarkdownDocumentLinkMapCacheTest {
         assertTrue(stable.any { it is MarkdownList })
         assertTrue(stable.any { it is MarkdownCode })
         assertTrue(stable.any { it is MarkdownTable })
-        val terminal = parser.parse(source, true)
+        val terminal = parser.parse(source, true, testStyle)
         stable.forEachIndexed { i, block -> assertSame(block, terminal.document.blocks[i]) }
         assertCold(terminal, source, true)
         val lateSource = source + " grows"
-        val late = parser.parse(lateSource, true)
+        val late = parser.parse(lateSource, true, testStyle)
         stable.forEachIndexed { i, block -> assertSame(block, late.document.blocks[i]) }
         assertNotSame(terminal.document.blocks.last(), late.document.blocks.last())
         assertCold(late, lateSource, true)
@@ -56,21 +56,21 @@ class MarkdownDocumentLinkMapCacheTest {
         val parser = DocumentGfmParserSession()
         val source = "Plain prefix.\n\n[guide][id]\n\n![alt][img]\n\nTail\n\n" +
             "[id]: https://example.test/one\n[img]: https://example.test/one.png\n"
-        val streaming = parser.parse(source, false)
-        val terminal = parser.parse(source, true)
+        val streaming = parser.parse(source, false, testStyle)
+        val terminal = parser.parse(source, true, testStyle)
         assertSame(streaming.document.blocks.first(), terminal.document.blocks.first())
         for (i in 1..2) assertNotSame(streaming.document.blocks[i], terminal.document.blocks[i])
         assertEquals("https://example.test/one", firstLink(terminal))
         assertEquals("https://example.test/one.png", firstImage(terminal))
         assertCold(terminal, source, true)
         val correctedSource = source.replace("example.test/one", "example.test/two")
-        val corrected = parser.parse(correctedSource, true)
+        val corrected = parser.parse(correctedSource, true, testStyle)
         assertSame(terminal.document.blocks.first(), corrected.document.blocks.first())
         for (i in 1..2) assertNotSame(terminal.document.blocks[i], corrected.document.blocks[i])
         assertEquals("https://example.test/two", firstLink(corrected))
         assertEquals("https://example.test/two.png", firstImage(corrected))
         assertCold(corrected, correctedSource, true)
-        val reopened = parser.parse(correctedSource, false)
+        val reopened = parser.parse(correctedSource, false, testStyle)
         for (i in 1..2) assertNotSame(corrected.document.blocks[i], reopened.document.blocks[i])
         assertCold(reopened, correctedSource, false)
     }
@@ -80,9 +80,9 @@ class MarkdownDocumentLinkMapCacheTest {
                 "| A | B |\n| --- | --- |\n| [guide][id] | cell |")) {
             val parser = DocumentGfmParserSession()
             val source = "$body\n\n[id]: https://example.test/one\n"
-            val first = parser.parse(source, true)
+            val first = parser.parse(source, true, testStyle)
             val changedSource = source.replace("example.test/one", "example.test/two")
-            val changed = parser.parse(changedSource, true)
+            val changed = parser.parse(changedSource, true, testStyle)
             assertNotSame(first.document.blocks.first(), changed.document.blocks.first())
             assertCold(changed, changedSource, true)
         }
@@ -91,7 +91,7 @@ class MarkdownDocumentLinkMapCacheTest {
     @Test fun styleAndSourceChangesStillInvalidate() {
         val parser = DocumentGfmParserSession()
         val source = "Plain **bold** and `code`.\n\nTail"
-        val first = parser.parse(source, true)
+        val first = parser.parse(source, true, testStyle)
         val style = testStyle.copy(codeBackground = Color.Green)
         val themed = parser.parse(source, true, style)
         assertNotSame(first.document.blocks.first(), themed.document.blocks.first())

@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.markdown
 
 import android.app.Application
+import androidx.compose.ui.graphics.Color
 import android.content.ClipboardManager
 import org.robolectric.RuntimeEnvironment
 import androidx.compose.foundation.ComposeFoundationFlags
@@ -67,7 +68,7 @@ class MarkdownViewportSelectionRegressionTest {
             override fun hide() { status = TextToolbarStatus.Hidden }
         }
         val paragraphs = (0..15).map { "Paragraph $it keeps all selectable words." }
-        val document = DocumentGfmParserSession().parse(paragraphs.joinToString("\n\n"), true).document
+        val document = DocumentGfmParserSession().parse(paragraphs.joinToString("\n\n"), true, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
         compose.setContent {
             MaterialTheme {
                 SideEffect { viewport.updateEnabled(true) }

@@ -1,6 +1,7 @@
 package io.github.mangi.eta.ui.markdown
 
 import android.app.Application
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -32,7 +33,7 @@ class MarkdownSelectionContentUpdateTest {
         val selection = SelectionState()
         val original = "Original answer."
         val latest = listOf("Updated answer.", "New paragraph.")
-        val document = mutableStateOf(DocumentGfmParserSession().parse(original, true).document)
+        val document = mutableStateOf(DocumentGfmParserSession().parse(original, true, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document)
         var creates = 0
         var disposes = 0
         val identities = mutableListOf<Any>()
@@ -57,7 +58,7 @@ class MarkdownSelectionContentUpdateTest {
         compose.onNodeWithText(original, useUnmergedTree = true).assertExists()
         compose.runOnIdle {
             assertEquals(listOf(original), selection.getSelectableTexts().map { it.text })
-            document.value = DocumentGfmParserSession().parse(latest.joinToString("\n\n"), true).document
+            document.value = DocumentGfmParserSession().parse(latest.joinToString("\n\n"), true, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
         }
         compose.waitForIdle()
         latest.forEach { compose.onNodeWithText(it, useUnmergedTree = true).assertExists() }

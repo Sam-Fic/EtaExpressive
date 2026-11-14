@@ -8,9 +8,9 @@ class MarkdownNestedIdentityTest {
     @Test fun growingListKeepsPrefixItemsAndNestedLeaves() {
         val parser = DocumentGfmParserSession()
         val source = "- Stable **first**\n- Outer\n  - Nested stable\n  - Tail"
-        val first = parser.parse(source, false).document.blocks.single() as MarkdownList
+        val first = parser.parse(source, false, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document.blocks.single() as MarkdownList
         val nextSource = source + " growing"
-        val next = parser.parse(nextSource, false).document
+        val next = parser.parse(nextSource, false, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
         val list = next.blocks.single() as MarkdownList
         assertSame(first.items.first(), list.items.first())
         assertNotSame(first.items.last(), list.items.last())
@@ -19,7 +19,7 @@ class MarkdownNestedIdentityTest {
         val afterNested = list.items.last().blocks.filterIsInstance<MarkdownList>().single()
         assertSame(beforeNested.items.first(), afterNested.items.first())
         assertNotSame(beforeNested.items.last(), afterNested.items.last())
-        val cold = DocumentGfmParserSession().parse(nextSource, false).document
+        val cold = DocumentGfmParserSession().parse(nextSource, false, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
         assertEquals(cold.blocks, next.blocks)
         assertEquals(cold.revealKeys, next.revealKeys)
     }
@@ -33,8 +33,8 @@ class MarkdownNestedIdentityTest {
         )
         val parser = DocumentGfmParserSession()
         for (complete in listOf(false, true)) for (source in sources) {
-            val warm = parser.parse(source, complete).document
-            val cold = DocumentGfmParserSession().parse(source, complete).document
+            val warm = parser.parse(source, complete, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
+            val cold = DocumentGfmParserSession().parse(source, complete, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
             assertEquals(cold.blocks, warm.blocks)
             assertEquals(cold.revealKeys, warm.revealKeys)
         }

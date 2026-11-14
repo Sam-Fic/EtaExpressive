@@ -105,7 +105,7 @@ class MarkdownViewportDrawCullTest {
         val viewport = MarkdownDrawViewport()
         val paragraphs = (0..12).map { "Paragraph $it remains readable outside the drawing viewport." }
         val source = "# Complete heading\n\n" + paragraphs.joinToString("\n\n")
-        val document = DocumentGfmParserSession().parse(source, false).document
+        val document = DocumentGfmParserSession().parse(source, false, MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)).document
         // Keep the coordinator live with no clock so the tail is still unrevealed. Semantics
         // must contain target text, not just the drawn prefix or the visible blocks.
         val reveal = SmoothTextRevealCoordinator().apply {

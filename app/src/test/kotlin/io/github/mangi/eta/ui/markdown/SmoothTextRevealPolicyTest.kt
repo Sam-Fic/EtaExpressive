@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.markdown
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertArrayEquals
@@ -114,6 +115,7 @@ class SmoothTextRevealPolicyTest {
         val snapshot = DocumentGfmParserSession().parse(
             source = "第一段\n\n\n第二段",
             isComplete = true,
+            style = MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray),
         )
 
         val blocks = snapshot.document.blocks

@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.markdown
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -123,7 +124,11 @@ class MarkdownInlineTest {
     }
 
     private fun paragraphOf(source: String, isComplete: Boolean = true): MarkdownParagraph =
-        DocumentGfmParserSession().parse(source, isComplete = isComplete)
+        DocumentGfmParserSession().parse(
+            source,
+            isComplete = isComplete,
+            style = MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray),
+        )
             .document.blocks.filterIsInstance<MarkdownParagraph>().single()
 
     private fun AnnotatedString.hasSpanCovering(
