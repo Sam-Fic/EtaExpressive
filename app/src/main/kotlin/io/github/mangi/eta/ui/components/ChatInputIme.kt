@@ -98,6 +98,11 @@ internal suspend fun showChatInputIme(
  * [containerColor] and [containerSize] are forwarded to the official component. When the
  * caller passes the official `secondaryContainer` / `primary` container color, the tonal /
  * filled variant is used so the official defaults apply untouched.
+ *
+ * **有意不传 `shapes`（M3E 按压 morph），设计如此**（用户 2026-11-14 确认）：聊天输入栏
+ * 的图标钮走静态 `shape` 重载，按压不做圆→方圆角形变，保持输入栏工具行的视觉安静；
+ * 这是 RULES §2.5 之外的一处明确豁免，审查时不要当成违规"修复"，后人也不要加回
+ * `shapes = IconButtonDefaults.shapes()`。
  */
 @Composable
 internal fun ChatInputNonFocusableIconButton(
