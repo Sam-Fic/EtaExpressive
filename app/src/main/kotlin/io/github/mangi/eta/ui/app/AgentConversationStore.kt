@@ -22,6 +22,7 @@ import io.github.mangi.eta.data.db.ConversationMessageEntity
 import io.github.mangi.eta.data.db.ConversationStateEntity
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.model.ReasoningEffort
+import io.github.mangi.eta.data.model.UsageDiagnosticsJson
 import io.github.mangi.eta.data.repository.AgentConversationHistoryFiles
 import io.github.mangi.eta.ui.model.AgentChatHomeUiState
 import io.github.mangi.eta.ui.model.ConversationFolderUi
@@ -694,6 +695,7 @@ internal object AgentConversationStore {
                         reasoningTokens = usage?.reasoningTokens,
                         cachedTokens = usage?.cachedTokens,
                         generatedAtMillis = generatedAtMillis,
+                        usageDiagnosticsJson = UsageDiagnosticsJson.encode(usageDiagnostics),
                     )
                 }
             }
@@ -808,6 +810,7 @@ internal object AgentConversationStore {
                     reasoningTokens = reasoningTokens,
                     cachedTokens = cachedTokens,
                 ).takeUnless { it.isEmpty },
+                usageDiagnostics = UsageDiagnosticsJson.decode(usageDiagnosticsJson),
             )
 
             TYPE_SYSTEM_NOTICE -> SystemNoticeCode.fromWireValue(content)?.let { code ->

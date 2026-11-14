@@ -46,7 +46,7 @@ class DispatchSchemaDriftMigrationTest {
             seededIdentityHash(context, name, version = 39),
         )
 
-        val database = openWith(context, name, EtaDatabase.MIGRATION_39_40)
+        val database = openWith(context, name, EtaDatabase.MIGRATION_39_40, EtaDatabase.MIGRATION_40_41)
         try {
             assertEquals(ETA_SCHEMA_VERSION, database.openHelper.readableDatabase.version)
             assertEquals(expectedIdentityHash(context), identityHash(database))
@@ -88,14 +88,14 @@ class DispatchSchemaDriftMigrationTest {
         val context = RuntimeEnvironment.getApplication() as Context
         val name = "repair-twice-${UUID.randomUUID()}.db"
         seed(context, name, version = 39)
-        val first = openWith(context, name, EtaDatabase.MIGRATION_39_40)
+        val first = openWith(context, name, EtaDatabase.MIGRATION_39_40, EtaDatabase.MIGRATION_40_41)
         first.openHelper.writableDatabase
         first.close()
 
         // 已修好的设备再走一遍 39→40：模拟另一条升级路径，缺列判断必须让它成为空操作，
         // 否则 SQLite 的 duplicate column name 会当场炸掉冷启动。
         seedAlreadyRepairedAtVersion39(context, name)
-        val second = openWith(context, name, EtaDatabase.MIGRATION_39_40)
+        val second = openWith(context, name, EtaDatabase.MIGRATION_39_40, EtaDatabase.MIGRATION_40_41)
         try {
             assertEquals(ETA_SCHEMA_VERSION, second.openHelper.readableDatabase.version)
             assertEquals(expectedIdentityHash(context), identityHash(second))
@@ -112,7 +112,7 @@ class DispatchSchemaDriftMigrationTest {
         // 38 的真实形态：连 dispatch_parent_id 都还没有。
         seed(context, name, version = 38, stripDispatchParentColumn = true)
 
-        val database = openWith(context, name, EtaDatabase.MIGRATION_38_39, EtaDatabase.MIGRATION_39_40)
+        val database = openWith(context, name, EtaDatabase.MIGRATION_38_39, EtaDatabase.MIGRATION_39_40, EtaDatabase.MIGRATION_40_41)
         try {
             assertEquals(ETA_SCHEMA_VERSION, database.openHelper.readableDatabase.version)
             assertEquals(expectedIdentityHash(context), identityHash(database))
@@ -151,7 +151,7 @@ class DispatchSchemaDriftMigrationTest {
         val name = "half-v38-${UUID.randomUUID()}.db"
         seed(context, name, version = 38)
 
-        val database = openWith(context, name, EtaDatabase.MIGRATION_38_39, EtaDatabase.MIGRATION_39_40)
+        val database = openWith(context, name, EtaDatabase.MIGRATION_38_39, EtaDatabase.MIGRATION_39_40, EtaDatabase.MIGRATION_40_41)
         try {
             assertEquals(ETA_SCHEMA_VERSION, database.openHelper.readableDatabase.version)
             assertEquals(expectedIdentityHash(context), identityHash(database))

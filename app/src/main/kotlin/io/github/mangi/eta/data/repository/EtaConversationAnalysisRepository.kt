@@ -17,6 +17,7 @@ import io.github.mangi.eta.data.db.ConversationEntity
 import io.github.mangi.eta.data.db.ConversationMessageEntity
 import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.RuntimeRunDao
+import io.github.mangi.eta.data.model.UsageDiagnosticsJson
 import io.github.mangi.eta.data.model.ReasoningEffort
 import io.github.mangi.eta.ui.model.DISPATCH_CONSOLE_CONVERSATION_ID
 import io.github.mangi.eta.ui.model.decodeUserMessageImages
@@ -334,6 +335,17 @@ internal object EtaConversationAnalysisRepository {
         }
         val safeToolName = toolName.orEmpty()
         val withheld = type == "tool" && AgentSensitiveToolPolicy.isSensitive(safeToolName)
+        // 只解一次：消息级 token 列与回合级 cache 同源，避免两处口径漂移。
+        val diagnostics = UsageDiagnosticsJson.decode(usageDiagnosticsJson)
+        val cache = diagnostics?.let { diagnostic ->
+            EtaConversationAnalysisCacheDiagnostics(
+                prefixState = diagnostic.prefixState,
+                toolsState = diagnostic.toolsState,
+                systemState = diagnostic.systemState,
+                historyState = diagnostic.historyState,
+                cacheCreationTokens = diagnostic.cacheCreationTokens?.toLong()?.coerceAtLeast(0L) ?: 0L,
+            )
+        }
         return EtaConversationAnalysisMessage(
             id = id,
             sortIndex = sortIndex,
@@ -346,6 +358,8 @@ internal object EtaConversationAnalysisRepository {
             outputTokens = outputTokens,
             reasoningTokens = reasoningTokens,
             cachedTokens = cachedTokens,
+            cacheCreationTokens = diagnostics?.cacheCreationTokens,
+            cache = cache,
             elapsedSeconds = elapsedSeconds,
             toolName = toolName,
             toolStatus = toolStatus,
@@ -398,6 +412,20 @@ internal object EtaConversationAnalysisRepository {
         runIdRemap: Map<String, String>,
     ): ConversationMessageEntity {
         val candidate = remapMessageId(id, runIdRemap) ?: "import-${UUID.randomUUID()}"
+        // 导入后再次导出仍要带上缓存归因：优先回合结构的完整字段，旧文件只有 creation 数时
+        // 也别丢；两种都没有就不写列，保持与无诊断消息一致。
+        val diagnostics = cache?.let {
+            io.github.mangi.eta.data.model.UsageDiagnostics(
+                prefixState = it.prefixState,
+                toolsState = it.toolsState,
+                systemState = it.systemState,
+                historyState = it.historyState,
+                cacheCreationTokens = it.cacheCreationTokens.takeIf { value -> value > 0 }?.toInt()
+                    ?: cacheCreationTokens,
+            )
+        } ?: cacheCreationTokens?.let {
+            io.github.mangi.eta.data.model.UsageDiagnostics(cacheCreationTokens = it)
+        }
         return ConversationMessageEntity(
             id = candidate,
             conversationId = conversationId,
@@ -423,6 +451,7 @@ internal object EtaConversationAnalysisRepository {
             imageCount = imageCount,
             toolsJson = encodeStringList(tools),
             generatedAtMillis = generatedAtMillis,
+            usageDiagnosticsJson = UsageDiagnosticsJson.encode(diagnostics),
         )
     }
 

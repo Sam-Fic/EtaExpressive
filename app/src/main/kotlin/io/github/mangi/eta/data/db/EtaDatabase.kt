@@ -9,7 +9,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /** schema 版本唯一声明处：@Database 与迁移测试断言都引用它，升版本只改这一行。 */
-internal const val ETA_SCHEMA_VERSION = 40
+internal const val ETA_SCHEMA_VERSION = 41
 
 @Database(
     entities = [
@@ -340,6 +340,19 @@ internal abstract class EtaDatabase : RoomDatabase() {
             )
         }
 
+        /**
+         * 消息行的前缀缓存归因诊断列：只加一列、带默认值，老数据全部为空串。
+         * 与 MIGRATION_39_40 同型加存在判断——开发期脏工作树可能已在 40 上落过列。
+         */
+        internal val MIGRATION_40_41 = Migration(40, 41) { database ->
+            if (!tableHasColumn(database, "conversation_messages", "usage_diagnostics_json")) {
+                database.execSQL(
+                    "ALTER TABLE conversation_messages ADD COLUMN " +
+                        "usage_diagnostics_json TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         internal val MIGRATION_30_31 = Migration(30, 31) { database ->
             database.execSQL(
                 "ALTER TABLE model_providers ADD COLUMN session_gateway_json TEXT NOT NULL DEFAULT ''"
@@ -609,6 +622,7 @@ internal abstract class EtaDatabase : RoomDatabase() {
             MIGRATION_37_38,
             MIGRATION_38_39,
             MIGRATION_39_40,
+            MIGRATION_40_41,
         )
     }
 }

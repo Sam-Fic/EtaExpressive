@@ -7760,7 +7760,19 @@ internal class AgentAppState(
                     val occupancy = io.github.mangi.eta.ui.model.windowTokensFromUsage(event.usage.toUi())
                     // Record the bill and advance occupancy independently of local token growth.
                     // A local estimate cannot invalidate a cloud receipt or pin the ring to an old bill.
-                    updateAssistantUsage(runId, event.round, event.usage.toUi())
+                    updateAssistantUsage(
+                        runId,
+                        event.round,
+                        event.usage.toUi(),
+                        // 只有真实云侧回执才带请求前缀指纹；本地估算没有诊断价值。
+                        io.github.mangi.eta.data.model.UsageDiagnostics(
+                            prefixState = event.requestPrefixState,
+                            toolsState = event.requestToolsState,
+                            systemState = event.requestSystemState,
+                            historyState = event.requestHistoryState,
+                            cacheCreationTokens = event.usage.cacheCreationTokens,
+                        ).takeUnless { it.isEmpty },
+                    )
                     val localBasis = event.requestHistoryTokens?.let { history ->
                         history + (event.requestOverheadTokens ?: 0)
                     }
@@ -8294,7 +8306,12 @@ internal class AgentAppState(
         (runUsageResumeRounds[runId]?.let { round < it } ?: false) ||
             (runRequestRounds[runId]?.let { round < it } ?: false)
 
-    private fun updateAssistantUsage(runId: String, round: Int, usage: TokenUsageUi) {
+    private fun updateAssistantUsage(
+        runId: String,
+        round: Int,
+        usage: TokenUsageUi,
+        diagnostics: io.github.mangi.eta.data.model.UsageDiagnostics? = null,
+    ) {
         if (usage.isEmpty) return
         if (isStaleUsageAfterCompact(runId, round)) return
         // 只补充 token 用量。不能触碰 isStreaming：Usage 事件紧跟在文本块结束之后，
@@ -8318,11 +8335,16 @@ internal class AgentAppState(
                     content = "",
                     isStreaming = false,
                     usage = usage,
+                    usageDiagnostics = diagnostics,
                 )
             } else {
                 // Preserve every previous snapshot; only the target chunk changes.
+                // 后续修正账单的回执若不带诊断，保留已落下的前缀指纹，别用 null 抹掉证据。
                 val target = messages[targetIndex] as AgentMessageUi
-                messages.incrementalSnapshot().replacing(targetIndex, target.copy(usage = usage))
+                messages.incrementalSnapshot().replacing(
+                    targetIndex,
+                    target.copy(usage = usage, usageDiagnostics = diagnostics ?: target.usageDiagnostics),
+                )
             }
         }
         billedOverheadConversationId = conversationId

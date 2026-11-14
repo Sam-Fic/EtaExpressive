@@ -38,6 +38,7 @@ internal object EtaConversationAnalysisRounds {
         var usage = EtaConversationAnalysisUsage()
         var thinkingSeconds: Int = 0
         var assistantText: String = ""
+        var cache: EtaConversationAnalysisCacheDiagnostics? = null
 
         fun toRound(index: Int): EtaConversationAnalysisRound = EtaConversationAnalysisRound(
             index = index,
@@ -49,6 +50,7 @@ internal object EtaConversationAnalysisRounds {
             thinkingSeconds = thinkingSeconds,
             openedGroups = openedGroups.toList(),
             assistantText = assistantText,
+            cache = cache,
         )
     }
 
@@ -78,6 +80,9 @@ internal object EtaConversationAnalysisRounds {
                 TYPE_ASSISTANT -> {
                     target.usage = target.usage + usageOf(message)
                     if (message.content.isNotBlank()) target.assistantText = message.content
+                    // 同一回合可能有多条 assistant 行（先说话再调工具）；真实回执带诊断，
+                    // 取最后一条带诊断的，避免被前面只有本地估算的行覆盖成 null。
+                    message.cache?.let { target.cache = it }
                 }
                 TYPE_THINKING -> target.thinkingSeconds += message.elapsedSeconds ?: 0
                 else -> Unit
@@ -193,6 +198,8 @@ internal object EtaConversationAnalysisRounds {
             outputTokens = message.outputTokens?.toLong()?.coerceAtLeast(0L) ?: 0L,
             reasoningTokens = message.reasoningTokens?.toLong()?.coerceAtLeast(0L) ?: 0L,
             cachedTokens = message.cachedTokens?.toLong()?.coerceAtLeast(0L) ?: 0L,
+            cacheCreationTokens = message.cacheCreationTokens?.toLong()?.coerceAtLeast(0L)
+                ?: message.cache?.cacheCreationTokens ?: 0L,
             contextTokens = message.contextTokens?.toLong()?.coerceAtLeast(0L) ?: 0L,
         )
 
@@ -202,6 +209,7 @@ internal object EtaConversationAnalysisRounds {
             outputTokens = outputTokens + other.outputTokens,
             reasoningTokens = reasoningTokens + other.reasoningTokens,
             cachedTokens = cachedTokens + other.cachedTokens,
+            cacheCreationTokens = cacheCreationTokens + other.cacheCreationTokens,
             contextTokens = contextTokens + other.contextTokens,
         )
 

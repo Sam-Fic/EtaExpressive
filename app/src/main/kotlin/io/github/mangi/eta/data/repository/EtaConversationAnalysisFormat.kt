@@ -15,7 +15,10 @@ import kotlinx.serialization.json.JsonElement
  * 归档事件在写库时也会做同样的剔除，因此本文件不含这些原文；被剔除的调用 id
  * 列在 [withheldToolCallIds]，单条调用另有 detailsWithheld 标记。
  * 检查点的 cloud_usage_json（云侧计费回执展示态）同样有意不导出：
- * 对复盘无用，且会扩大可分享文件的隐私面；消息级 token 五项不受影响。
+ * 对复盘无用，且会扩大可分享文件的隐私面；消息级 token 账单不受影响。
+ *
+ * 缓存归因：[EtaConversationAnalysisCacheDiagnostics] 只含枚举值与 token 数，
+ * 用来在 `cached=0` 时区分「请求前缀变了」与「上游缓存丢失」，不含任何原文。
  */
 @Serializable
 internal data class EtaConversationAnalysisDocument(
@@ -148,6 +151,23 @@ internal data class EtaConversationAnalysisToolGroupAggregate(
     val failed: Int = 0,
 )
 
+/**
+ * 单个请求的前缀缓存归因。
+ *
+ * 三段状态是发请求前对 tools / system / history 与上一轮比较的结果（first / same / changed）；
+ * 三段全 same 而 [EtaConversationAnalysisUsage.cachedTokens] 为 0，即上游缓存丢失（网关
+ * 路由漂移或 TTL 过期），而不是框架改写了前缀。只含枚举与计数，不含原文。
+ */
+@Serializable
+internal data class EtaConversationAnalysisCacheDiagnostics(
+    val prefixState: String? = null,
+    val toolsState: String? = null,
+    val systemState: String? = null,
+    val historyState: String? = null,
+    /** 本次写入缓存的 token 数；属于 inputTokens 子集，不是命中。 */
+    val cacheCreationTokens: Long = 0,
+)
+
 /** 一回合的 token 账单。 */
 @Serializable
 internal data class EtaConversationAnalysisUsage(
@@ -155,6 +175,8 @@ internal data class EtaConversationAnalysisUsage(
     val outputTokens: Long = 0,
     val reasoningTokens: Long = 0,
     val cachedTokens: Long = 0,
+    /** 写入缓存的 token 数；旧文件缺项按 0。命中率只用 [cachedTokens]。 */
+    val cacheCreationTokens: Long = 0,
     val contextTokens: Long = 0,
     /**
      * 计费口径：输入 + 输出。缓存命中的部分仍算在输入里。
@@ -169,6 +191,7 @@ internal data class EtaConversationAnalysisUsage(
             outputTokens = outputTokens + other.outputTokens,
             reasoningTokens = reasoningTokens + other.reasoningTokens,
             cachedTokens = cachedTokens + other.cachedTokens,
+            cacheCreationTokens = cacheCreationTokens + other.cacheCreationTokens,
             contextTokens = contextTokens + other.contextTokens,
         )
 }
@@ -196,6 +219,11 @@ internal data class EtaConversationAnalysisRound(
      */
     val openedGroups: List<String> = emptyList(),
     val assistantText: String = "",
+    /**
+     * 本回合真实回执的缓存归因；为空表示旧会话（升级前的消息行）或该轮只有本地估算。
+     * 与 [usage] 的 cachedTokens 合看即可判定零命中的责任段。
+     */
+    val cache: EtaConversationAnalysisCacheDiagnostics? = null,
 )
 
 /** 一次工具调用。敏感工具的原始参数与结果在落库时就没了，这里同样是空的。 */
@@ -231,6 +259,10 @@ internal data class EtaConversationAnalysisMessage(
     val outputTokens: Int? = null,
     val reasoningTokens: Int? = null,
     val cachedTokens: Int? = null,
+    /** 写入缓存的 token 数；旧文件缺项。 */
+    val cacheCreationTokens: Int? = null,
+    /** 前缀缓存归因；旧文件与本地估算缺项。字段与回合级 [EtaConversationAnalysisRound.cache] 同源。 */
+    val cache: EtaConversationAnalysisCacheDiagnostics? = null,
     val elapsedSeconds: Int? = null,
     val toolName: String? = null,
     val toolStatus: String? = null,

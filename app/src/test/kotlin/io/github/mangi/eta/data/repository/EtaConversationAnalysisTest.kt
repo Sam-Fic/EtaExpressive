@@ -38,6 +38,8 @@ class EtaConversationAnalysisTest {
         inputTokens: Int? = null,
         outputTokens: Int? = null,
         cachedTokens: Int? = null,
+        cacheCreationTokens: Int? = null,
+        cache: EtaConversationAnalysisCacheDiagnostics? = null,
         contextTokens: Int? = null,
         elapsedSeconds: Int? = null,
         argumentsSummary: String? = null,
@@ -58,6 +60,8 @@ class EtaConversationAnalysisTest {
         inputTokens = inputTokens,
         outputTokens = outputTokens,
         cachedTokens = cachedTokens,
+        cacheCreationTokens = cacheCreationTokens,
+        cache = cache,
         contextTokens = contextTokens,
         elapsedSeconds = elapsedSeconds,
         argumentsSummary = argumentsSummary,
@@ -170,6 +174,37 @@ class EtaConversationAnalysisTest {
         assertEquals(40L, summary.usage.cachedTokens)
         // 回合用量只取 assistant 行。
         assertEquals(300L, rounds.sumOf { it.usage.inputTokens })
+    }
+
+    @Test
+    fun zeroCacheHitWithStablePrefixExposesAttributionInTheRound() {
+        // 复现真机取证现场：三段前缀全 same 却 cached=0，导出必须直接给出这个证据。
+        val cache = EtaConversationAnalysisCacheDiagnostics(
+            prefixState = "same",
+            toolsState = "same",
+            systemState = "same",
+            historyState = "same",
+            cacheCreationTokens = 1200,
+        )
+        val messages = listOf(
+            message("user-1", 0, "user", "问题"),
+            message("assistant-run-1-1-0", 1, "assistant", "查一下", inputTokens = 100),
+            message(
+                "assistant-run-1-1-1", 2, "assistant", "答完了",
+                inputTokens = 29470, cachedTokens = 0, cache = cache,
+            ),
+        )
+
+        val rounds = EtaConversationAnalysisRounds.segment(messages, listOf("run-1"))
+        val summary = EtaConversationAnalysisRounds.summarize(messages, rounds)
+
+        val round = rounds.single()
+        assertEquals(cache, round.cache)
+        assertEquals(0L, round.usage.cachedTokens)
+        // 写入量从 message 级聚合进 usage，旧文件缺项时为 0。
+        assertEquals(1200L, round.usage.cacheCreationTokens)
+        assertEquals(1200L, summary.usage.cacheCreationTokens)
+        assertEquals(29570L, summary.usage.inputTokens)
     }
 
     @Test

@@ -8,6 +8,7 @@ import io.github.mangi.eta.agent.model.AgentFileReference
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.data.model.GptSpeedMode
 import io.github.mangi.eta.data.model.ReasoningEffort
+import io.github.mangi.eta.data.model.UsageDiagnostics
 
 @Immutable
 internal data class AgentChatUiState(
@@ -132,6 +133,12 @@ data class AgentMessageUi(
     val renderMarkdown: Boolean = true,
     val usage: TokenUsageUi? = null,
     val generatedAtMillis: Long? = null,
+    /**
+     * 这一轮真实回执对应的前缀缓存归因。随消息落库、随会话导出，
+     * 让 `cached=0` 事后能区分「前缀被我们改了」与「上游缓存丢失」。
+     * 仅由非 projected 的 UsageReceived 写入；本地估算不带诊断。
+     */
+    val usageDiagnostics: UsageDiagnostics? = null,
 ) : AgentChatMessageUi
 
 enum class SystemNoticeCode(val wireValue: String) {
@@ -279,8 +286,9 @@ data class ConversationTokenUsageUi(
 
 fun clearBilledTokenUsage(messages: List<AgentChatMessageUi>): List<AgentChatMessageUi> =
     messages.map { message ->
-        if (message is AgentMessageUi && message.usage != null) {
-            message.copy(usage = null)
+        if (message is AgentMessageUi && (message.usage != null || message.usageDiagnostics != null)) {
+            // 压缩重写了历史，旧账单与旧轮的前缀诊断都不再属于当前上下文。
+            message.copy(usage = null, usageDiagnostics = null)
         } else {
             message
         }

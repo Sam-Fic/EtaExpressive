@@ -145,4 +145,10 @@ internal data class ConversationMessageEntity(
     @ColumnInfo(name = "image_count") val imageCount: Int = 0,
     @ColumnInfo(name = "tools_json") val toolsJson: String = "[]",
     @ColumnInfo(name = "generated_at_millis") val generatedAtMillis: Long? = null,
+    /**
+     * 该行 assistant 回执对应的前缀缓存归因（[io.github.mangi.eta.data.model.UsageDiagnosticsJson] 编码）。
+     * 空串表示旧数据或本地估算；只含枚举值与 token 数，可随会话导出。
+     */
+    @ColumnInfo(name = "usage_diagnostics_json", defaultValue = "''")
+    val usageDiagnosticsJson: String = "",
 )
