@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -628,6 +629,9 @@ private fun ModelSelectionBar(
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         HorizontalFloatingToolbar(
             expanded = true,
+            // vibrant 变体默认容器 primaryContainer/onPrimaryContainer——standard 默认 surfaceContainer
+            // 与页面背景同色融合（深色下不可辨）；官方 vibrant 令牌见 srczip FloatingToolbar.kt:1119-1128。
+            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
             modifier = Modifier
                 .navigationBarsPadding()
                 .padding(horizontal = 12.dp)

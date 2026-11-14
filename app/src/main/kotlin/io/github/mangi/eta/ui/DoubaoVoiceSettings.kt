@@ -700,6 +700,9 @@ private fun VoiceSelectionBar(
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         HorizontalFloatingToolbar(
             expanded = true,
+            // vibrant 变体默认容器 primaryContainer/onPrimaryContainer——standard 默认 surfaceContainer
+            // 与页面背景同色融合（深色下不可辨）；官方 vibrant 令牌见 srczip FloatingToolbar.kt:1119-1128。
+            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
             modifier = Modifier
                 .navigationBarsPadding()
                 .padding(horizontal = 12.dp)

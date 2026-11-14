@@ -71,6 +71,7 @@ import androidx.compose.material3.Button as M3Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconButtonShapes
@@ -654,6 +655,9 @@ private fun ConsoleKeyBar(
 ) {
     HorizontalFloatingToolbar(
         expanded = true,
+        // vibrant 变体默认容器 primaryContainer/onPrimaryContainer——standard 默认 surfaceContainer
+        // 与页面背景同色融合（深色下不可辨）；官方 vibrant 令牌见 srczip FloatingToolbar.kt:1119-1128。
+        colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
         // 端盖同心：键帽高 40dp（官方 Button 最小高），水平内边距按 (64 − 40)/2 = 12dp 让首末键帽
         // 的端部圆弧与药丸端盖同心；纵向仍走官方 8dp（内容居中后实际留白就是 12dp，不影响外观）。
         contentPadding = EtaFloatingToolbarConcentricPadding(40.dp),
