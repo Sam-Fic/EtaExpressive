@@ -1,5 +1,13 @@
 # EtaExpressive
-[简体中文](README.md) | **English**
+
+<div align="center">
+  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+" alt="EtaExpressive" width="128" height="128">
+</div>
+
+[简体中文](README.md)
+
+---
 
 <p><a href="https://github.com/Sam-Fic/EtaExpressive/releases"><img src="https://img.shields.io/github/downloads/Sam-Fic/EtaExpressive/total?logo=github&amp;label=Downloads&amp;color=1677FF" alt="Total GitHub Releases downloads"></a> <img src="https://img.shields.io/badge/minSdk-34-3DDC84?logo=android&amp;logoColor=white" alt="minSdk 34"> <img src="https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?logo=kotlin&amp;logoColor=white" alt="Kotlin 2.4.20"> <img src="https://img.shields.io/badge/AGP-9.4.0-3DDC84?logo=android&amp;logoColor=white" alt="AGP 9.4.0"> <img src="https://img.shields.io/badge/Assistant%20Integrations-ColorOS%20%26%20HyperOS-1677FF" alt="Assistant integrations for ColorOS and HyperOS"></p>
 
