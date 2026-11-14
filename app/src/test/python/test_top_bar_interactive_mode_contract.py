@@ -106,7 +106,7 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
         cls.interactive = interactive[0]
 
     def test_exact_menu_order_keeps_semantic_sections_and_conditional_rows(self):
-        # M3 壳层把「新建对话」独立成顶栏按钮（AgentAppShell 里的 AddComment IconButton），
+        # M3 顶栏把「新建对话」收进会话侧栏 FAB（远程目标下右槽另出独立圆钮），
         # 不再占溢出菜单一行；「移动到回收站」只在非调度台出现，「停止 Kimi Web」只在可停止时出现。
         self.assertEqual([
             "action_search_history",
@@ -238,9 +238,11 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
 
     def test_menu_call_parameters_keep_existing_actions_and_avoid_lifted_toggle_state(self):
         declaration = arguments(self.menu, "TopBarOverflowMenu")
-        caller = arguments(read("ui/app/AgentAppShell.kt"), "TopBarOverflowMenu")
+        # 溢出菜单的挂载点已随 M3 顶栏纯化迁到 Material3HomeTopBar（拆分按钮箭头段展开），
+        # AgentAppShell 只渲染二级路由 TopAppBar，不再包含菜单调用。
+        caller = arguments(read("ui/app/Material3HomeTopBar.kt"), "TopBarMenuItems")
         for name in ("onOpenTerminal", "onLaunchKimiWeb", "kimiWebLabel",
-                     "canStopKimiWeb", "onStopKimiWeb", "onRefreshKimiWeb", "onOpenBrowser",
+                     "canStopKimiWeb", "onStopKimiWeb", "onOpenBrowser",
                      "onOpenWorkspace", "onOpenVoiceSettings",
                      "autoCompressEnabled", "isCompressingContext",
                      "onToggleAutoCompress", "onCompressConversation", "onOpenSearchHistory",
