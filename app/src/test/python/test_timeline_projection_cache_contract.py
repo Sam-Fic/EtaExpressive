@@ -41,13 +41,32 @@ class TimelineProjectionCacheContract(unittest.TestCase):
         self.assertIn('timelineRowsProjection.project(', text)
         # 折叠分轮：更早的轮次只要出现过正文回复，生成过程中也保持收起；
         # 最新一轮等整轮停下（isTurnSettled）再收，避免「收了又摊开」的回跳。
-        self.assertIn(
-            'projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled, foldLatestTurn = isTurnSettled)',
-            text,
-        )
+        # 折叠键与工作组键集合共用一份增量投影，流式正文追加不再重启清理 effect。
+        self.assertIn('val foldedWorkKeysCache = remember { AgentFoldedWorkKeysCache() }', text)
+        self.assertIn('foldedWorkKeysCache.project(', text)
+        self.assertIn('foldLatestTurn = isTurnSettled', text)
+        self.assertIn('val foldedWorkKeys = foldedWorkProjection.folded', text)
+        self.assertIn('LaunchedEffect(foldedWorkProjection.activeGroupKeys)', text)
         # Row-only policy reduction must not become a run-state or footer reduction.
-        footers = text.split('val turnFooters =', 1)[1].split('val finalResultMessageIds =', 1)[0]
-        self.assertIn('isStreaming = isStreaming', footers)
+        derived_call = text.split('val timelineDerived = timelineDerivedCache.project(', 1)[1].split('\n    )', 1)[0]
+        self.assertIn('isStreaming = isStreaming', derived_call)
+        self.assertIn('isPaused = isPaused', derived_call)
+        self.assertIn('isCompressingContext = isCompressingContext', derived_call)
+
+    def test_derived_cache_reuses_structure_only_on_certified_streaming_delta(self):
+        text = (ROOT / 'ui/components/AgentTimelineDerivedCache.kt').read_text()
+        self.assertEqual(1, text.count('singleReplacementFrom(previous)'))
+        self.assertIn('isStructureOnlyDelta(oldRow.message, newRow.message)', text)
+        self.assertIn('patchOwner(oldRow.message, newRow.message)', text)
+        # 结构结果原样复用；只有持在 value 里的消息对象必须逐 token 换引用。
+        self.assertIn('val footers = if (hasFooterOwner)', text)
+        self.assertIn('val reveals = if (hasRevealAnswer)', text)
+        self.assertIn('old.content.isBlank() == current.content.isBlank()', text)
+        # 全量投影仍逐份调用权威算法，不重写判定口径。
+        for token in ('rows.userBubblePosition(index)', 'rows.turnFooters(',
+                      'rows.receiptCardSeams(footerKeys = turnFooters.keys)',
+                      'rows.lazyUserMessageIndices()'):
+            self.assertIn(token, text)
 
     def test_cache_has_a_reference_guard_and_the_unchanged_full_fallback(self):
         text = (ROOT / 'ui/components/AgentTimelineProjectionCache.kt').read_text()

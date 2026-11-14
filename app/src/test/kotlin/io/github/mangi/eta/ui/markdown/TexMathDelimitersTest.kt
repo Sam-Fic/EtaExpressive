@@ -1,5 +1,6 @@
 package io.github.mangi.eta.ui.markdown
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,6 +8,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TexMathDelimitersTest {
+    /** 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致）。 */
+    private val testStyle = MarkdownInlineStyle(
+        linkColor = Color.Red,
+        codeBackground = Color.Gray,
+    )
+
     @Test
     fun inlineParenthesesKeepLatexSourceIntact() {
         val paragraph = blocks("行内 \\(a_i + b_j = \\frac{1}{2}\\) 结束").single() as MarkdownParagraph
@@ -111,9 +118,9 @@ class TexMathDelimitersTest {
     @Test
     fun streamingUnclosedDisplayMathConvertsOnceClosed() {
         val session = DocumentGfmParserSession()
-        val partial = session.parse("\\[\n\\frac{a}{b}", isComplete = false).document.blocks
+        val partial = session.parse("\\[\n\\frac{a}{b}", isComplete = false, style = testStyle).document.blocks
         assertFalse(partial.any { it is MarkdownCode && it.isMath })
-        val complete = session.parse("\\[\n\\frac{a}{b}\n\\]", isComplete = true).document.blocks
+        val complete = session.parse("\\[\n\\frac{a}{b}\n\\]", isComplete = true, style = testStyle).document.blocks
         assertEquals("\\frac{a}{b}", (complete.single() as MarkdownCode).text.text)
     }
 
@@ -127,7 +134,7 @@ class TexMathDelimitersTest {
 
             for (end in 0..source.length) {
                 val prefix = source.substring(0, end)
-                val partial = session.parse(prefix, isComplete = false)
+                val partial = session.parse(prefix, isComplete = false, style = testStyle)
                 assertEquals(prefix, partial.originalSource)
                 if (end == openSource.length) {
                     val partialCode = partial.document.blocks.filterIsInstance<MarkdownCode>().single()
@@ -136,7 +143,7 @@ class TexMathDelimitersTest {
                 }
             }
 
-            val complete = session.parse(source, isComplete = true)
+            val complete = session.parse(source, isComplete = true, style = testStyle)
             assertEquals(source, complete.originalSource)
             assertEquals(
                 "前 \$\$before\$\$\n\n${fence}latex\n$code\n$fence\n\n\$\$after\$\$",
@@ -154,5 +161,5 @@ class TexMathDelimitersTest {
     }
 
     private fun blocks(source: String): List<MarkdownBlock> =
-        DocumentGfmParserSession().parse(source, isComplete = true).document.blocks
+        DocumentGfmParserSession().parse(source, isComplete = true, style = testStyle).document.blocks
 }

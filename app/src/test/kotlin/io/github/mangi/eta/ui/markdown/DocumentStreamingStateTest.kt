@@ -217,7 +217,7 @@ class DocumentStreamingStateTest {
     }
 
     @Test fun imagesRetainPreviewButAreNotPendingRevealRecords() {
-        val document = DocumentGfmParserSession().parse("- ![a](https://example.com/a.png)", true).document
+        val document = DocumentGfmParserSession().parse("- ![a](https://example.com/a.png)", true, testStyle).document
         val item = (document.blocks.single() as MarkdownList).items.single()
         assertTrue(item.containsImage)
         assertNull(item.markerRevealKey)
@@ -225,7 +225,7 @@ class DocumentStreamingStateTest {
         assertTrue(listMarkerVisible(true, item.markerRevealKey, emptySet(), item.containsImage))
         assertFalse(listMarkerVisible(true, null, emptySet(), false))
         val mixed = DocumentGfmParserSession().parse(
-            "- ![a](https://example.com/a.png)\n\n  Later caption", true).document
+            "- ![a](https://example.com/a.png)\n\n  Later caption", true, testStyle).document
         val mixedItem = (mixed.blocks.single() as MarkdownList).items.single()
         assertTrue(mixedItem.containsImage)
         assertNull(mixedItem.markerRevealKey)

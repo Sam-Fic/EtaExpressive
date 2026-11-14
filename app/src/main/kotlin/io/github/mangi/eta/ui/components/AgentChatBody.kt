@@ -976,11 +976,17 @@ internal fun AgentConversationMessages(
     // 不折叠=彻底不收。手动点过的分组永远优先。
     val answerFoldEnabled = answerFoldLevel != AnswerFoldLevel.NONE
     val isTurnSettled = !isStreaming && !isPaused && !isCompressingContext
-    val foldedWorkKeys = remember(projectedTimelineEntries, answerFoldEnabled, isTurnSettled) {
-        projectedTimelineEntries.autoFoldedWorkKeys(answerFoldEnabled, foldLatestTurn = isTurnSettled)
-    }
-    LaunchedEffect(projectedTimelineEntries) {
-        val activeKeys = projectedTimelineEntries.filterIsInstance<AgentTimelineEntry.WorkProcess>().mapTo(mutableSetOf()) { it.key }
+    // 折叠键与「当前工作组键集合」共用一份增量投影：流式正文追加时两者都不变，
+    // 不再每 token 全量扫时间线，也不重启下面的展开覆盖清理 effect。
+    val foldedWorkKeysCache = remember { AgentFoldedWorkKeysCache() }
+    val foldedWorkProjection = foldedWorkKeysCache.project(
+        projectedTimelineEntries,
+        enabled = answerFoldEnabled,
+        foldLatestTurn = isTurnSettled,
+    )
+    val foldedWorkKeys = foldedWorkProjection.folded
+    LaunchedEffect(foldedWorkProjection.activeGroupKeys) {
+        val activeKeys = foldedWorkProjection.activeGroupKeys
         if (workExpansionOverrides.keys.any { it !in activeKeys }) {
             workExpansionOverrides = workExpansionOverrides.filterKeys { it in activeKeys }
         }
@@ -998,28 +1004,21 @@ internal fun AgentConversationMessages(
             )
         }
     }
+    // 行下游的八份派生结果收进一个缓存：助手正文单槽追加时，结构结果原样复用，
+    // 只把页脚与显现列表里持着的消息对象换成新对象（O(轮数) 而非 O(时间线)）。
+    // 工作卡片补丁、多槽替换等无单槽凭证的路径一律走全量投影，不凭猜测复用。
+    val timelineDerivedCache = remember { AgentTimelineDerivedCache() }
+    val timelineDerived = timelineDerivedCache.project(
+        timelineRows,
+        isStreaming = isStreaming,
+        isPaused = isPaused,
+        isCompressingContext = isCompressingContext,
+    )
     // 连续用户气泡的组内位置（Single / GroupFirst / GroupMid / GroupLast），按实际行相邻判定。
-    val userBubblePositions = remember(timelineRows) {
-        buildMap {
-            timelineRows.forEachIndexed { index, row ->
-                val user = (row as? AgentTimelineRow.Message)?.message as? UserMessageUi
-                    ?: return@forEachIndexed
-                put(user.id, timelineRows.userBubblePosition(index))
-            }
-        }
-    }
+    val userBubblePositions = timelineDerived.userBubblePositions
     // 工作组行（摘要 / 步骤）上方是否紧邻用户气泡：回复起点与文字侧统一 16dp——
     // 组首行对用户气泡的上边距抬到基准半距（8），否则保持 2dp 薄边（与文字行底 8 合成 10）。
-    val workRowFollowsUser = remember(timelineRows) {
-        buildMap {
-            timelineRows.forEachIndexed { index, row ->
-                if (row is AgentTimelineRow.WorkSummary || row is AgentTimelineRow.WorkStep) {
-                    val prev = timelineRows.getOrNull(index - 1) as? AgentTimelineRow.Message
-                    put(row.key, prev?.message?.isRenderedAsUserBubble() == true)
-                }
-            }
-        }
-    }
+    val workRowFollowsUser = timelineDerived.workRowFollowsUser
     LaunchedEffect(scrollToMessageId, timelineRows) {
         val target = scrollToMessageId ?: return@LaunchedEffect
         val index = timelineRows.indexOfFirst { it.containsMessageId(target) }
@@ -1037,41 +1036,18 @@ internal fun AgentConversationMessages(
     // records move only the footer anchor, never the message or callback owner.
     // Generation only relaxes branching on PREVIOUS completed turns. The current
     // turn has no action bar until it closes, even between text/tool blocks.
-    val turnFooters = remember(timelineRows, isStreaming, isPaused, isCompressingContext) {
-        timelineRows.turnFooters(
-            isStreaming = isStreaming,
-            isCompressingContext = isCompressingContext,
-            isPaused = isPaused,
-        )
-    }
-    val finalResultMessageIds = remember(turnFooters) {
-        turnFooters.values.mapTo(mutableSetOf()) { it.id }
-    }
+    val turnFooters = timelineDerived.turnFooters
+    val finalResultMessageIds = timelineDerived.finalResultMessageIds
     // 相邻分段卡片行的接缝投影：任意两张相邻卡片行（含跨批次组末↔组首、折叠摘要↔
     // 步骤、回报卡↔卡片行）相接处取内圆 + 1dp 薄边（组缝节奏）；页脚锚在两行之间时
     // 按钮行隔开了它们，缝不成立、行尾维持外圆收边。
     // 随行投影与页脚锚点重算，回报卡与步骤行的位置/间距由同一份投影驱动。
-    val receiptSeams = remember(timelineRows, turnFooters) {
-        timelineRows.receiptCardSeams(footerKeys = turnFooters.keys)
-    }
+    val receiptSeams = timelineDerived.receiptSeams
     // Reveal dependencies follow the projection's existing anchors, not a
     // second ownership heuristic. A stopped notice can own actions while an
     // earlier answer in that same turn is still revealing. New user boundaries
     // and completed footer anchors prevent one turn from blocking another.
-    val footerRevealMessages = remember(timelineRows, turnFooters) {
-        buildMap<String, List<AgentMessageUi>> {
-            val answers = mutableListOf<AgentMessageUi>()
-            timelineRows.forEach { row ->
-                val message = (row as? AgentTimelineRow.Message)?.message
-                if (message is UserMessageUi && !message.isSteerSupplement()) answers.clear()
-                if (message is AgentMessageUi && message.content.isNotBlank()) answers.add(message)
-                if (row.key in turnFooters) {
-                    put(row.key, answers.toList())
-                    answers.clear()
-                }
-            }
-        }
-    }
+    val footerRevealMessages = timelineDerived.footerRevealMessages
     // 流式消息的渲染会话按 id 提升到列表层持有：item 滚出视口被 LazyColumn 销毁后，
     // 滑回时复用同一解析会话与打字机进度，避免整段内容重新解析并重放显现动画。
     val fallbackStreamingStates = remember { mutableStateMapOf<String, StreamingMarkdownState>() }
@@ -1113,7 +1089,7 @@ internal fun AgentConversationMessages(
     val compressingChildren = telemetry.children.filter { it.isCompacting }
     val compressingItemCount = if (isCompressingContext || isWaitingForCompression || compressingChildren.isNotEmpty()) 1 else 0
     val bottomItemIndex = timelineRows.size + compressingItemCount
-    val userMessageTargets = remember(timelineRows) { timelineRows.lazyUserMessageIndices() }
+    val userMessageTargets = timelineDerived.userMessageTargets
     val directionThreshold = with(LocalDensity.current) { 12.dp.toPx() }
     val directionTracker = remember(scrollState, directionThreshold) {
         ConversationNavigationDirectionTracker(directionThreshold)
@@ -1694,17 +1670,7 @@ internal fun AgentConversationMessages(
         val speechPrefaceProjection = remember { AgentSpeechPrefaceCache() }
         // 朗读范围与界面展示一致：激进折叠收起且未展开的工作组里，中间回复不可见，
         // 朗读 preface 同步剔除。展开摘要后这些回复重新可见，preface 随之恢复。
-        val foldedReplyIds = remember(timelineRows) {
-            buildSet {
-                timelineRows.forEach { row ->
-                    if (row is AgentTimelineRow.WorkSummary && !row.expanded) {
-                        row.group.messages.forEach { message ->
-                            if (message is AgentMessageUi) add(message.id)
-                        }
-                    }
-                }
-            }
-        }
+        val foldedReplyIds = timelineDerived.foldedReplyIds
         val speechPrefaces = remember(visibleMessages, finalResultMessageIds, foldedReplyIds) {
             StreamPerformanceDiagnostics.measure("timeline.prefaces", visibleMessages.size.toLong()) {
                 speechPrefaceProjection.project(visibleMessages, finalResultMessageIds, foldedReplyIds)

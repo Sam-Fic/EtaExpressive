@@ -82,14 +82,17 @@ class RunningBranchSnapshotContract(unittest.TestCase):
 
     def test_only_completed_turns_show_actions_during_generation(self):
         body = self.text("ui/components/AgentChatBody.kt")
-        projection_call = body.split("val turnFooters =", 1)[1].split("val finalResultMessageIds =", 1)[0]
-        self.assertIn("isStreaming, isPaused, isCompressingContext", projection_call)
+        projection_call = body.split("val timelineDerived = timelineDerivedCache.project(", 1)[1].split("\n    )", 1)[0]
+        self.assertIn("isStreaming = isStreaming", projection_call)
         self.assertIn("isPaused = isPaused", projection_call)
+        self.assertIn("isCompressingContext = isCompressingContext", projection_call)
         self.assertNotIn("branchEnabled", projection_call)
         self.assertNotIn("includeOpenTurnForBranch", body)
-        final_ids = body.split("val finalResultMessageIds =", 1)[1].split("val footerRevealMessages", 1)[0]
-        self.assertIn("remember(turnFooters)", final_ids)
-        self.assertIn("turnFooters.values.mapTo", final_ids)
+        # 页脚 owner 与最终回复 id 仍由同一份 turnFooters 投影推导，只是搬进了派生缓存。
+        cache = self.text("ui/components/AgentTimelineDerivedCache.kt")
+        self.assertIn("val turnFooters = rows.turnFooters(", cache)
+        self.assertIn("val finalResultMessageIds = turnFooters.values.mapTo(mutableSetOf()) { it.id }", cache)
+        self.assertIn("rows.receiptCardSeams(footerKeys = turnFooters.keys)", cache)
         projection = self.text("ui/components/AgentTurnFooterProjection.kt")
         self.assertIn("isPaused: Boolean = false", projection)
         self.assertIn("!isStreaming && !isPaused && !isCompressingContext", projection)
