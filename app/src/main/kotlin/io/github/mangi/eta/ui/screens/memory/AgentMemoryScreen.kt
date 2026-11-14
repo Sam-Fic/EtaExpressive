@@ -31,8 +31,9 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.layout.horizontalCutoutPadding
 import io.github.mangi.eta.ui.model.AgentMemoryAction
 import io.github.mangi.eta.ui.model.AgentMemoryUiState
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +47,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.components.TopBarIconButton
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -67,6 +69,24 @@ internal fun AgentMemoryScreen(
             stringResource(R.string.memory_editor_title, state.assistantName)
         },
         onBack = { onAction(AgentMemoryAction.NavigateBack) },
+        actions = {
+            // 清除/保存走顶栏图标按钮（编辑页保存顶栏同款；TopBarIconButton 自带 Tooltip +
+            // 触觉 + 官方默认 shapes）：破坏性动作用 error 色，主要动作保存收在最右缘。
+            // 底部按钮行撤掉后，编辑卡片只剩输入框与状态行，键盘弹出时不再被按钮挤占。
+            TopBarIconButton(
+                icon = Icons.Rounded.Delete,
+                contentDescription = stringResource(R.string.ui_clear_84fcd7),
+                destructive = true,
+                enabled = !state.isLoading && !state.isSaving && state.draft.isNotEmpty(),
+                onClick = { showClearDialog = true },
+            )
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(R.string.memory_save),
+                enabled = state.canSave,
+                onClick = { onAction(AgentMemoryAction.Save) },
+            )
+        },
     ) { paddingValues, scrollConnection, sidePadding ->
         Column(
             modifier = Modifier
@@ -195,30 +215,6 @@ internal fun AgentMemoryScreen(
                                 color = statusColor,
                                 style = MaterialTheme.typography.bodySmall,
                             )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            M3TextButton(
-                                onClick = { showClearDialog = true },
-                                enabled = !state.isLoading && !state.isSaving && state.draft.isNotEmpty(),
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error,
-                                ),
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                M3Text(stringResource(R.string.ui_clear_84fcd7))
-                            }
-                            Button(
-                                onClick = { onAction(AgentMemoryAction.Save) },
-                                enabled = state.canSave,
-                                modifier = Modifier.weight(1f),
-                                shapes = ButtonDefaults.shapes(),
-                            ) {
-                                M3Text(if (state.isSaving) stringResource(R.string.memory_saving) else stringResource(R.string.memory_save))
-                            }
                         }
                         }
                         }
