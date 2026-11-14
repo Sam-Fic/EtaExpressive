@@ -15,9 +15,11 @@ internal object McpServerRepository {
     private lateinit var applicationContext: Context
 
     fun init(context: Context) {
-        if (!::applicationContext.isInitialized) {
-            applicationContext = context.applicationContext
-        }
+        // 无条件重绑：Robolectric 每个用例都会重建 Application，保留首个 Application 会让
+        // 凭据偏好（McpSecretStore 的 prefs）落到陈旧 context 的目录，而备份导出用的是
+        // 当前 context，两边读不到同一份 token（2026-11-14 v5.5.0 发版 verify 取证）。
+        // 与 ProviderRepository.init 同口径；生产侧 onCreate 只调一次，重绑幂等。
+        applicationContext = context.applicationContext
     }
 
     fun serversFlow(): Flow<List<McpServerSetting>> = dao().serversFlow().map { entities ->
