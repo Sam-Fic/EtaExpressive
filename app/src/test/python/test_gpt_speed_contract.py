@@ -117,9 +117,15 @@ class GptSpeedContractTest(unittest.TestCase):
     def test_animation_geometry_and_color_contract(self):
         animation = source("ui/components/ThinkingSpeedAnimation.kt")
         for literal in ("GptSpeedAnimationDurationMillis = 450", "GptSpeedRotationDegreesPerCycle = 360f",
-                        "GptSpeedScaleStart = 1f", "GptSpeedScalePeak = 1.12f",
-                        "Color(0xFFF2A7BD)", "Color(0xFF800020)"):
+                        "GptSpeedScaleStart = 1f", "GptSpeedScalePeak = 1.12f"):
             self.assertIn(literal, animation)
+        # 档位颜色走官方 colorScheme 角色（快速=tertiary、极速=error），不写死品牌色：
+        # 动画文件只保留 KDoc 指向 etaGptSpeedColor，不再出现任何 Color 字面量。
+        self.assertIn("etaGptSpeedColor", animation)
+        self.assertNotIn("Color(0x", animation)
+        theme = source("ui/adaptive/EtaTheme.kt")
+        self.assertIn("GptSpeedMode.FAST -> MaterialTheme.colorScheme.tertiary", theme)
+        self.assertIn("GptSpeedMode.ULTRA_FAST -> MaterialTheme.colorScheme.error", theme)
         self.assertIn("if (current != 0) return 0", animation)
         self.assertIn("token == current", animation)
 

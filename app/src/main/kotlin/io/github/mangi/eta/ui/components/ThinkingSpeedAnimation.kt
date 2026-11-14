@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.components
 
-import androidx.compose.ui.graphics.Color
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.runtime.localizedText
 import io.github.mangi.eta.data.model.GptSpeedMode
@@ -8,9 +7,10 @@ import io.github.mangi.eta.data.model.GptSpeedMode
 /**
  * GPT 速度档位切换的纯动画策略与文案。
  *
- * 之所以把颜色映射、旋转/缩放曲线、闸门逻辑与文案拆成纯函数/纯类，
- * 是为了在没有 Compose 运行时的 JVM 单测里直接验证“一次长按 = 一圈旋转 + 一次缩放”
- * 以及“动画中拒绝新的长按”，而不必渲染 UI。
+ * 档位颜色已迁到官方 colorScheme 角色：见 [io.github.mangi.eta.ui.adaptive.etaGptSpeedColor]
+ * （快速=tertiary、极速=error，不写死品牌色）。本文件只保留旋转/缩放曲线、闸门逻辑与文案，
+ * 拆成纯函数/纯类是为了在没有 Compose 运行时的 JVM 单测里直接验证
+ * “一次长按 = 一圈旋转 + 一次缩放”以及“动画中拒绝新的长按”，而不必渲染 UI。
  */
 
 /** 一次速度切换动画的时长：旋转、缩放、颜色渐变共用，约 450ms。 */
@@ -24,22 +24,6 @@ internal const val GptSpeedScaleStart = 1f
 
 /** 缩放在动画中点达到峰值。 */
 internal const val GptSpeedScalePeak = 1.12f
-
-/** FAST 档图标色：淡粉。 */
-internal val GptSpeedFastColor = Color(0xFFF2A7BD)
-
-/** ULTRA_FAST 档图标色：酒红。 */
-internal val GptSpeedUltraFastColor = Color(0xFF800020)
-
-/**
- * 档位颜色完全由 owner 传入的 [GptSpeedMode] 决定，不在本地记忆：
- * NORMAL 回到调用方给的原色（非 GPT 也走这一支，立即显示普通原色）。
- */
-internal fun gptSpeedChipColor(mode: GptSpeedMode, normalColor: Color): Color = when (mode) {
-    GptSpeedMode.FAST -> GptSpeedFastColor
-    GptSpeedMode.ULTRA_FAST -> GptSpeedUltraFastColor
-    else -> normalColor
-}
 
 /** 动画进度映射出的旋转角度，进度会被夹取到 0..1。 */
 internal fun gptSpeedRotationDegrees(progress: Float): Float =

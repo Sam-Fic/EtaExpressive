@@ -49,7 +49,8 @@ internal fun subAgentGptSpeedDescription(name: String, mode: GptSpeedMode): Stri
  * 子代理 GPT 速度按钮：仅 GPT 模型显示，单击在原位循环速度档位。
  *
  * 动画与主会话 [ThinkingEffortChip] 完全一致，直接复用 ThinkingSpeedAnimation.kt 的策略：
- * 450ms、旋转一整圈、缩放 1→1.12→1、[GptSpeedAnimationGate] 闸门与淡粉/酒红渐变。
+ * 450ms、旋转一整圈、缩放 1→1.12→1、[GptSpeedAnimationGate] 闸门；档位颜色走
+ * [etaGptSpeedColor] 的官方角色映射（快速=tertiary、极速=error）。
  * 与主会话不同的是入口为“单击”而非长按：单击只切速度，绝不打开模型选择或思考菜单。
  *
  * 只有写回 [ConversationSubAgentPreferences.WriteResult.Saved] 才播放动画并弹 Toast；

@@ -6,8 +6,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MarkdownDocumentLinkMapCacheTest {
+    /** 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致走显式传参）。 */
+    private val testStyle = MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)
+
     private fun assertCold(actual: DocumentSnapshot, source: String, complete: Boolean,
-                           style: MarkdownInlineStyle = MarkdownInlineStyle.Default) {
+                           style: MarkdownInlineStyle = testStyle) {
         val expected = DocumentGfmParserSession().parse(source, complete, style)
         assertEquals(expected.originalSource, actual.originalSource)
         assertEquals(expected.renderedSource, actual.renderedSource)
@@ -89,7 +92,7 @@ class MarkdownDocumentLinkMapCacheTest {
         val parser = DocumentGfmParserSession()
         val source = "Plain **bold** and `code`.\n\nTail"
         val first = parser.parse(source, true)
-        val style = MarkdownInlineStyle.Default.copy(linkColor = Color.Red, codeBackground = Color.Green)
+        val style = testStyle.copy(codeBackground = Color.Green)
         val themed = parser.parse(source, true, style)
         assertNotSame(first.document.blocks.first(), themed.document.blocks.first())
         assertCold(themed, source, true, style)

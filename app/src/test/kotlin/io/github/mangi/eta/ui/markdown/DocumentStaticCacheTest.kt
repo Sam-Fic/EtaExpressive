@@ -15,12 +15,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36])
 class DocumentStaticCacheTest {
+    /** 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致走显式传参）。 */
+    private val testStyle = MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)
+
     @get:Rule val compose = createComposeRule()
 
     @Test fun completedStreamIsAvailableOnFirstStaticCompositionAndRemount() = runBlocking {
         val state = DocumentStreamingState()
         val source = "Static handoff **prepared** answer"
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val worker = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         try {
             state.submit(source, false, style)
@@ -55,7 +58,7 @@ class DocumentStaticCacheTest {
         val firstSource = "First cached **document**"
         val secondSource = "Second cached **document**"
         val coldSource = "Uncached third **document**"
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val changedStyle = style.copy(linkColor = Color.Red)
         val first = DocumentGfmParserSession().parse(firstSource, true, style).document
         val second = DocumentGfmParserSession().parse(secondSource, true, style).document
@@ -102,7 +105,7 @@ class DocumentStaticCacheTest {
         val raw = "Citation handoff [[1]](https://example.com) **body**"
         val clean = NumericCitationMarkup.strip(raw)
         assertNotEquals(raw, clean)
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val prepared = DocumentGfmParserSession().parse(clean, true, style).document
         DocumentCache.put(clean, style, prepared)
         val seen = mutableListOf<MarkdownDocument?>()
@@ -117,7 +120,7 @@ class DocumentStaticCacheTest {
     }
 
     @Test fun staticCacheStillEvictsLeastRecentlyUsedEntriesAt96Documents() {
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val document = DocumentGfmParserSession().parse("Cache capacity", true, style).document
         repeat(96) { DocumentCache.put("capacity-test-$it", style, document) }
         assertSame(document, DocumentCache.get("capacity-test-0", style))

@@ -10,18 +10,11 @@ import org.junit.Test
 
 /**
  * GPT 速度切换的动画策略与闸门是纯逻辑，直接在这里验证：
- * 一次长按 = 一整圈旋转 + 单峰缩放 + owner 驱动的颜色；动画中拒绝新的长按（不排队）。
+ * 一次长按 = 一整圈旋转 + 单峰缩放；动画中拒绝新的长按（不排队）。
+ * 档位颜色走官方 colorScheme 角色（快速=tertiary、极速=error，见 etaGptSpeedColor），
+ * 不再有品牌色字面量，因此不在 JVM 纯逻辑测试范围内（该映射是 @Composable）。
  */
 class ThinkingSpeedAnimationTest {
-
-    @Test
-    fun fastAndUltraFastUseFixedBrandColorsWhileNormalFallsBackToOwnerColor() {
-        val ownerColor = Color(0xFF123456)
-        assertEquals(Color(0xFFF2A7BD), gptSpeedChipColor(GptSpeedMode.FAST, ownerColor))
-        assertEquals(Color(0xFF800020), gptSpeedChipColor(GptSpeedMode.ULTRA_FAST, ownerColor))
-        // NORMAL 不做本地记忆，直接回落 owner 给的原色（非 GPT 也走这一支）。
-        assertEquals(ownerColor, gptSpeedChipColor(GptSpeedMode.NORMAL, ownerColor))
-    }
 
     @Test
     fun oneAcceptedLongPressIsExactlyOneFullTurn() {

@@ -59,10 +59,8 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButtonDefaults
@@ -138,6 +136,7 @@ import io.github.mangi.eta.ui.components.lazyRowEdgeFade
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.app.LocalAppearanceSettings
 import io.github.mangi.eta.ui.app.seedColor
+import io.github.mangi.eta.ui.app.toEtaColorScheme
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -998,8 +997,9 @@ private fun ColorButtonM3(
 
 /**
  * 候选配色：与 [io.github.mangi.eta.ui.app.AgentAppTheme] 的 M3 分支同源 ——
- * material-color-utilities（Spec2025，materialkolor）生成的动态取色，经同样的色板映射成
- * Material 3 色板。
+ * material-color-utilities（Spec2025，materialkolor）生成的动态取色，经
+ * [io.github.mangi.eta.ui.app.toEtaColorScheme]（真实主题唯一的色板映射）成 Material 3 色板，
+ * 保证预览与真实主题逐项一致。
  *
  * @param seedOverride 传入固定种子色（色板按钮）；null 时按当前强调色设置解析。
  */
@@ -1025,40 +1025,9 @@ private fun AppearanceSettings.previewM3ColorScheme(
     val scheme = remember(keyColor.value, paletteStyle, isDark) {
         previewDynamicScheme(paletteStyle, keyColor.toArgb(), isDark)
     }
-    // 与 AgentAppTheme 的色板映射逐项一致（KernelSU 式三层色阶）。
-    val base = if (isDark) darkColorScheme() else lightColorScheme()
-    return base.copy(
-        primary = Color(scheme.primary),
-        onPrimary = Color(scheme.onPrimary),
-        primaryContainer = Color(scheme.primaryContainer),
-        onPrimaryContainer = Color(scheme.onPrimaryContainer),
-        secondary = Color(scheme.secondary),
-        onSecondary = Color(scheme.onSecondary),
-        secondaryContainer = Color(scheme.secondaryContainer),
-        onSecondaryContainer = Color(scheme.onSecondaryContainer),
-        background = Color(scheme.background),
-        onBackground = Color(scheme.onBackground),
-        surface = Color(scheme.surface),
-        onSurface = Color(scheme.onSurface),
-        surfaceVariant = Color(scheme.surfaceVariant),
-        onSurfaceVariant = Color(scheme.onSurfaceVariant),
-        error = Color(scheme.error),
-        onError = Color(scheme.onError),
-        errorContainer = Color(scheme.errorContainer),
-        onErrorContainer = Color(scheme.onErrorContainer),
-        outline = Color(scheme.outline),
-        outlineVariant = Color(scheme.outline),
-        surfaceTint = Color(scheme.primary),
-        surfaceContainer = Color(scheme.surfaceContainer),
-        surfaceContainerHigh = Color(scheme.surfaceContainerHigh),
-        surfaceContainerHighest = Color(scheme.surfaceContainerHigh),
-        surfaceContainerLow = Color(scheme.surface),
-        surfaceContainerLowest = Color(scheme.surface),
-        surfaceBright = Color(scheme.surfaceContainerHighest),
-        surfaceDim = Color(scheme.surface),
-        tertiaryContainer = Color(scheme.tertiaryContainer),
-        onTertiaryContainer = Color(scheme.onTertiaryContainer),
-    )
+    // 预览不透传 pureBlackEnabled：纯黑预览由调用方按需把页面背景压黑（见 previewContainer），
+    // 色板本身保持原色阶以便观察强调色效果。
+    return scheme.toEtaColorScheme(isDark, pureBlackEnabled = false)
 }
 
 /** 预览取色链对比度（0.0 = 标准）。 */

@@ -6,6 +6,12 @@ import org.junit.Test
 
 /** Publication/target latch tests; real reveal/layout coverage lives in StreamingRowPinningTest. */
 class DocumentStreamingStateTest {
+    /** 测试用中性样式：Default 已删除，颜色必须显式给定（与生产一致走显式传参）。 */
+    private val testStyle = MarkdownInlineStyle(
+        linkColor = androidx.compose.ui.graphics.Color.Red,
+        codeBackground = androidx.compose.ui.graphics.Color.Gray,
+    )
+
     private suspend fun awaitSnapshot(state: DocumentStreamingState, source: String,
                                       previous: DocumentSnapshot? = null): DocumentSnapshot =
         withTimeout(5_000) {
@@ -21,7 +27,7 @@ class DocumentStreamingStateTest {
     @Test fun publishedTargetSurvivesDuplicateSubmitAndWorkerRemount() = runBlocking {
         val state = DocumentStreamingState()
         val source = "Stable **answer**"
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         var worker = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         try {
             state.submit(source, false, style)
@@ -49,7 +55,7 @@ class DocumentStreamingStateTest {
     @Test fun unpublishedIdenticalTargetCanBeSubmittedAgainAfterCancellation() = runBlocking {
         val state = DocumentStreamingState()
         val source = "Still waiting for the parser"
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         state.submit(source, false, style)
         val cancelled = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         cancelled.cancelAndJoin()
@@ -63,7 +69,7 @@ class DocumentStreamingStateTest {
 
     @Test fun terminalLinkResolutionRequiresExactPublicationLayout() = runBlocking {
         val state = DocumentStreamingState()
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val source = "Stable prefix.\n\n[אבגדה][r]\n\n[r]: https://example.com/a"
         val worker = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         try {
@@ -100,7 +106,7 @@ class DocumentStreamingStateTest {
 
     @Test fun reusedTerminalPrefixStillRequiresNewSnapshotLayout() = runBlocking {
         val state = DocumentStreamingState()
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val source = "Stable **prefix**.\n\nTail"
         val worker = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         try {
@@ -124,7 +130,7 @@ class DocumentStreamingStateTest {
 
     @Test fun oldCompletionCannotReleaseReopenedSameSourceOrCorrection() = runBlocking {
         val state = DocumentStreamingState()
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val source = "[a]: https://example.com"
         val worker = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         try {
@@ -159,7 +165,7 @@ class DocumentStreamingStateTest {
     @Test fun themeChangeCannotCompleteUsingOldPreparedDocument() = runBlocking {
         val state = DocumentStreamingState()
         val source = "[a]: https://example.com"
-        val original = MarkdownInlineStyle.Default
+        val original = testStyle
         val next = original.copy(linkColor = androidx.compose.ui.graphics.Color.Red)
         val worker = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         try {
@@ -181,7 +187,7 @@ class DocumentStreamingStateTest {
     @Test fun onlyExactCompletedDocumentSeedsStaticCache() = runBlocking {
         val state = DocumentStreamingState()
         val source = "Cache handoff **answer** [link][r]\n\n[r]: https://example.com/cache-handoff"
-        val style = MarkdownInlineStyle.Default
+        val style = testStyle
         val changedStyle = style.copy(linkColor = androidx.compose.ui.graphics.Color.Red)
         val worker = launch(start = CoroutineStart.UNDISPATCHED) { state.parseUpdates() }
         try {

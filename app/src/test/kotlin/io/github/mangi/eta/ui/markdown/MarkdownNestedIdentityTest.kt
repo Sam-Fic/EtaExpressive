@@ -38,7 +38,7 @@ class MarkdownNestedIdentityTest {
             assertEquals(cold.blocks, warm.blocks)
             assertEquals(cold.revealKeys, warm.revealKeys)
         }
-        val style = MarkdownInlineStyle.Default.copy(linkColor = Color.Red)
+        val style = MarkdownInlineStyle(linkColor = Color.Red, codeBackground = Color.Gray)
         val warm = parser.parse(sources[1], true, style).document
         assertEquals(DocumentGfmParserSession().parse(sources[1], true, style).document.blocks, warm.blocks)
     }

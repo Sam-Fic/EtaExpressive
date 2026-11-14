@@ -24,16 +24,16 @@ import org.intellij.markdown.parser.LinkMap
 /**
  * 行内样式里随主题变化的部分。它在后台构建 AnnotatedString 时就要确定，
  * 因此作为解析输入的一部分：主题切换会让缓存失效并重建，而不是在绘制时逐段改色。
+ *
+ * 没有 [Default]：颜色必须来自 [rememberMarkdownStyle] 的官方 colorScheme 角色
+ * （linkColor=primary、codeBackground=onSurface 低透明度），不允许任何调用点
+ * 用固定字面量兜底——深浅色切换后硬编码链接色会不可读。
  */
 @Immutable
 internal data class MarkdownInlineStyle(
     val linkColor: Color,
     val codeBackground: Color,
-) {
-    companion object {
-        val Default = MarkdownInlineStyle(linkColor = Color(0xFF3482FF), codeBackground = Color(0x1F808080))
-    }
-}
+)
 
 /**
  * 把一组行内节点转换为 AnnotatedString。

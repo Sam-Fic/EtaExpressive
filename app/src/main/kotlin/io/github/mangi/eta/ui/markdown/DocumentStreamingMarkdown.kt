@@ -30,7 +30,7 @@ internal class DocumentGfmParserSession {
     private val parser = MarkdownParser(GFMFlavourDescriptor())
     private val builder = MarkdownDocumentBuilder()
     fun parse(source: String, isComplete: Boolean,
-              style: MarkdownInlineStyle = MarkdownInlineStyle.Default): DocumentSnapshot {
+              style: MarkdownInlineStyle): DocumentSnapshot {
         val clean = NumericCitationMarkup.strip(source)
         val rendered = StreamingGfmProjection.project(TexMathDelimiters.normalize(clean), isComplete)
         val root = parser.buildMarkdownTreeFromString(rendered)

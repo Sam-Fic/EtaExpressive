@@ -54,7 +54,7 @@ internal fun rememberEtaColorScheme(
         resolveSeedArgb(context, accentColor, isDark)
     }
     return remember(seedArgb, paletteStyle, isDark, pureBlackEnabled) {
-        dynamicScheme(paletteStyle, seedArgb, isDark).toMaterial3ColorScheme(isDark, pureBlackEnabled)
+        dynamicScheme(paletteStyle, seedArgb, isDark).toEtaColorScheme(isDark, pureBlackEnabled)
     }
 }
 
@@ -98,8 +98,13 @@ private fun dynamicScheme(
     }
 }
 
-/** DynamicScheme → 官方 Material 3 [ColorScheme]（全部使用标准色角色）。 */
-private fun DynamicScheme.toMaterial3ColorScheme(
+/**
+ * DynamicScheme → 官方 Material 3 [ColorScheme]（全部使用标准色角色）。
+ *
+ * 「外观与主题」预览卡（AppearanceSettingsScreen）与真实主题共用本映射，
+ * 保证预览与点下去之后的实际配色逐项一致；不要在本函数之外再写第二份映射。
+ */
+internal fun DynamicScheme.toEtaColorScheme(
     isDark: Boolean,
     pureBlackEnabled: Boolean,
 ): ColorScheme {
