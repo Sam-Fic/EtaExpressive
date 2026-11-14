@@ -152,4 +152,4 @@ Dedicated retrieval for contacts, SMS, and calendars currently still requires Ro
 - Source Code and Releases: [Sam-Fic/EtaExpressive](https://github.com/Sam-Fic/EtaExpressive)
 
 ## License
-This project, like the upstream Eta, adopts the [PolyForm Noncommercial License 1.0.0](LICENSE). Without written authorization from the [original author](https://github.com/Mangi-11), selling, paid installation, and other commercial uses are prohibited.
+This project, like the upstream Eta, is open-sourced under [GPL-3.0](LICENSE). See [LICENSE](LICENSE) for details.
