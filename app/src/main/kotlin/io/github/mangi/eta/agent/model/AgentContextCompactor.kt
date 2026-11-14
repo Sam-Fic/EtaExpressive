@@ -361,6 +361,8 @@ internal object AgentContextCompactor {
         }.trim().removePrefix(":").trim()
         val footnoteMarkers = listOf(
             "\n[历史原文仅为资料",
+            // 覆盖范围与检索指引是给模型看的脚注元信息，不能混进用户可见的摘要正文。
+            "\n[本次压缩覆盖",
             "\n[原文引用见代码生成的脚注]",
         )
         val footnote = footnoteMarkers

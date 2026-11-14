@@ -411,4 +411,81 @@ context-checkpoint:22222222-2222-2222-2222-222222222222
         assertThrows(CompactionArchiveRestoreException::class.java) { archive.restoreHistory(rootId) }
     }
 
+    private fun queryResult(archive: AgentCompactionArchive, id: String, query: String, offset: Int = 0) =
+        JSONObject(archive.read(JSONObject().put("checkpoint", id).put("query", query).put("offset", offset).toString()).content)
+
+    @Test fun queryReturnsFocusedSnippetInsteadOfBlindPaging() {
+        val archive = AgentCompactionArchive(temporary.root, "query-focused")
+        val text = "前置内容".repeat(2000) + "目标错误码 ERR_42_NOT_FOUND 出现在此处" + "后置内容".repeat(2000)
+        val id = archive.save(listOf(AgentModelClient.ConversationMessage("tool", text, toolCallId = "call")))
+        val result = queryResult(archive, id, "err_42_not_found")
+        assertEquals("query", result.getString("mode"))
+        assertEquals(1, result.getJSONArray("hits").length())
+        val hit = result.getJSONArray("hits").getJSONObject(0)
+        assertTrue(hit.getString("snippet").contains("ERR_42_NOT_FOUND"))
+        assertTrue(hit.getString("snippet").length <= 600 + 600 + 16)
+        assertTrue(hit.getInt("offset") > 4000)
+        assertTrue(result.getString("content").contains("ERR_42_NOT_FOUND"))
+        assertTrue(result.isNull("next_offset"))
+        // 不带 query 的旧分页契约保持不变。
+        val page = JSONObject(archive.read(JSONObject().put("checkpoint", id).toString()).content)
+        assertEquals(4000, page.getString("content").length)
+    }
+
+    @Test fun queryMatchesAcrossTheReadBufferBoundary() {
+        val archive = AgentCompactionArchive(temporary.root, "query-boundary")
+        val text = "x".repeat(8190) + "ACROSS_BOUNDARY_TOKEN" + "y".repeat(100)
+        val id = archive.save(listOf(AgentModelClient.ConversationMessage("tool", text, toolCallId = "call")))
+        val result = queryResult(archive, id, "ACROSS_BOUNDARY_TOKEN")
+        assertEquals(1, result.getJSONArray("hits").length())
+        val snippet = result.getJSONArray("hits").getJSONObject(0).getString("snippet")
+        val at = snippet.indexOf("ACROSS_BOUNDARY_TOKEN")
+        assertTrue(at > 0)
+        assertTrue(snippet.substring(0, at).contains('x'))
+        assertTrue(snippet.substring(at).contains('y'))
+    }
+
+    @Test fun queryResultsAreBoundedAndResumable() {
+        val archive = AgentCompactionArchive(temporary.root, "query-bounded")
+        val text = "TARGET_MARK ".repeat(10)
+        val id = archive.save(listOf(AgentModelClient.ConversationMessage("tool", text, toolCallId = "call")))
+        val first = queryResult(archive, id, "TARGET_MARK")
+        assertEquals(3, first.getJSONArray("hits").length())
+        assertFalse(first.isNull("next_offset"))
+        val next = first.getInt("next_offset")
+        val second = queryResult(archive, id, "TARGET_MARK", next)
+        assertEquals(3, second.getJSONArray("hits").length())
+        assertTrue(second.getJSONArray("hits").getJSONObject(0).getInt("offset") >
+            first.getJSONArray("hits").getJSONObject(2).getInt("offset"))
+    }
+
+    @Test fun queryRejectsOverlongInputAndReportsMisses() {
+        val archive = AgentCompactionArchive(temporary.root, "query-miss")
+        val id = archive.save(listOf(AgentModelClient.ConversationMessage("tool", "plain text", toolCallId = "call")))
+        val miss = queryResult(archive, id, "NOT_PRESENT")
+        assertEquals(0, miss.getJSONArray("hits").length())
+        assertTrue(miss.isNull("next_offset"))
+        assertThrows(IllegalArgumentException::class.java) {
+            archive.read(JSONObject().put("checkpoint", id).put("query", "q".repeat(201)).toString())
+        }
+    }
+
+    @Test fun coverageAnnotationKeepsRevisionCheckpointRecognizable() {
+        val archive = AgentCompactionArchive(temporary.root, "query-coverage")
+        val prefix = listOf(
+            AgentModelClient.ConversationMessage("user", "original", turnId = "turn-a"),
+            AgentModelClient.ConversationMessage("tool", "result", turnId = "turn-a"),
+        )
+        val id = archive.save(prefix)
+        val summary = listOf(
+            AgentModelClient.ConversationMessage("user", "[Conversation summary]\n## Current Work\n- x"),
+            AgentModelClient.ConversationMessage("user", "protected"),
+        )
+        val rewritten = archive.attachReferences(prefix, id, summary, 1)
+        assertTrue(rewritten.first().content.contains("本次压缩覆盖 2 条历史消息、1 轮对话"))
+        assertTrue(rewritten.first().content.contains("query"))
+        assertFalse(AgentContextCompactor.displaySummary(rewritten.first().content).contains("本次压缩覆盖"))
+        assertEquals(id, AgentConversationRevisionArchive.checkpoint(rewritten.first()))
+    }
+
 }
