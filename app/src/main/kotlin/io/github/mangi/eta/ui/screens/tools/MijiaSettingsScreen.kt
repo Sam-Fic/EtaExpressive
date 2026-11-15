@@ -50,6 +50,8 @@ import io.github.mangi.eta.agent.mijia.MijiaRoomInfo
 import io.github.mangi.eta.agent.mijia.MijiaSpecParser
 import io.github.mangi.eta.agent.mijia.MijiaStore
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaDialog
+import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
@@ -350,6 +352,9 @@ private fun MijiaSettingsScreenContent(
 
     MijiaDevicePowerFetcher(filteredDevices, devicePowerStates)
 
+    // 退出授权的破坏性确认收进弹窗（判断模型「清理」行同款），行外只留入口。
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
     EtaScaffoldPage(
         title = stringResource(R.string.mijia_title),
         onBack = onBack,
@@ -448,7 +453,8 @@ private fun MijiaSettingsScreenContent(
                                     destructive = true,
                                 )
                             },
-                            onClick = onLogout,
+                            // 破坏性动作行：点击只开确认弹窗，真正退出由弹窗确认触发。
+                            onClick = { showLogoutDialog = true },
                             enabled = !syncing && !exchangingToken,
                             destructive = true,
                         )
@@ -544,6 +550,28 @@ private fun MijiaSettingsScreenContent(
                 }
             }
         }
+    }
+
+    // 破坏性动作对话框二次确认兜底（判断模型「清理」行同款）：[MijiaStore.clearAuth]
+    // 只清令牌与账号信息，家庭/设备/设置保留，但之后需重新授权才能同步或控制设备。
+    if (showLogoutDialog) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.mijia_auth_logout_confirm_title),
+            summary = stringResource(R.string.mijia_auth_logout_confirm_summary),
+            onDismissRequest = { showLogoutDialog = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.mijia_auth_logout),
+                    destructive = true,
+                    onCancel = { showLogoutDialog = false },
+                    onConfirm = {
+                        showLogoutDialog = false
+                        onLogout()
+                    },
+                )
+            },
+        )
     }
 }
 

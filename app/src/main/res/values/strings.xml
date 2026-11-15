@@ -1675,6 +1675,8 @@
   <string name="mijia_auth_login_title">Sign in with Xiaomi account</string>
   <string name="mijia_auth_login_summary">Homes and devices sync automatically after OAuth2 authorization</string>
   <string name="mijia_auth_logout">Sign out</string>
+  <string name="mijia_auth_logout_confirm_title">Sign out of Xiaomi account?</string>
+  <string name="mijia_auth_logout_confirm_summary">This only clears the OAuth tokens and account info; homes, devices and settings stay. You'll need to authorize again to sync or control devices</string>
   <string name="mijia_sync_action">Sync devices</string>
   <string name="mijia_syncing">Syncing Mi Home homes and devices…</string>
   <string name="mijia_sync_success">Synced %1$d homes and %2$d devices</string>

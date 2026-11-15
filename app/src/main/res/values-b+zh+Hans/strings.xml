@@ -1684,6 +1684,8 @@
   <string name="mijia_auth_login_title">登录小米账号</string>
   <string name="mijia_auth_login_summary">OAuth2 授权后自动同步家庭与设备</string>
   <string name="mijia_auth_logout">退出授权</string>
+  <string name="mijia_auth_logout_confirm_title">退出小米账号授权？</string>
+  <string name="mijia_auth_logout_confirm_summary">只清除授权令牌与账号信息，家庭、设备与设置保留；之后需重新授权才能同步或控制设备</string>
   <string name="mijia_sync_action">同步设备</string>
   <string name="mijia_syncing">正在同步米家家庭与设备…</string>
   <string name="mijia_sync_success">已同步 %1$d 个家庭、%2$d 台设备</string>
