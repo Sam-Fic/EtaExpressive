@@ -160,10 +160,6 @@ internal fun ModelProviderDetailScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        RuntimeConfigRepository.ensureDefaults(EtaApp.serviceInstance)
-    }
-
     if (provider == null && draft == null) {
         EtaScaffoldPage(
             title = stringResource(R.string.route_provider_details),

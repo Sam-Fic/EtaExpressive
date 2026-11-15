@@ -1,12 +1,10 @@
 package io.github.mangi.eta.ui.pages.providers
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.data.model.ProviderSetting
 import io.github.mangi.eta.data.model.typeLabel
@@ -37,10 +35,6 @@ internal fun ModelProviderSearchScreen(
     val providers by ProviderRepository.providersFlow().collectAsState(initial = emptyList())
     val storedProviderId by RuntimeConfigRepository.selectedProviderIdFlow().collectAsState(initial = null)
     val selectedProviderId = currentProviderId?.takeIf { it.isNotBlank() } ?: storedProviderId
-
-    LaunchedEffect(Unit) {
-        RuntimeConfigRepository.ensureDefaults(EtaApp.serviceInstance)
-    }
 
     EtaSearchPage(
         searchPlaceholder = stringResource(R.string.ui_search_provider_74e049),

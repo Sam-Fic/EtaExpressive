@@ -19,6 +19,8 @@ import io.github.mangi.eta.data.provider.BuiltinProviders
 import io.github.mangi.eta.data.provider.ProviderSourceRegistry
 import io.github.mangi.eta.data.provider.ReasoningCapabilityResolver
 import io.github.libxposed.service.XposedService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -103,7 +105,17 @@ internal object RuntimeConfigRepository {
         return writeRuntimeConfig(prefs, config)
     }
 
-    suspend fun ensureDefaults(service: XposedService?) {
+    /**
+     * 启动级兜底：合并内置 provider、修复失效选择、把运行时配置同步到 LSPosed 远端。
+     *
+     * 必须自持 [withContext]：链条里的 [ProviderRepository.allProviders] 在 suspend 路径
+     * 上按调用方上下文执行 `toDomain()`（每个 provider 一次 [ProviderSecretCipher.decrypt]
+     * Keystore binder 往返），`syncToRemotePreferences` 末端又是 RemotePreferences 的
+     * `commit()` 同步 binder 写。调用方普遍是页面 `LaunchedEffect`（主线程），不加这个
+     * 切换时整条链落在转场动画窗口里——真机 trace 实证同款链路曾造成转场起步帧连续
+     * D 状态与 binder 往返（SettingsScreen 已先挪 IO，此处收敛到唯一出口）。
+     */
+    suspend fun ensureDefaults(service: XposedService?) = withContext(Dispatchers.IO) {
         ProviderRepository.ensureBuiltInsMerged()
         ProviderRepository.repairSelection()
         syncToRemotePreferences(service)
