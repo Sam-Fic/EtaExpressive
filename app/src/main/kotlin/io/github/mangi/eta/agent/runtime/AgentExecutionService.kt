@@ -41,7 +41,13 @@ internal class AgentExecutionService : Service() {
         instance = this
         leases.attachOwner(owner)
         // 「前台收起运行卡」的翻转钩子：Eta 可见性变化时重估常驻卡（见 refreshNotification）。
-        AppForeground.onVisibilityChanged = { onAppVisibilityChanged() }
+        // AppForeground 槽位只支持一个消费方，这里链上结果卡的前台收起（见
+        // AgentRuntimeService.dismissResultCardForAppForeground 的取证注释）。
+        AppForeground.onVisibilityChanged = { visible ->
+            onAppVisibilityChanged()
+            // 回到前台就收掉结果卡：它是半屏悬浮窗，留着会吃掉下半屏触摸（界面能刷新但翻不动）。
+            if (visible) AgentRuntimeService.dismissResultCardForAppForeground()
+        }
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.execution_channel), NotificationManager.IMPORTANCE_LOW),

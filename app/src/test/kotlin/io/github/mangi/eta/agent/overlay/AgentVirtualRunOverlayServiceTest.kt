@@ -17,9 +17,11 @@ import io.github.mangi.eta.agent.runtime.AgentRuntimeWire
 import io.github.mangi.eta.agent.runtime.EntrySurfaceGuard
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AgentLogger
+import io.github.mangi.eta.ui.haptics.AppForeground
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -302,6 +304,67 @@ class AgentVirtualRunOverlayServiceTest {
         idle()
         assertEquals(AgentOverlayPhase.RUNNING, overlayState(service).phase)
         AgentChildRunControl.finish(session)
+    }
+
+    @After
+    fun resetForegroundTrackingStatics() {
+        // AppForeground 没有卸载通道，且 Robolectric 同一测试类共用 classloader：
+        // install/起 Activity 留下的静态态会跨用例存活，把后续用例也判定成「前台」。
+        // 测试结束后用反射复位，恢复「未安装」口径。
+        val instance = AppForeground::class.java.getDeclaredField("INSTANCE").get(null)
+        instance.javaClass.getDeclaredField("installed").apply { isAccessible = true }.set(instance, false)
+        @Suppress("UNCHECKED_CAST")
+        val visible = instance.javaClass.getDeclaredField("visible").apply { isAccessible = true }.get(instance) as MutableSet<Int>
+        visible.clear()
+        AppForeground.onVisibilityChanged = null
+    }
+
+    @Test
+    fun `result card shows when foreground tracking is not installed`() = withService { service ->
+        // AppForeground 未安装（进程早期/无界面入口）：isForeground 恒 true 是它的语义，
+        // 结果卡早退必须前置 isInstalled，否则这种语境下卡片会被永久吞掉。
+        val session = AgentRuntimeSession("foreground", taskSurfaceMode = AgentTaskSurfaceMode.FOREGROUND)
+        setField(service, "overlaySession", session)
+        setField(service, "hasExecutedForegroundTool", true)
+        val windows = RecordingWindows()
+        setField(service, "windowManager", windows.manager)
+        call(service, "showResultCard", windows.manager, session)
+        assertNotNull(field(service, "resultCardView"))
+        assertEquals(1, windows.added.size)
+    }
+
+    @Test
+    fun `result card is suppressed while eta is foreground`() = withService { service ->
+        // 用户已经在看 Eta 本体：半屏结果卡会承接窗口内触摸（NOT_TOUCH_MODAL 只放行窗外），
+        // 挂着就是「下半屏翻不动」，所以前台直接不给挂。
+        // 前台态要用真实 Activity 造出来：只 install 不起 Activity 时 visible 为空，仍是后台口径。
+        AppForeground.install(service.applicationContext as Application)
+        Robolectric.buildActivity(android.app.Activity::class.java).setup()
+        val session = AgentRuntimeSession("foreground", taskSurfaceMode = AgentTaskSurfaceMode.FOREGROUND)
+        setField(service, "overlaySession", session)
+        setField(service, "hasExecutedForegroundTool", true)
+        val windows = RecordingWindows()
+        setField(service, "windowManager", windows.manager)
+        call(service, "showResultCard", windows.manager, session)
+        assertNull(field(service, "resultCardView"))
+        assertTrue(windows.added.isEmpty())
+    }
+
+    @Test
+    fun `returning to foreground dismisses an on-screen result card`() = withService { service ->
+        // 回前台收卡走现有淡出通道（dismissResultCard），动画结束动作依赖主循环空闲。
+        val session = AgentRuntimeSession("foreground", taskSurfaceMode = AgentTaskSurfaceMode.FOREGROUND)
+        setField(service, "overlaySession", session)
+        setField(service, "hasExecutedForegroundTool", true)
+        val windows = RecordingWindows()
+        setField(service, "windowManager", windows.manager)
+        call(service, "showResultCard", windows.manager, session)
+        assertNotNull(field(service, "resultCardView"))
+
+        AgentRuntimeService.dismissResultCardForAppForeground()
+        idle()
+        assertNull(field(service, "resultCardView"))
+        assertEquals(1, windows.removed.size)
     }
 
     private fun events(): List<AgentEvent> = listOf(

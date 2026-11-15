@@ -31,6 +31,10 @@ internal object AppForeground : Application.ActivityLifecycleCallbacks {
     val isForeground: Boolean
         get() = !installed || visible.isNotEmpty()
 
+    /** 是否已在真实 Application 上注册；未安装时 [isForeground] 恒 true，不能用来做前台豁免。 */
+    val isInstalled: Boolean
+        get() = installed
+
     fun install(application: Application) {
         if (installed) return
         installed = true
