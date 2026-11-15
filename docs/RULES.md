@@ -146,6 +146,15 @@ R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改�
 
 宽屏 / 双栏布局的宽度阈值判定**单一出处 `ui/layout/AdaptivePageLayout.kt` 的 `WideScreenMinWidth`（600dp）**；任何页面不得自设断点或用 `BoxWithConstraints` 自判宽屏。设置页宽屏形态为标准 list-detail（左栏原 `SettingsScreen`、右栏独立 `NavDisplay`，默认栈底 = 模型提供方页），左右栏共用同一套 entry 注册，禁止复制 entry 列表。
 
+### 2.13 表单输入框落点
+
+`OutlinedTextField` 及其本仓封装（`EtaTextField`、`EtaFormTextField`、`ProviderField`、`McpTextField` 等）自带描边圆角与浮动标签，本身已是完整容器，**禁止再包一层分段卡片 / 容器底板**（`EtaSegmentedItemContainer`、`Surface` 垫底等）形成卡中卡。合法形态只有两种：
+
+1. **裸落**：直接放在页面背景、弹窗内容或列表 item 上；需要组标题时挂 `EtaSegmentedColumn` 的 `item(surface = false)`——非卡片条目不绘制底色、不参与首末圆角（`EtaSegmentedList.kt` 的 `EtaSegmentedScope.item`）。
+2. **嵌入分段行**：无边框输入嵌成分段行统一走 `EtaSegmentedTextField`（行即输入框，KernelSU 同款），只用于分段组内。
+
+豁免：聊天 / 终端输入区；bottomBar 输入条面板（输入框 + 按钮的功能面板）。样板：`AgentMemoryScreen` 的 MEMORY.md 编辑框、`ModelProviderDetailScreen` 连接配置组、`AssistantEditScreen` 提示词框。本条靠评审自查，不新增测试（同 §2.6）。
+
 ## 3. 行为红线
 
 ### 3.1 内置助手
