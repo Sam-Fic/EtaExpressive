@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -37,32 +36,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddComment
 import androidx.compose.material.icons.rounded.BookmarkRemove
-import androidx.compose.material.icons.rounded.Checklist
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.Deselect
 import androidx.compose.material.icons.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.FileCopy
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -104,6 +92,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.media.index.EmbeddingModelStore
 import io.github.mangi.eta.agent.media.index.EtaEmbeddingEngine
@@ -120,7 +111,6 @@ import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDecorativeShape
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
-import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
@@ -134,6 +124,11 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBarOverlay
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
+import io.github.mangi.eta.ui.adaptive.EtaSelectionEntryAction
 import io.github.mangi.eta.ui.adaptive.EtaSlider
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
@@ -244,6 +239,16 @@ internal fun MediaSearchScreen(
     var selectionMode by remember { mutableStateOf(false) }
     var selectedKeys by remember { mutableStateOf(setOf<String>()) }
     var confirmDeleteFiles by remember { mutableStateOf(false) }
+    // 返回键优先退出多选（与其他多选页同款），不退搜索页。
+    val selectionBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = selectionBackState,
+        isBackEnabled = selectionMode,
+        onBackCompleted = {
+            selectionMode = false
+            selectedKeys = emptySet()
+        },
+    )
     // 搜索设置面板（匹配度阈值 / 视图模式）：从「找到 X 项」行的设置按钮打开（官方 ModalBottomSheet）。
     var showSettingsSheet by remember { mutableStateOf(false) }
     // 结果视图模式：宫格（相册式纯缩略图墙）或行列表（默认）。同步读 prefs——store 是唯一
@@ -782,6 +787,10 @@ internal fun MediaSearchScreen(
                         MediaStreamingTail()
                     }
                 }
+                // 多选操作栏悬浮在底部时预留高度，避免遮挡最后一个结果行。
+                item(key = "bottom_spacer", contentType = "spacer") {
+                    EtaSelectionBottomSpacer(isSelecting = selectionMode)
+                }
             }
         }
     }
@@ -842,6 +851,10 @@ internal fun MediaSearchScreen(
                     MediaStreamingTail()
                 }
             }
+            // 多选操作栏悬浮在底部时预留高度，避免遮挡最后一行宫格。
+            item(key = "bottom_spacer", contentType = "spacer", span = { GridItemSpan(maxLineSpan) }) {
+                EtaSelectionBottomSpacer(isSelecting = selectionMode)
+            }
         }
     }
 
@@ -881,23 +894,13 @@ internal fun MediaSearchScreen(
             }
         }
 
-        // 多选批量操作栏：底部官方浮动图标工具栏（纯图标），常驻承载全选与批量操作。
-        // 进退场与模型列表页同款：AnimatedVisibility 承载上浮/下沉——位移走 M3E Spatial
-        // （轻微过冲），透明度走 Effects（无过冲）；不用 if 直切硬蹦。
-        AnimatedVisibility(
-            visible = selectionMode,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = slideInVertically(
-                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-            ) { it } + fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = slideOutVertically(
-                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
-            ) { it } + fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
-        ) {
-            MediaSelectionBar(
+        // 多选批量操作栏：共享多选套件的底部官方浮动图标药丸，常驻承载全选与批量操作。
+        // 进退场装配与模型列表页同款（位移走 M3E Spatial、透明度走 Effects）。
+        EtaSelectionBarOverlay(visible = selectionMode) {
+            EtaSelectionBar(
                 selectedCount = selectedHits.size,
                 allSelected = hits.isNotEmpty() && selectedHits.size == hits.size,
-                busy = batchBusy,
+                enabled = !batchBusy,
                 onSelectAll = {
                     TouchHaptics.click(view)
                     selectedKeys = if (hits.isNotEmpty() && selectedHits.size == hits.size) {
@@ -906,34 +909,58 @@ internal fun MediaSearchScreen(
                         hits.map { it.sourceKey }.toSet()
                     }
                 },
-                onAddToChat = {
-                    TouchHaptics.click(view)
-                    // 选中项交给当前会话输入区：content uri 优先（与系统分享同一入口，
-                    // 按类型落成图片/视频/文件附件），无 uri 的本地文件回落绝对路径；
-                    // 全部不可解析时不动作也不跳转，留在原位可重选。
-                    val uris = selectedHits.mapNotNull { it.contentUri ?: it.path }
-                    if (uris.isNotEmpty()) onAddToChat(uris)
-                },
-                onMoveTo = {
-                    TouchHaptics.click(view)
-                    pendingTargetDir = null
-                    pendingOperation = MediaFileOps.Op.MOVE
-                    dirPicker.launch(null)
-                },
-                onCopyTo = {
-                    TouchHaptics.click(view)
-                    pendingTargetDir = null
-                    pendingOperation = MediaFileOps.Op.COPY
-                    dirPicker.launch(null)
-                },
-                onRemoveFromIndex = {
-                    TouchHaptics.click(view)
-                    runRemoveFromIndex()
-                },
-                onDeleteFiles = {
-                    TouchHaptics.click(view)
-                    confirmDeleteFiles = true
-                },
+                actions = listOf(
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.AddComment,
+                        contentDescription = stringResource(R.string.media_action_add_to_chat),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            // 选中项交给当前会话输入区：content uri 优先（与系统分享同一入口，
+                            // 按类型落成图片/视频/文件附件），无 uri 的本地文件回落绝对路径；
+                            // 全部不可解析时不动作也不跳转，留在原位可重选。
+                            val uris = selectedHits.mapNotNull { it.contentUri ?: it.path }
+                            if (uris.isNotEmpty()) onAddToChat(uris)
+                        },
+                    ),
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.DriveFileMove,
+                        contentDescription = stringResource(R.string.media_action_move_to),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            pendingTargetDir = null
+                            pendingOperation = MediaFileOps.Op.MOVE
+                            dirPicker.launch(null)
+                        },
+                    ),
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.FileCopy,
+                        contentDescription = stringResource(R.string.media_action_copy_to),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            pendingTargetDir = null
+                            pendingOperation = MediaFileOps.Op.COPY
+                            dirPicker.launch(null)
+                        },
+                    ),
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.BookmarkRemove,
+                        contentDescription = stringResource(R.string.media_action_remove_from_index),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            runRemoveFromIndex()
+                        },
+                    ),
+                    // 删除文件是破坏性操作：error 色图标区分，执行前另有确认弹窗。
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.Delete,
+                        contentDescription = stringResource(R.string.media_action_delete_files),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            confirmDeleteFiles = true
+                        },
+                        destructive = true,
+                    ),
+                ),
             )
         }
     }
@@ -1219,21 +1246,12 @@ private fun MediaResultCountRow(
             modifier = Modifier.weight(1f),
         )
         // 多选入口：多选态原位变为「取消」，退出并清空勾选（底栏不再放取消钮）。
-        EtaIconButton(
-            icon = if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist,
-            contentDescription = stringResource(
-                if (selectionMode) {
-                    R.string.action_cancel
-                } else {
-                    R.string.media_action_multiselect
-                },
-            ),
-            onClick = {
+        EtaSelectionEntryAction(
+            selectionMode = selectionMode,
+            onToggle = {
                 TouchHaptics.click(view)
                 onToggleSelectionMode()
             },
-            size = EtaIconSize.S,
-            style = EtaButtonStyle.Standard,
         )
         EtaIconButton(
             icon = Icons.Rounded.Tune,
@@ -1395,120 +1413,6 @@ private fun MediaViewModeRow(
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
                 ) {
                     Text(text = stringResource(labelRes))
-                }
-            }
-        }
-    }
-}
-
-/**
- * 多选批量操作栏：官方 M3E [HorizontalFloatingToolbar]（纯图标药丸），底部居中悬浮。
- * 操作顺序：全选（全不选）/ 添加到会话 / 移动到 / 复制到 / 移出索引 / 删除文件；
- * 退出多选的「取消」在结果计数行（多选入口原位切换），已选数量提示也与
- * 「找到 X 项」合并显示在同一行。
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun MediaSelectionBar(
-    selectedCount: Int,
-    allSelected: Boolean,
-    busy: Boolean,
-    onSelectAll: () -> Unit,
-    onAddToChat: () -> Unit,
-    onMoveTo: () -> Unit,
-    onCopyTo: () -> Unit,
-    onRemoveFromIndex: () -> Unit,
-    onDeleteFiles: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        HorizontalFloatingToolbar(
-            expanded = true,
-            // vibrant 变体默认容器 primaryContainer/onPrimaryContainer——standard 默认 surfaceContainer
-            // 与页面背景同色融合（深色下不可辨）；官方 vibrant 令牌见 srczip FloatingToolbar.kt:1119-1128。
-            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
-            modifier = Modifier
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = 12.dp),
-            // 显式空 leadingContent：官方 minimumInteractiveBalancedPadding 只在两侧都没有
-            // leading/trailing 内容时才生效，会按内容里的 MinimumInteractive 对齐线补偿内边距、
-            // 把药丸撑高；本栏布局完全显式（固定间距 + 同心端盖），传空让补偿归零
-            // （官方参数语义，非 hack）。
-            leadingContent = {},
-            // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
-            contentPadding = EtaFloatingToolbarConcentricPadding(
-                IconButtonDefaults.smallContainerSize().width,
-            ),
-        ) {
-            // 动作组：固定 8dp 间距的一行图标按钮（EtaIconButton 的 `Standard` 档裸图标）。
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                EtaIconButton(
-                    icon = if (allSelected) Icons.Rounded.Deselect else Icons.Rounded.SelectAll,
-                    contentDescription = stringResource(
-                        if (allSelected) {
-                            R.string.media_action_deselect_all
-                        } else {
-                            R.string.media_action_select_all
-                        },
-                    ),
-                    onClick = onSelectAll,
-                    enabled = !busy,
-                    size = EtaIconSize.S,
-                    style = EtaButtonStyle.Standard,
-                )
-                EtaIconButton(
-                    icon = Icons.Rounded.AddComment,
-                    contentDescription = stringResource(R.string.media_action_add_to_chat),
-                    onClick = onAddToChat,
-                    enabled = selectedCount > 0 && !busy,
-                    size = EtaIconSize.S,
-                    style = EtaButtonStyle.Standard,
-                )
-                EtaIconButton(
-                    icon = Icons.Rounded.DriveFileMove,
-                    contentDescription = stringResource(R.string.media_action_move_to),
-                    onClick = onMoveTo,
-                    enabled = selectedCount > 0 && !busy,
-                    size = EtaIconSize.S,
-                    style = EtaButtonStyle.Standard,
-                )
-                EtaIconButton(
-                    icon = Icons.Rounded.FileCopy,
-                    contentDescription = stringResource(R.string.media_action_copy_to),
-                    onClick = onCopyTo,
-                    enabled = selectedCount > 0 && !busy,
-                    size = EtaIconSize.S,
-                    style = EtaButtonStyle.Standard,
-                )
-                EtaIconButton(
-                    icon = Icons.Rounded.BookmarkRemove,
-                    contentDescription = stringResource(R.string.media_action_remove_from_index),
-                    onClick = onRemoveFromIndex,
-                    enabled = selectedCount > 0 && !busy,
-                    size = EtaIconSize.S,
-                    style = EtaButtonStyle.Standard,
-                )
-                // 删除文件是破坏性操作：图标用 error 色区分（官方裸 IconButton，容器/图标
-                // 尺寸与 EtaIconButton 的 `Standard` + S 档一致），执行前另有确认弹窗。
-                val deleteDescription = stringResource(R.string.media_action_delete_files)
-                EtaTooltip(text = deleteDescription) {
-                    IconButton(
-                        onClick = onDeleteFiles,
-                        enabled = selectedCount > 0 && !busy,
-                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                        shapes = IconButtonDefaults.shapes(),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = deleteDescription,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-                        )
-                    }
                 }
             }
         }

@@ -65,7 +65,6 @@ internal fun ModelProviderSearchScreen(
             selectedProviderIds = emptySet(),
             selectedProviderId = selectedProviderId,
             onToggleChecked = {},
-            onSelectAll = {},
             onOpen = { id ->
                 EtaSearchHistory.add(context, HISTORY_KEY, query)
                 onNavigate(AppRoute.ModelProviderDetail(id))

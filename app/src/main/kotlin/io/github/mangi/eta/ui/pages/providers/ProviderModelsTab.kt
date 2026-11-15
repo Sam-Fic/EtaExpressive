@@ -2,11 +2,6 @@
 
 package io.github.mangi.eta.ui.pages.providers
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -21,27 +16,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.CloudDownload
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Deselect
-import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FloatingToolbarDefaults
-import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.MaterialTheme
@@ -78,10 +63,11 @@ import io.github.mangi.eta.data.repository.ModelRepository
 import io.github.mangi.eta.data.repository.RemoteModelFetcher
 import io.github.mangi.eta.data.model.SpeechSynthesisModels
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
-import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
-import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
-import io.github.mangi.eta.ui.adaptive.EtaIconButton
-import io.github.mangi.eta.ui.adaptive.EtaIconSize
+import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBarOverlay
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
+import io.github.mangi.eta.ui.adaptive.EtaSelectionEntryAction
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
@@ -92,7 +78,6 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
-import io.github.mangi.eta.ui.adaptive.EtaTooltip
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.components.ListEmptyState
@@ -374,14 +359,9 @@ internal fun ProviderModelsTab(
                         }
                         // 多选入口（纯图标）：多选态原位变「取消」，退出并清空勾选——取消不落
                         // 底栏（同搜索页计数行的入口原位切换）；长按模型行同样可进入多选。
-                        // M3：官方 EtaIconButton（`Standard` 档裸图标，容器/图标尺寸取官方
-                        // IconButtonDefaults.smallContainerSize / smallIconSize 令牌），自带长按提示。
-                        EtaIconButton(
-                            icon = if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist,
-                            contentDescription = stringResource(
-                                if (selectionMode) R.string.action_cancel else R.string.media_action_multiselect,
-                            ),
-                            onClick = {
+                        EtaSelectionEntryAction(
+                            selectionMode = selectionMode,
+                            onToggle = {
                                 TouchHaptics.click(view)
                                 if (selectionMode) {
                                     selectionMode = false
@@ -391,8 +371,6 @@ internal fun ProviderModelsTab(
                                 }
                             },
                             enabled = !isFetching && !isMutatingModel,
-                            size = EtaIconSize.S,
-                            style = EtaButtonStyle.Standard,
                         )
                     }
                 }
@@ -444,26 +422,13 @@ internal fun ProviderModelsTab(
 
             item(key = "bottom_spacer", contentType = "spacer") {
                 // 多选操作栏悬浮在底部时，预留高度避免遮挡最后一个列表项；其余情况与大圆角屏幕下沿保持间距
-                Spacer(
-                    modifier = Modifier
-                        .height(if (selectionMode) 88.dp else 24.dp)
-                        .navigationBarsPadding(),
-                )
+                EtaSelectionBottomSpacer(isSelecting = selectionMode)
             }
         }
 
-        AnimatedVisibility(
-            visible = selectionMode,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            // 批量选择栏的进退场：位移走 M3E Spatial（轻微过冲），透明度走 Effects（无过冲）。
-            enter = slideInVertically(
-                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-            ) { it } + fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = slideOutVertically(
-                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
-            ) { it } + fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
-        ) {
-            ModelSelectionBar(
+        // 批量操作栏：共享多选套件的官方 M3E 浮动药丸，底部居中悬浮。
+        EtaSelectionBarOverlay(visible = selectionMode) {
+            EtaSelectionBar(
                 selectedCount = selectedModelIds.size,
                 allSelected = allModelsSelected,
                 enabled = !isFetching && !isMutatingModel,
@@ -475,10 +440,18 @@ internal fun ProviderModelsTab(
                         filteredModels.mapTo(mutableSetOf()) { it.id }
                     }
                 },
-                onDelete = {
-                    TouchHaptics.click(view)
-                    showBatchDeleteDialog = true
-                },
+                actions = listOf(
+                    // 删除是破坏性操作：error 色图标区分，执行前另有确认弹窗。
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.Delete,
+                        contentDescription = stringResource(R.string.ui_delete_3755f5),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            showBatchDeleteDialog = true
+                        },
+                        destructive = true,
+                    ),
+                ),
             )
         }
     }
@@ -598,88 +571,6 @@ private fun ModelListGroupItem(
             ),
     ) {
         content()
-    }
-}
-
-/**
- * 多选批量操作栏：官方 M3E [HorizontalFloatingToolbar]（纯图标药丸），底部居中悬浮，
- * 与自然语言搜索文件页（MediaSearchScreen.MediaSelectionBar）同款装配。
- * 动作序：全选（全不选）→ 删除（error 色标破坏性，执行前另有确认弹窗）；「取消」不落
- * 底栏，由标题行右侧多选入口原位切换（Checklist→Close）承载，已选数量并入标题行文案。
- *
- * 组件结论（随同仓 MediaSearchScreen 同版本依赖的既有调用核证，非凭记忆）：
- * [HorizontalFloatingToolbar] 为 ExperimentalMaterial3ExpressiveApi；`leadingContent = {}`
- * 显式传空以归零官方 minimumInteractiveBalancedPadding 的高度补偿（本栏布局全显式，
- * 官方参数语义非 hack）；端盖同心取 [EtaFloatingToolbarConcentricPadding]`(smallContainerSize().width)`；
- * 全选/全不选用 EtaIconButton（`Standard` 档 + `EtaIconSize.S` = 官方 smallContainerSize /
- * smallIconSize 令牌）；删除用官方裸 [IconButton]（同尺寸令牌 + `IconButtonDefaults.shapes()`
- * 按压 morph），图标 error 色——EtaIconButton 无 tint 参数，裸按钮才好只用官方 token
- * 表达破坏性配色。
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun ModelSelectionBar(
-    selectedCount: Int,
-    allSelected: Boolean,
-    enabled: Boolean,
-    onSelectAll: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        HorizontalFloatingToolbar(
-            expanded = true,
-            // vibrant 变体默认容器 primaryContainer/onPrimaryContainer——standard 默认 surfaceContainer
-            // 与页面背景同色融合（深色下不可辨）；官方 vibrant 令牌见 srczip FloatingToolbar.kt:1119-1128。
-            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
-            modifier = Modifier
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = 12.dp),
-            // 显式空 leadingContent：官方 minimumInteractiveBalancedPadding 只在两侧都没有
-            // leading/trailing 内容时才生效，会按内容里的 MinimumInteractive 对齐线补偿
-            // 内边距、把药丸撑高；本栏布局完全显式（固定间距 + 同心端盖），传空让补偿归零。
-            leadingContent = {},
-            // 端盖同心：首末两枚 40dp 圆钮与药丸端头弧心对齐（环隙与上下等宽）。
-            contentPadding = EtaFloatingToolbarConcentricPadding(
-                IconButtonDefaults.smallContainerSize().width,
-            ),
-        ) {
-            // 动作组：固定 8dp 间距的一行图标按钮（EtaIconButton 的 `Standard` 档裸图标）。
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                EtaIconButton(
-                    icon = if (allSelected) Icons.Rounded.Deselect else Icons.Rounded.SelectAll,
-                    contentDescription = stringResource(
-                        if (allSelected) R.string.media_action_deselect_all else R.string.media_action_select_all,
-                    ),
-                    onClick = onSelectAll,
-                    enabled = enabled,
-                    size = EtaIconSize.S,
-                    style = EtaButtonStyle.Standard,
-                )
-                // 删除是破坏性操作：图标用 error 色区分（官方裸 IconButton，容器/图标尺寸
-                // 与 EtaIconButton 的 `Standard` + S 档一致），执行前另有确认弹窗。
-                val deleteDescription = stringResource(R.string.ui_delete_3755f5)
-                EtaTooltip(text = deleteDescription) {
-                    IconButton(
-                        onClick = onDelete,
-                        enabled = selectedCount > 0 && enabled,
-                        modifier = Modifier.size(IconButtonDefaults.smallContainerSize()),
-                        shapes = IconButtonDefaults.shapes(),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = deleteDescription,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(IconButtonDefaults.smallIconSize),
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 

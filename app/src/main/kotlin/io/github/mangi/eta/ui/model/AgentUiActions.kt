@@ -129,6 +129,12 @@ sealed interface AgentSkillsAction {
     data class ToggleSkill(val skillId: String, val enabled: Boolean) : AgentSkillsAction
     data class DeleteSkill(val skillId: String) : AgentSkillsAction
     data class ReinstallBuiltin(val skillId: String) : AgentSkillsAction
+
+    /** 多选批量启停：逐条走既有 setSkillEnabled，不新建批量 API（MCP 页同款口径）。 */
+    data class ToggleSkills(val skillIds: Set<String>, val enabled: Boolean) : AgentSkillsAction
+
+    /** 多选批量删除：逐条走既有 deleteSkill（含备份与 journal 回滚），执行前另有确认弹窗。 */
+    data class DeleteSkills(val skillIds: Set<String>) : AgentSkillsAction
 }
 
 sealed interface AgentSystemEnhanceAction {

@@ -1573,6 +1573,8 @@
   <string name="settings_llm_providers">LLM providers</string>
   <string name="skills_replace">Replace</string>
   <string name="skills_delete_summary">After deleting “%1$s”, you will need to reinstall it to restore it</string>
+  <string name="skills_batch_delete_message">Delete the %1$d selected skills? Built-in skills in the selection are skipped and only user skills are removed. This cannot be undone</string>
+  <string name="skills_batch_deleted_message">%1$d skills were removed from Eta</string>
   <string name="skills_no_description">No description</string>
   <string name="browser_address_hint">URL, domain, or search</string>
   <string name="browser_desktop_mode">Desktop mode</string>

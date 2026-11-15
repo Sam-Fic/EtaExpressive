@@ -6975,6 +6975,78 @@ internal class AgentAppState(
         }
     }
 
+    /** 多选批量启停：逐条走既有 setSkillEnabled，单条失败汇总报错不中断（MCP 页同款口径）。 */
+    fun toggleSkills(skillIds: Set<String>, enabled: Boolean) {
+        if (skillsState.isImporting || skillsState.busySkillId != null || skillsState.isBatchBusy) return
+        if (skillIds.isEmpty()) return
+        skillsState = skillsState.copy(isBatchBusy = true, notice = null)
+        scope.launch(Dispatchers.IO) {
+            var failed = 0
+            skillIds.forEach { skillId ->
+                val succeeded = runCatching {
+                    SkillRuntime.createIndexService(appContext).setSkillEnabled(skillId, enabled)
+                }.isSuccess
+                if (!succeeded) failed += 1
+            }
+            withContext(Dispatchers.Main) {
+                skillsState = skillsState.copy(
+                    isBatchBusy = false,
+                    notice = if (failed == 0) {
+                        skillsState.notice
+                    } else {
+                        newSkillNotice(
+                            title = appContext.getString(R.string.state_unable_to_update_skills_04e56c),
+                            message = appContext.getString(R.string.state_the_skill_switch_has_not_changed_please_try_again_la_fa262f),
+                            isError = true,
+                        )
+                    },
+                )
+            }
+            refreshSkills()
+        }
+    }
+
+    /**
+     * 多选批量删除：逐条走既有 deleteSkill（整目录备份 + journal 回滚，单条失败互不影响）。
+     * 删除资格（user 源）在页面用删除键禁用表达；此处再过滤一次兜底，混入的内置项跳过。
+     */
+    fun deleteSkills(skillIds: Set<String>) {
+        if (skillsState.isImporting || skillsState.busySkillId != null || skillsState.isBatchBusy) return
+        val deletable = skillIds.filter { id ->
+            skillsState.skills.firstOrNull { it.id == id }?.canDeleteUserSkill == true
+        }
+        if (deletable.isEmpty()) return
+        skillsState = skillsState.copy(isBatchBusy = true, notice = null)
+        scope.launch(Dispatchers.IO) {
+            var failed = 0
+            deletable.forEach { skillId ->
+                val succeeded = runCatching {
+                    SkillRuntime.createIndexService(appContext).deleteSkill(skillId)
+                }.getOrDefault(false)
+                if (!succeeded) failed += 1
+            }
+            withContext(Dispatchers.Main) {
+                skillsState = skillsState.copy(
+                    isBatchBusy = false,
+                    notice = if (failed == 0) {
+                        newSkillNotice(
+                            title = appContext.getString(R.string.state_skill_has_been_deleted_34c29b),
+                            message = appContext.getString(R.string.skills_batch_deleted_message, deletable.size),
+                            isError = false,
+                        )
+                    } else {
+                        newSkillNotice(
+                            title = appContext.getString(R.string.state_unable_to_delete_skill_1583c9),
+                            message = appContext.getString(R.string.state_deletion_is_not_complete_eta_will_try_to_recover_whe_c4297e),
+                            isError = true,
+                        )
+                    },
+                )
+            }
+            refreshSkills()
+        }
+    }
+
     fun importSkillZip(uriValue: String) {
         if (skillsState.isImporting || skillsState.busySkillId != null) return
         val uri = runCatching { Uri.parse(uriValue) }.getOrNull()

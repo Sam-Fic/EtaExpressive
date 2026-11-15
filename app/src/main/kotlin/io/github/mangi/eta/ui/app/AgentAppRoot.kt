@@ -1305,6 +1305,8 @@ fun AgentAppRoot(
                             is AgentSkillsAction.ToggleSkill -> agentState.toggleSkill(action.skillId, action.enabled)
                             is AgentSkillsAction.DeleteSkill -> agentState.deleteSkill(action.skillId)
                             is AgentSkillsAction.ReinstallBuiltin -> agentState.reinstallBuiltin(action.skillId)
+                            is AgentSkillsAction.ToggleSkills -> agentState.toggleSkills(action.skillIds, action.enabled)
+                            is AgentSkillsAction.DeleteSkills -> agentState.deleteSkills(action.skillIds)
                         }
                     },
                 )

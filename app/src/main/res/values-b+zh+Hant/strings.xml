@@ -1693,6 +1693,8 @@
   <string name="settings_llm_providers">LLM 供應商</string>
   <string name="skills_replace">取代</string>
   <string name="skills_delete_summary">刪除「%1$s」後，需要重新安裝才能復原</string>
+  <string name="skills_batch_delete_message">刪除已選的 %1$d 項技能？勾選中混入的內建技能會跳過，僅刪除使用者技能。此操作無法復原</string>
+  <string name="skills_batch_deleted_message">已刪除 %1$d 項技能</string>
   <string name="skills_no_description">沒有說明</string>
   <string name="browser_address_hint">網址、域名或搜尋</string>
   <string name="browser_desktop_mode">桌面模式</string>
