@@ -183,7 +183,11 @@ internal class AgentExecutionService : Service() {
                 .setShowWhen(true)
                 .setUsesChronometer(true)
         }
-        if (status != null && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
+        // 提升必须门控在「run 真在跑」上（与上方 Chronometer 的 streamActive 同口径）：
+        // 跑完/暂停/停止后若仍挂着「不确定进度 + promoted ongoing」，系统会保留一个实时活动壳，
+        // 用户点开的是系统渲染的实时活动展开面板（内容是本卡文案，不是 Eta 界面），
+        // 那个面板本身不支持滚动，看起来就像「进了个不一样的界面且翻不动」。
+        if (streamActive && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
             builder
                 .setStyle(Notification.ProgressStyle().setProgressIndeterminate(true))
                 .setShortCriticalText(status.shortText())
