@@ -61,4 +61,14 @@ internal object AgentChatSpacing {
      * 2 + 本值 + 内层 2 = 10dp，与锚在文字行下的有效上间隙对齐。
      */
     val FooterAfterWorkTopGap = 6.dp
+
+    /**
+     * 时间线最末页脚按钮组的下侧收窄值（对齐右侧跳转按钮专用）：
+     * 跳转按钮组中线固定在底栏顶上方 39dp（AgentChatBody 的
+     * TurnNavigationCenterAboveBottom），最末页脚按钮（40dp 容器，半径 20）中线
+     * = ConversationComposerGap 14 + 底部哨兵 1 + 本值 + 20，取 4dp 恰为 39dp
+     * 与之同高。常规页脚下距仍用 [RowBaseHalf] 8dp（与下一行合成 16dp 轮间
+     * 间隙），只有列表最末的页脚由调用方收窄到本值。
+     */
+    val FooterBottomMostGap = 4.dp
 }

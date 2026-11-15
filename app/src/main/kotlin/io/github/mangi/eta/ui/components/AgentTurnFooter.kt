@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.mangi.eta.R
@@ -72,6 +73,9 @@ internal fun AgentTurnFooter(
     branchEnabled: Boolean,
     speechPreface: String = "",
     isRunActive: Boolean = false,
+    // 下侧外距默认是轮间基准半距（与下一行合成 16dp）；时间线最末的页脚由调用方
+    // 收窄到 FooterBottomMostGap，让按钮组中线与右侧跳转按钮对齐（见常量 KDoc）。
+    bottomGap: Dp = AgentChatSpacing.RowBaseHalf,
     modifier: Modifier = Modifier,
 ) {
     if (revealPending || isRunActive) return
@@ -111,11 +115,11 @@ internal fun AgentTurnFooter(
         modifier = modifier
             .testTag("turn-footer:${message.id}")
             // 上侧不另加外距：有效上间隙 = 文字行底 8 + 按钮行内层 2 = 10dp，按钮组贴住所属回复；
-            // 下侧基准半距与下一行合成 16dp 轮间间隙。
+            // 下侧默认基准半距与下一行合成 16dp 轮间间隙（最末页脚收窄，见 [bottomGap]）。
             .padding(
                 start = AgentChatSpacing.RowHorizontal,
                 end = AgentChatSpacing.RowHorizontal,
-                bottom = AgentChatSpacing.RowBaseHalf,
+                bottom = bottomGap,
             ),
     )
 }
