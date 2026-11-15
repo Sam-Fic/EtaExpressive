@@ -8976,7 +8976,9 @@ internal class AgentAppState(
                         )
                         else -> appContext.getString(R.string.conversation_preview_empty)
                     }.take(MAX_PREVIEW_CHARS),
-                    timeLabel = (conversationCreatedAt[id] ?: conversationUpdatedAt[id])?.let { timestamp ->
+                    // 列表时间取「最后活动时间」：原先优先取 createdAt，继续对话后侧栏时间标签
+                    // 永远停在建会话那一刻，表现为用户看到的「对话记录时间不动」。
+                    timeLabel = (conversationUpdatedAt[id] ?: conversationCreatedAt[id])?.let { timestamp ->
                         ConversationTimeLabels.label(
                             timestampMillis = timestamp,
                             nowMillis = nowMillis,
@@ -8996,8 +8998,9 @@ internal class AgentAppState(
                     isWaitingQuestion = id in conversationWaitingQuestionIds,
                     isDispatchConsole = id == consoleId,
                     folderId = conversationFolderIds[id],
+                    // 「今天」分组同样按最后活动判定，否则今天继续聊过的老会话仍被归到旧日期。
                     isToday = ConversationTimeLabels.isToday(
-                        timestampMillis = conversationCreatedAt[id] ?: conversationUpdatedAt[id] ?: 0L,
+                        timestampMillis = conversationUpdatedAt[id] ?: conversationCreatedAt[id] ?: 0L,
                         nowMillis = nowMillis,
                         timeZone = timeZone,
                     ),
@@ -9010,7 +9013,8 @@ internal class AgentAppState(
                 compareByDescending<Map.Entry<String, AgentChatHomeUiState>> { (id, _) ->
                     id in conversationPinned
                 }.thenByDescending { (id, _) ->
-                    conversationCreatedAt[id] ?: conversationUpdatedAt[id] ?: 0L
+                    // 排序也按最后活动：否则刚聊过的会话会被压在旧会话下面。
+                    conversationUpdatedAt[id] ?: conversationCreatedAt[id] ?: 0L
                 },
             )
             .map { (id, state) -> buildSummary(id, state) }
