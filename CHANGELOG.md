@@ -4,6 +4,49 @@ All notable changes to **EtaExpressive** are documented here. Entries are groupe
 
 <!-- Ordered newest-first; generated from git tag history. -->
 
+## [v5.6.0] - 2026-11-15
+
+v5.5.0 之后 18 个提交的打磨批：技能页多选批量操作落地共享套件 EtaSelectionKit、
+米家直连页对齐 M3E 并路由化、聊天页脚与跳转按钮对齐、转场掉帧收敛、一批
+编辑页按钮形态统一。
+
+### Added
+
+- feat(skills): 技能页多选批量操作 + 全仓多选骨架收敛共享套件 EtaSelectionKit
+  （药丸/入口/进退场/占位统一，新增多选页禁止手写骨架）
+
+- feat(mijia): 米家直连页对齐 M3E——OAuth/搜索独立路由化，行形态与文案规范收敛；
+  退出授权加弹窗二次确认
+
+- feat(ui): 顶栏会话侧栏按钮改为可切换态并添加选中样式；首页顶栏汉堡按钮宽屏
+  适配的选中态动画
+
+### Changed
+
+- fix(ui): 行首图标状态配色全仓收敛——禁用随官方 38% 档压暗、破坏性取 error
+
+- fix(ui): 编辑类页面提交/保存/清除钮统一改顶栏图标（记忆编辑、模型编辑、MCP
+  添加、网页搜索与读取页）
+
+- fix(ui): 批量操作浮动工具条统一 vibrant 配色——standard 默认容器与页面背景
+  同色融合
+
+### Fixed
+
+- perf(providers): ensureDefaults 收敛自持 IO 切换——Keystore 解密与
+  RemotePreferences commit() 不再落在主线程转场窗口，provider 子页
+  LaunchedEffect 全部移除
+
+- fix(chat): 时间线最末页脚下侧收窄——滚到底时与右侧轮次跳转按钮组同高对齐
+  （39dp 账目）
+
+- fix(chat): 轮次跳转按钮退场淡出改 slowEffects——fastEffects 60~80ms 肉眼近似瞬跳
+
+- fix(update): 更新弹窗改两段式——同意下载后稍后/忽略消失并才出现后台下载
+
+- fix(ui): 记忆编辑页 MEMORY.md 输入框去分段卡片直接落背景；docs(rules) 新增
+  §2.13 表单输入框落点
+
 ## [v5.5.0] - 2026-11-14
 
 v5.4.1 之后 70 个提交的功能批：新增米家直连、管理列表批量多选、宽屏设置 list-detail、
