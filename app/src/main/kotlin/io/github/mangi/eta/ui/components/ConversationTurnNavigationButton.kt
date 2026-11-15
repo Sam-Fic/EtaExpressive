@@ -87,8 +87,14 @@ internal fun ConversationTurnNavigationButton(
         MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
     val scaleInSpec: FiniteAnimationSpec<Float> =
         MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    // 退场淡出取 Effects 家族最慢的 slowEffects 档。取证：material3 1.5.0-alpha29
+    // （gradle cache material3.aar，ExpressiveMotionSchemeImpl 字节码）各档实测——
+    // fastEffects = spring(1f, 3800f) 约 60~80ms，肉眼近似瞬跳（「消失动画丢了」
+    // 的根因，2026-10-23 全局统一动效时引入）；slowEffects = spring(1f, 800f)
+    // 约 150~200ms，淡出重新可辨。入场仍走 defaultEffects（1f, 1600f）：
+    // 出现要利落，消失要从容。
     val fadeOutSpec: FiniteAnimationSpec<Float> =
-        MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+        MaterialTheme.motionScheme.slowEffectsSpec<Float>()
     val scaleOutSpec: FiniteAnimationSpec<Float> =
         MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
     // 半颗的进退场与「留下的那颗平移进右槽」共用这批官方规格：退场与位移同时起步，
