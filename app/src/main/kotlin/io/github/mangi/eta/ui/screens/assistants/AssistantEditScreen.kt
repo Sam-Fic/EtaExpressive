@@ -32,6 +32,7 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.skill.SkillIndexEntry
 import io.github.mangi.eta.agent.skill.SkillRuntime
+import io.github.mangi.eta.core.safeLogType
 import io.github.mangi.eta.data.model.AssistantPrompt
 import io.github.mangi.eta.data.repository.AgentMemoryRepository
 import io.github.mangi.eta.data.repository.AgentMemoryStore
@@ -152,7 +153,13 @@ internal fun AssistantEditScreen(
     }
 
     fun save() {
-        if (!dirty || saving || memoryOverLimit || memoryRevision.isBlank()) return
+        // 人格（eta-assistants/index.json）与记忆（MEMORY.md）是两套互不相干的存储。
+        // 旧实现把 memoryRevision.isBlank() 当成保存前置条件：只要记忆快照加载失败
+        // （MEMORY.md 读取异常等），提示词就永远存不进去，而且这里是静默 return——
+        // 表现为「保存按钮亮着但点了没反应」，文件 mtime 不变、日志为零、连存储锁都没拿到。
+        // 现在只有「记忆超限 / 保存中」才拦：记忆层真有改动而 baseRevision 为空串时，
+        // replaceAll 的乐观锁会抛 MEMORY_CONFLICT，走下方失败通道，不再静默。
+        if (!dirty || saving || memoryOverLimit) return
         val targetMemory = memoryDraft
         val baseRevision = memoryRevision
         val targetProfile = original.copy(name = name, prompt = prompt, avatarFileName = avatarFileName,
@@ -175,7 +182,14 @@ internal fun AssistantEditScreen(
             }
             saving = false
             if (result.isSuccess) onBack()
-            else android.widget.Toast.makeText(context, result.exceptionOrNull()?.message ?: context.getString(R.string.aes_save_failed_draft_kept), android.widget.Toast.LENGTH_LONG).show()
+            else {
+                // 失败必须留痕：旧版前置条件静默 return 的排障成本极高（零日志）。
+                io.github.mangi.eta.core.AndroidAgentLogger.warn(
+                    "assistant save failed: id=$assistantId memoryChanged=$memoryChanged " +
+                        "error=${result.exceptionOrNull()?.safeLogType()}"
+                )
+                android.widget.Toast.makeText(context, result.exceptionOrNull()?.message ?: context.getString(R.string.aes_save_failed_draft_kept), android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 
