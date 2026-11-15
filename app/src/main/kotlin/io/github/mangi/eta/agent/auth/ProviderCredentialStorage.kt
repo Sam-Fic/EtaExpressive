@@ -4,6 +4,8 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
+import io.github.mangi.eta.core.AndroidAgentLogger
+import io.github.mangi.eta.core.safeLogType
 import java.io.File
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -28,18 +30,28 @@ internal class EncryptedProviderCredentialStorage(context: Context) : ProviderCr
     override fun read(providerId: String): ProviderCredential? {
         val file = file(providerId)
         if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return null
-        return storageOperation {
-            val payload = readBounded(file, MAX_BYTES)
-            check(payload.size in (IV_SIZE + 1)..MAX_BYTES)
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, key(create = false), GCMParameterSpec(128, payload, 0, IV_SIZE))
-            cipher.updateAAD(providerId.toByteArray(Charsets.UTF_8))
-            val plaintext = cipher.doFinal(payload, IV_SIZE, payload.size - IV_SIZE)
-            try {
-                json.decodeFromString<ProviderCredential>(plaintext.toString(Charsets.UTF_8))
-            } finally {
-                plaintext.fill(0)
+        // 换签名重装后 AndroidKeyStore 里的别名取不到（密钥与应用 UID 绑定），旧实现会把
+        // 这里抛成 ProviderAuthException，一个供应商读不出就能让整个供应商列表报错。
+        // 读不出凭据等价于「这个供应商还没登录」：返回 null 让界面提示重新填写即可。
+        return try {
+            storageOperation {
+                val payload = readBounded(file, MAX_BYTES)
+                check(payload.size in (IV_SIZE + 1)..MAX_BYTES)
+                val cipher = Cipher.getInstance(TRANSFORMATION)
+                cipher.init(Cipher.DECRYPT_MODE, key(create = false), GCMParameterSpec(128, payload, 0, IV_SIZE))
+                cipher.updateAAD(providerId.toByteArray(Charsets.UTF_8))
+                val plaintext = cipher.doFinal(payload, IV_SIZE, payload.size - IV_SIZE)
+                try {
+                    json.decodeFromString<ProviderCredential>(plaintext.toString(Charsets.UTF_8))
+                } finally {
+                    plaintext.fill(0)
+                }
             }
+        } catch (error: ProviderAuthException) {
+            AndroidAgentLogger.warn(
+                "provider credential unreadable, treated as signed-out: ${error.safeLogType()}"
+            )
+            null
         }
     }
 
