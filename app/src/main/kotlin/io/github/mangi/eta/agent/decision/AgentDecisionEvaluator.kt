@@ -154,15 +154,20 @@ internal object AgentDecisionEvaluator {
                         "is clearly a question, explanation, or casual chat; when ambiguous, lean true.",
                 ),
             )
-            add(
-                AgentDecisionQuestion.MultiChoice(
-                    id = "tool_groups",
-                    instructions = "Select every tool group that must be available to complete the request. " +
-                        "Select no group when the request is pure chat or general knowledge; " +
-                        "when unsure, prefer selecting the most likely group over selecting none.",
-                    criteria = groups.associate { it.id to it.summary },
-                ),
-            )
+            // 平台协议只支持 choice / noul / score，且 choice 是单选 —— 多选工具组没法用一道题表达。
+            // 这里改成「每个组一道 noul 是/否题」：既能多选、又不越出协议（纯文本上限 16 题）。
+            groups.take(MAX_TOOL_GROUP_QUESTIONS).forEach { group ->
+                add(
+                    AgentDecisionQuestion.Noul(
+                        id = TOOL_GROUP_PREFIX + group.id,
+                        instructions = "Decide whether completing this request requires the " +
+                            "\"${group.id}\" tool group (${group.summary}).",
+                        trueCriterion = "The request needs tools from this group to be answered or executed.",
+                        falseCriterion = "This group is irrelevant: the request either needs no tools, " +
+                            "or is fully handled by other groups.",
+                    ),
+                )
+            }
             if (popupRun) {
                 // 唤起即屏幕上下文（助手弹窗 run 专属）：入口截图未被手动选中时，由判断模型
                 // 决定是否依赖「看到当前屏幕」。命中后运行侧预开屏幕组并注入 observe_screen
@@ -202,14 +207,12 @@ internal object AgentDecisionEvaluator {
         var primaryLatencyMs = 0L
         if (outcome is AgentDecisionOutcome.Success) {
             primaryLatencyMs = outcome.response.latencyMs
-            confidence = (outcome.response.answers["tool_groups"] as? AgentDecisionAnswer.MultiChoice)
-                ?.confidence ?: 0.0
+            confidence = groupsConfidence(outcome.response.answers)
             if (escalation != null) {
-                val answer = outcome.response.answers["tool_groups"] as? AgentDecisionAnswer.MultiChoice
                 val needsTools = (outcome.response.answers["needs_tools"] as? AgentDecisionAnswer.Noul)
                     ?.probability ?: 0.0
                 val primarySelected = if (needsTools >= NEEDS_TOOLS_THRESHOLD) {
-                    answer?.choices.orEmpty()
+                    selectedGroupsFrom(outcome.response.answers)
                 } else {
                     emptySet()
                 }
@@ -244,8 +247,7 @@ internal object AgentDecisionEvaluator {
                     // expand 语义：升级成功才替换答案；失败保留主模型结果，整体仍然成功。
                     if (escalatedOutcome is AgentDecisionOutcome.Success) {
                         outcome = escalatedOutcome
-                        confidence = (escalatedOutcome.response.answers["tool_groups"]
-                            as? AgentDecisionAnswer.MultiChoice)?.confidence ?: confidence
+                        confidence = groupsConfidence(escalatedOutcome.response.answers)
                     } else {
                         escalationFailure = (escalatedOutcome as? AgentDecisionOutcome.Failure)?.reason
                     }
@@ -286,8 +288,7 @@ internal object AgentDecisionEvaluator {
                 val needsTools = (response.answers["needs_tools"] as? AgentDecisionAnswer.Noul)
                     ?.probability ?: 0.0
                 val selected = if (needsTools >= NEEDS_TOOLS_THRESHOLD) {
-                    (response.answers["tool_groups"] as? AgentDecisionAnswer.MultiChoice)
-                        ?.choices.orEmpty()
+                    selectedGroupsFrom(response.answers)
                 } else {
                     emptySet()
                 }
@@ -345,7 +346,6 @@ internal object AgentDecisionEvaluator {
                 ),
                 state = state,
                 questions = questions,
-                dagEdges = mapOf("tool_groups" to listOf("needs_tools")),
             )
         }
     } ?: AgentDecisionOutcome.Failure(
@@ -353,6 +353,33 @@ internal object AgentDecisionEvaluator {
         latencyMs = timeoutMs.toLong(),
         detail = "等待判断模型超过 ${timeoutMs}ms",
     )
+
+    /**
+     * 由逐组 noul 答案还原「选中了哪些工具组」。
+     *
+     * 兼容旧的多选回包：若对方仍返回 `tool_groups` 的 MultiChoice 答案，直接用它的 choices。
+     */
+    private fun selectedGroupsFrom(
+        answers: Map<String, AgentDecisionAnswer>,
+    ): Set<String> {
+        (answers["tool_groups"] as? AgentDecisionAnswer.MultiChoice)?.choices?.let { return it }
+        return answers.entries.mapNotNull { (key, value) ->
+            if (!key.startsWith(TOOL_GROUP_PREFIX)) return@mapNotNull null
+            val probability = (value as? AgentDecisionAnswer.Noul)?.probability ?: return@mapNotNull null
+            if (probability >= NEEDS_TOOLS_THRESHOLD) key.removePrefix(TOOL_GROUP_PREFIX) else null
+        }.toSet()
+    }
+
+    /** 工具组判断的整体置信度：取逐组题的最高概率；旧回包用答案自带 confidence。 */
+    private fun groupsConfidence(answers: Map<String, AgentDecisionAnswer>): Double {
+        (answers["tool_groups"] as? AgentDecisionAnswer.MultiChoice)?.confidence?.let { return it }
+        return answers.entries
+            .mapNotNull { (key, value) ->
+                if (!key.startsWith(TOOL_GROUP_PREFIX)) null
+                else (value as? AgentDecisionAnswer.Noul)?.probability
+            }
+            .maxOrNull() ?: 0.0
+    }
 
     private fun blank(
         modelId: String,
@@ -423,6 +450,12 @@ internal object AgentDecisionEvaluator {
     fun ratio(value: Double): String = "%.3f".format(Locale.US, value)
 
     /** 判定「需要工具」的阈值；与影子日志里的 needs_tools 展示共用。 */
+    /** 逐组是/否题的 id 前缀。 */
+    private const val TOOL_GROUP_PREFIX = "tool_group:"
+
+    /** 纯文本请求上限 16 题；留给 needs_tools 与可选屏幕题后，组数上限取 14。 */
+    private const val MAX_TOOL_GROUP_QUESTIONS = 14
+
     const val NEEDS_TOOLS_THRESHOLD = 0.5
 
     private const val ROLE_USER = "user"
