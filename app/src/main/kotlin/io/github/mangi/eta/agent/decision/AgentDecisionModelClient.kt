@@ -1,5 +1,7 @@
 package io.github.mangi.eta.agent.decision
 
+import io.github.mangi.eta.config.Prefs
+
 import io.github.mangi.eta.agent.model.AgentHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -139,7 +141,10 @@ internal sealed interface AgentDecisionQuestion {
         val instructions: String,
         val criteria: Map<String, String>,
     ) : AgentDecisionQuestion {
-        override val type: String get() = "multi-choice"
+        // 平台协议只认 choice / noul / score，`multi-choice` 会让整包被判 JEV_INVALID_REQUEST
+        // （表现为 http_422 + 降级「本轮按全量工具放行」）。这里仍按多选语义建模，
+        // 线上统一用 choice 发；单选项答案在 parseAnswers 里还原成单元素集合。
+        override val type: String get() = "choice"
         override val labels: Set<String> get() = criteria.keys
 
         override fun toJson(): JSONObject = JSONObject()
@@ -223,7 +228,7 @@ internal sealed interface AgentDecisionOutcome {
  * 独立决策客户端：只实现 `POST /v1/systemone`，不复用聊天客户端的
  * messages / responses 语义，也不做流式。
  *
- * 请求体按契约构造：`model` / `state`（对象）/ `questions` / `options.dag`。
+ * 请求体按平台协议构造：顶层只有 `model` / `state`（对象）/ `questions`。
  * HTTP 非 200 与 `errorCode != 0` 都视为失败；答案逐字段校验（类型、标签、概率范围）。
  */
 internal object AgentDecisionModelClient {
@@ -234,7 +239,6 @@ internal object AgentDecisionModelClient {
         config: AgentDecisionClientConfig,
         state: JSONObject,
         questions: List<AgentDecisionQuestion>,
-        dagEdges: Map<String, List<String>> = emptyMap(),
     ): AgentDecisionOutcome = withContext(Dispatchers.IO) {
         val url = AgentDecisionEndpoint.resolve(config.baseUrl)
             ?: return@withContext AgentDecisionOutcome.Failure(
@@ -248,7 +252,7 @@ internal object AgentDecisionModelClient {
             return@withContext AgentDecisionOutcome.Failure(reason = "missing_model")
         }
 
-        val payload = buildPayload(config, state, questions, dagEdges)
+        val payload = buildPayload(config, state, questions)
         val startedAt = System.nanoTime()
         val request = Request.Builder()
             .url(url)
@@ -298,23 +302,41 @@ internal object AgentDecisionModelClient {
         config: AgentDecisionClientConfig,
         state: JSONObject,
         questions: List<AgentDecisionQuestion>,
-        dagEdges: Map<String, List<String>>,
     ): JSONObject {
         val questionObject = JSONObject()
         questions.forEach { question -> questionObject.put(question.id, question.toJson()) }
-        val edges = JSONObject()
-        dagEdges.forEach { (downstream, upstream) ->
-            if (upstream.isEmpty()) return@forEach
-            edges.put(downstream, JSONObject().put("depends", JSONArray().also { array ->
-                upstream.forEach { dependency -> array.put(dependency) }
-            }))
+        // 平台协议（/v1/decision、/v1/systemone）顶层只有 model / state / questions。
+        // 早期这里还写 options.dag.edges（多题时每道题再带 depends），基元律动 JEV 的校验器
+        // 直接判 JEV_INVALID_REQUEST —— 官方文档里没有 options / dag / edges / depends 任何一项。
+        val custom = runCatching { Prefs.getString(Prefs.Keys.AGENT_DECISION_CUSTOM_BODY) }
+            .getOrDefault("")
+            .trim()
+        if (custom.isNotEmpty()) {
+            customBodyOrNull(custom, config.model, state, questionObject)?.let { return it }
         }
         return JSONObject()
             .put("model", config.model)
             .put("state", state)
             .put("questions", questionObject)
-            .put("options", JSONObject().put("dag", JSONObject().put("edges", edges)))
     }
+
+    /** 自定义模板：先做占位符替换再解析；不是合法 JSON 返回 null，由调用方回落内置请求体。 */
+    private fun customBodyOrNull(
+        template: String,
+        model: String,
+        state: JSONObject,
+        questions: JSONObject,
+    ): JSONObject? = runCatching {
+        val filled = template
+            .replace(PH_MODEL, model)
+            .replace(PH_STATE, state.toString())
+            .replace(PH_QUESTIONS, questions.toString())
+        JSONObject(filled)
+    }.getOrNull()
+
+    private const val PH_MODEL = "{{" + "model" + "}}"
+    private const val PH_STATE = "{{" + "state" + "}}"
+    private const val PH_QUESTIONS = "{{" + "questions" + "}}"
 
     private fun handleResponse(
         response: Response,
@@ -339,15 +361,24 @@ internal object AgentDecisionModelClient {
                 latencyMs = latency,
                 detail = body.take(200),
             )
+        // 成功信封有两种，都要认：
+        //   1) JEV 原生（/v1/decision、/v1/systemone）：{"answers": {...}}，没有 errorCode 字段；
+        //   2) 旧 errorCode 信封：{"errorCode": 0, "answers": {...}}。
+        // 之前只认第二种，JEV 返回 200 + answers 也会被判成「响应不符合协议 · missing_error_code」。
         val errorCode = root.optInt("errorCode", MISSING_ERROR_CODE)
-        if (errorCode == MISSING_ERROR_CODE) {
+        if (errorCode == MISSING_ERROR_CODE && !root.has("answers")) {
+            // JEV 的错误信封是 {"code":"JEV_...","message":"..."}，同样没有 errorCode。
+            val code = root.optString("code").takeIf { it.isNotBlank() }
             return AgentDecisionOutcome.Failure(
-                reason = "missing_error_code",
+                reason = code?.lowercase()?.take(48) ?: "missing_error_code",
                 httpStatus = status,
+                errorDesc = root.optString("message").takeIf { it.isNotBlank() } ?: code.orEmpty(),
+                // 把原始 body 前 200 字带上：信封不认识时能直接看出对方到底返回了什么。
+                detail = body.take(200),
                 latencyMs = latency,
             )
         }
-        if (errorCode != 0) {
+        if (errorCode != MISSING_ERROR_CODE && errorCode != 0) {
             return AgentDecisionOutcome.Failure(
                 reason = "error_code_$errorCode",
                 httpStatus = status,
@@ -362,7 +393,7 @@ internal object AgentDecisionModelClient {
                 return AgentDecisionOutcome.Failure(
                     reason = "invalid_answer",
                     httpStatus = status,
-                    errorCode = errorCode,
+                    errorCode = errorCode.takeIf { it != MISSING_ERROR_CODE },
                     latencyMs = latency,
                     detail = error.message.orEmpty(),
                 )
@@ -427,11 +458,12 @@ internal object AgentDecisionModelClient {
                 }
 
                 is AgentDecisionQuestion.MultiChoice -> {
+                    // 线上题型是 choice，正常只回一个 `choice`；兼容旧 multi-choice 的 `choices` 数组。
                     val choices = answer.optJSONArray("choices")?.let { array ->
                         val result = mutableSetOf<String>()
                         for (index in 0 until array.length()) result.add(array.optString(index))
                         result
-                    }.orEmpty()
+                    } ?: answer.optString("choice").takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
                     require(choices.all { it in question.labels }) {
                         "${question.id} 勾选含未声明标签：${choices - question.labels}"
                     }

@@ -283,6 +283,11 @@ internal object Prefs {
          * `AgentDecisionEndpoint.normalize`。
          */
         const val AGENT_DECISION_ENDPOINT_OVERRIDE = "agent_decision_endpoint_override"
+        /**
+         * 自定义决策请求体模板。非空时优先使用，支持 model/state/questions 三个占位符；
+         * 模板不是合法 JSON 时回落到内置请求体，不会让决策整体失败。
+         */
+        const val AGENT_DECISION_CUSTOM_BODY = "agent_decision_custom_body"
         const val AGENT_DECISION_TIMEOUT_MS = "agent_decision_timeout_ms"
         const val AGENT_DECISION_FAILURE_POLICY = "agent_decision_failure_policy"
         /** 送判的最近轮数；0 = 只看当前输入，上限 10。 */

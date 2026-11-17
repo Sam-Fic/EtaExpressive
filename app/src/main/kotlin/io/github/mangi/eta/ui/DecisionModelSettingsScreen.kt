@@ -159,6 +159,11 @@ internal fun DecisionModelSettingsScreen(
     // 自定义端点收进弹窗编辑：草稿在打开时快照，确认才落盘（同 token 弹窗模式）。
     var showEndpointDialog by remember { mutableStateOf(false) }
     var endpointDraft by remember { mutableStateOf("") }
+    var showCustomBodyDialog by remember { mutableStateOf(false) }
+    var customBodyDraft by remember { mutableStateOf("") }
+    var customBodyValue by remember {
+        mutableStateOf(Prefs.getString(Prefs.Keys.AGENT_DECISION_CUSTOM_BODY))
+    }
     var isLoadingModels by remember { mutableStateOf(writable) }
     // 连通性测试：用表单当前值直发一次最小判断请求，不经过 Router 的缓存/粘滞/统计。
     var connectivityResult by remember { mutableStateOf<DecisionConnectivityResult?>(null) }
@@ -515,6 +520,23 @@ internal fun DecisionModelSettingsScreen(
                         onClick = {
                             endpointDraft = endpointOverride
                             showEndpointDialog = true
+                        },
+                    )
+                }
+                item(key = "custom-body") {
+                    // 请求体模板收进弹窗编辑，行内只显示是否启用：与端点行同一套交互。
+                    EtaClickableRow(
+                        title = stringResource(R.string.decision_model_custom_body_title),
+                        summary = if (customBodyValue.isBlank()) {
+                            stringResource(R.string.decision_model_custom_body_summary_off)
+                        } else {
+                            stringResource(R.string.decision_model_custom_body_summary_on)
+                        },
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Article, enabled = controlsEnabled) },
+                        enabled = controlsEnabled,
+                        onClick = {
+                            customBodyDraft = customBodyValue
+                            showCustomBodyDialog = true
                         },
                     )
                 }
@@ -962,6 +984,54 @@ internal fun DecisionModelSettingsScreen(
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = if (draftErrorRes != null) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+    }
+
+    if (showCustomBodyDialog) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.decision_model_custom_body_title),
+            summary = stringResource(R.string.decision_model_custom_body_dialog_summary),
+            onDismissRequest = { showCustomBodyDialog = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.action_save),
+                    onCancel = { showCustomBodyDialog = false },
+                    onConfirm = {
+                        val trimmed = customBodyDraft.trim()
+                        Prefs.putString(Prefs.Keys.AGENT_DECISION_CUSTOM_BODY, trimmed)
+                        customBodyValue = trimmed
+                        showCustomBodyDialog = false
+                    },
+                )
+            },
+        ) {
+            // 模板就是请求体本身：留空表示用内置请求体（含 model / state / questions）。
+            val draftError = customBodyDraft.trim().isNotEmpty() &&
+                customBodyDraft.trim().replace("{{" + "model" + "}}", "m")
+                    .replace("{{" + "state" + "}}", "{}")
+                    .replace("{{" + "questions" + "}}", "{}")
+                    .let { filled -> runCatching { org.json.JSONObject(filled) }.isFailure }
+            EtaTextField(
+                value = customBodyDraft,
+                onValueChange = { customBodyDraft = it },
+                label = stringResource(R.string.decision_model_custom_body_field_label),
+                singleLine = false,
+                isError = draftError,
+            )
+            Text(
+                text = if (draftError) {
+                    stringResource(R.string.decision_model_custom_body_invalid)
+                } else {
+                    stringResource(R.string.decision_model_custom_body_hint)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (draftError) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
