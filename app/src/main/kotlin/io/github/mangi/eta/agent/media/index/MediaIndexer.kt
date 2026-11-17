@@ -54,6 +54,22 @@ internal object MediaIndexer {
     fun isRunning(): Boolean = running.get()
 
     /**
+     * 强制复位运行标记。
+     *
+     * 索引服务是前台服务：被系统回收、或 startForeground 抛异常时，`finally` 可能来不及跑，
+     * 于是 `running` 残留为 true —— 界面一直显示「索引中」，点「建立索引」被 start() 早退挡住，
+     * 点「停止索引」又没有活着的服务可收，两边都毫无反应。这里给出显式复位入口。
+     */
+    fun forceReset(reason: String) {
+        if (running.compareAndSet(true, false)) {
+            io.github.mangi.eta.core.AndroidAgentLogger.warn("Media index state force-reset: $reason")
+        } else {
+            running.set(false)
+        }
+        mutable.value = mutable.value.copy(running = false, phase = "")
+    }
+
+    /**
      * 启动一轮索引；[mode] 缺省读存储的索引模式偏好（[EmbeddingModelStore.indexMode]），
      * 显式传档位时以传入值为准（测试与按档启动的调用方使用）。
      */

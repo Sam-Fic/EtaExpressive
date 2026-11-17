@@ -57,7 +57,40 @@ internal class MediaIndexService : Service() {
     private fun ensureForeground() {
         if (foregroundActive) return
         try {
-            startForeground(NOTIFICATION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            // 前台服务类型逐级降级：部分 ROM（本例 ColorOS/Android 16）会以 SecurityException
+            // 拒绝 specialUse；索引本质是数据同步，dataSync 同样合规且权限已授予。
+            val candidates = intArrayOf(
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                0,
+            )
+            var started = false
+            var lastError: Throwable? = null
+            for (type in candidates) {
+                val attempt = runCatching {
+                    if (type == 0) startForeground(NOTIFICATION_ID, notification())
+                    else startForeground(NOTIFICATION_ID, notification(), type)
+                }
+                if (attempt.isSuccess) {
+                    if (type != ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) {
+                        AndroidAgentLogger.warn("Media index foreground type fallback=$type")
+                    }
+                    started = true
+                    break
+                }
+                lastError = attempt.exceptionOrNull()
+                AndroidAgentLogger.warn(
+                    "Media index foreground type=$type failed: " +
+                        "${lastError?.javaClass?.simpleName}: ${lastError?.message}"
+                )
+            }
+            if (!started) {
+                AndroidAgentLogger.warn(
+                    "Media index service foreground failed: type=${lastError?.safeLogType()}"
+                )
+                finish()
+                return
+            }
             foregroundActive = true
         } catch (failure: RuntimeException) {
             AndroidAgentLogger.warn("Media index service foreground failed: type=${failure.safeLogType()}")
@@ -120,14 +153,14 @@ internal class MediaIndexService : Service() {
     private fun finish() {
         if (indexJob?.isActive == true) return
         releaseWakeLock()
+        // 不论 foregroundActive 是否还认为自己在台前，都显式撤一次：
+        // startForeground 抛 SecurityException 时该标记根本没置位，通知却已经挂上去了。
         if (foregroundActive) {
             foregroundActive = false
             stopForeground(STOP_FOREGROUND_REMOVE)
-            // 兜底：个别 ROM 上 notify() 刷过同 ID 后 stopForeground 撤不干净，
-            // 再显式 cancel 一次，确保索引结束/停止后通知不残留。
-            runCatching {
-                getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
-            }
+        }
+        runCatching {
+            getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         }
         stopSelf()
     }
@@ -227,14 +260,47 @@ internal class MediaIndexService : Service() {
          * null = 按存储的索引模式偏好（[EmbeddingModelStore.indexMode]）。
          */
         fun start(context: Context, mode: IndexMode? = null) {
-            if (MediaIndexer.isRunning() || instance?.indexJob?.isActive == true) return
+            // 只有「服务实例里真的还有活跃任务」才算在跑。仅凭 MediaIndexer.isRunning() 判断会把
+            // 被系统回收后的残留标记当成在跑，导致点「建立索引」直接被挡掉（界面永远停在索引中）。
+            val alive = instance?.indexJob?.isActive == true
+            io.github.mangi.eta.core.AndroidAgentLogger.info(
+                "media-index start: alive=$alive running=${MediaIndexer.isRunning()} " +
+                    "instance=${instance != null} mode=${mode?.wire ?: "-"}"
+            )
+            if (!alive && MediaIndexer.isRunning()) {
+                MediaIndexer.forceReset("stale-before-start")
+            }
+            if (alive) return
             val intent = Intent(context, MediaIndexService::class.java)
             if (mode != null) intent.putExtra(EXTRA_MODE, mode.wire)
-            context.applicationContext.startForegroundService(intent)
+            runCatching { context.applicationContext.startForegroundService(intent) }
+                .onFailure { error ->
+                    io.github.mangi.eta.core.AndroidAgentLogger.warn(
+                        "media-index start failed: ${error.javaClass.simpleName}: ${error.message}"
+                    )
+                }
+        }
+
+        /**
+         * 按「服务实例里是否真有活跃任务」校正运行标记。
+         *
+         * 界面上的索引行是 `enabled = … && !progress.running`：一旦 running 残留为 true，
+         * 那一行就被禁用，点也点不动，于是永远走不到 start()/stop() 里的复位分支。
+         * 所以页面进入时必须先调一次这里，把不自洽的状态修掉。
+         */
+        fun syncRunningState() {
+            if (instance?.indexJob?.isActive != true && MediaIndexer.isRunning()) {
+                MediaIndexer.forceReset("sync-on-screen-entry")
+            }
         }
 
         /** 停止后台索引：复用通知停止按钮的 ACTION_STOP PendingIntent，后台态也能送达。 */
         fun stop(context: Context) {
+            if (instance?.indexJob?.isActive != true) {
+                // 没有活着的任务：直接复位状态，别让界面继续卡在「索引中」。
+                MediaIndexer.forceReset("stop-without-active-job")
+                return
+            }
             val stop = PendingIntent.getService(
                 context, 1, Intent(context, MediaIndexService::class.java).setAction(ACTION_STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,

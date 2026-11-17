@@ -193,6 +193,8 @@ internal fun MediaIndexSettingsScreen(
     }
 
     LaunchedEffect(Unit) {
+        // 先校正残留的运行标记：否则索引行会一直处于禁用态（点不动）。
+        MediaIndexService.syncRunningState()
         EmbeddingModelStore.initialize(context)
         refreshSources()
         refreshIndexMeta()
@@ -209,6 +211,10 @@ internal fun MediaIndexSettingsScreen(
      */
     fun startIndex() {
         indexError = null
+        io.github.mangi.eta.core.AndroidAgentLogger.info(
+            "media-index click: running=${progress.running} " +
+                "indexedCount=$indexedCount sources=${savedSources.size}"
+        )
         MediaIndexService.start(context)
     }
 
