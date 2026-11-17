@@ -83,7 +83,12 @@ internal object MobileActionsEngine {
         val app = context.applicationContext
         idleJob?.cancel()
         val file = MobileActionsModelStore.modelFile(app)
+        io.github.mangi.eta.core.AndroidAgentLogger.info(
+            "mobile-actions run: chars=${instruction.length} file=${file?.name ?: "null"} " +
+                "backend=${MobileActionsModelStore.backend(app)}"
+        )
         if (file == null) {
+            io.github.mangi.eta.core.AndroidAgentLogger.warn("mobile-actions model file missing or size mismatch")
             send(Event.Failure(app.getString(R.string.mobile_actions_not_ready)))
             return@channelFlow
         }
@@ -101,11 +106,16 @@ internal object MobileActionsEngine {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
+                io.github.mangi.eta.core.AndroidAgentLogger.warn(
+                    "mobile-actions engine init failed: ${error.javaClass.name}: ${error.message}"
+                )
                 send(Event.Failure(failureText(app, error)))
                 return@withLock
             }
             var reply = ""
+            var collected = 0
             try {
+                io.github.mangi.eta.core.AndroidAgentLogger.info("mobile-actions conversation create")
                 ready.createConversation(
                     ConversationConfig(
                         systemInstruction = systemInstruction(),
@@ -132,20 +142,30 @@ internal object MobileActionsEngine {
                             val text = message.contents.contents
                                 .filterIsInstance<Content.Text>()
                                 .joinToString("") { it.text }
-                            if (text.isNotBlank()) builder.append(text)
+                            if (text.isNotBlank()) {
+                                builder.append(text)
+                                collected += 1
+                            }
                         }
                     }
                     reply = builder.toString().trim()
                 }
             } catch (timeout: TimeoutCancellationException) {
+                io.github.mangi.eta.core.AndroidAgentLogger.warn("mobile-actions generation timeout")
                 send(Event.Failure(app.getString(R.string.mobile_actions_error_timeout)))
                 return@withLock
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
+                io.github.mangi.eta.core.AndroidAgentLogger.warn(
+                    "mobile-actions generation failed: ${error.javaClass.name}: ${error.message}"
+                )
                 send(Event.Failure(failureText(app, error)))
                 return@withLock
             }
+            io.github.mangi.eta.core.AndroidAgentLogger.info(
+                "mobile-actions done: chunks=$collected replyChars=${reply.length} actions=${outcomes.size}"
+            )
             outcomes.forEach { (action, outcome) -> send(Event.Action(action, outcome)) }
             if (reply.isNotEmpty()) send(Event.Reply(reply))
         }

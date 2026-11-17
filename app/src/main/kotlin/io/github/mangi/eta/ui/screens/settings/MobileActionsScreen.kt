@@ -74,6 +74,10 @@ internal fun MobileActionsScreen(
 
     fun submit() {
         val instruction = input.trim()
+        // 记录提交瞬间的门禁值：功能「没反应」时先分清是按钮没启用还是流程内部失败。
+        io.github.mangi.eta.core.AndroidAgentLogger.info(
+            "mobile-actions submit: chars=${instruction.length} ready=${store.ready} running=$running"
+        )
         if (instruction.isEmpty() || running) return
         input = ""
         entries += Entry.User(instruction)
