@@ -68,6 +68,12 @@ private fun licenseEntries(): List<LicenseEntry> = listOf(
         summary = stringResource(R.string.licenses_entry_gpl3_summary),
         assetName = "licenses/GPL-3.0.txt",
     ),
+    LicenseEntry(
+        id = "agpl-3.0",
+        title = "GNU AGPL v3.0",
+        summary = stringResource(R.string.licenses_entry_agpl3_summary),
+        assetName = "licenses/AGPL-3.0.txt",
+    ),
 )
 
 /**
@@ -78,6 +84,8 @@ private fun licenseEntries(): List<LicenseEntry> = listOf(
  */
 @Composable
 internal fun AboutLicensesScreen(onBack: () -> Unit, onOpenDetail: (String) -> Unit) {
+    // EtaSegmentedColumn 的 DSL 闭包不是 @Composable，条目列表必须先在这里读好。
+    val entries = licenseEntries()
     EtaScaffoldPage(
         title = stringResource(R.string.licenses_title),
         onBack = onBack,
@@ -86,7 +94,7 @@ internal fun AboutLicensesScreen(onBack: () -> Unit, onOpenDetail: (String) -> U
             EtaSegmentedColumn(
                 modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
             ) {
-                licenseEntries().forEach { entry ->
+                entries.forEach { entry ->
                     item(key = entry.id) {
                         EtaClickableRow(
                             title = entry.title,

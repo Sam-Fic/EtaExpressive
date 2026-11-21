@@ -8,6 +8,7 @@
     <string name="credits_entry_natumragnag">参考分支，小米宿主桥接的实现来源：HyperOS 4 UIAgent 工具桥、内部 ToolsBridge 与 vision / 外部 Agent 服务。</string>
     <string name="credits_entry_yooma1">参考分支，米家直连的实现来源：mijia 云客户端（OAuth2 授权 / 设备同步 / 属性读写 / 动作）、MIoT 规格解析与中文语音匹配核心零改造移植，mijia_control 工具目录原样引入；设置界面按本仓 M3 分段列表口径重写。</string>
     <string name="credits_entry_pi">Agent Runtime 的核心参考，包括 Agent Loop、Tool Calling、steering 与 transcript 状态管理。</string>
+    <string name="credits_entry_hyperpickup">取餐码 / 取件码识别功能的实现参考，核心识别与规则引擎逻辑移植自该项目（AGPL-3.0-only）；归属与许可证说明见开源许可页。</string>
     <string name="credits_entry_dsh">DeepSeek 开源的主动式 agent 研究原型。「调度智能体」的理念来源：主 Session 只路由与研判、工单/授权/准入流水线，以及结构化提问、如实汇报等行为律。</string>
     <string name="credits_entry_taiji">AI Agent 桌面工作台。「调度台」的会话形态与机制参考：受限工具白名单的调度模式、自包含 brief、notify-once 完成通知债权与防注入纪律。</string>
     <string name="credits_entry_omnibot">Android AI Agent 方向的参考项目。</string>

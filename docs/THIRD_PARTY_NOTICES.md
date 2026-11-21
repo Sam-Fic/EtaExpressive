@@ -170,3 +170,13 @@ Eta 不把下列工具打包进 APK。用户在 Linux 工具环境页面主动�
 JADX 的发行包许可证会随所需 CLI 文件一并保留；Apktool、smali 与 baksmali 的许可证和第三方声明保留在各自 JAR 制品中。Eta 仅提供经过校验的安装、命令入口和能力边界，不对这些工具重新授权。
 
 GitHub 的实际制品域名不可达或较慢时，安装器可能通过 `gh-proxy.com` 请求同一个公开 Release URL；Node.js 制品可能先通过 `cdn.npmmirror.com` 请求。下载入口会获知用户的网络地址及所请求的公开制品；Eta 不向其发送账号、Cookie、API Key 或其他 Eta 数据，并在落盘前继续校验内置的官方制品大小与 SHA-256。不希望使用下载入口的用户可以不安装对应可选档案。
+
+## 取餐码识别模块（移植自 Hyper-pick-up-code）
+
+Eta 的取餐码 / 取件码识别功能参考并移植自 badnng 的开源项目 [Hyper-pick-up-code（澎湃记）](https://github.com/badnng/Hyper-pick-up-code)，原项目以 [GNU Affero General Public License v3.0（AGPL-3.0-only）](https://www.gnu.org/licenses/agpl-3.0.txt) 分发，版权归原作者所有。
+
+依据 GPL-3.0 第 13 条（Remote Network Interaction），AGPL-3.0 覆盖的代码可并入 GPL-3.0 工程，合并后的整体按 Eta 现行的 GPL-3.0 分发。移植进 Eta 的相关代码随之以 GPL-3.0 对外提供，对应源码可通过本仓库获取，满足原项目关于分发修改版须提供源码并保留许可证与归属的要求。
+
+原项目的识别能力依赖 PaddleOCR（PP-OCRv6 Tiny 模型）、ONNX Runtime、Google ML Kit 等第三方组件，各自适用其原始许可证。若后续将相关模型文件或二进制库随 Eta 打包，需另行核对并补充这些组件的授权与声明；本节当前仅覆盖移植自原项目的源码层面的归属义务。
+
+“澎湃记”“Hyper Note”及原项目 Logo 是官方项目的标识，Eta 不使用这些名称与标识，也不暗示获得官方背书。原项目 OOBE 中移植自 HyperCeiler 的视觉与动画内容不在本次移植范围，相关归属以其 [NOTICE](https://github.com/badnng/Hyper-pick-up-code/blob/main/NOTICE) 为准。

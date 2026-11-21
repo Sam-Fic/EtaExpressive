@@ -287,6 +287,11 @@ internal fun AboutCreditsScreen(onBack: () -> Unit) {
             url = "https://github.com/yooma1/Eta666",
         ),
         CreditEntry(
+            name = "badnng/Hyper-pick-up-code",
+            summary = stringResource(R.string.credits_entry_hyperpickup),
+            url = "https://github.com/badnng/Hyper-pick-up-code",
+        ),
+        CreditEntry(
             name = "earendil-works/pi",
             summary = stringResource(R.string.credits_entry_pi),
             url = "https://github.com/earendil-works/pi",
