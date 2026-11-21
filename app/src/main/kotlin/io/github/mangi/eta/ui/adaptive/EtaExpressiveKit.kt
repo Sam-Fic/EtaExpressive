@@ -364,9 +364,11 @@ fun etaConnectedGroupColors() = ToggleButtonDefaults.colors(
 
 /**
  * 相连按钮组里的图标动作（KernelSU AppProfile 同款官方模式）：官方 `ToggleButton` +
- * `ButtonGroupDefaults` 连体形状（首位/中间/末位）。纯图标按钮用官方
- * `extraSmallContainerSize` 强制成等宽等高的方形容器（顶栏组用 Small/40dp，消息操作条
- * 再小一号用 XS/32dp），`contentPadding(0.dp)` 置零官方文字按钮的水平内边距。
+ * `ButtonGroupDefaults` 连体形状（首位/中间/末位）。纯图标按钮用官方容器尺寸令牌
+ * 强制成等宽等高的方形容器（顶栏组用 XS/32dp；消息操作条传 `small = true` 用
+ * Small/40dp），图标尺寸须取与容器同档的官方令牌（XS 配 `extraSmallIconSize`
+ * 20dp、Small 配 `smallIconSize` 24dp），`contentPadding(0.dp)` 置零官方文字按钮的
+ * 水平内边距。
  * 单按钮（`count <= 1`）时退回官方默认全圆角形状。
  *
  * [checked] 交给官方 `ToggleButton` 的双状态：`true` 时按钮保持官方选中态——形状

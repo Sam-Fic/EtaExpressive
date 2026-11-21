@@ -61,4 +61,14 @@ internal object AgentChatSpacing {
      * 2 + 本值 + 内层 2 = 10dp，与锚在文字行下的有效上间隙对齐。
      */
     val FooterAfterWorkTopGap = 6.dp
+
+    /**
+     * 按钮行的对齐下移量：让滚到底时本行按钮组的中轴与右侧轮次跳转组同高，
+     * 右侧定位保持不动。只在放置阶段生效，不改变上表记录的布局间距。
+     *
+     * 本行中线距列表内容底 = 输入栏间距 14 + 底部哨兵 1 + [RowBaseHalf] 8 +
+     * 按钮半径（small 档容器 40dp / 2）20 = 43dp；右侧跳转组的中线由
+     * `TurnNavigationCenterAboveBottom` 固定为 39dp，本行比它高 4dp，故下移该差值。
+     */
+    val ActionRowCenterLift = 4.dp
 }

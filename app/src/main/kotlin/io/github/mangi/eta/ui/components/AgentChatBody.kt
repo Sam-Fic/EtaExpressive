@@ -2610,8 +2610,10 @@ private val ChatInputBarBottomGap = 12.dp
 /**
  * 跳转轮次按钮组「中线」距列表底部的距离。滚到底时，最后一轮页脚动作组
  * （复制/朗读/fork…）的中线也落在这个高度，两组按钮因此同高、读作一行并列控件。
- * 构成：输入栏间距 [ConversationComposerGap]（14dp）+ 底部哨兵（1dp）+ 页脚垂直内边距
- * （8dp）+ 页脚按钮半径（16dp）。
+ * 构成（固定常量，不随页脚容器档位变化）：输入栏间距 [ConversationComposerGap]（14dp）
+ * + 底部哨兵（1dp）+ 页脚垂直内边距（8dp）+ 页脚按钮半径（16dp）。
+ * 页脚容器实际走 small 档 40dp（半径 20dp），比本常量低 4dp，故页脚组由
+ * `AgentChatSpacing.ActionRowCenterLift` 上移对齐，本常量与右侧定位保持不变。
  */
 private val TurnNavigationCenterAboveBottom = 39.dp
 

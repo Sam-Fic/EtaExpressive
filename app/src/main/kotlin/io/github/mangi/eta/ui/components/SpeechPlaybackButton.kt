@@ -66,17 +66,18 @@ internal fun SpeechPlaybackButton(
                     // M3E Loading Indicator：官方 `LoadingIndicator` 的 indeterminate 重载——
                     // 一块在官方默认形状序列（圆/软星/三角/胶囊…）之间变形并旋转的图形，
                     // 与输入区 morph 指示器同属 M3E 组件族。无容器圆底（containerColor
-                    // 走 Unspecified，不绘制背景），直接取按钮内容色，缩进 20dp 图标槽；
+                    // 走 Unspecified，不绘制背景），直接取按钮内容色，缩进 24dp 图标槽
+                    // （small 档容器 40dp 配套官方 smallIconSize 24dp）；
                     // 官方默认 48dp 容器被外层 size 收敛，与实际渲染尺寸无关。
                     LoadingIndicator(
-                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                         color = LocalContentColor.current,
                     )
                 } else {
                     Icon(
                         imageVector = if (active) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
                         contentDescription = description,
-                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                     )
                 }
             }
@@ -99,7 +100,7 @@ internal fun SpeechPlaybackButton(
         ) {
             if (active && state.preparing) {
                 LoadingIndicator(
-                    modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                    modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                     color = MaterialTheme.colorScheme.primary,
                 )
             } else {
