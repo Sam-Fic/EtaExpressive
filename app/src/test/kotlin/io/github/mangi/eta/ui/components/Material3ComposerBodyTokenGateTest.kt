@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.agent.voice.VoiceModeState
 import io.github.mangi.eta.data.model.GptSpeedMode
@@ -31,7 +32,8 @@ import org.robolectric.annotation.Config
  *
  * 锁的用户可感知行为（41336b3e7 切会话误入听写修复 + 助手弹窗唤起即听写）：
  * - 浮窗轨「重建即重放」是刻意语义：不播种（initialConsumedStartToken=0）时，重建的面板
- *   首帧就按听写态排版（onDictationActiveChange(true) 的首帧桥，弹窗第一帧即流光胶囊）；
+ *   首帧就按听写态排版（onDictationBarWidthChange 首帧回传 300dp 的首帧桥，弹窗第一帧
+ *   即流光胶囊）；
  * - 主应用轨「播种后不重放」：消费过的令牌经进程级水位播种给重建实例后，同一令牌不得再
  *   触发唤起——否则每次切会话都会误开听写；
  * - 播种后的新令牌照常逐次消费并上报（onDictationStartRequestConsumed 恰好一次/令牌）；
@@ -56,21 +58,25 @@ class Material3ComposerBodyTokenGateTest {
     @Test
     fun floatingTrackWithoutSeedReplaysTokenDeliberately() {
         val consumed = mutableListOf<Int>()
-        val activeStates = mutableListOf<Boolean>()
+        val barWidthCaps = mutableListOf<Dp?>()
         compose.setComposerContent(
             dictationStartRequest = 1,
             initialConsumedStartToken = 0,
             voiceEntry = ComposerVoiceEntry.DICTATION,
             onDictationStartRequestConsumed = { consumed.add(it) },
-            onDictationActiveChange = { activeStates.add(it) },
+            onDictationBarWidthChange = { barWidthCaps.add(it) },
         )
         compose.waitForIdle()
         assertEquals("令牌恰好消费一次", listOf(1), consumed)
-        assertEquals("首帧桥直接进听写态（弹窗第一帧即流光胶囊）", true, activeStates.first())
         assertEquals(
-            "未配置引擎时不滞留聆听态（提示条替代，active 回落 false）",
-            false,
-            activeStates.last(),
+            "首帧桥直接进听写态（弹窗第一帧即流光胶囊）",
+            ComposerVoiceBarWidth,
+            barWidthCaps.first(),
+        )
+        assertEquals(
+            "未配置引擎时不滞留聆听态（提示条替代，宽度回落全宽）",
+            null,
+            barWidthCaps.last(),
         )
     }
 
@@ -78,34 +84,34 @@ class Material3ComposerBodyTokenGateTest {
     @Test
     fun seededInstanceDoesNotReplayConsumedToken() {
         val consumed = mutableListOf<Int>()
-        val activeStates = mutableListOf<Boolean>()
+        val barWidthCaps = mutableListOf<Dp?>()
         compose.setComposerContent(
             dictationStartRequest = 2,
             initialConsumedStartToken = 2,
             voiceEntry = ComposerVoiceEntry.DICTATION,
             onDictationStartRequestConsumed = { consumed.add(it) },
-            onDictationActiveChange = { activeStates.add(it) },
+            onDictationBarWidthChange = { barWidthCaps.add(it) },
         )
         compose.waitForIdle()
         assertEquals("已消费令牌不得再触发唤起回调", emptyList<Int>(), consumed)
-        assertEquals("首帧不得进听写态（切会话误入听写回归）", listOf(false), activeStates)
+        assertEquals("首帧不得进听写态（切会话误入听写回归）", listOf<Dp?>(null), barWidthCaps)
     }
 
     /** 播种只挡旧令牌：水位之上的新唤起照常消费并上报。 */
     @Test
     fun seededInstanceStillConsumesNewerToken() {
         val consumed = mutableListOf<Int>()
-        val activeStates = mutableListOf<Boolean>()
+        val barWidthCaps = mutableListOf<Dp?>()
         compose.setComposerContent(
             dictationStartRequest = 3,
             initialConsumedStartToken = 2,
             voiceEntry = ComposerVoiceEntry.DICTATION,
             onDictationStartRequestConsumed = { consumed.add(it) },
-            onDictationActiveChange = { activeStates.add(it) },
+            onDictationBarWidthChange = { barWidthCaps.add(it) },
         )
         compose.waitForIdle()
         assertEquals("新令牌恰好消费一次", listOf(3), consumed)
-        assertEquals("新唤起首帧进听写态", true, activeStates.first())
+        assertEquals("新唤起首帧进听写态", ComposerVoiceBarWidth, barWidthCaps.first())
     }
 
     /** 面板在屏时再次唤起：令牌递增逐次消费（再按电源键的意图就是再录一句）。 */
@@ -118,7 +124,7 @@ class Material3ComposerBodyTokenGateTest {
             initialConsumedStartToken = 0,
             voiceEntry = ComposerVoiceEntry.DICTATION,
             onDictationStartRequestConsumed = { consumed.add(it) },
-            onDictationActiveChange = {},
+            onDictationBarWidthChange = {},
         )
         compose.waitForIdle()
         compose.runOnIdle { request.value = 2 }
@@ -130,17 +136,17 @@ class Material3ComposerBodyTokenGateTest {
     @Test
     fun conversationEntryRecordsTokenWithoutDictation() {
         val consumed = mutableListOf<Int>()
-        val activeStates = mutableListOf<Boolean>()
+        val barWidthCaps = mutableListOf<Dp?>()
         compose.setComposerContent(
             dictationStartRequest = 1,
             initialConsumedStartToken = 0,
             voiceEntry = ComposerVoiceEntry.CONVERSATION,
             onDictationStartRequestConsumed = { consumed.add(it) },
-            onDictationActiveChange = { activeStates.add(it) },
+            onDictationBarWidthChange = { barWidthCaps.add(it) },
         )
         compose.waitForIdle()
         assertEquals("令牌仍记账上报", listOf(1), consumed)
-        assertEquals("语音对话入口不进听写态", listOf(false), activeStates)
+        assertEquals("语音对话入口不进听写态", listOf<Dp?>(null), barWidthCaps)
     }
 
     private fun ComposeContentTestRule.setComposerContent(
@@ -150,7 +156,7 @@ class Material3ComposerBodyTokenGateTest {
         initialConsumedStartToken: Int = 0,
         voiceEntry: ComposerVoiceEntry = ComposerVoiceEntry.CONVERSATION,
         onDictationStartRequestConsumed: ((Int) -> Unit)? = null,
-        onDictationActiveChange: (Boolean) -> Unit = {},
+        onDictationBarWidthChange: (Dp?) -> Unit = {},
     ) {
         setContent {
             MaterialExpressiveTheme(
@@ -183,7 +189,7 @@ class Material3ComposerBodyTokenGateTest {
                     dictationStartRequest = dictationStartRequestState?.value ?: dictationStartRequest,
                     initialConsumedStartToken = initialConsumedStartToken,
                     onDictationStartRequestConsumed = onDictationStartRequestConsumed,
-                    onDictationActiveChange = onDictationActiveChange,
+                    onDictationBarWidthChange = onDictationBarWidthChange,
                     showMorphLoading = false,
                     pendingImages = emptyList(),
                     pendingFileReferences = emptyList(),

@@ -302,8 +302,12 @@ internal fun Material3ComposerBody(
     /** 令牌消费上报：主应用侧转发到进程级水位（MainActivity.markInAppDictationConsumed），
      *  供后续重建实例播种；浮窗不传，重放语义不变。 */
     onDictationStartRequestConsumed: ((Int) -> Unit)? = null,
-    /** 听写会话在场状态回传（助手弹窗用它收起/恢复屏幕上下文快捷行）；首次组合也回传一次。 */
-    onDictationActiveChange: (Boolean) -> Unit = {},
+    /**
+     * 口述语音条当前的目标外框宽回传：null = 常规全宽；非 null = 收窄到该宽（听写 300 /
+     * ✓ 收尾 252）。助手弹窗据此把屏幕上下文 chip 行与语音条的**可见**宽度逐 dp 对齐。
+     * 首次组合也会回传一次。
+     */
+    onDictationBarWidthChange: ((Dp?) -> Unit)? = null,
     /** 系统选择器/权限跳板即将发起：助手弹窗据此让位（浮窗隐身+触摸穿透），
      *  否则跳板与选择器 Activity 都压在全屏 TYPE_APPLICATION_OVERLAY 之下无法交互。 */
     onSystemPickerLaunch: () -> Unit = {},
@@ -483,8 +487,14 @@ internal fun Material3ComposerBody(
         val wakeDictationPending = dictationStartRequest > consumedStartToken.intValue
         val dictating = voiceEntry == ComposerVoiceEntry.DICTATION &&
             (dictation.active || wakeDictationPending)
-        // 听写在场状态回传（弹窗收起/恢复屏幕上下文快捷行）：首次组合也回传，语音唤起的首帧就不画快捷行。
-        LaunchedEffect(dictating) { onDictationActiveChange(dictating) }
+        // 口述语音条的目标外框宽（null = 常规全宽）：听写 300、✓ 收尾 252。
+        // 回传给助手弹窗，让屏幕 chip 行与语音条可见宽度（扣两端 8dp 内容内边距）逐 dp 对齐。
+        val dictationBarWidthCap: Dp? = when {
+            dictation.finalizing -> ComposerVoiceFinalizingBarWidth
+            dictating -> ComposerVoiceBarWidth
+            else -> null
+        }
+        LaunchedEffect(dictationBarWidthCap) { onDictationBarWidthChange?.invoke(dictationBarWidthCap) }
         // 唤起方式=语音识别（助手弹窗）：弹窗落座即自动开录；面板在屏时再次唤起也经令牌
         // 重开（听写已停时再按电源键的意图就是再录一句）。start() 幂等：在录时空操作。
         // 服务侧已过麦克风权限；识别方式未配置时 start() 会原位给出「去配置」提示条。
@@ -1424,8 +1434,26 @@ private val ComposerVoiceButtonHeight = TextFieldDefaults.MinHeight
  *
  * 300 − 2×8 工具栏内边距 = 284；再扣两端 ×/✓（40 + 8 间距）= 胶囊 188dp，
  * 比输入态胶囊短一截，与参考稿「语音条比输入态短」的构图一致。
+ *
+ * 注意这只是**工具栏外框**宽；口述态外框色是透明的，屏幕上可见的 ×/✓ 总宽见
+ * [composerVoiceBarVisibleWidth]（入口浮窗的 chip 行要对齐的是后者）。
  */
-private val ComposerVoiceBarWidth = 300.dp
+internal val ComposerVoiceBarWidth = 300.dp
+
+/** 官方 `HorizontalFloatingToolbar` 的内容内边距（ContainerPadding = 8dp，双侧各一份）。 */
+private val ComposerFloatingToolbarContentPadding = 8.dp
+
+/**
+ * 口述语音条在给定输入区可用宽度与目标外框宽下的**可见**总宽（含左右 ×/✓）。
+ *
+ * 与 [AgentChatComposerM3] 内 `barWidth` 完全同一套几何：工具栏外框动画到
+ * `min(可用宽, barCap)` 后，内容再扣两端 8dp 官方 `ContentPadding`；口述态外框色
+ * 动画到透明，所以屏幕上看到的「× + 流光胶囊 + ✓」只铺满内容区，不会撑到外框边缘。
+ * 入口浮窗的屏幕 preset chip 行必须按这个宽度收窄，否则每边会多出 8dp。
+ */
+internal fun composerVoiceBarVisibleWidth(fullWidth: Dp, barCap: Dp): Dp =
+    (minOf(fullWidth, barCap) - ComposerFloatingToolbarContentPadding * 2)
+        .coerceAtLeast(0.dp)
 
 /**
  * ✓ 收尾态的语音条总宽：× 已退场、收尾圆缩进胶囊内部右侧同心位，只剩流光胶囊一根。
@@ -1434,7 +1462,7 @@ private val ComposerVoiceBarWidth = 300.dp
  * （胶囊 − 左 16 − 右 16+48 让位 = 156）与听写态完全一致，morph 途中文字不重排。
  * 工具栏 252 = 236 + 2×8 内边距。
  */
-private val ComposerVoiceFinalizingBarWidth = 252.dp
+internal val ComposerVoiceFinalizingBarWidth = 252.dp
 
 /**
  * 口述 morph 的几何过渡：原型 `.toolbar / .field / #voiceBtn` 全部是
@@ -1443,7 +1471,13 @@ private val ComposerVoiceFinalizingBarWidth = 252.dp
  * 不会像 Spatial 弹簧那样把 padding 冲成负值或把按钮顶出胶囊。
  */
 private val ComposerMorphEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-private val ComposerMorphDpSpec: FiniteAnimationSpec<Dp> = tween(350, easing = ComposerMorphEasing)
+/**
+ * 口述 morph 的几何过渡规格：语音条宽度、胶囊让位共用。
+ *
+ * 入口浮窗的屏幕预设 chip 行在听写开始时也用它收窄，与语音条同一时长、同一曲线，
+ * 两侧宽度变化才是无缝同步的。
+ */
+internal val ComposerMorphDpSpec: FiniteAnimationSpec<Dp> = tween(350, easing = ComposerMorphEasing)
 
 /**
  * 尾部槽 AnimatedContent 容器尺寸（40×56 ⇄ 40×40）的形变曲线：与 [ComposerMorphDpSpec]

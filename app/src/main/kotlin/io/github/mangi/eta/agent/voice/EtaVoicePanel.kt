@@ -10,6 +10,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
@@ -41,6 +42,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -110,7 +112,10 @@ import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.components.AgentConversationMessages
 import io.github.mangi.eta.ui.components.ChatImagePreviewHost
 import io.github.mangi.eta.ui.components.ChatInputPopupMargin
+import io.github.mangi.eta.ui.components.ComposerMorphDpSpec
+import io.github.mangi.eta.ui.components.ComposerVoiceBarWidth
 import io.github.mangi.eta.ui.components.ComposerVoiceEntry
+import io.github.mangi.eta.ui.components.composerVoiceBarVisibleWidth
 import io.github.mangi.eta.ui.components.Material3ComposerBody
 import io.github.mangi.eta.ui.components.PendingFileReferenceStrip
 import io.github.mangi.eta.ui.components.PendingImageStrip
@@ -127,7 +132,6 @@ import kotlin.math.max
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
 
 internal enum class EtaVoicePhase {
@@ -913,11 +917,11 @@ private fun AssistantComposer(
     val fadeEnterSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.defaultEffectsSpec()
     val fadeExitSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.fastEffectsSpec()
     val shrinkTallSpec: FiniteAnimationSpec<IntSize> = MaterialTheme.motionScheme.defaultSpatialSpec()
-    // 听写进行中收起屏幕上下文快捷行（chips 抢注意力还把胶囊往下挤）。初值直接读唤起
-    // 令牌——语音唤起的首帧就不画 chips；此后由 ComposerBody 的回传保持同步（remember
-    // 以令牌为 key：面板在屏时再次语音唤起会重置回「在场」，听写结束经回传恢复）。
-    var dictationActive by remember(dictationStartRequest) {
-        mutableStateOf(dictationStartRequest > 0)
+    // 听写进行中屏幕上下文快捷行不收起：只听写时把整行收窄到语音条的**可见**宽度
+    // （听写 284 = 300 外框 − 两端 8dp 内容内边距；✓ 收尾 236 = 252 − 16）。
+    // 目标外框宽由 ComposerBody 回传；首帧按唤起令牌播种，避免先闪一帧全宽再收窄。
+    var voiceBarWidthCap by remember(dictationStartRequest) {
+        mutableStateOf<Dp?>(if (dictationStartRequest > 0) ComposerVoiceBarWidth else null)
     }
     // 快捷预设只在屏幕已采好、且输入区还是空的时候出现：一点即发，不抢用户正在打的草稿。
     // 语音进行中也保留（点预设会先退出语音再发送），与「添加当前屏幕」同排常驻。
@@ -928,15 +932,13 @@ private fun AssistantComposer(
             state = state.screenContext,
             enabled = !processing,
             showPresets = showScreenPresets,
-            showActions = !dictationActive,
+            voiceBarWidthCap = voiceBarWidthCap,
             onSelect = onScreenContextSelect,
             onRemove = onScreenContextRemove,
             onPreset = onScreenContextPreset,
         )
-        // 间距跟随快捷行的去留：听写中操作行收起且未选屏幕上下文时，整块都没有高度。
-        if (state.screenContext.phase != EtaScreenContextPhase.CONSUMED &&
-            (!dictationActive || state.screenContext.selected)
-        ) {
+        // 听写中快捷行仍在场（只是收窄），间距始终保留。
+        if (state.screenContext.phase != EtaScreenContextPhase.CONSUMED) {
             Spacer(Modifier.height(8.dp))
         }
         // 附件预览条：与应用内输入区一致，文件引用在上、图片 / 视频在下，都渲染在输入框之上；
@@ -993,7 +995,7 @@ private fun AssistantComposer(
             showModelPicker = false,
             voiceState = voiceState,
             dictationStartRequest = dictationStartRequest,
-            onDictationActiveChange = { dictationActive = it },
+            onDictationBarWidthChange = { voiceBarWidthCap = it },
             // 让位由服务侧窗口 flags + 面板整体退位动画承接；输入区只需在发起选择器/权限
             // 跳板前上报 onSystemPickerLaunch，不需要再持有让位状态。
             onSystemPickerLaunch = onSystemPickerLaunch,
@@ -1032,6 +1034,9 @@ private fun AssistantComposer(
 /**
  * 屏幕上下文操作行：「添加当前屏幕」与快捷预设排在同一行，横向滚动避免窄屏或大字号
  * 把最后一枚 chip 挤出屏幕。所有 chip 共用 [ScreenContextActionChip] 的外观。
+ *
+ * 听写进行中整行不消失，但总宽收窄到语音条的可见宽度（外框宽减两端 8dp 内容内边距：
+ * 听写 284dp、✓ 收尾 236dp），与语音条同一时长、同一曲线同步 morph。
  */
 @Composable
 private fun ScreenContextActionRow(
@@ -1039,6 +1044,8 @@ private fun ScreenContextActionRow(
     enabled: Boolean,
     showPresets: Boolean,
     showAddChip: Boolean,
+    /** 听写进行中：非空 = 语音条目标外框宽（听写 300 / ✓ 收尾 252），整行按可见宽收窄。 */
+    voiceBarWidthCap: Dp?,
     onSelect: () -> Unit,
     onPreset: (ScreenContextPreset) -> Unit,
 ) {
@@ -1050,43 +1057,57 @@ private fun ScreenContextActionRow(
     // 两端淡出带：滚动到中间时，被视口切一半的 chip 会留下硬切边。浮窗背景是透明的，
     // 不能盖一层同色渐变，这里用 DstIn 蒙版直接淡化内容本身（见 horizontalScrollEdgeFade）。
     // 只在对应方向真的还有内容可滚时才出现，停在两端时不会把完整可见的 chip 罩暗。
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScrollEdgeFade(scrollState, ScreenContextChipEdgeFadeWidth)
-            .horizontalScroll(scrollState),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth(),
+        // 听写中收窄后与语音条一样水平居中，两条视觉起点对齐。
+        contentAlignment = Alignment.Center,
     ) {
-        AnimatedVisibility(
-            visible = showAddChip,
-            enter = fadeIn(fadeEnterSpec) + expandHorizontally(sizeSpec),
-            exit = fadeOut(fadeExitSpec) + shrinkHorizontally(sizeSpec),
+        val rowWidth by animateDpAsState(
+            targetValue = voiceBarWidthCap?.let { cap ->
+                // 与语音条可见总宽逐 dp 对齐：min(可用宽, 目标外框宽) − 两端 8dp 内容内边距。
+                composerVoiceBarVisibleWidth(maxWidth, cap)
+            } ?: maxWidth,
+            animationSpec = ComposerMorphDpSpec,
+            label = "screen_context_chip_row_width",
+        )
+        Row(
+            modifier = Modifier
+                .width(rowWidth)
+                .horizontalScrollEdgeFade(scrollState, ScreenContextChipEdgeFadeWidth)
+                .horizontalScroll(scrollState),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            AddScreenContextChip(
-                state = state,
-                enabled = enabled,
-                onSelect = onSelect,
-            )
-        }
-        AnimatedVisibility(
-            visible = showPresets,
-            enter = fadeIn(fadeEnterSpec) + expandHorizontally(sizeSpec),
-            exit = fadeOut(fadeExitSpec) + shrinkHorizontally(sizeSpec),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ScreenContextPreset.entries.forEach { preset ->
-                    ScreenContextActionChip(
-                        label = stringResource(preset.labelRes),
-                        enabled = enabled,
-                        onClick = { onPreset(preset) },
-                        icon = {
-                            Icon(
-                                imageVector = preset.icon,
-                                contentDescription = null,
-                                modifier = Modifier.size(SuggestionChipDefaults.IconSize),
-                            )
-                        },
-                    )
+            AnimatedVisibility(
+                visible = showAddChip,
+                enter = fadeIn(fadeEnterSpec) + expandHorizontally(sizeSpec),
+                exit = fadeOut(fadeExitSpec) + shrinkHorizontally(sizeSpec),
+            ) {
+                AddScreenContextChip(
+                    state = state,
+                    enabled = enabled,
+                    onSelect = onSelect,
+                )
+            }
+            AnimatedVisibility(
+                visible = showPresets,
+                enter = fadeIn(fadeEnterSpec) + expandHorizontally(sizeSpec),
+                exit = fadeOut(fadeExitSpec) + shrinkHorizontally(sizeSpec),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ScreenContextPreset.entries.forEach { preset ->
+                        ScreenContextActionChip(
+                            label = stringResource(preset.labelRes),
+                            enabled = enabled,
+                            onClick = { onPreset(preset) },
+                            icon = {
+                                Icon(
+                                    imageVector = preset.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SuggestionChipDefaults.IconSize),
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -1179,8 +1200,8 @@ private fun ScreenContextAttachment(
     state: EtaScreenContextUiState,
     enabled: Boolean,
     showPresets: Boolean,
-    /** 快捷操作行（添加当前屏幕 / 快捷预设）是否在场：听写进行中由调用方收起。 */
-    showActions: Boolean,
+    /** 听写进行中：快捷行仍在场，但总宽按语音条的目标外框宽收窄。 */
+    voiceBarWidthCap: Dp?,
     onSelect: () -> Unit,
     onRemove: () -> Unit,
     onPreset: (ScreenContextPreset) -> Unit,
@@ -1205,23 +1226,18 @@ private fun ScreenContextAttachment(
                 if (showPresets) Spacer(Modifier.height(8.dp))
             }
         }
-        // 听写进行中整行收起（胶囊在录时不让 chips 抢注意力）：纯不透明度淡入淡出
-        // （2026-11-12 用户定稿：不带位移与裁切）——入场走 Effects 平滑档，退场走快速档。
-        AnimatedVisibility(
-            visible = showActions,
-            enter = fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
-        ) {
-            ScreenContextActionRow(
-                state = state,
-                enabled = enabled,
-                showPresets = showPresets,
-                // 选中屏幕后 chip 让位给上面的预览卡，操作行只剩快捷预设。
-                showAddChip = !state.selected,
-                onSelect = onSelect,
-                onPreset = onPreset,
-            )
-        }
+        // 快捷行始终在场：听写进行中由行内把总宽收窄到语音条宽度（见 ScreenContextActionRow），
+        // 不再整行淡出——保留「一拍即可发」的入口，也避免行高跳变把胶囊往下挤。
+        ScreenContextActionRow(
+            state = state,
+            enabled = enabled,
+            showPresets = showPresets,
+            // 选中屏幕后 chip 让位给上面的预览卡，操作行只剩快捷预设。
+            showAddChip = !state.selected,
+            voiceBarWidthCap = voiceBarWidthCap,
+            onSelect = onSelect,
+            onPreset = onPreset,
+        )
     }
 }
 
@@ -1232,12 +1248,12 @@ private fun SelectedScreenContext(
     onRemove: () -> Unit,
 ) {
     val previewBitmap = previewDataUrl?.let { rememberDataUrlBitmap(it) }
-    // 取色与主程序一致：全部走官方 M3 角色（surfaceContainerHigh 卡片底、onSurface /
-    // onSurfaceVariant 前景、outline 禁用态），深浅色与动态取色自动适配。
+    // 取色与主程序一致：文案走官方 M3 角色（surfaceContainerHigh 卡片底、onSurface /
+    // onSurfaceVariant 前景），深浅色与动态取色自动适配；删除钮的颜色由官方
+    // IconButton 的 enabled / disabled 内容色负责。
     val scheme = MaterialTheme.colorScheme
     val titleColor = scheme.onSurface
     val summaryColor = scheme.onSurfaceVariant
-    val removeColor = if (enabled) scheme.onSurfaceVariant else scheme.outline
     Row(
         modifier = Modifier
             .height(ScreenContextPreviewCardHeight)
@@ -1287,17 +1303,21 @@ private fun SelectedScreenContext(
         }
         val removeDescription = stringResource(R.string.voice_screen_remove)
         EtaTooltip(text = removeDescription) {
+            // 官方 M3E IconButton：40dp 圆形容器 + 24dp 图标（SmallIconButtonTokens），
+            // 按压在官方 shapes 的 CornerFull ↔ CornerSmall 之间 morph。
+            // 不覆盖 size——组件内部已按 token 定尺寸（此前 30dp/18dp 是自造尺寸）。
+            // 卡片内边距 4dp + 容器最小交互尺寸比可见圆大 4dp，上下居中后可见圆距卡片
+            // 上下各 10dp；右端再补 2dp，使右间距与上下一致（4 + 4 + 2 = 10）。
             IconButton(
                 onClick = onRemove,
                 enabled = enabled,
-                modifier = Modifier.size(30.dp),
+                modifier = Modifier.padding(end = 2.dp),
                 shapes = IconButtonDefaults.shapes(),
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = removeDescription,
-                    modifier = Modifier.size(EtaDimens.StatusIconSize),
-                    tint = removeColor,
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
