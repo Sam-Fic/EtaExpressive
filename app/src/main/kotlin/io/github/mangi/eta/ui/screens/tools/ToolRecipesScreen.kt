@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -52,8 +53,10 @@ import io.github.mangi.eta.ui.adaptive.EtaMenuGroup
 import io.github.mangi.eta.ui.adaptive.EtaMenuItemShape
 import io.github.mangi.eta.ui.adaptive.EtaMenuPopup
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
@@ -295,72 +298,102 @@ internal fun ToolRecipesScreen(
                 ),
             )
         }
+        // 配方行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+        // animateItem 承载删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
+        // 组标题独立成 item（多选态把「已选 n 项」并入标题，不另立计数行）。
         item(key = "recipes") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-                title = if (selectionMode) {
+            M3Text(
+                text = if (selectionMode) {
                     stringResource(R.string.recipe_list_title, recipes.size) + " · " +
                         stringResource(R.string.media_selected_count, selectedIds.size)
                 } else {
                     stringResource(R.string.recipe_list_title, recipes.size)
                 },
-            ) {
-                if (recipes.isEmpty()) {
-                    item {
-                        EtaSegmentedItemContainer {
-                            ListEmptyState(
-                                title = stringResource(R.string.recipe_empty_title),
-                                summary = stringResource(R.string.recipe_empty_summary),
+                style = MaterialTheme.typography.titleSmallEmphasized,
+                color = MaterialTheme.colorScheme.primary,
+                // 与上方说明文字的既有 bottom 间距衔接，不再叠加 top，避免双倍。
+                modifier = Modifier.padding(
+                    start = EtaGroupHorizontalPadding,
+                    end = EtaGroupHorizontalPadding,
+                    bottom = EtaSegmentedTitleSpacing,
+                ),
+            )
+        }
+        if (recipes.isEmpty()) {
+            item(key = "recipes-empty") {
+                EtaSegmentedItemContainer(
+                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                ) {
+                    ListEmptyState(
+                        title = stringResource(R.string.recipe_empty_title),
+                        summary = stringResource(R.string.recipe_empty_summary),
+                    )
+                }
+            }
+        } else {
+            // 按名字排序：启停会刷新 updatedAtMillis，按更新时间排会让行在切换开关后跳位。
+            itemsIndexed(
+                items = sortedRecipes,
+                key = { _, recipe -> recipe.name },
+                contentType = { _, _ -> "recipe" },
+            ) { index, recipe ->
+                EtaSegmentedItem(index = index, count = sortedRecipes.size) {
+                    Column(
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                             )
-                        }
-                    }
-                } else {
-                    // 按名字排序：启停会刷新 updatedAtMillis，按更新时间排会让行在切换开关后跳位。
-                    sortedRecipes.forEach { recipe ->
-                        item(key = recipe.name) {
-                            RecipeRow(
-                                recipe = recipe,
-                                rootNeeded = recipe.name in rootNeeding,
-                                selectionMode = selectionMode,
-                                checked = recipe.name in selectedIds,
-                                onClick = {
-                                    if (selectionMode) {
-                                        selectedIds = if (recipe.name in selectedIds) {
-                                            selectedIds - recipe.name
-                                        } else {
-                                            selectedIds + recipe.name
-                                        }
+                            .fillMaxWidth()
+                            .padding(
+                                start = EtaGroupHorizontalPadding,
+                                end = EtaGroupHorizontalPadding,
+                                bottom = if (index == sortedRecipes.lastIndex) {
+                                    EtaSegmentedGroupSpacing
+                                } else {
+                                    EtaSegmentedGap
+                                },
+                            ),
+                    ) {
+                        RecipeRow(
+                            recipe = recipe,
+                            rootNeeded = recipe.name in rootNeeding,
+                            selectionMode = selectionMode,
+                            checked = recipe.name in selectedIds,
+                            onClick = {
+                                if (selectionMode) {
+                                    selectedIds = if (recipe.name in selectedIds) {
+                                        selectedIds - recipe.name
+                                    } else {
+                                        selectedIds + recipe.name
                                     }
-                                    // 非多选态整行不响应（与改造前一致：行本体不可点）。
-                                },
-                                onLongClick = {
-                                    if (!selectionMode) {
-                                        selectionMode = true
-                                        selectedIds = setOf(recipe.name)
+                                }
+                                // 非多选态整行不响应（与改造前一致：行本体不可点）。
+                            },
+                            onLongClick = {
+                                if (!selectionMode) {
+                                    selectionMode = true
+                                    selectedIds = setOf(recipe.name)
+                                }
+                            },
+                            onToggle = { enabled ->
+                                scope.launch(Dispatchers.IO) {
+                                    if (!runtime.setEnabled(recipe.name, enabled)) {
+                                        importReport = resources.getString(R.string.recipe_toggle_failed)
                                     }
-                                },
-                                onToggle = { enabled ->
-                                    scope.launch(Dispatchers.IO) {
-                                        if (!runtime.setEnabled(recipe.name, enabled)) {
-                                            importReport = resources.getString(R.string.recipe_toggle_failed)
-                                        }
-                                    }
-                                },
-                                onEdit = {
-                                    // 编辑是整屏路由子页（RULES §3.3），进出场交给 NavDisplay。
-                                    onNavigate(AppRoute.ToolRecipeEdit(recipe.name))
-                                },
-                                onShare = {
-                                    shareTarget = recipe
-                                    shareLauncher.launch(recipeShareFileName(recipe.name))
-                                },
-                                onDelete = { deleteTarget = recipe },
-                            )
-                        }
+                                }
+                            },
+                            onEdit = {
+                                // 编辑是整屏路由子页（RULES §3.3），进出场交给 NavDisplay。
+                                onNavigate(AppRoute.ToolRecipeEdit(recipe.name))
+                            },
+                            onShare = {
+                                shareTarget = recipe
+                                shareLauncher.launch(recipeShareFileName(recipe.name))
+                            },
+                            onDelete = { deleteTarget = recipe },
+                        )
                     }
                 }
             }

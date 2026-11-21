@@ -382,6 +382,13 @@ internal fun ProviderModelsTab(
                     ModelListGroupItem(
                         isFirst = index == 0,
                         isLast = index == filteredModels.lastIndex,
+                        // 官方 animateItem（会话管理页同款口径）：批量删除淡出 + 补位弹簧；
+                        // 入场不播动画，避免首屏全列表闪淡入（远端拉取整表替换同受益）。
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = null,
+                            fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        ),
                     ) {
                         ModelListItem(
                             model = model,
@@ -556,13 +563,14 @@ internal fun ProviderModelsTab(
 private fun ModelListGroupItem(
     isFirst: Boolean,
     isLast: Boolean,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     // M3：容器底色与首尾圆角交给官方 ListItem（segmentedColors + segmentedShapes），
     // 行间露出背景缝隙（EtaSegmentedGap），末项补足组间距（EtaSegmentedGroupSpacing），
     // 水平取组边距 token，与供应商列表页一致。
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(
                 start = EtaGroupHorizontalPadding,

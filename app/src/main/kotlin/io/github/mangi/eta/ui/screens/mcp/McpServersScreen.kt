@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -49,7 +50,10 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
@@ -143,58 +147,86 @@ internal fun McpServersScreen(
             )
         },
     ) {
-        item(key = "servers") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-                title = if (selectionMode) {
+        // 服务器行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+        // animateItem 承载批量删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
+        item(key = "servers_header") {
+            M3Text(
+                text = if (selectionMode) {
                     stringResource(R.string.mcp_configured_servers, servers.size) + " · " +
                         stringResource(R.string.media_selected_count, selectedIds.size)
                 } else {
                     stringResource(R.string.mcp_configured_servers, servers.size)
                 },
-            ) {
-                if (servers.isEmpty()) {
-                    // 空态是「非行」内容，用分段容器承载；新增入口交给右下角 FAB，避免重复按钮。
-                    item {
-                        EtaSegmentedItemContainer {
-                            ListEmptyState(title = stringResource(R.string.mcp_empty_title))
-                        }
-                    }
-                } else {
-                    servers.forEach { server ->
-                        item(key = server.id) {
-                            McpServerRow(
-                                serverName = server.name,
-                                summary = stringResource(
-                                    R.string.mcp_server_row_summary,
-                                    server.activeTools.size,
-                                    server.tools.size,
-                                ),
-                                selectionMode = selectionMode,
-                                checked = server.id in selectedIds,
-                                onClick = {
-                                    if (selectionMode) {
-                                        selectedIds = if (server.id in selectedIds) {
-                                            selectedIds - server.id
-                                        } else {
-                                            selectedIds + server.id
-                                        }
-                                    } else {
-                                        onNavigate(AppRoute.McpServerDetail(server.id))
-                                    }
-                                },
-                                onLongClick = {
-                                    if (!selectionMode) {
-                                        selectionMode = true
-                                        selectedIds = setOf(server.id)
-                                    }
-                                },
+                style = MaterialTheme.typography.titleSmallEmphasized,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(
+                    start = EtaGroupHorizontalPadding,
+                    end = EtaGroupHorizontalPadding,
+                    bottom = EtaSegmentedTitleSpacing,
+                ),
+            )
+        }
+        if (servers.isEmpty()) {
+            // 空态是「非行」内容，用分段容器承载；新增入口交给右下角 FAB，避免重复按钮。
+            item(key = "servers_empty") {
+                EtaSegmentedItemContainer(
+                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                ) {
+                    ListEmptyState(title = stringResource(R.string.mcp_empty_title))
+                }
+            }
+        } else {
+            itemsIndexed(
+                items = servers,
+                key = { _, server -> server.id },
+                contentType = { _, _ -> "mcp-server" },
+            ) { index, server ->
+                EtaSegmentedItem(index = index, count = servers.size) {
+                    Column(
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                             )
-                        }
+                            .fillMaxWidth()
+                            .padding(
+                                start = EtaGroupHorizontalPadding,
+                                end = EtaGroupHorizontalPadding,
+                                bottom = if (index == servers.lastIndex) {
+                                    EtaSegmentedGroupSpacing
+                                } else {
+                                    EtaSegmentedGap
+                                },
+                            ),
+                    ) {
+                        McpServerRow(
+                            serverName = server.name,
+                            summary = stringResource(
+                                R.string.mcp_server_row_summary,
+                                server.activeTools.size,
+                                server.tools.size,
+                            ),
+                            selectionMode = selectionMode,
+                            checked = server.id in selectedIds,
+                            onClick = {
+                                if (selectionMode) {
+                                    selectedIds = if (server.id in selectedIds) {
+                                        selectedIds - server.id
+                                    } else {
+                                        selectedIds + server.id
+                                    }
+                                } else {
+                                    onNavigate(AppRoute.McpServerDetail(server.id))
+                                }
+                            },
+                            onLongClick = {
+                                if (!selectionMode) {
+                                    selectionMode = true
+                                    selectedIds = setOf(server.id)
+                                }
+                            },
+                        )
                     }
                 }
             }

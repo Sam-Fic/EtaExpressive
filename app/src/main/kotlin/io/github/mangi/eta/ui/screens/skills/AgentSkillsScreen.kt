@@ -3,9 +3,11 @@ package io.github.mangi.eta.ui.screens.skills
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -33,8 +35,10 @@ import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
@@ -152,42 +156,72 @@ fun AgentSkillsScreen(
         val removed = state.skills.filter { !it.installed }
 
         if (builtinInstalled.isNotEmpty()) {
+            // 技能行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+            // animateItem 承载删除淡出与重装跨组换位弹簧；分段外观由 EtaSegmentedItem
+            // 逐行注入。组标题独立成 item（多选态把「已选 n 项」并入标题，不另立计数行）。
             item(key = "builtin-card") {
-                EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
-                    // 多选态把「已选 n 项」并入分组标题（点号隔开），不另立计数行。
-                    title = if (selectionMode) {
+                M3Text(
+                    text = if (selectionMode) {
                         stringResource(R.string.ui_built_in_skills_1ceedf) + " · " +
                             stringResource(R.string.media_selected_count, selectedIds.size)
                     } else {
                         stringResource(R.string.ui_built_in_skills_1ceedf)
                     },
-                ) {
-                    builtinInstalled.forEach { skill ->
-                        item {
-                            SkillSwitchRow(
-                                skill = skill,
-                                enabled = !operationPending,
-                                onToggle = { enabled ->
-                                    onAction(AgentSkillsAction.ToggleSkill(skill.id, enabled))
-                                },
-                                selectionMode = selectionMode,
-                                checked = skill.id in selectedIds,
-                                onCheckedChange = {
-                                    selectedIds = if (skill.id in selectedIds) {
-                                        selectedIds - skill.id
-                                    } else {
-                                        selectedIds + skill.id
-                                    }
-                                },
-                                onLongClick = {
-                                    if (!selectionMode) {
-                                        selectionMode = true
-                                        selectedIds = setOf(skill.id)
-                                    }
-                                },
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedTitleSpacing,
+                    ),
+                )
+            }
+            itemsIndexed(
+                items = builtinInstalled,
+                key = { _, skill -> skill.id },
+                contentType = { _, _ -> "skill" },
+            ) { index, skill ->
+                EtaSegmentedItem(index = index, count = builtinInstalled.size) {
+                    Column(
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                             )
-                        }
+                            .fillMaxWidth()
+                            .padding(
+                                start = EtaGroupHorizontalPadding,
+                                end = EtaGroupHorizontalPadding,
+                                bottom = if (index == builtinInstalled.lastIndex) {
+                                    EtaSegmentedGroupSpacing
+                                } else {
+                                    EtaSegmentedGap
+                                },
+                            ),
+                    ) {
+                        SkillSwitchRow(
+                            skill = skill,
+                            enabled = !operationPending,
+                            onToggle = { enabled ->
+                                onAction(AgentSkillsAction.ToggleSkill(skill.id, enabled))
+                            },
+                            selectionMode = selectionMode,
+                            checked = skill.id in selectedIds,
+                            onCheckedChange = {
+                                selectedIds = if (skill.id in selectedIds) {
+                                    selectedIds - skill.id
+                                } else {
+                                    selectedIds + skill.id
+                                }
+                            },
+                            onLongClick = {
+                                if (!selectionMode) {
+                                    selectionMode = true
+                                    selectedIds = setOf(skill.id)
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -195,41 +229,70 @@ fun AgentSkillsScreen(
 
         if (userInstalled.isNotEmpty()) {
             item(key = "user-card") {
-                EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
-                    title = if (selectionMode) {
+                M3Text(
+                    text = if (selectionMode) {
                         stringResource(R.string.ui_user_skills_748e7f) + " · " +
                             stringResource(R.string.media_selected_count, selectedIds.size)
                     } else {
                         stringResource(R.string.ui_user_skills_748e7f)
                     },
-                ) {
-                    userInstalled.forEach { skill ->
-                        item {
-                            SkillSwitchRow(
-                                skill = skill,
-                                enabled = !operationPending,
-                                onToggle = { enabled ->
-                                    onAction(AgentSkillsAction.ToggleSkill(skill.id, enabled))
-                                },
-                                onDelete = { deleteTarget = skill },
-                                selectionMode = selectionMode,
-                                checked = skill.id in selectedIds,
-                                onCheckedChange = {
-                                    selectedIds = if (skill.id in selectedIds) {
-                                        selectedIds - skill.id
-                                    } else {
-                                        selectedIds + skill.id
-                                    }
-                                },
-                                onLongClick = {
-                                    if (!selectionMode) {
-                                        selectionMode = true
-                                        selectedIds = setOf(skill.id)
-                                    }
-                                },
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        top = EtaSegmentedGroupSpacing,
+                        bottom = EtaSegmentedTitleSpacing,
+                    ),
+                )
+            }
+            itemsIndexed(
+                items = userInstalled,
+                key = { _, skill -> skill.id },
+                contentType = { _, _ -> "skill" },
+            ) { index, skill ->
+                EtaSegmentedItem(index = index, count = userInstalled.size) {
+                    Column(
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                             )
-                        }
+                            .fillMaxWidth()
+                            .padding(
+                                start = EtaGroupHorizontalPadding,
+                                end = EtaGroupHorizontalPadding,
+                                bottom = if (index == userInstalled.lastIndex) {
+                                    EtaSegmentedGroupSpacing
+                                } else {
+                                    EtaSegmentedGap
+                                },
+                            ),
+                    ) {
+                        SkillSwitchRow(
+                            skill = skill,
+                            enabled = !operationPending,
+                            onToggle = { enabled ->
+                                onAction(AgentSkillsAction.ToggleSkill(skill.id, enabled))
+                            },
+                            onDelete = { deleteTarget = skill },
+                            selectionMode = selectionMode,
+                            checked = skill.id in selectedIds,
+                            onCheckedChange = {
+                                selectedIds = if (skill.id in selectedIds) {
+                                    selectedIds - skill.id
+                                } else {
+                                    selectedIds + skill.id
+                                }
+                            },
+                            onLongClick = {
+                                if (!selectionMode) {
+                                    selectionMode = true
+                                    selectedIds = setOf(skill.id)
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -239,20 +302,49 @@ fun AgentSkillsScreen(
         // 多选态隐藏远程设备组的先例）。
         if (removed.isNotEmpty() && !selectionMode) {
             item(key = "removed-card") {
-                EtaSegmentedColumn(
-                    modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
-                    title = stringResource(R.string.ui_removed_4e5c49),
-                ) {
-                    removed.forEach { skill ->
-                        item {
-                            SkillActionRow(
-                                title = skill.name,
-                                summary = stringResource(R.string.ui_click_to_reinstall_dc60de),
-                                icon = iconForSkill(skill.id),
-                                enabled = !operationPending,
-                                onClick = { onAction(AgentSkillsAction.ReinstallBuiltin(skill.id)) },
+                M3Text(
+                    text = stringResource(R.string.ui_removed_4e5c49),
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        top = EtaSegmentedGroupSpacing,
+                        bottom = EtaSegmentedTitleSpacing,
+                    ),
+                )
+            }
+            itemsIndexed(
+                items = removed,
+                key = { _, skill -> skill.id },
+                contentType = { _, _ -> "skill-removed" },
+            ) { index, skill ->
+                EtaSegmentedItem(index = index, count = removed.size) {
+                    Column(
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                             )
-                        }
+                            .fillMaxWidth()
+                            .padding(
+                                start = EtaGroupHorizontalPadding,
+                                end = EtaGroupHorizontalPadding,
+                                bottom = if (index == removed.lastIndex) {
+                                    EtaSegmentedGroupSpacing
+                                } else {
+                                    EtaSegmentedGap
+                                },
+                            ),
+                    ) {
+                        SkillActionRow(
+                            title = skill.name,
+                            summary = stringResource(R.string.ui_click_to_reinstall_dc60de),
+                            icon = iconForSkill(skill.id),
+                            enabled = !operationPending,
+                            onClick = { onAction(AgentSkillsAction.ReinstallBuiltin(skill.id)) },
+                        )
                     }
                 }
             }

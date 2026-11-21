@@ -769,15 +769,24 @@ internal fun MediaSearchScreen(
                                     selectionMode = true
                                     selectedKeys = selectedKeys + hit.sourceKey
                                 },
-                                modifier = Modifier.padding(
-                                    start = EtaGroupHorizontalPadding,
-                                    end = EtaGroupHorizontalPadding,
-                                    bottom = if (index == hits.lastIndex) {
-                                        EtaSegmentedGroupSpacing
-                                    } else {
-                                        EtaSegmentedGap
-                                    },
-                                ),
+                                // 官方 animateItem（会话管理页同款口径）：批量删除/类型过滤的
+                                // 行消失淡出 + 补位弹簧；流式分片按相关度序追加、既有行 key 不动，
+                                // placement 不会触发；入场不播动画，避免换词整表闪淡入。
+                                modifier = Modifier
+                                    .animateItem(
+                                        fadeInSpec = null,
+                                        fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                        placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                                    )
+                                    .padding(
+                                        start = EtaGroupHorizontalPadding,
+                                        end = EtaGroupHorizontalPadding,
+                                        bottom = if (index == hits.lastIndex) {
+                                            EtaSegmentedGroupSpacing
+                                        } else {
+                                            EtaSegmentedGap
+                                        },
+                                    ),
                             )
                         }
                     }
@@ -843,6 +852,12 @@ internal fun MediaSearchScreen(
                             selectionMode = true
                             selectedKeys = selectedKeys + hit.sourceKey
                         },
+                        // 宫格同口径：删除/过滤位移淡出 + 补位弹簧；入场不播动画。
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = null,
+                            fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        ),
                     )
                 }
             }

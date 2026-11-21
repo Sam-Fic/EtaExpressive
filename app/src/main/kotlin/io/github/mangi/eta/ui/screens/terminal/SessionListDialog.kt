@@ -82,6 +82,13 @@ internal fun SessionListDialog(
                         onSelect = { onSelect(row.id); onDismiss() },
                         onRestart = { onRestart(row.id) },
                         onClose = { onClose(row.id) },
+                        // 官方 animateItem（会话管理页同款口径）：新建/关闭会话的行生灭
+                        // 淡出 + 补位弹簧；入场不播动画，避免弹窗首开闪淡入。
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = null,
+                            fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        ),
                     )
                 }
             }
@@ -95,6 +102,7 @@ private fun SessionRow(
     onSelect: () -> Unit,
     onRestart: () -> Unit,
     onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
     // 官方单选列表项：selected 语义、涟漪、按压形变与内边距全部由 ListItem 自带。
@@ -104,7 +112,7 @@ private fun SessionRow(
             TouchHaptics.click(view)
             onSelect()
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         content = {
             M3Text(
                 text = row.environment.displayName,

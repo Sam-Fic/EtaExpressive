@@ -517,7 +517,10 @@ fun LazyListScope.EtaSearchHistoryItems(
         }
     }
     history.forEachIndexed { index, record ->
-        item(key = "$keyPrefix-$index") {
+        // key 用记录值本身（EtaSearchHistory.add 落库时 distinct 去重，记录必唯一）：
+        // 新记录前插时旧行是同 key 换位，可被 LazyColumn 的 placement 弹簧接管下移，
+        // 而不是按 index 整体重建。
+        item(key = "$keyPrefix-$record") {
             EtaSegmentedItem(index = index, count = history.size) {
                 EtaClickableRow(
                     title = record,

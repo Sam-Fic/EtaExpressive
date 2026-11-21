@@ -20,10 +20,12 @@ class RemoteAgentsPageContractTest(unittest.TestCase):
         source = read(SCREEN)
         mcp = read(KOTLIN / "ui/screens/mcp/McpServersScreen.kt")
         # 版式与 MCP 服务器页对齐：单组分段列表 + 组标题计数 + 右下角扩展 FAB。
+        # 行已升格为顶层 LazyColumn item（animateItem 行增删动画，会话管理页同款），
+        # 分段容器只承载空态单卡，故 needle 取调用形态而不限参数写法。
         for needle in (
             "EtaScaffoldPage(",
             "EtaSegmentedColumn(",
-            "EtaSegmentedItemContainer {",
+            "EtaSegmentedItemContainer(",
             "ListEmptyState(",
             "EtaExtendedFab(",
             "rememberFabExpandedState(listState)",

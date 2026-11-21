@@ -171,11 +171,18 @@ internal fun LazyListScope.assistantItems(
                     onCopy = { onCopy(profile) },
                     onEdit = { onEdit(profile) },
                     onDelete = { onDelete(profile) },
-                    modifier = Modifier.padding(
-                        start = EtaGroupHorizontalPadding,
-                        end = EtaGroupHorizontalPadding,
-                        bottom = if (index == filtered.lastIndex) EtaSegmentedGroupSpacing else EtaSegmentedGap,
-                    ),
+                    // 官方 animateItem（会话管理页同款口径）：删除淡出 + 补位弹簧；入场不播动画。
+                    modifier = Modifier
+                        .animateItem(
+                            fadeInSpec = null,
+                            fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        )
+                        .padding(
+                            start = EtaGroupHorizontalPadding,
+                            end = EtaGroupHorizontalPadding,
+                            bottom = if (index == filtered.lastIndex) EtaSegmentedGroupSpacing else EtaSegmentedGap,
+                        ),
                 )
             }
         }

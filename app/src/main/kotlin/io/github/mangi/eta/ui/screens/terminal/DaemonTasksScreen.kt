@@ -66,7 +66,17 @@ internal fun DaemonTasksScreen(
         } else {
             items(items = tasks, key = { it.id }) { task ->
                 // 行与它展开的日志面板同属一个条目，展开时不会把后续行挤散。
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    // 官方 animateItem（会话管理页同款口径）：停止任务淡出 + 补位弹簧；
+                    // 入场不播动画（任务高频生灭，避免闪淡入）。
+                    modifier = Modifier
+                        .animateItem(
+                            fadeInSpec = null,
+                            fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        )
+                        .fillMaxWidth(),
+                ) {
                     DaemonTaskRow(task = task, onStop = onStop, onLoadLogs = onLoadLogs)
                 }
             }

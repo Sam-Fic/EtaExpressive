@@ -1,11 +1,13 @@
 package io.github.mangi.eta.ui.screens.chat
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -42,7 +44,10 @@ import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
@@ -189,52 +194,88 @@ internal fun ManageFoldersScreen(
                 }
             } else {
                 item(key = "folders") {
-                    EtaSegmentedColumn(
-                        modifier = groupModifier,
-                        title = if (selectionMode) {
+                    // 组标题独立成 item（多选态把「已选 n 项」并入标题，不另立计数行）；
+                    // 行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+                    // animateItem 承载删除淡出与补位弹簧，分段外观由 EtaSegmentedItem 注入。
+                    M3Text(
+                        text = if (selectionMode) {
                             stringResource(R.string.folders_page_group_categories, folders.size) + " · " +
                                 stringResource(R.string.media_selected_count, selectedIds.size)
                         } else {
                             stringResource(R.string.folders_page_group_categories, folders.size)
                         },
-                    ) {
-                        if (foldersEmpty) {
-                            item(key = "folders-empty") {
-                                EtaSegmentedItemContainer {
-                                    ListEmptyState(
-                                        title = stringResource(R.string.folders_page_empty),
+                        style = MaterialTheme.typography.titleSmallEmphasized,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(
+                            start = EtaGroupHorizontalPadding,
+                            end = EtaGroupHorizontalPadding,
+                            bottom = EtaSegmentedTitleSpacing,
+                        ),
+                    )
+                }
+                if (foldersEmpty) {
+                    item(key = "folders-empty") {
+                        EtaSegmentedItemContainer(
+                            modifier = Modifier
+                                .padding(horizontal = EtaGroupHorizontalPadding)
+                                // 与原组 bottom 间距衔接，隔开下方的远程设备入口组。
+                                .padding(bottom = EtaSegmentedGroupSpacing),
+                        ) {
+                            ListEmptyState(
+                                title = stringResource(R.string.folders_page_empty),
+                            )
+                        }
+                    }
+                } else {
+                    itemsIndexed(
+                        items = folders,
+                        key = { _, folder -> folder.id },
+                        contentType = { _, _ -> "folder" },
+                    ) { index, folder ->
+                        EtaSegmentedItem(index = index, count = folders.size) {
+                            Column(
+                                modifier = Modifier
+                                    .animateItem(
+                                        fadeInSpec = null,
+                                        fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                        placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                                     )
-                                }
-                            }
-                        } else {
-                            folders.forEach { folder ->
-                                item(key = folder.id) {
-                                    ManageFolderRow(
-                                        folder = folder,
-                                        conversationCount = countsByFolder[folder.id] ?: 0,
-                                        selectionMode = selectionMode,
-                                        checked = folder.id in selectedIds,
-                                        onClick = {
-                                            if (selectionMode) {
-                                                selectedIds = if (folder.id in selectedIds) {
-                                                    selectedIds - folder.id
-                                                } else {
-                                                    selectedIds + folder.id
-                                                }
-                                            }
-                                            // 非多选态整行不响应：重命名/删除仍走行尾按钮（与改造前一致）。
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = EtaGroupHorizontalPadding,
+                                        end = EtaGroupHorizontalPadding,
+                                        bottom = if (index == folders.lastIndex) {
+                                            EtaSegmentedGroupSpacing
+                                        } else {
+                                            EtaSegmentedGap
                                         },
-                                        onLongClick = {
-                                            if (!selectionMode) {
-                                                selectionMode = true
-                                                selectedIds = setOf(folder.id)
+                                    ),
+                            ) {
+                                ManageFolderRow(
+                                    folder = folder,
+                                    conversationCount = countsByFolder[folder.id] ?: 0,
+                                    selectionMode = selectionMode,
+                                    checked = folder.id in selectedIds,
+                                    onClick = {
+                                        if (selectionMode) {
+                                            selectedIds = if (folder.id in selectedIds) {
+                                                selectedIds - folder.id
+                                            } else {
+                                                selectedIds + folder.id
                                             }
-                                        },
-                                        onRename = { renameTarget = folder },
-                                        onDelete = { deleteTarget = folder },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
+                                        }
+                                        // 非多选态整行不响应：重命名/删除仍走行尾按钮（与改造前一致）。
+                                    },
+                                    onLongClick = {
+                                        if (!selectionMode) {
+                                            selectionMode = true
+                                            selectedIds = setOf(folder.id)
+                                        }
+                                    },
+                                    onRename = { renameTarget = folder },
+                                    onDelete = { deleteTarget = folder },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                             }
                         }
                     }

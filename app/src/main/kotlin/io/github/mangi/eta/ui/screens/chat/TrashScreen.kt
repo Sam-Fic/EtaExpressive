@@ -146,7 +146,15 @@ internal fun TrashScreen(
                     contentType = { _, _ -> "trash-conversation" },
                 ) { index, conversation ->
                     Box(
-                        modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                        // 官方 animateItem（会话管理页同款口径）：恢复/彻底删除淡出，下方行弹簧补位；
+                        // 入场不播动画，避免首屏全列表闪淡入。
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                            )
+                            .padding(horizontal = EtaGroupHorizontalPadding),
                     ) {
                         TrashRow(
                             conversation = conversation,
@@ -401,7 +409,14 @@ internal fun TrashSearchScreen(
                 contentType = { _, _ -> "trash-search-hit" },
             ) { index, conversation ->
                 Box(
-                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                    // 恢复/彻底删除淡出 + 补位弹簧（主回收站列表同款口径）。
+                    modifier = Modifier
+                        .animateItem(
+                            fadeInSpec = null,
+                            fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                        )
+                        .padding(horizontal = EtaGroupHorizontalPadding),
                 ) {
                     // 搜索命中行不进多选：仍用常规行尾按钮（与改造前一致）。
                     TrashRow(

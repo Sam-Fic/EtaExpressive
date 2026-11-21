@@ -1054,6 +1054,14 @@ private fun Material3ConversationPane(
                                     onTogglePin = { onConversationTogglePin(conversation) },
                                     onExport = { onConversationExport(conversation) },
                                     onExportAnalysis = { onConversationAnalysisExport(conversation) },
+                                    // 官方 animateItem：删除/移动文件夹淡出、置顶跨组 = 同 key
+                                    // 换位弹簧（分组各自 itemsIndexed 共用同一 key 空间）；
+                                    // 入场不播动画，避免抽屉首开全列表闪淡入。
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = null,
+                                        fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                        placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
+                                    ),
                                 )
                             }
                         }
@@ -1426,6 +1434,7 @@ private fun Material3ConversationRow(
     onTogglePin: () -> Unit,
     onExport: () -> Unit,
     onExportAnalysis: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var showActionMenu by remember { mutableStateOf(false) }
     // 「等待回答」问号徽标的读屏说明（行尾 trailing 槽内引用）。
@@ -1434,7 +1443,7 @@ private fun Material3ConversationRow(
         // 组内行距走官方分段缝隙（2dp），组末行补足分组间距（末组由列表底部留白收尾）；
         // 缝隙放在外层，长按菜单的锚点仍紧贴本行。
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
                 .padding(
                     bottom = if (index == count - 1) {

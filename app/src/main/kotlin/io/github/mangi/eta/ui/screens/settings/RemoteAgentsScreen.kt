@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -60,7 +63,10 @@ import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
@@ -218,97 +224,126 @@ internal fun RemoteAgentsScreen(
                 }
             }
         }
-        item(key = "servers") {
-            EtaSegmentedColumn(
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedGroupSpacing,
-                ),
-                title = if (selectionMode) {
+        // 服务器行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+        // animateItem 承载删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
+        item(key = "servers_header") {
+            Text(
+                text = if (selectionMode) {
                     stringResource(R.string.remote_agents_configured_servers, servers.size) + " · " +
                         stringResource(R.string.media_selected_count, selectedIds.size)
                 } else {
                     stringResource(R.string.remote_agents_configured_servers, servers.size)
                 },
-            ) {
-                if (servers.isEmpty()) {
-                    // 空态是「非行」内容，用分段容器承载；新增入口交给右下角 FAB，避免重复按钮。
-                    item {
-                        EtaSegmentedItemContainer {
-                            ListEmptyState(
-                                title = stringResource(R.string.remote_agents_empty),
-                                summary = stringResource(R.string.remote_agents_empty_summary),
+                style = MaterialTheme.typography.titleSmallEmphasized,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(
+                    start = EtaGroupHorizontalPadding,
+                    end = EtaGroupHorizontalPadding,
+                    // 与 local-network 组的既有 bottom 间距衔接，不再叠加 top，避免双倍。
+                    bottom = EtaSegmentedTitleSpacing,
+                ),
+            )
+        }
+        if (servers.isEmpty()) {
+            // 空态是「非行」内容，用分段容器承载；新增入口交给右下角 FAB，避免重复按钮。
+            item(key = "servers_empty") {
+                EtaSegmentedItemContainer(
+                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                ) {
+                    ListEmptyState(
+                        title = stringResource(R.string.remote_agents_empty),
+                        summary = stringResource(R.string.remote_agents_empty_summary),
+                    )
+                }
+            }
+        } else {
+            itemsIndexed(
+                items = servers,
+                key = { _, config -> config.id },
+                contentType = { _, _ -> "remote-agent" },
+            ) { index, config ->
+                EtaSegmentedItem(index = index, count = servers.size) {
+                    Column(
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                fadeOutSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                             )
-                        }
-                    }
-                } else {
-                    servers.forEach { config ->
-                        item(key = config.id) {
-                            val status = coordinator.statusOf(config.id)
-                            EtaClickableRow(
-                                title = config.name,
-                                summary = "${RemoteProtocols.displayNameOf(config.protocolId)} · " +
-                                    "${config.host}:${config.port} · ${remoteStatusLabel(status)}",
-                                onClick = {
-                                    if (selectionMode) {
-                                        selectedIds = if (config.id in selectedIds) {
-                                            selectedIds - config.id
-                                        } else {
-                                            selectedIds + config.id
-                                        }
+                            .fillMaxWidth()
+                            .padding(
+                                start = EtaGroupHorizontalPadding,
+                                end = EtaGroupHorizontalPadding,
+                                bottom = if (index == servers.lastIndex) {
+                                    EtaSegmentedGroupSpacing
+                                } else {
+                                    EtaSegmentedGap
+                                },
+                            ),
+                    ) {
+                        val status = coordinator.statusOf(config.id)
+                        EtaClickableRow(
+                            title = config.name,
+                            summary = "${RemoteProtocols.displayNameOf(config.protocolId)} · " +
+                                "${config.host}:${config.port} · ${remoteStatusLabel(status)}",
+                            onClick = {
+                                if (selectionMode) {
+                                    selectedIds = if (config.id in selectedIds) {
+                                        selectedIds - config.id
                                     } else {
-                                        onOpenEditor(config.id)
+                                        selectedIds + config.id
                                     }
-                                },
-                                onLongClick = {
-                                    if (!selectionMode) {
-                                        selectionMode = true
-                                        selectedIds = setOf(config.id)
-                                    }
-                                },
-                                onLongClickLabel = stringResource(R.string.action_enter_selection),
-                                // 行首是「服务器」类别图标（与 MCP 服务器页的 Dns 同族）；
-                                // 连接状态属于状态标记，挪到行尾，不与类别图标抢行首槽。
-                                leading = {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Dns,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(EtaDimens.DenseIconSize),
+                                } else {
+                                    onOpenEditor(config.id)
+                                }
+                            },
+                            onLongClick = {
+                                if (!selectionMode) {
+                                    selectionMode = true
+                                    selectedIds = setOf(config.id)
+                                }
+                            },
+                            onLongClickLabel = stringResource(R.string.action_enter_selection),
+                            // 行首是「服务器」类别图标（与 MCP 服务器页的 Dns 同族）；
+                            // 连接状态属于状态标记，挪到行尾，不与类别图标抢行首槽。
+                            leading = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Dns,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(EtaDimens.DenseIconSize),
+                                )
+                            },
+                            endActions = {
+                                if (selectionMode) {
+                                    // 多选态：状态点与删除按钮让位，行尾只剩官方 Checkbox。
+                                    Checkbox(
+                                        checked = config.id in selectedIds,
+                                        onCheckedChange = {
+                                            selectedIds = if (config.id in selectedIds) {
+                                                selectedIds - config.id
+                                            } else {
+                                                selectedIds + config.id
+                                            }
+                                        },
                                     )
-                                },
-                                endActions = {
-                                    if (selectionMode) {
-                                        // 多选态：状态点与删除按钮让位，行尾只剩官方 Checkbox。
-                                        Checkbox(
-                                            checked = config.id in selectedIds,
-                                            onCheckedChange = {
-                                                selectedIds = if (config.id in selectedIds) {
-                                                    selectedIds - config.id
-                                                } else {
-                                                    selectedIds + config.id
-                                                }
-                                            },
-                                        )
-                                    } else {
-                                        // 连接状态圆点靠右、删除按钮最右，与「会话列表」尾槽节奏一致。
-                                        Box(modifier = Modifier.padding(end = 8.dp)) {
-                                            StatusDot(status)
-                                        }
-                                        // 破坏性删除改成纯图标按钮，与「会话列表」尾槽一致：
-                                        // 官方 48dp IconButton + error 内容色 + 统一 Tooltip/无障碍包装。
-                                        EtaTooltipIconButton(
-                                            icon = Icons.Rounded.DeleteOutline,
-                                            contentDescription = stringResource(R.string.action_delete),
-                                            onClick = { deleteTarget = config },
-                                            destructive = true,
-                                            shapes = IconButtonDefaults.shapes(),
-                                        )
+                                } else {
+                                    // 连接状态圆点靠右、删除按钮最右，与「会话列表」尾槽节奏一致。
+                                    Box(modifier = Modifier.padding(end = 8.dp)) {
+                                        StatusDot(status)
                                     }
-                                },
-                            )
-                        }
+                                    // 破坏性删除改成纯图标按钮，与「会话列表」尾槽一致：
+                                    // 官方 48dp IconButton + error 内容色 + 统一 Tooltip/无障碍包装。
+                                    EtaTooltipIconButton(
+                                        icon = Icons.Rounded.DeleteOutline,
+                                        contentDescription = stringResource(R.string.action_delete),
+                                        onClick = { deleteTarget = config },
+                                        destructive = true,
+                                        shapes = IconButtonDefaults.shapes(),
+                                    )
+                                }
+                            },
+                        )
                     }
                 }
             }
