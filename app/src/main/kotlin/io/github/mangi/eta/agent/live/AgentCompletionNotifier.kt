@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import io.github.mangi.eta.R
+import io.github.mangi.eta.config.LiveActivityStyle
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.ui.MainActivity
 import io.github.mangi.eta.ui.haptics.AppForeground
@@ -107,11 +108,12 @@ internal object AgentCompletionNotifier {
         }
     }
 
-    // ── 岛终态（小米私有）────────────────────────────────────────────
+    // ── 岛终态（实时活动提醒）──────────────────────────────────────
     // Number444 fork 真机定稿：岛「展开」只能跟着新 id 首发 alert 走（同 id 更新永不展开），
     // 且需频道在系统设置里开启「悬浮通知」。完成态在 eta_island 频道（静音 DEFAULT）用固定
-    // 新 id 首发 + 焦点参数，HyperOS 渲染为岛展开，约 8 秒后自动撤销；失败/停止不展开、
-    // 由执行卡安静收尾。持久横幅（notifyTerminal）并行发布，各司其职。非小米设备全程跳过。
+    // 新 id 首发，HyperOS 渲染为岛展开，约 8 秒后自动撤销；失败/停止不展开、由执行卡安静
+    // 收尾。持久横幅（notifyTerminal）并行发布，各司其职。呈现方式（应用级设置）门控：
+    // 原生档不上岛；超级岛档要求小米岛可用；流体云档走纯官方 promoted 通道（Android 16+）。
 
     private const val ISLAND_CHANNEL = "eta_island"
     private const val ISLAND_NOTIFICATION_ID = 1208
@@ -128,7 +130,15 @@ internal object AgentCompletionNotifier {
     ) {
         if (kind != TerminalKind.COMPLETED) return
         if (!Prefs.isEnabled(Prefs.Keys.LIVE_ACTIVITY_ENABLE)) return
-        if (!MiuiIslandFocus.islandTerminalSupported()) return
+        // 呈现方式门控（应用级设置，实时活动页）：原生=不上岛；超级岛=小米可用性；
+        // 流体云=官方 promoted 通道（Android 16+），各厂商自行桥接成自家实时活动形态。
+        when (Prefs.liveActivityStyle()) {
+            LiveActivityStyle.NATIVE -> return
+            LiveActivityStyle.XIAOMI_ISLAND ->
+                if (!MiuiIslandFocus.islandTerminalSupported()) return
+            LiveActivityStyle.COLOROS_FLUID ->
+                if (Build.VERSION.SDK_INT_FULL < Build.VERSION_CODES_FULL.BAKLAVA_1) return
+        }
         val manager = context.getSystemService(NotificationManager::class.java)
         if (!manager.areNotificationsEnabled()) return
         ensureIslandChannel(context, manager)
@@ -159,20 +169,24 @@ internal object AgentCompletionNotifier {
                 .setShortCriticalText(text)
                 .setRequestPromotedOngoing(true)
         }
-        builder.extras.putBundle(
-            "miui.focus.pics",
-            MiuiIslandFocus.buildFocusPics(context, MiuiIslandFocus.launchIconBitmap(context)),
-        )
-        builder.extras.putString(
-            "miui.focus.param",
-            MiuiIslandFocus.buildFocusParam(
-                text,
-                // 大岛后置小字放结果摘要首行（系统自带超长压缩），空摘要退回应用名。
-                summaryText.take(16).ifBlank { context.getString(R.string.app_name) },
-                context.packageName,
-                ISLAND_NOTIFICATION_ID,
-            ),
-        )
+        // miui.focus 焦点参数是小米私有形态的岛面渲染数据：只在超级岛档注入；
+        // 流体云档走纯官方 promoted 通道，参数留给厂商自家桥接。
+        if (Prefs.liveActivityStyle() == LiveActivityStyle.XIAOMI_ISLAND) {
+            builder.extras.putBundle(
+                "miui.focus.pics",
+                MiuiIslandFocus.buildFocusPics(context, MiuiIslandFocus.launchIconBitmap(context)),
+            )
+            builder.extras.putString(
+                "miui.focus.param",
+                MiuiIslandFocus.buildFocusParam(
+                    text,
+                    // 大岛后置小字放结果摘要首行（系统自带超长压缩），空摘要退回应用名。
+                    summaryText.take(16).ifBlank { context.getString(R.string.app_name) },
+                    context.packageName,
+                    ISLAND_NOTIFICATION_ID,
+                ),
+            )
+        }
         manager.notify(ISLAND_NOTIFICATION_ID, builder.build())
         scheduleIslandDismiss(manager)
     }

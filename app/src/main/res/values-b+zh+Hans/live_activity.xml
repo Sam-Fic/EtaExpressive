@@ -6,6 +6,11 @@
     <string name="live_activity_settings_summary">运行状态上岛与任务完成横幅</string>
     <string name="live_activity_enable_title">运行状态上岛</string>
     <string name="live_activity_enable_summary">任务运行期间在状态栏岛上实时展示进度（ColorOS 流体云 / 澎湃OS 超级岛）</string>
+    <string name="live_activity_notify_style_title">通知方式</string>
+    <string name="live_activity_notify_style_summary">任务完成、取码等提醒的实时活动呈现方式；设备不支持所选方式时自动落回原生通知</string>
+    <string name="live_activity_notify_style_native">原生通知</string>
+    <string name="live_activity_notify_style_island">小米超级岛</string>
+    <string name="live_activity_notify_style_fluid">ColorOS 流体云</string>
     <string name="live_completion_enable_title">任务完成横幅</string>
     <string name="live_completion_enable_summary">任务结束时响铃提醒，点击直达对应会话</string>
     <string name="live_suppress_enable_title">前台收起运行卡</string>

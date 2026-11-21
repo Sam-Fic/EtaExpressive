@@ -6,6 +6,11 @@
     <string name="live_activity_settings_summary">執行狀態上島與任務完成橫幅</string>
     <string name="live_activity_enable_title">執行狀態上島</string>
     <string name="live_activity_enable_summary">任務執行期間在狀態列島上即時展示進度（ColorOS 流體雲 / 澎湃OS 超級島）</string>
+    <string name="live_activity_notify_style_title">通知方式</string>
+    <string name="live_activity_notify_style_summary">任務完成、取碼等提醒的即時活動呈現方式；裝置不支援所選方式時自動落回原生通知</string>
+    <string name="live_activity_notify_style_native">原生通知</string>
+    <string name="live_activity_notify_style_island">小米超級島</string>
+    <string name="live_activity_notify_style_fluid">ColorOS 流體雲</string>
     <string name="live_completion_enable_title">任務完成橫幅</string>
     <string name="live_completion_enable_summary">任務結束時響鈴提醒，點擊直達對應會話</string>
     <string name="live_suppress_enable_title">前景收起執行卡</string>

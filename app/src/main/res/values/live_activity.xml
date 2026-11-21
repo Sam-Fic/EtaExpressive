@@ -6,6 +6,11 @@
     <string name="live_activity_settings_summary">Run status on the status-bar island and completion banners</string>
     <string name="live_activity_enable_title">Show run status on the island</string>
     <string name="live_activity_enable_summary">While a task runs, live progress appears on the status-bar island (ColorOS Fluid Cloud / HyperOS Super Island)</string>
+    <string name="live_activity_notify_style_title">Notification style</string>
+    <string name="live_activity_notify_style_summary">How live-activity alerts (task completion, pickup codes) are presented; falls back to a plain notification when the device does not support the selected style</string>
+    <string name="live_activity_notify_style_native">Native notification</string>
+    <string name="live_activity_notify_style_island">Xiaomi Super Island</string>
+    <string name="live_activity_notify_style_fluid">ColorOS Fluid Cloud</string>
     <string name="live_completion_enable_title">Completion banners</string>
     <string name="live_completion_enable_summary">Ring a notification when a task finishes; tap it to jump back to the conversation</string>
     <string name="live_suppress_enable_title">Hide the running card in app</string>
