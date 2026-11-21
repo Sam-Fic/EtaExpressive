@@ -1680,10 +1680,23 @@ fun AgentAppRoot(
                 io.github.mangi.eta.ui.AboutScreen(
                     onBack = ::popRoute,
                     onOpenCredits = { pushRoute(AppRoute.AboutCredits) },
+                    onOpenLicenses = { pushRoute(AppRoute.AboutLicenses) },
                 )
             }
             entry<AppRoute.AboutCredits>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.AboutCreditsScreen(onBack = ::popRoute)
+            }
+            entry<AppRoute.AboutLicenses>(swipeDismiss = navSwipeDismiss) {
+                io.github.mangi.eta.ui.AboutLicensesScreen(
+                    onBack = ::popRoute,
+                    onOpenDetail = { licenseId -> pushRoute(AppRoute.AboutLicenseDetail(licenseId)) },
+                )
+            }
+            entry<AppRoute.AboutLicenseDetail>(swipeDismiss = navSwipeDismiss) { route ->
+                io.github.mangi.eta.ui.AboutLicenseDetailScreen(
+                    licenseId = route.licenseId,
+                    onBack = ::popRoute,
+                )
             }
             entry<AppRoute.AuxiliaryVision>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.ModelFeatureSettingsScreen(

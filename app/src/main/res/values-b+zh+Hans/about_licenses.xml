@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="licenses_title">开源许可</string>
+    <string name="licenses_row_summary">随应用分发的第三方组件及其许可证</string>
+    <string name="licenses_entry_proot_summary">GNU GPL v2.0 · 支撑终端 Linux 环境的用户态 chroot</string>
+    <string name="licenses_entry_talloc_summary">GNU LGPL v3.0 · PRoot 依赖的内存分配库</string>
+    <string name="licenses_entry_libandroid_shmem_summary">BSD 3-Clause · Android 共享内存兼容层</string>
+    <string name="licenses_entry_nimbus_summary">Apache-2.0 · 登录 ID Token 的 JOSE/JWT 校验</string>
+    <string name="licenses_entry_gpl3_summary">GNU GPL v3.0 · 适用于改编自 OpenMinis 的内置浏览器</string>
+    <string name="licenses_load_failed">许可证文件读取失败。</string>
+</resources>

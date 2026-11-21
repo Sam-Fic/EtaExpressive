@@ -56,6 +56,14 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data object AboutCredits : AppRoute
 
+    /** 关于页「开源许可」子页；列出随 APK 分发的第三方组件及其 `assets/licenses/` 许可证文件。 */
+    @Serializable
+    data object AboutLicenses : AppRoute
+
+    /** 单条许可证全文查看页；[licenseId] 对应 AboutLicensesScreen 登记表里的条目 id。 */
+    @Serializable
+    data class AboutLicenseDetail(val licenseId: String) : AppRoute
+
     @Serializable
     data object SpeechSettings : AppRoute
 

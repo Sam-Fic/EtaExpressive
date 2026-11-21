@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Description
@@ -72,7 +73,7 @@ private data class CreditEntry(
  * 80dp 白底圆角图标 + 应用名 + 版本号的居中 hero，下方为分段链接列表。
  */
 @Composable
-internal fun AboutScreen(onBack: () -> Unit, onOpenCredits: () -> Unit) {
+internal fun AboutScreen(onBack: () -> Unit, onOpenCredits: () -> Unit, onOpenLicenses: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val currentVersion = remember { AppUpdateRepository.currentVersionName(context) }
@@ -179,6 +180,19 @@ internal fun AboutScreen(onBack: () -> Unit, onOpenCredits: () -> Unit) {
                             )
                         },
                         onClick = onOpenCredits,
+                    )
+                }
+
+                item {
+                    EtaClickableRow(
+                        title = stringResource(R.string.licenses_title),
+                        summary = stringResource(R.string.licenses_row_summary),
+                        leading = {
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Article,
+                            )
+                        },
+                        onClick = onOpenLicenses,
                     )
                 }
             }

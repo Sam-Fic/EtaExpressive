@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="licenses_title">Open-source licenses</string>
+    <string name="licenses_row_summary">Third-party components distributed with this app</string>
+    <string name="licenses_entry_proot_summary">GNU GPL v2.0 · User-mode chroot that powers the Linux environment</string>
+    <string name="licenses_entry_talloc_summary">GNU LGPL v3.0 · Memory allocation library used by PRoot</string>
+    <string name="licenses_entry_libandroid_shmem_summary">BSD 3-Clause · Android shared-memory compatibility layer</string>
+    <string name="licenses_entry_nimbus_summary">Apache-2.0 · JOSE/JWT validation for sign-in ID tokens</string>
+    <string name="licenses_entry_gpl3_summary">GNU GPL v3.0 · Applies to the built-in browser adapted from OpenMinis</string>
+    <string name="licenses_load_failed">Could not load this license file.</string>
+</resources>

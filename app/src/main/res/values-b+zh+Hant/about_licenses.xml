@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="licenses_title">開源授權</string>
+    <string name="licenses_row_summary">隨應用程式分發的第三方元件及其授權條款</string>
+    <string name="licenses_entry_proot_summary">GNU GPL v2.0 · 支撐終端機 Linux 環境的使用者態 chroot</string>
+    <string name="licenses_entry_talloc_summary">GNU LGPL v3.0 · PRoot 依賴的記憶體配置函式庫</string>
+    <string name="licenses_entry_libandroid_shmem_summary">BSD 3-Clause · Android 共享記憶體相容層</string>
+    <string name="licenses_entry_nimbus_summary">Apache-2.0 · 登入 ID Token 的 JOSE/JWT 驗證</string>
+    <string name="licenses_entry_gpl3_summary">GNU GPL v3.0 · 適用於改編自 OpenMinis 的內建瀏覽器</string>
+    <string name="licenses_load_failed">授權條款檔案讀取失敗。</string>
+</resources>
