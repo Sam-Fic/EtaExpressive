@@ -1,14 +1,10 @@
 package io.github.mangi.eta.ui
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DesktopWindows
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalRippleConfiguration
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
@@ -17,10 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.device.AgentTaskSurface
@@ -31,20 +24,17 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedRadioRow
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.WithoutPressRipple
 import io.github.mangi.eta.ui.components.etaRippleConfiguration
-import io.github.mangi.eta.ui.haptics.TouchHaptics
 
 /** 二级页骨架（EtaScaffoldPage）：大标题顶栏 + 执行位置单选组 + 虚拟屏实时画面入口。 */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AgentTaskPreferenceScreen(
     onBack: () -> Unit,
     onOpenVirtualDisplay: () -> Unit = {},
 ) {
-    val view = LocalView.current
     var selected by remember { mutableStateOf(AgentTaskSurface.stored()) }
     // 只订阅去重后的「运行中 / 应用名 / 显示 ID」：实时帧以 6fps 更新时本页不跟着重组。
     // collectAsStateWithLifecycle() 的 StateFlow 重载自行读取当前快照作为初始值，
@@ -85,36 +75,17 @@ internal fun AgentTaskPreferenceScreen(
                         AgentTaskSurfaceMode.entries.forEach { mode ->
                             item(key = mode.name) {
                                 val canSelect = AgentTaskSurface.allowsPersist(mode)
-                                EtaSegmentedRow(
-                                    choiceRow = true,
-                                    modifier = Modifier.selectable(
-                                        selected = selected == mode,
-                                        enabled = canSelect,
-                                        role = Role.RadioButton,
-                                        onClick = {
-                                            if (!canSelect) return@selectable
-                                            TouchHaptics.click(view)
-                                            selected = mode
-                                            AgentTaskSurface.save(mode)
-                                        },
-                                    ),
-                                    content = {
-                                        Text(
-                                            stringResource(mode.labelRes),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    supportingContent = {
-                                        // 字号 / 配色交给官方 supportingContent 槽位默认（bodyMedium + onSurfaceVariant）。
-                                        Text(stringResource(mode.hintRes))
-                                    },
-                                    trailingContent = {
-                                        RadioButton(
-                                            selected = selected == mode,
-                                            enabled = canSelect || selected == mode,
-                                            onClick = null,
-                                        )
+                                // 官方单选分段行：selected 变体自带 secondaryContainer 选中底色、
+                                // 4dp→16dp 形状 morph、按压 morph 与 Role.RadioButton 语义，
+                                // 不要退回 Modifier.selectable + 行尾 RadioButton 的手拼写法。
+                                EtaSegmentedRadioRow(
+                                    title = stringResource(mode.labelRes),
+                                    summary = stringResource(mode.hintRes),
+                                    selected = selected == mode,
+                                    enabled = canSelect,
+                                    onClick = {
+                                        selected = mode
+                                        AgentTaskSurface.save(mode)
                                     },
                                 )
                             }
