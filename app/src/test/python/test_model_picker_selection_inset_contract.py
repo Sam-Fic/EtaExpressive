@@ -10,20 +10,22 @@ class ModelPickerSegmentedContractTest(unittest.TestCase):
     def setUp(self):
         self.source = (UI / 'TtsModelPickerDialog.kt').read_text(encoding='utf-8')
 
-    def test_dialog_uses_segmented_radio_rows_grouped_by_provider(self):
-        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('internal fun ModelPickerRadioRow', 1)[0]
+    def test_dialog_uses_segmented_check_rows_grouped_by_provider(self):
+        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('internal fun ModelPickerCheckRow', 1)[0]
         # 按提供商分组平铺：提供商作分段列标题，模型为组内分段单选行。
         self.assertIn('EtaSegmentedColumn(', dialog)
         self.assertIn('title = group.providerName', dialog)
         self.assertIn('item(key = "${model.providerId}/${model.id}")', dialog)
-        self.assertIn('EtaSegmentedRadioRow(', self.source)
+        # 底部面板统一用行尾对勾，不再逐行挂左侧圆点。
+        self.assertIn('ModelPickerCheckRow(', dialog)
+        self.assertNotIn('EtaSegmentedRadioRow(', self.source)
         # 去掉折叠：不再出现展开/收起箭头或 expanded 状态。
         self.assertNotIn('ExpandMore', dialog)
         self.assertNotIn('ExpandLess', dialog)
         self.assertNotIn('expanded', dialog)
 
     def test_selection_is_pending_until_confirm_and_cancel_dismisses(self):
-        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('internal fun ModelPickerRadioRow', 1)[0]
+        dialog = self.source.split('internal fun TtsModelPickerDialog', 1)[1].split('internal fun ModelPickerCheckRow', 1)[0]
         self.assertIn('var pendingModelId by remember', dialog)
         self.assertIn('onModelSelected(pendingProviderId.orEmpty(), pendingModelId.orEmpty())', dialog)
         self.assertIn('onClearSelection?.invoke()', dialog)

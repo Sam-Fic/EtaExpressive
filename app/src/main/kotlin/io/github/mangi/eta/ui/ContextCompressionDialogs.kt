@@ -174,7 +174,7 @@ internal fun CompressModelPickerDialog(
                         ) {
                             group.models.forEach { model ->
                                 item(key = "${model.providerId}/${model.id}") {
-                                    ModelPickerRadioRow(
+                                    ModelPickerCheckRow(
                                         title = model.displayName,
                                         selected = pendingProviderId == model.providerId &&
                                             pendingModelId == model.id,

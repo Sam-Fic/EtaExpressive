@@ -26,15 +26,17 @@ class VirtualDisplaySettingsUiTest(unittest.TestCase):
         task = (UI / "AgentTaskPreferenceScreen.kt").read_text()
         for text in (
             "EtaScaffoldPage(",
-            "EtaSegmentedRow(",
-            "import androidx.compose.material3.RadioButton",
+            "EtaSegmentedRadioRow(",
+            "selected = selected ==",
             "selectableGroup()",
-            "Modifier.selectable(",
-            "role = Role.RadioButton",
             "EtaSegmentedColumn(",
         ):
             self.assertIn(text, task)
         self.assertNotIn("MiuixScaffoldPage", task)
+        # 单选行必须走官方 selected 变体（选中底色 + 形状 morph + 单选语义），
+        # 不允许退回 Modifier.selectable + 行尾 RadioButton 的手拼写法。
+        self.assertNotIn("Modifier.selectable(", task)
+        self.assertNotIn("import androidx.compose.material3.RadioButton", task)
         # 选择语义不变：可选项仍由 allowsPersist 决定，整行点击仍写同一份持久化值。
         self.assertIn("AgentTaskSurface.allowsPersist(mode)", task)
         self.assertIn("AgentTaskSurface.save(mode)", task)

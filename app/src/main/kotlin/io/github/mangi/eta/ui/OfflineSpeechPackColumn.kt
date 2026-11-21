@@ -7,6 +7,9 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -26,7 +29,7 @@ import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedRadioRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaProgressBar
 import io.github.mangi.eta.ui.adaptive.EtaText
@@ -172,13 +175,21 @@ internal fun OfflineSpeechPackColumn(modifier: Modifier = Modifier) {
                 EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {
                     SpeechModelCatalog.models.forEach { model ->
                         item(key = model.id) {
-                            EtaSegmentedRadioRow(
-                                title = speechModelLabel(model.id),
-                                selected = model.id == state.model.id,
+                            val selected = model.id == state.model.id
+                            // 底部面板的选择指示器统一放行尾对勾，不在每行行首挂圆点。
+                            val trailing: (@Composable () -> Unit)? = if (selected) {
+                                { Icon(imageVector = Icons.Rounded.Check, contentDescription = null) }
+                            } else {
+                                null
+                            }
+                            EtaSegmentedRow(
+                                selected = selected,
                                 onClick = {
                                     modelPicker = false
                                     OfflineSpeechPack.select(context, model.id, state.source.id)
                                 },
+                                trailingContent = trailing,
+                                content = { Text(speechModelLabel(model.id)) },
                             )
                         }
                     }

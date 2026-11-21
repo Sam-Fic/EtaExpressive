@@ -16,9 +16,8 @@ import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedRadioRow
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.components.filterModelProviderGroups
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentModelPickerUiState
@@ -89,7 +88,7 @@ internal fun TtsModelPickerDialog(
             if (onClearSelection != null && query.isBlank()) {
                 EtaSegmentedColumn(modifier = Modifier.fillMaxWidth()) {
                     item(key = "none") {
-                        ModelPickerRadioRow(
+                        ModelPickerCheckRow(
                             title = stringResource(R.string.tts_none),
                             selected = !hasPending,
                             onClick = {
@@ -117,7 +116,7 @@ internal fun TtsModelPickerDialog(
                 ) {
                     group.models.forEach { model ->
                         item(key = "${model.providerId}/${model.id}") {
-                            ModelPickerRadioRow(
+                            ModelPickerCheckRow(
                                 title = model.displayName,
                                 selected = pendingProviderId == model.providerId &&
                                     pendingModelId == model.id,
@@ -135,30 +134,11 @@ internal fun TtsModelPickerDialog(
 }
 
 /**
- * 模型选择弹窗中的单选项：走 [EtaSegmentedRadioRow]（分段单选行，与参考图三一致），
- * 常显单选按钮，选中态由整行承担。
+ * 模型选择弹窗中的可选项（对勾版）：选中行行尾显示对勾，
+ * 选中态由整行底色 + 对勾共同承担（分段行外观与轻触反馈由 [EtaSegmentedRow] 提供）。
  *
- * 由模型选择类弹窗（[TtsModelPickerDialog]、上下文压缩的模型选择）共用。
- */
-@Composable
-internal fun ModelPickerRadioRow(
-    title: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val view = LocalView.current
-    val click = {
-        TouchHaptics.click(view)
-        onClick()
-    }
-    EtaSegmentedRadioRow(title = title, selected = selected, onClick = click)
-}
-
-/**
- * 模型选择弹窗中的可选项（对勾版）：左侧不放单选按钮，改为选中行行尾显示对勾，
- * 选中态由整行底色 + 对勾共同承担（与 [ModelPickerRadioRow] 共用分段行外观与轻触反馈）。
- *
- * 由输入区「Model & assistant」底部弹窗的模型列表使用。
+ * 底部面板里逐行放左侧圆点过重，模型选择类弹窗（[TtsModelPickerDialog]、
+ * 上下文压缩的模型选择）与输入区「Model & assistant」面板统一使用这一版。
  */
 @Composable
 internal fun ModelPickerCheckRow(
@@ -317,12 +297,18 @@ internal fun SpeechRadioPickerDialog(
 private fun SpeechRadioRow(id: String, label: String, selected: Boolean, onSelected: (String) -> Unit) {
     val view = LocalView.current
     // 官方单选版 ListItem 提供选中容器色、Role.RadioButton 语义与按压形变；
-    // 正文槽位参数名是 content（headlineContent 只属于无 onClick 的展示重载）。
+    // 底部面板的选择指示器统一放行尾对勾，避免每行左侧都挂一个圆点。
+    val trailing: (@Composable () -> Unit)? = if (selected) {
+        { Icon(imageVector = Icons.Rounded.Check, contentDescription = null) }
+    } else {
+        null
+    }
     ListItem(
         selected = selected,
         onClick = { TouchHaptics.click(view); onSelected(id) },
         // 播报文本由官方合并 content 槽位的 Text 提供，不额外挂 contentDescription。
         modifier = Modifier.fillMaxWidth(),
+        trailingContent = trailing,
         content = { Text(label) },
     )
 }
@@ -346,12 +332,19 @@ private fun VoiceRow(
 ) {
     val view = LocalView.current
     val selected = voice.id == selectedId
-    // 官方单选版 ListItem 提供选中容器色、Role.RadioButton 语义与按压形变。
+    // 官方单选版 ListItem 提供选中容器色、Role.RadioButton 语义与按压形变；
+    // 选择指示器与模型面板一致，取行尾对勾。
+    val trailing: (@Composable () -> Unit)? = if (selected) {
+        { Icon(imageVector = Icons.Rounded.Check, contentDescription = null) }
+    } else {
+        null
+    }
     ListItem(
         selected = selected,
         onClick = { TouchHaptics.click(view); onSelected(voice.id) },
         // 播报文本由官方合并 content 槽位的 Text 提供，不额外挂 contentDescription。
         modifier = Modifier.fillMaxWidth(),
+        trailingContent = trailing,
         content = { Text(voice.name) },
     )
 }

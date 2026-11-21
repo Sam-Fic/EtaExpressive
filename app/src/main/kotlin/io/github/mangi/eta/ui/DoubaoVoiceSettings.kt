@@ -19,11 +19,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -47,7 +47,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntOffset
@@ -1006,21 +1005,41 @@ private fun VoiceSlotSync(apiKey: String, onBusy: (Boolean) -> Unit, onResult: (
                     )
                 }
                 visibleProjects.forEach { item ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                        .selectable(selected = project == item.name, enabled = item.allowed && !working, role = Role.RadioButton, onClick = {
+                    val selected = project == item.name
+                    // 官方单选 ListItem 提供整行选中底色、形状 morph 与 Role.RadioButton 语义；
+                    // 底部面板的选择指示器统一放行尾对勾，不在每行行首挂圆点。
+                    val trailing: (@Composable () -> Unit)? = if (selected) {
+                        { Icon(imageVector = Icons.Rounded.Check, contentDescription = null) }
+                    } else {
+                        null
+                    }
+                    ListItem(
+                        selected = selected,
+                        enabled = item.allowed && !working,
+                        onClick = {
                             TouchHaptics.click(view)
                             project = item.name
                             resultText = ""; failed = false; onResult("")
                             VoiceCatalogPreferences.save(context, ak, item.name)
                             projectPicker = false; projectOptions = false
-                        }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = project == item.name, enabled = item.allowed && !working, onClick = null)
-                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                            EtaText(item.displayName, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (item.allowed) 1f else EtaAlphas.DisabledContent))
-                            if (item.displayName != item.name) EtaText(item.name, style = EtaTextStyle.Footnote)
-                            if (!item.allowed) EtaText(stringResource(R.string.dv_no_project_access), style = EtaTextStyle.Footnote, secondary = true)
-                        }
-                    }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingContent = trailing,
+                        content = {
+                            Column {
+                                EtaText(
+                                    item.displayName,
+                                    color = when {
+                                        !item.allowed -> MaterialTheme.colorScheme.onSurface.copy(alpha = EtaAlphas.DisabledContent)
+                                        selected -> MaterialTheme.colorScheme.onSecondaryContainer
+                                        else -> null
+                                    },
+                                )
+                                if (item.displayName != item.name) EtaText(item.name, style = EtaTextStyle.Footnote)
+                                if (!item.allowed) EtaText(stringResource(R.string.dv_no_project_access), style = EtaTextStyle.Footnote, secondary = true)
+                            }
+                        },
+                    )
                 }
             }
         }
