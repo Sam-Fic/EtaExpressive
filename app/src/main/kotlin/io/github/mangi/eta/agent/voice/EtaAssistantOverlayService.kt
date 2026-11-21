@@ -631,9 +631,10 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         }
         val normalized = prompt.trim()
         if (normalized.isBlank()) return
-        // 唤起即屏幕上下文：指令明示要看屏幕内容且入口截图就绪时自动选中——预览卡弹出即
-        // 功能触发的可见反馈，消息附带入口截图，首轮模型直接看到屏幕（省一次工具往返）。
-        // AgentScreenIntent 只在弹窗链路使用；主程序对话不做该判断（硬边界，用户定稿）。
+        // 唤起即屏幕上下文：指令提到屏幕（或可视指代 + 内容动作）且入口截图就绪时自动
+        // 选中——预览卡弹出即功能触发的可见反馈，消息附带入口截图，首轮模型直接看到屏幕
+        // （省一次工具往返）。AgentScreenIntent 只在弹窗链路使用；主程序对话不做该判断
+        // （硬边界，用户定稿）。
         if (!uiState.screenContext.selected &&
             uiState.screenContext.phase == EtaScreenContextPhase.AVAILABLE &&
             screenContextAttachment != null &&
@@ -747,6 +748,12 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         val normalized = prompt.trim()
         if (normalized.isBlank() || activeRunId != null) return
         val attachment = screenContextAttachment.takeIf { uiState.screenContext.selected }
+        // 前置判断没有附图时，唤醒截图不丢：落一份缓存文件随请求交给 Runtime，
+        // 模型若发现需要看屏幕，可调用 view_entry_screenshot 取回这张已备好的截图，
+        // 不必重新截屏（正则漏判的兜底）。
+        val fallbackScreenImage = screenContextAttachment
+            ?.takeIf { attachment == null }
+            ?.image
         // 待发附件先在 Main 快照，真正编码放到 runJob 的 IO 线程：附件要从原始引用重编码成
         // 「尽量无损」档，不能在主线程上解码大图。屏幕上下文图片本就是原生无损档，原样使用。
         val pendingForRun = composerState.pendingImages
@@ -781,6 +788,21 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                 withContext(Dispatchers.IO) {
                     pendingForRun.map { it.toRequestModelImage(this@EtaAssistantOverlayService, supportsVideo) }
                 }
+            // 兜底截图落盘到缓存目录：run 期间由 Runtime 的 view_entry_screenshot 读取；
+            // 不随本次协程结束删除（浮窗关闭后 run 可能仍在 Runtime 里继续），改按
+            // ENTRY_SCREEN_FILE_TTL_MS 在下次写入时清理过期文件。
+            val fallbackScreenFile = withContext(Dispatchers.IO) {
+                fallbackScreenImage?.let { image ->
+                    runCatching {
+                        val bytes = AgentChatImageCache.readBytes(image.reference)
+                            ?: return@runCatching null
+                        val directory = java.io.File(cacheDir, ENTRY_SCREEN_CACHE_DIR).apply { mkdirs() }
+                        val cutoff = System.currentTimeMillis() - ENTRY_SCREEN_FILE_TTL_MS
+                        directory.listFiles()?.forEach { if (it.lastModified() < cutoff) it.delete() }
+                        java.io.File(directory, "$runId.bin").apply { writeBytes(bytes) }
+                    }.getOrNull()
+                }
+            }
             // 输入区携带的模型 / 助手 / 思考档位 / 工具开关 → 运行时配置；
             // 取不到（理论上不会）时退回默认配置。
             val config = composerState.buildRunConfig() ?: AgentModelClient.loadConfig()
@@ -819,6 +841,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     allowUnmeasuredContextSend = true,
                     // 空串 = 普通对话；快捷功能预设由 Runtime 选择目录构建策略。
                     toolPreset = toolPreset,
+                    // 前置判断未附图的唤醒截图：交给 Runtime 的按需工具取用。
+                    entryScreenImagePath = fallbackScreenFile?.absolutePath.orEmpty(),
                     handoff = AgentRuntimeWire.EntryHandoff(
                         id = "$conversationKey:$runId",
                         source = AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE,
@@ -1519,6 +1543,10 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         private const val SYNTHETIC_STOPPED = "eta_status:stopped"
         private const val SYNTHETIC_RUNTIME_FAILED = "eta_status:runtime_failed"
         private const val FOREGROUND_DISMISS_TIMEOUT_MS = 2_000L
+        /** 前置判断未附图时，唤醒截图的临时落盘目录（按 TTL 清理，不随 run 删除）。 */
+        private const val ENTRY_SCREEN_CACHE_DIR = "eta-entry-screen"
+        /** 唤醒截图临时文件的保留时长：覆盖浮窗关闭后 run 在 Runtime 继续执行的时间。 */
+        private const val ENTRY_SCREEN_FILE_TTL_MS = 60 * 60 * 1000L
         private val mainHandler = Handler(Looper.getMainLooper())
 
         @Volatile

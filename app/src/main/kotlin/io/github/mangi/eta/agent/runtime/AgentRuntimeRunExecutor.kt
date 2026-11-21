@@ -316,6 +316,11 @@ internal class AgentRuntimeRunExecutor(
                         sessionId = request.effectiveModelSessionId,
                     )
                 }
+            // 唤醒截图兜底：助手弹窗 run、消息无附图、屏幕开关打开，且入口进程确实把
+            // 「已采集但未附图」的截图落盘传来。只有满足这些条件才把工具与文件交给执行器。
+            val popupRun = request.handoff?.source == AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE
+            val entryScreenFallback = popupRun && !presetRun && request.images.isEmpty() && allowScreen &&
+                request.config.screenTools && request.entryScreenImagePath.isNotBlank()
             val executor = AgentLocalTools(
                 context = appContext, logger = AndroidAgentLogger, browserRunId = request.runId,
                 guiControl = guiRun,
@@ -323,6 +328,31 @@ internal class AgentRuntimeRunExecutor(
                     it.source == AgentRuntimeWire.AGENT_UI_HANDOFF_SOURCE
                 }?.let { AgentUiHandoffPayload.from(it.payload).conversationId }.orEmpty(),
                 agentConversationId = request.effectiveModelSessionId,
+                // 前置判断漏判时的后置兜底：模型调用 view_entry_screenshot 时读取入口
+                // 已落盘的唤醒截图，直接作为工具结果图片返回，不重新截屏。
+                entryScreenImageProvider = if (entryScreenFallback) {
+                    {
+                        val bytes = runCatching {
+                            java.io.File(request.entryScreenImagePath).readBytes()
+                        }.getOrNull()
+                        val image = bytes?.let { raw ->
+                            runCatching {
+                                io.github.mangi.eta.agent.media.AgentImageCodec.fromScreenBytes(
+                                    raw,
+                                    io.github.mangi.eta.agent.media.SCREEN_CONTEXT_IMAGE_SOURCE,
+                                )
+                            }.getOrNull()
+                        }
+                        image?.let {
+                            AgentModelClient.ToolResult(
+                                content = "已返回用户唤醒助手时采集的屏幕截图（唤醒时刻画面）。",
+                                images = listOf(it),
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
                 decisionAllowedGroups = { decisionPlanRef.get()?.openableGroupLimit },
                 // 决策闲聊态逃生通道：目录（AgentToolCatalog.groupDiscoveryUnrestricted）与
                 // 提示（组索引）都按用户开关全集宣传了可打开的组，执行侧闸门必须同步放行，
@@ -732,8 +762,7 @@ internal class AgentRuntimeRunExecutor(
             // 唤起即屏幕上下文（硬边界：仅助手弹窗 run，主程序不做该判断）：判断模型判定或指令
             // 正则命中「需要看屏幕」且消息未附图时，预开屏幕组 + 注入首轮 observe_screen 引导，
             // 模型第一轮就能看到当前屏幕，省一次渐进解锁往返。预设运行（日程 chip/关键词）已按
-            // chip 语义带图或收窄工具，不参与该判定。
-            val popupRun = request.handoff?.source == AgentRuntimeWire.ETA_VOICE_HANDOFF_SOURCE
+            // chip 语义带图或收窄工具，不参与该判定。`popupRun` 在上方构造执行器时已算出。
             var screenLookHint = popupRun && !presetRun && request.images.isEmpty() && allowScreen &&
                 AgentScreenIntent.matches(request.prompt)
             var decisionPlan = if (presetRun) {
@@ -797,6 +826,9 @@ internal class AgentRuntimeRunExecutor(
                 // 唤起即屏幕上下文：屏幕组已预开（上面并入 plan/打开组），再注入首轮
                 // observe_screen 引导——模型一步到位带截图观察，省一次解锁往返。
                 screenObservationRule = screenLookHint,
+                // 唤醒截图兜底：入口已备好截图但未附图，目录下发 view_entry_screenshot，
+                // 提示优先取用该图（与 screenObservationRule 同时成立时提示侧优先兜底）。
+                entryScreenFallback = entryScreenFallback,
                 // 日程快速路径：专用短提示 + 最低思考档 + 有界轮次，目录退化时由 complete 自动失效。
                 calendarFastTask = calendarFastTask,
                 fastPathMaxRounds = AgentVoiceToolPresets.CALENDAR_FAST_MAX_ROUNDS,

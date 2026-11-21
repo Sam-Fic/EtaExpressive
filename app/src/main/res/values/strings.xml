@@ -401,6 +401,7 @@
   <string name="overlay_continuation_unavailable">This entry point does not support additional input</string>
   <string name="overlay_stopped">Stopped</string>
   <string name="tool_observe_screen">Observe screen</string>
+  <string name="tool_view_entry_screenshot">Wake screenshot</string>
   <string name="tool_tap">Tap</string>
   <string name="tool_tap_element">Tap element</string>
   <string name="tool_long_press">Long press</string>

@@ -91,6 +91,12 @@ internal object AgentToolCatalog {
          * 这样 `tools` 在会话内字节恒定，provider 的前缀缓存只在集合增长时失效一次。
          */
         nativeGroups: Set<String>? = null,
+        /**
+         * 唤醒截图兜底：本次运行有入口进程传来的「已采集、未附图」屏幕截图。
+         * 仅弹窗链路、消息无附图时为 true；与 [screenTools] 同时成立才下发
+         * `view_entry_screenshot`，执行侧仍会按屏幕开关兜底复查。
+         */
+        entryScreenFallback: Boolean = false,
     ): JSONArray {
         // 组开关只决定「参与下发」；延迟折叠与单工具禁用统一在最后一次过滤完成，
         // 目录过滤、索引行与 tools_use_group 枚举共用同一份可用性判定，
@@ -127,7 +133,12 @@ internal object AgentToolCatalog {
         }
         val emitted = JSONArray()
         if (basicTools) AgentQuestionToolCatalog.appendTo(emitted)
-        AgentContextAppToolCatalog.appendTo(emitted, screenTools = screenTools, basicTools = basicTools)
+        AgentContextAppToolCatalog.appendTo(
+            emitted,
+            screenTools = screenTools,
+            basicTools = basicTools,
+            entryScreenFallback = entryScreenFallback,
+        )
         if (basicTools) AgentSpeechToolCatalog.appendTo(emitted)
         if (screenTools) {
             AgentGestureToolCatalog.appendTo(emitted)

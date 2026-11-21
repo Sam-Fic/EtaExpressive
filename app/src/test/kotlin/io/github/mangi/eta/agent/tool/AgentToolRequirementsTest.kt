@@ -15,12 +15,16 @@ import org.junit.Test
 class AgentToolRequirementsTest {
     @Test
     fun everyRegisteredToolHasExactlyOneRequirement() {
-        // 目录有两种形态：组未打开（下发 tools_use_group）与全部打开（下发组内工具）。
-        // 注册表必须恰好覆盖两者的并集，否则要么漏注册、要么注册了永远不下发的工具。
+        // 目录有三种形态：组未打开（下发 tools_use_group）、全部打开（下发组内工具）、
+        // 以及助手弹窗 run 的唤醒截图兜底（额外下发 view_entry_screenshot）。
+        // 注册表必须恰好覆盖三者的并集，否则要么漏注册、要么注册了永远不下发的工具。
         val closed = catalog(root = true, virtualDisplay = true, openedGroups = emptySet())
         val opened = catalog(root = true, virtualDisplay = true)
-        val covered = closed.names() + opened.names()
+        val entryScreenFallback = catalog(root = true, virtualDisplay = true, entryScreenFallback = true)
+        val covered = closed.names() + opened.names() + entryScreenFallback.names()
         assertEquals(AgentToolRequirements.toolNames, covered)
+        assertTrue("view_entry_screenshot" in entryScreenFallback.names())
+        assertFalse("view_entry_screenshot" in opened.names())
         // 两种形态各自内部不得重复。
         assertEquals(closed.length(), closed.names().size)
         assertEquals(opened.length(), opened.names().size)
@@ -98,12 +102,14 @@ class AgentToolRequirementsTest {
         root: Boolean,
         virtualDisplay: Boolean = false,
         openedGroups: Set<String> = AgentToolGroups.allIds,
+        entryScreenFallback: Boolean = false,
     ) = AgentToolCatalog.build(
         terminalTools = true, browserTools = true,
         deviceTools = true, personalTools = true, dispatchTools = true,
         skillGitHubDiscovery = true, skillGitHubInstall = true, memoryTools = true,
         capabilities = AgentToolCapabilities(rootAvailable = root, virtualDisplay = virtualDisplay),
         openedToolGroups = openedGroups,
+        entryScreenFallback = entryScreenFallback,
     )
 
     private fun JSONArray.names(): Set<String> = (0 until length()).mapTo(linkedSetOf()) {

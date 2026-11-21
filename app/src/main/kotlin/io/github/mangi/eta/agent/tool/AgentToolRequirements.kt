@@ -33,7 +33,7 @@ internal object AgentToolRequirements {
             "ask_user",
             "get_current_context", "search_apps", "launch_app", "present_to_user", "keep_virtual_result", "open_uri", "browser_use", "text_to_speech",
             "web_search", "fetch_url",
-            "observe_screen", "tap", "tap_area", "tap_element", "long_press",
+            "observe_screen", "view_entry_screenshot", "tap", "tap_area", "tap_element", "long_press",
             "long_press_element", "swipe", "scroll", "scroll_element", "type_text", "input_text",
             "replace_text", "clear_text", "set_clipboard", "get_clipboard", "paste_text",
             "wait", "wait_for_text", "wait_for_package", "open_system_panel",

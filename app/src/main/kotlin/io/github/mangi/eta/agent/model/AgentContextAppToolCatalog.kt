@@ -5,7 +5,30 @@ import org.json.JSONObject
 
 /** 上下文、应用入口与屏幕观察工具 schema。 */
 internal object AgentContextAppToolCatalog {
-    fun appendTo(tools: JSONArray, screenTools: Boolean = true, basicTools: Boolean = true) {
+    fun appendTo(
+        tools: JSONArray,
+        screenTools: Boolean = true,
+        basicTools: Boolean = true,
+        /**
+         * 唤醒截图兜底：本次运行手里有一张「用户唤起助手时已采集、但未作为消息附件发送」
+         * 的屏幕截图。只在弹窗链路且消息无附图时置 true；schema 一旦下发，模型可按需调用。
+         */
+        entryScreenFallback: Boolean = false,
+    ) {
+        if (screenTools && entryScreenFallback) tools.put(
+            AgentToolSchema.function(
+                name = "view_entry_screenshot",
+                description = "Return the screenshot that was captured when the user woke this assistant, " +
+                    "before the assistant UI was shown. Use it when the request depends on what the current " +
+                    "screen shows but no screenshot was attached to the user message; it does not capture a " +
+                    "new frame. Prefer it over observe_screen when the screen has not been changed by earlier " +
+                    "tool actions in this run. If the result says the screenshot is unavailable, or you have " +
+                    "already changed the screen, call observe_screen with include_screenshot=true instead.",
+                parameters = JSONObject()
+                    .put("type", "object")
+                    .put("properties", JSONObject()),
+            )
+        )
         if (screenTools) for ((name,description) in listOf(
             "start_virtual_session" to "Start the background virtual-display session for this run; repeated calls do not create another, and failure does not fall back to the main screen.",
             "finish_virtual_session" to "Hand the marked delivery tasks over to the main screen in the background. With no marked tasks it cleans up this run's intermediate tasks and closes the virtual display without delivering (handedOff=false, released=true). Always check handedOff and released; on failure do not kill processes and do not claim the delivery succeeded."
