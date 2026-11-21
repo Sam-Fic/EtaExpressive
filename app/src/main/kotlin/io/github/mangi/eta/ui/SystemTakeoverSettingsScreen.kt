@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.DesktopWindows
 import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.Inventory
 import androidx.compose.material.icons.rounded.Lock
@@ -35,6 +36,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.capture.AssistantScreenshotBackend
+import io.github.mangi.eta.agent.capture.AssistantScreenshotCapture
 import io.github.mangi.eta.agent.voice.EtaVoiceInteractionService
 import io.github.mangi.eta.config.AssistantEntryMode
 import io.github.mangi.eta.config.PowerAssistantTarget
@@ -58,8 +61,10 @@ import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.StreamPerformanceDiagnostics
 import io.github.mangi.eta.ui.navigation.AppRoute
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import rikka.shizuku.Shizuku
 
 /**
  * 系统助手接管子页：原先散在设置主页的四个 hook 分组（系统助手接管 / 厂商助手兼容 /
@@ -169,6 +174,40 @@ internal fun SystemTakeoverSettingsScreen(
     }
     val assistantEntryModes = AssistantEntryMode.entries
     val assistantEntryItems = assistantEntryModes.map { it.displayName(context) }
+
+    // 屏幕截图方式：助手读屏以无障碍为主，这里配的是「无障碍取不到帧时的兜底后端」。
+    // 应用自身能力，走本地 Agent 配置（与唤起方式同库），不依赖 LSPosed 连接。
+    val screenshotBackends = AssistantScreenshotBackend.entries
+    val screenshotBackendItems = screenshotBackends.map { backend ->
+        stringResource(
+            when (backend) {
+                AssistantScreenshotBackend.AUTO -> R.string.assistant_screenshot_backend_auto
+                AssistantScreenshotBackend.ROOT -> R.string.assistant_screenshot_backend_root
+                AssistantScreenshotBackend.SHIZUKU -> R.string.assistant_screenshot_backend_shizuku
+            },
+        )
+    }
+    var screenshotBackend by remember {
+        mutableStateOf(Prefs.assistantScreenshotBackend(Prefs.localAgentPreferences()))
+    }
+    // Shizuku 授权行只在服务可达且尚未授权时出现；授权结果复查不依赖监听 API
+    //（本仓未引入可核验签名的监听入口），点击后轮询 isShizukuAvailable。
+    var shizukuReachable by remember { mutableStateOf(AssistantScreenshotCapture.isShizukuReachable()) }
+    var shizukuAvailable by remember { mutableStateOf(AssistantScreenshotCapture.isShizukuAvailable()) }
+    fun requestShizuku() {
+        shizukuReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        if (!shizukuReachable) return
+        runCatching { Shizuku.requestPermission(SHIZUKU_REQUEST_CODE) }
+        coroutineScope.launch {
+            repeat(SHIZUKU_POLL_ROUNDS) {
+                delay(SHIZUKU_POLL_INTERVAL_MS)
+                if (AssistantScreenshotCapture.isShizukuAvailable()) {
+                    shizukuAvailable = true
+                    return@launch
+                }
+            }
+        }
+    }
     // 分组构建器与设置主页共用，位置表是它的必填入参；本页不参与搜索定位，建了不读。
     val anchors = remember { SettingsAnchorIndex() }
 
@@ -316,6 +355,54 @@ internal fun SystemTakeoverSettingsScreen(
                     key = Prefs.Keys.AGENT_REQUIRE_PREFIX,
                     icon = Icons.Rounded.Code,
                 )
+            }
+        }
+
+        // ── 屏幕识别截图 ────────────────────────────────────────────
+        settingsGroup(
+            title = { stringResource(R.string.assistant_screenshot_backend_group) },
+            sectionModifier = Modifier,
+            anchors = anchors,
+            highlightedKey = null,
+        ) {
+            row {
+                EtaSegmentedDropdownRow(
+                    title = stringResource(R.string.assistant_screenshot_backend_title),
+                    summary = stringResource(R.string.assistant_screenshot_backend_summary),
+                    items = screenshotBackendItems,
+                    selectedIndex = screenshotBackends.indexOf(screenshotBackend),
+                    onItemSelected = { index ->
+                        val backend = screenshotBackends.getOrNull(index)
+                            ?: return@EtaSegmentedDropdownRow
+                        // 与唤起方式同库（本地 Agent 配置），LSPosed 未连接也可写。
+                        val targetPrefs = Prefs.localAgentPreferences()
+                            ?: return@EtaSegmentedDropdownRow
+                        if (putStringSync(
+                                prefs = targetPrefs,
+                                key = Prefs.Keys.ASSISTANT_SCREENSHOT_BACKEND,
+                                value = backend.name,
+                            )
+                        ) {
+                            screenshotBackend = backend
+                        } else {
+                            Toast.makeText(
+                                context.applicationContext,
+                                context.getString(R.string.settings_write_failed),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                    icon = Icons.Rounded.DesktopWindows,
+                )
+            }
+            if (shizukuReachable && !shizukuAvailable) {
+                row {
+                    EtaClickableRow(
+                        title = stringResource(R.string.assistant_screenshot_shizuku_grant_title),
+                        summary = stringResource(R.string.assistant_screenshot_shizuku_grant_summary),
+                        onClick = { requestShizuku() },
+                    )
+                }
             }
         }
 
@@ -488,6 +575,13 @@ private fun isEtaAssistantActive(context: Context): Boolean =
         context,
         ComponentName(context, EtaVoiceInteractionService::class.java),
     )
+
+/** 与澎湃记一致：Shizuku 授权请求用固定 requestCode。 */
+private const val SHIZUKU_REQUEST_CODE = 1001
+
+/** Shizuku 授权后的轮询复查参数。 */
+private const val SHIZUKU_POLL_ROUNDS = 10
+private const val SHIZUKU_POLL_INTERVAL_MS = 1_000L
 
 private fun AssistantEntryMode.displayName(context: Context): String = context.getString(
     when (this) {
