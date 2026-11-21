@@ -739,7 +739,7 @@
   <string name="ui_regenerate_reply_84a7d9">重新產生回覆</string>
   <string name="ui_reset_browser_session_791b36">重設瀏覽器工作階段</string>
   <string name="ui_lock_screen_evokes_automatic_voice_input_1cde18">鎖定畫面喚起自動語音輸入</string>
-  <string name="ui_deep_thinking_enabled_by_default_c032d6">預設啟用推理</string>
+  <string name="ui_deep_thinking_enabled_by_default_c032d6">允許推理</string>
   <string name="tool_tap_area">點按區域</string>
   <string name="tool_current_context">時間與位置</string>
   <string name="tool_memory_get">讀取記憶</string>

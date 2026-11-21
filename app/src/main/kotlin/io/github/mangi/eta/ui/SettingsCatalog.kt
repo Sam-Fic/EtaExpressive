@@ -282,7 +282,7 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 key = SettingsKeys.THINKING_DEFAULT,
                 title = stringResource(R.string.ui_deep_thinking_enabled_by_default_c032d6),
                 summary = null,
-                keywords = "thinking reasoning 深度思考 推理 思维链 慢思考 默认开启",
+                keywords = "thinking reasoning 深度思考 推理 思维链 慢思考 允许 总开关",
                 icon = Icons.Rounded.Psychology,
                 group = groupModelFeatures,
                 destination = SettingsDestination.Inline,
