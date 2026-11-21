@@ -8,5 +8,6 @@
     <string name="licenses_entry_nimbus_summary">Apache-2.0 · JOSE/JWT validation for sign-in ID tokens</string>
     <string name="licenses_entry_gpl3_summary">GNU GPL v3.0 · Applies to the built-in browser adapted from OpenMinis</string>
     <string name="licenses_entry_agpl3_summary">GNU AGPL v3.0 · Applies to code referenced from Hyper-pick-up-code</string>
+    <string name="licenses_entry_apache2_summary">Apache License 2.0 · Offline speech engines and other bundled Apache-2.0 components</string>
     <string name="licenses_load_failed">Could not load this license file.</string>
 </resources>

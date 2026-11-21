@@ -8,5 +8,6 @@
     <string name="licenses_entry_nimbus_summary">Apache-2.0 · 登录 ID Token 的 JOSE/JWT 校验</string>
     <string name="licenses_entry_gpl3_summary">GNU GPL v3.0 · 适用于改编自 OpenMinis 的内置浏览器</string>
     <string name="licenses_entry_agpl3_summary">GNU AGPL v3.0 · 适用于参考移植自 Hyper-pick-up-code 的取餐码识别代码</string>
+    <string name="licenses_entry_apache2_summary">Apache License 2.0 · 离线语音引擎及其他随包分发的 Apache-2.0 组件</string>
     <string name="licenses_load_failed">许可证文件读取失败。</string>
 </resources>

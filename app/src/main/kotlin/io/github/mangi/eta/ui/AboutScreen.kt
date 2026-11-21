@@ -322,6 +322,11 @@ internal fun AboutCreditsScreen(onBack: () -> Unit) {
             url = "https://github.com/k2-fsa/sherpa-onnx",
         ),
         CreditEntry(
+            name = "k2-fsa/sherpa-ncnn",
+            summary = stringResource(R.string.credits_entry_sherpa_ncnn),
+            url = "https://github.com/k2-fsa/sherpa-ncnn",
+        ),
+        CreditEntry(
             name = "OpenMinis/OpenMinis",
             summary = stringResource(R.string.credits_entry_openminis),
             url = "https://github.com/OpenMinis/OpenMinis",

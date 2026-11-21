@@ -148,6 +148,23 @@ OpenAI、Anthropic、Claude、阿里云百炼、Qwen、DeepSeek、Kimi、Xiaomi 
 
 EmbeddingGemma 模型名称与商标归 Google DeepMind 所有，本处使用仅用于准确标识所下载的开源模型制品。
 
+## 离线语音运行时（sherpa-onnx 与 sherpa-ncnn）
+
+Eta 的离线语音识别、合成与 VAD 基于两个 k2-fsa 引擎，Kotlin JNI 绑定随包分发，均采用 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)：
+
+| 引擎 | 上游仓库 | 绑定版本 | 许可证 | 原生库 |
+| --- | --- | --- | --- | --- |
+| sherpa-onnx（ONNX Runtime） | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | v1.13.8 | Apache-2.0；ONNX Runtime 为 MIT | `libsherpa-onnx-jni.so`、`libonnxruntime.so` |
+| sherpa-ncnn（ncnn / pnnx） | [k2-fsa/sherpa-ncnn](https://github.com/k2-fsa/sherpa-ncnn) | v2.1.15 | Apache-2.0 | `libsherpa-ncnn-jni.so`、`libncnn.so` |
+
+两个引擎的 JNI 绑定从上游固定 tag 引入：sherpa-onnx 绑定原样 vendored 到 `app/src/main/kotlin/com/k2fsa/sherpa/onnx/`（包名、类名与 JNI 声明的配置字段逐字节保留，R8 keep 整个包）；sherpa-ncnn 绑定保留包与配置字段，裁去 demo 辅助并补充确定性 `AutoCloseable` 清理。原生库取官方 Android release，URL 与 SHA-256 固定在 `scripts/prepare-speech-runtime.py`，由 Gradle 在构建期下载校验。各引擎完整归属与模型清单见 `third_party/sherpa-onnx/NOTICE.md` 与 `third_party/sherpa-ncnn/NOTICE.md`。
+
+与 EmbeddingGemma 一致，**语音模型权重不打包进 APK**。用户在语音设置页选择模型包与下载源（Hugging Face 或 ModelScope 镜像）后按需下载，逐文件校验字节数与 SHA-256；权重许可证不由引擎的 Apache 授权涵盖，下载确认步骤已提示此限制。
+
+## 动态取色
+
+Eta 的动态取色与 Material You 配色方案生成使用 [jordond/MaterialKolor](https://github.com/jordond/MaterialKolor) 的 `material-color-utilities` 模块（Maven 依赖 `com.materialkolor:material-color-utilities:5.0.0`，版本由 `gradle/libs.versions.toml` 声明）。该库整体采用 [MIT License](https://github.com/jordond/MaterialKolor/blob/main/LICENSE)；其中的 `material-color-utilities` 模块内含 Google 上游的 Material Color Utilities Kotlin 源码，采用 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)，该模块内保留了 Apache-2.0 全文（`material-color-utilities/src/commonMain/kotlin/com/materialkolor/LICENSE`）。Eta 使用该模块从壁纸或种子色生成 HCT / DynamicScheme 配色，供主题层取用。
+
 ## 可选语言运行时
 
 Eta 不把 uv 或 Node.js 打包进 APK。用户主动安装对应 profile 时，Eta 下载当前固定的最新正式版制品；Debian 使用 Node.js 官方 Linux glibc 发行包，Alpine 使用其稳定仓库中的 `nodejs-current`，uv 按所选发行版下载官方 glibc 或 musl 制品。

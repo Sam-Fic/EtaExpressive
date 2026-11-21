@@ -74,6 +74,12 @@ private fun licenseEntries(): List<LicenseEntry> = listOf(
         summary = stringResource(R.string.licenses_entry_agpl3_summary),
         assetName = "licenses/AGPL-3.0.txt",
     ),
+    LicenseEntry(
+        id = "apache-2.0",
+        title = "Apache License 2.0",
+        summary = stringResource(R.string.licenses_entry_apache2_summary),
+        assetName = "licenses/Apache-2.0.txt",
+    ),
 )
 
 /**

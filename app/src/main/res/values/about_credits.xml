@@ -14,6 +14,7 @@
     <string name="credits_entry_omnibot">Reference project for Android AI agents.</string>
     <string name="credits_entry_opencode">Terminal AI coding agent. The protocol reference for the remote OpenCode integration; the v2 wire protocol was verified against its serve implementation (v2.2.5).</string>
     <string name="credits_entry_sherpa">k2-fsa offline speech runtime (sherpa-onnx and sherpa-ncnn). The Kotlin JNI bindings are bundled (Apache-2.0), powering local speech recognition, synthesis, and VAD.</string>
+    <string name="credits_entry_sherpa_ncnn">ncnn-based offline speech engine. Its Kotlin JNI binding and native libraries ship with the app (Apache-2.0); model weights are downloaded on demand.</string>
     <string name="credits_entry_openminis">Adapted source of the built-in browser. The browser code is adapted from this project (GPL-3.0) with package/resource isolation, Linux guest path mapping, cookie offload, and user takeover.</string>
     <string name="credits_entry_imagine">Image-generation protocol reference. Reference-image/mask editing, size tiers, and the JSON edit protocol were verified against its ApiModels and ImageRepository implementations.</string>
     <string name="credits_entry_stchatu8">A SillyTavern plugin and the design inspiration for the NovelAI workbench; no source was copied, only its public interface behavior was used as the compatibility target.</string>
