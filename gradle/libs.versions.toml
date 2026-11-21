@@ -27,6 +27,8 @@ robolectric = "4.16.1"
 commonsCompress = "1.28.0"
 jsoup = "1.23.2"
 xz = "1.12"
+# Shizuku：免 Root 截屏（screencap 经 Shizuku.newProcess）；版本与澎湃记移植源一致。
+shizuku = "13.1.5"
 androidx-baselineprofile = "1.5.0"
 androidx-benchmark-macro-junit4 = "1.5.0"
 # androidX Compose 实现版本。它不是独立可调的版本：material3 1.5.0-alpha29 的 POM 把
@@ -69,6 +71,8 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 json = { group = "org.json", name = "json", version.ref = "json" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
+shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -103,6 +103,9 @@ android {
 
     androidResources {
         localeFilters += listOf("en", "b+zh+Hans", "b+zh+Hant")
+        // PP-OCR det/rec 模型（assets/models/ppocrv6_tiny）以原始字节随机读取加载，
+        // 压缩入包会被 ORT 直接打开失败，与澎湃记移植源的打包口径一致。
+        noCompress += "onnx"
     }
 
     packaging {
@@ -204,6 +207,20 @@ dependencies {
     // 基准配置文件：由 :baselineprofile 模块在真机 / 模拟器上生成（generateBaselineProfile）。
     baselineProfile(project(":baselineprofile"))
     implementation(libs.hidden.api.bypass)
+
+    // 取餐码识别（移植自 badnng/Hyper-pick-up-code，AGPL-3.0）：
+    // PP-OCRv6 tiny 推理走 onnxruntime（slim 变体，纯 CPU，不含 QNN/NPU 后端），
+    // DB 后处理（findContours/minAreaRect/unclip）依赖 OpenCV。均为本地 AAR，来源见
+    // docs/THIRD_PARTY_NOTICES.md。
+    // 注意：slim AAR 已重打包剔除 jni/*/libonnxruntime.so——语音引擎（sherpa-onnx
+    // prepareSpeechRuntime）自带 1.28.2 版同名库且按 prepare 脚本随包；ORT C API 向前
+    // 兼容（老消费者 GetApi(21) 在新库上保证可用，老库喂新消费者会炸），因此统一由
+    // sherpa 的 1.28.2 提供运行时，本 AAR 只保留 Java 类与 libonnxruntime4j_jni.so。
+    implementation(files("libs/onnxruntime-slim.aar"))
+    implementation(files("libs/opencv-slim.aar"))
+    // Shizuku：免 Root 截屏后端之一（screencap 经 Shizuku.newProcess）。
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
     // DataStore：Provider / Model 结构化 JSON 与当前选中 ID 等键值
     implementation(libs.datastore.preferences)
