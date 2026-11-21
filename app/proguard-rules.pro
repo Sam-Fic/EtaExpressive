@@ -63,6 +63,16 @@
 -keep class com.k2fsa.sherpa.ncnn.** { *; }
 -keep class com.k2fsa.sherpa.onnx.** { *; }
 
+# ONNX Runtime：JNI 侧按字面类名 + 构造器签名反射造对象（如
+# Java_ai_onnxruntime_OrtSession_getInputInfo 里 FindClass("ai/onnxruntime/NodeInfo") 再
+# NewObject 调 (String, ValueInfo) 构造器）。默认 android 规则只按 native 方法描述符保留了
+# 类名，构造器仍会被 R8 裁掉，运行到 getInputInfo 时原生层抛
+# NoSuchMethodError 并 assert abort（SIGABRT 杀进程，取码浮窗直接消失）。
+# 本仓 onnxruntime 是重打包的 slim AAR（去掉了 consumer proguard.txt），必须在 App 层
+# 整包保留类与成员；不要改成仅 keep 类名。
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**
+
 # LiteRT-LM（本地多模态 Embedding 运行时）：JNI 与反射按上游类名查找引擎/配置类。
 -keep class com.google.ai.edge.litertlm.** { *; }
 -dontwarn com.google.ai.edge.litertlm.**
