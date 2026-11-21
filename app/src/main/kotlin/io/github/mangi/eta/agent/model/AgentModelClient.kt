@@ -178,6 +178,14 @@ internal object AgentModelClient {
          */
         screenObservationRule: Boolean = false,
         /**
+         * 唤醒截图兜底：入口进程已采集、但前置判断没有附进消息的屏幕截图。
+         *
+         * 仅在助手弹窗 run 且消息无附图时为 true。此时目录额外下发
+         * `view_entry_screenshot`，提示也优先引导模型取用这张截图，而不是重新截屏。
+         * 与 [screenObservationRule] 可同时成立；提示侧以本标记优先。
+         */
+        entryScreenFallback: Boolean = false,
+        /**
          * 「添加日程」快速路径：用一条专用短系统约束替换全部常驻提示，并在超轮次后
          * 清空工具目录强制收束。仅在预设目录确实生效时为 true（退化回普通对话时自动关闭）。
          */
@@ -368,6 +376,8 @@ internal object AgentModelClient {
                 presetToolNames = preset,
                 // 缓存优先档：只有会话级原生组的工具进目录，其余改由 tool_call 转发。
                 nativeGroups = nativeGroups,
+                // 唤醒截图兜底：只在屏幕开关打开且入口确实提供了截图时下发。
+                entryScreenFallback = entryScreenFallback && config.screenTools,
             )
             for (index in 0 until additionalTools.length()) {
                 tools.put(additionalTools.opt(index))
@@ -447,6 +457,7 @@ internal object AgentModelClient {
             dynamicToolGroups = mcpGroups,
             presetRunAt = effectivePresetRunAt,
             screenObservationRule = screenObservationRule,
+            entryScreenFallback = entryScreenFallback && config.screenTools,
             calendarFastTask = fastTaskActive,
         )
         var transcriptStartIndex = messages.length()
