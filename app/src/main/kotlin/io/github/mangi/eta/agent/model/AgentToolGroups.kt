@@ -128,9 +128,10 @@ internal object AgentToolGroups {
     val PERSONAL_GROUP: AgentToolGroup = AgentToolGroup(
         id = "personal",
         summary = "Personal content: contacts, call log, SMS, personal notes and recordings, " +
-            "files and downloads, bills/todos/trips, chat images, semantic media search.",
+            "files and downloads, bills/todos/trips, chat images, semantic media search, pickup codes.",
         toolNames = AgentDeviceToolCatalog.personalReadToolNames() +
-            setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA),
+            setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
+            setOf(AgentPickupCodeToolCatalog.PICKUP_CODE),
     )
 
     /**

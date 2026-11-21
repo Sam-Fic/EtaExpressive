@@ -1892,6 +1892,11 @@ fun AgentAppRoot(
                     onOpenEditor = { serverId -> pushRoute(AppRoute.RemoteAgentEditor(serverId)) },
                 )
             }
+            entry<AppRoute.PickupCodes>(swipeDismiss = navSwipeDismiss) {
+                io.github.mangi.eta.ui.screens.pickup.PickupCodesScreen(
+                    onBack = ::popRoute,
+                )
+            }
             entry<AppRoute.RemoteAgentEditor>(swipeDismiss = navSwipeDismiss) { route ->
                 io.github.mangi.eta.ui.screens.settings.RemoteAgentEditorScreen(
                     serverId = route.serverId,

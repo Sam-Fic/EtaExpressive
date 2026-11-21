@@ -18,6 +18,7 @@ import io.github.mangi.eta.agent.device.RootAccess
 import io.github.mangi.eta.agent.device.RootShellDeviceController
 import io.github.mangi.eta.agent.device.BoundedRootCommandExecutor
 import io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog
+import io.github.mangi.eta.agent.model.AgentPickupCodeToolCatalog
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.model.AgentHttpClient
 import io.github.mangi.eta.agent.device.LocalNetworkPermission
@@ -304,6 +305,7 @@ internal class AgentLocalTools(
     private val selfHistoryTools = AgentSelfHistoryTools(context, agentConversationId)
     private val selfMcpTools = AgentSelfMcpTools(context)
     private val mediaSearchTools = AgentMediaSearchTools(context)
+    private val pickupCodeTools = AgentPickupCodeTools(context)
     /** 自进化底座：模型可自行创建声明式配方（工具），配方即时注册为可调用工具。 */
     // 与设置页共用进程级唯一 store：用户停用/删除配方后，agent 侧立即看到，不会继续暴露已收回的工具。
     internal val recipeStore = AgentToolRecipeStore.get(context)
@@ -1131,6 +1133,7 @@ internal class AgentLocalTools(
                 AgentSelfSettingsToolCatalog.CONFIGURE_MCP -> textResult(selfSettingsTool { selfMcpTools.execute(args) })
                 // 是否被禁用由 groupToolPermissionError 的单工具兜底统一裁决，无需专用门禁。
                 AgentMediaSearchToolCatalog.SEARCH_MEDIA -> textResult(mediaSearchTools.execute(args))
+                AgentPickupCodeToolCatalog.PICKUP_CODE -> textResult(pickupCodeTools.execute(args))
                 AgentSelfAuthorTools.AUTHOR_TOOL -> textResult(selfAuthorTool { selfAuthorTools.execute(AgentSelfAuthorTools.AUTHOR_TOOL, args) ?: "" })
                 AgentSelfAuthorTools.LIST_TOOLS -> textResult(selfAuthorTool { selfAuthorTools.execute(AgentSelfAuthorTools.LIST_TOOLS, args) ?: "" })
                 else -> textResult(
@@ -3007,14 +3010,15 @@ internal class AgentLocalTools(
     private companion object {
         // 名单一律取自统一 taxonomy（AgentToolGroups / AgentDeviceToolCatalog），
         // 本地再抄一份必然漂移。这里只保留「派发给结构化设备执行器」的路由集合；
-        // semantic_search_media 有自己的门禁与执行路径，不参与结构化设备派发。
+        // semantic_search_media / pickup_code 有自己的门禁与执行路径，不参与结构化设备派发。
         val DEVICE_TOOL_NAMES =
             io.github.mangi.eta.agent.model.AgentToolGroups.DEVICE_GROUP.toolNames +
                 io.github.mangi.eta.agent.model.AgentToolGroups.CALENDAR_GROUP.toolNames +
                 io.github.mangi.eta.agent.model.AgentToolGroups.DEVICE_STATE_GROUP.toolNames +
                 (
                     io.github.mangi.eta.agent.model.AgentToolGroups.PERSONAL_GROUP.toolNames -
-                        io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog.SEARCH_MEDIA
+                        io.github.mangi.eta.agent.model.AgentMediaSearchToolCatalog.SEARCH_MEDIA -
+                        io.github.mangi.eta.agent.model.AgentPickupCodeToolCatalog.PICKUP_CODE
                     )
         val MEMORY_TOOL_NAMES = setOf("memory_get", "memory_write")
         /** 允许 `display=main` 显式请求主屏的工具；其余 GUI 工具在后台模式一律副屏。 */

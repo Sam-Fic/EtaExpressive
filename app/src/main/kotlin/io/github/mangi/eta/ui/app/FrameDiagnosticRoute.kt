@@ -80,4 +80,5 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     is AppRoute.ToolRecipeEdit -> FrameDiagnosticPage.ToolRecipeEdit
     AppRoute.RemoteAgents -> FrameDiagnosticPage.Settings
     is AppRoute.RemoteAgentEditor -> FrameDiagnosticPage.Settings
+    AppRoute.PickupCodes -> FrameDiagnosticPage.Settings
 }

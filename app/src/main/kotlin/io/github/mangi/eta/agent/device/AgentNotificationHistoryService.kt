@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import io.github.mangi.eta.agent.pickup.PickupCodeNotificationObserver
 import io.github.mangi.eta.data.repository.NotificationHistoryRepository
 
 class AgentNotificationHistoryService : NotificationListenerService() {
@@ -32,13 +33,28 @@ class AgentNotificationHistoryService : NotificationListenerService() {
 
     private fun record(sbn: StatusBarNotification) {
         val extras = sbn.notification.extras
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
         repository.record(
             key = sbn.key,
             packageName = sbn.packageName,
-            title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
-            text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
-            subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
+            title = title,
+            text = text,
+            subText = subText,
             postedAt = sbn.postTime,
+        )
+        // 取餐码自动拦截：fire-and-forget，通知历史照旧入库，两链路互不阻塞。
+        // 很多外卖/快递通知把正文放在 EXTRA_BIG_TEXT，这里只为拦截链路多取一份。
+        PickupCodeNotificationObserver.onPosted(
+            context = applicationContext,
+            packageName = sbn.packageName,
+            title = title,
+            text = text,
+            subText = listOfNotNull(
+                subText,
+                extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
+            ).filter { it.isNotBlank() }.joinToString("\n").ifBlank { null },
         )
     }
 

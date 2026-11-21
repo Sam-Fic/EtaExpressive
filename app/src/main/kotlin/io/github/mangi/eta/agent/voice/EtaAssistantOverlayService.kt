@@ -3,12 +3,15 @@ package io.github.mangi.eta.agent.voice
 import android.Manifest
 import android.app.Service
 import android.app.ActivityOptions
+import android.app.LocaleManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -49,12 +52,17 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.accessibility.AgentAccessibilityService
+import io.github.mangi.eta.agent.capture.AssistantScreenshotCapture
 import io.github.mangi.eta.agent.media.AgentChatImageCache
 import io.github.mangi.eta.agent.media.AgentImageCodec
 import io.github.mangi.eta.agent.media.MAX_AGENT_VIDEO_BYTES
 import io.github.mangi.eta.agent.media.SCREEN_CONTEXT_IMAGE_SOURCE
 import io.github.mangi.eta.agent.model.AgentFileReferencePromptCodec
 import io.github.mangi.eta.agent.model.AgentScreenIntent
+import io.github.mangi.eta.agent.model.AgentPickupCodeToolCatalog
+import io.github.mangi.eta.agent.pickup.PickupCodeExtractor
+import io.github.mangi.eta.agent.pickup.PickupCodeNotifier
+import io.github.mangi.eta.agent.pickup.PickupCodeSettings
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.question.AgentQuestionAnswer
 import io.github.mangi.eta.agent.question.AgentQuestionCodec
@@ -77,6 +85,8 @@ import io.github.mangi.eta.ui.MainActivity
 import io.github.mangi.eta.ui.app.AgentAppTheme
 import io.github.mangi.eta.data.model.AppearanceSettings
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
+import io.github.mangi.eta.data.repository.PickupCodeRepository
+import io.github.mangi.eta.data.repository.PickupCodeSource
 import io.github.mangi.eta.ui.app.AgentRunMessageProjector
 import io.github.mangi.eta.ui.model.AgentChatMessageUi
 import io.github.mangi.eta.ui.model.AgentMessageUi
@@ -87,6 +97,7 @@ import io.github.mangi.eta.ui.model.ThinkingMessageUi
 import io.github.mangi.eta.ui.model.SystemNoticeCode
 import io.github.mangi.eta.ui.model.SystemNoticeMessageUi
 import io.github.mangi.eta.ui.model.ToolActivityMessageUi
+import io.github.mangi.eta.ui.model.ToolActivityStatusUi
 import io.github.mangi.eta.ui.model.TokenUsageUi
 import io.github.mangi.eta.ui.model.UserMessageUi
 import java.util.UUID
@@ -103,6 +114,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Eta 数字助理的用户界面窗口。
@@ -163,6 +175,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     private var inputFocusRequestKey by mutableIntStateOf(-1)
     /** 唤起方式=语音识别的听写开录令牌：每次语音唤起 ++；面板在屏时经重组触发重开。 */
     private var dictationStartRequest by mutableIntStateOf(0)
+    /** 服务侧显式停听写令牌：预设 chip 提交前收声（听写会话在 composer 内部，
+     *  VoiceModeController.stop 不覆盖它；cancel 幂等，面板在屏时经重组触发）。 */
+    private var dictationStopRequest by mutableIntStateOf(0)
     /**
      * 系统选择器让位中：附件/权限跳板把选择器 Activity 打到浮窗之下，浮窗必须整体
      * 隐身（alpha 0）且整窗放行触摸（FLAG_NOT_TOUCHABLE），选择器才能被正常操作。
@@ -203,6 +218,48 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
+
+    /** 当前生效的本地化 Resources：attachBaseContext 时派生，每次唤起（showEntry）刷新。 */
+    private var localizedResources: Resources? = null
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        localizedResources = deriveLocalizedResources(base)
+    }
+
+    /**
+     * 浮窗文案跟随应用语言设置（per-app language）。
+     *
+     * 语言设置走平台 per-app language（LanguageSettingsRepository 直读写
+     * `LocaleManager.applicationLocales`），但系统只给 Activity 重置 base config，
+     * Service 上下文的 Resources 停在进程启动时的 locale（2026-11-15 米家页实测：
+     * applicationContext.getString 不随 per-app locale）。浮窗全部文案都从本服务
+     * 上下文解析，不换 Resources 就会停回默认语言：
+     * - Compose 面：`ComposeView(this)` 的 LocalContext / LocalResources /
+     *   LocalConfiguration 由 view.context 的 getResources() 派生（compose-ui
+     *   1.13.0-alpha01 `ComposeViewContext.ProvideCompositionLocals$ui` 字节码取证）；
+     * - 服务面：toast、语音预设 prompt、取餐码 OCR 汇总等 getString——Context.getString
+     *   为 final（android-37 stub 证实），一律转发 getResources()。
+     *
+     * 因此覆写 getResources 返回按当前语言派生的配置上下文 Resources：per-app 语言
+     * 优先，未设置应用语言时跟随当前系统语言（getSystemLocales，签名经 android-37
+     * javap 核实；进程存活期间系统语言可能变过，base 快照不可靠）。服务实例可跨唤起
+     * 存活（hideForForegroundOperation 只拆窗不自杀），所以每次 showEntry 都重新派生；
+     * 派生只重设 locales，密度等其余配置沿用 base。存储 / IO 路径不取本方法，行为不变。
+     */
+    override fun getResources(): Resources = localizedResources ?: super.getResources()
+
+    /** 按 per-app 语言（缺省=当前系统语言）从 base 派生本地化 Resources。 */
+    private fun deriveLocalizedResources(base: Context): Resources {
+        val localeManager = base.getSystemService(LocaleManager::class.java) ?: return base.resources
+        val locales = localeManager.applicationLocales
+            .takeIf { !it.isEmpty }
+            ?: localeManager.systemLocales
+        val configuration = Configuration(base.resources.configuration).apply {
+            setLocales(locales)
+        }
+        return base.createConfigurationContext(configuration).resources
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -275,6 +332,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     }
 
     private fun showEntry() {
+        // 服务实例可能跨语言切换存活（隐藏路径只拆窗不自杀），每次唤起先刷新本地化
+        // Resources，浮窗文案才不会停在改动前的语言（见 getResources 的 KDoc）。
+        localizedResources = deriveLocalizedResources(baseContext)
         if (!Settings.canDrawOverlays(this)) {
             AndroidAgentLogger.warnThrottled("eta_assistant_overlay_permission_missing") {
                 "Eta assistant overlay permission is missing"
@@ -352,12 +412,13 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         exitAnimationRequested = false
         val accessibility = AgentAccessibilityService.current()
         if (accessibility == null) {
-            uiState = uiState.copy(
-                screenContext = EtaScreenContextUiState(
-                    phase = EtaScreenContextPhase.UNAVAILABLE,
-                ),
-            )
-            presentEntry(generation, voiceWake)
+            // 无障碍服务未启用：按「屏幕截图方式」设置兜底（root/Shizuku 静默取帧；
+            // 无可用后端保持原 UNAVAILABLE 态）。先挂窗再等兜底帧，入口不被截屏阻塞。
+            entryCaptureJob = scope.launch {
+                presentEntry(generation, voiceWake)
+                val attachment = captureFallbackAttachment()
+                finalizeEntryCapture(generation, voiceWake, attachment)
+            }
             return
         }
         entryCaptureJob = scope.launch {
@@ -370,32 +431,22 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             )
             val bitmap = result.bitmap
             val attachment = if (bitmap == null || result.criticalWindowMissing) {
-                null
+                // 无障碍没拿到帧：按「屏幕截图方式」设置兜底（root/Shizuku）。
+                captureFallbackAttachment()
             } else {
-                try {
-                    runCatching {
-                        val image = AgentImageCodec.fromScreenContextBitmap(
-                            bitmap,
-                            source = SCREEN_CONTEXT_IMAGE_SOURCE,
-                        )
-                        val preview = AgentImageCodec.previewFromReference(
-                            this@EtaAssistantOverlayService,
-                            image,
-                        ) ?: return@runCatching null
-                        EtaScreenContextAttachment(
-                            image = image,
-                            previewDataUrl = preview.reference,
-                        )
-                    }.onFailure { throwable ->
-                        AndroidAgentLogger.warn(
-                            "Eta assistant entry screenshot encode failed: " +
-                                "type=${throwable.javaClass.simpleName}"
-                        )
-                    }.getOrNull()
-                } finally {
-                    if (!bitmap.isRecycled) bitmap.recycle()
-                }
+                encodeScreenContextAttachment(bitmap)
             }
+            finalizeEntryCapture(generation, voiceWake, attachment)
+        }
+    }
+
+    /** 入口截屏收尾：挂附件、落 AVAILABLE/UNAVAILABLE 态并呈现入口（过期代次丢弃）。 */
+    private fun finalizeEntryCapture(
+        generation: Long,
+        voiceWake: Boolean,
+        attachment: EtaScreenContextAttachment?,
+    ) {
+        scope.launch {
             withContext(Dispatchers.Main.immediate) {
                 if (generation != entryGeneration) return@withContext
                 entryCaptureJob = null
@@ -414,6 +465,41 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             }
         }
     }
+
+    /** 位图 → 屏幕上下文附件：编码失败返回 null（日志只记类型），位图用后即收。 */
+    private fun encodeScreenContextAttachment(bitmap: android.graphics.Bitmap): EtaScreenContextAttachment? {
+        try {
+            return runCatching {
+                val image = AgentImageCodec.fromScreenContextBitmap(
+                    bitmap,
+                    source = SCREEN_CONTEXT_IMAGE_SOURCE,
+                )
+                val preview = AgentImageCodec.previewFromReference(
+                    this,
+                    image,
+                ) ?: return@runCatching null
+                EtaScreenContextAttachment(
+                    image = image,
+                    previewDataUrl = preview.reference,
+                )
+            }.onFailure { throwable ->
+                AndroidAgentLogger.warn(
+                    "Eta assistant entry screenshot encode failed: " +
+                        "type=${throwable.javaClass.simpleName}"
+                )
+            }.getOrNull()
+        } finally {
+            if (!bitmap.isRecycled) bitmap.recycle()
+        }
+    }
+
+    /**
+     * 无障碍截屏不可用时的兜底：按「屏幕截图方式」设置取帧（root/Shizuku，
+     * [AssistantScreenshotCapture.capture] 内部按可用性秒回），再转屏幕上下文附件。
+     * 共享屏幕不进此链路：授权结果必须由 Activity 接收，见 AssistantProjectionService。
+     */
+    private suspend fun captureFallbackAttachment(): EtaScreenContextAttachment? =
+        AssistantScreenshotCapture.capture()?.let(::encodeScreenContextAttachment)
 
     private fun presentEntry(generation: Long, voiceWake: Boolean) {
         if (generation != entryGeneration || presentedEntryGeneration == generation) return
@@ -520,6 +606,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                         composer = composerState,
                         voiceState = voiceState,
                         dictationStartRequest = dictationStartRequest,
+                        dictationStopRequest = dictationStopRequest,
                         pickerYield = pickerYield,
                         onSystemPickerLaunch = ::beginPickerYield,
                         inputFocusRequestKey = inputFocusRequestKey,
@@ -1359,11 +1446,165 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         // 语音模式里预设同样常驻：先退出语音（含听写与播报），再把这句话连同屏幕截图发出去，
         // 否则麦克风 / 播报会和这一轮 run 抢同一段音频。
         voiceController.stop()
+        // 听写是 composer 内部的另一条会话，VoiceModeController.stop 不覆盖它；
+        // 令牌 ++ 让听写条原地收声（× 语义丢弃转写），pickup 预设的 OCR 等待窗口
+        // 内麦克风不再占用。对全部预设生效：点 chip 即放弃口述。
+        dictationStopRequest++
         // submitPrompt 按 selected 决定是否带图；预设本身就是带屏幕提问，直接选中再发。
         uiState = uiState.copy(
             screenContext = uiState.screenContext.copy(selected = true),
         )
+        if (preset == ScreenContextPreset.PICKUP_CODE) {
+            submitPickupPresetWithLocalOcr()
+            return
+        }
         submitPrompt(getString(preset.promptRes), toolPreset = preset.toolPreset)
+    }
+
+    /**
+     * 「记取码」预设入口：按「纯本地识别」开关二分。
+     * - 开（澎湃记同口径）：本地 OCR → 去重入库 → 提醒 → 对话流工具卡收尾，零模型往返；
+     * - 关（默认）：本地 OCR 命中时把结构化结果注入 prompt——模型只需调 `pickup_code`
+     *   落库，零视觉往返；超时或未命中则按原 prompt 提交，由模型看截图兜底。
+     * 注入模式下 OCR 全程不落任何数据，保存动作只经 Agent 工具发生。
+     */
+    private fun submitPickupPresetWithLocalOcr() {
+        val attachment = screenContextAttachment ?: return
+        PickupCodeSettings.ensureLoaded(applicationContext)
+        if (PickupCodeSettings.localOcrOnly) {
+            submitPickupPresetPureLocal(attachment)
+            return
+        }
+        val basePrompt = getString(R.string.voice_screen_preset_pickup_prompt)
+        scope.launch {
+            // 有界等待：首帧冷启动含模型加载也封顶 [PICKUP_OCR_TIMEOUT_MS]，超时走视觉兜底。
+            // withTimeoutOrNull 超时返回 null → orEmpty 归一为空列表。
+            val localResult = withTimeoutOrNull(PICKUP_OCR_TIMEOUT_MS) {
+                runCatching {
+                    PickupCodeExtractor.fromScreenContextReference(
+                        applicationContext,
+                        attachment.image.reference,
+                    )
+                }.onFailure {
+                    AndroidAgentLogger.warn(
+                        "Eta pickup preset local OCR failed: type=${it.javaClass.simpleName}",
+                    )
+                }.getOrNull().orEmpty()
+            }.orEmpty()
+            val prompt = if (localResult.isEmpty()) {
+                basePrompt
+            } else {
+                buildString {
+                    append(basePrompt)
+                    append("\n\n")
+                    append(getString(R.string.voice_screen_preset_pickup_local_result))
+                    localResult.forEach { draft ->
+                        append("\n- ")
+                        append(draft.code)
+                        append("（类型：${draft.orderType}")
+                        draft.brandName?.takeIf { it.isNotBlank() }?.let { append("，品牌：$it") }
+                        draft.pickupLocation?.takeIf { it.isNotBlank() }?.let { append("，位置：$it") }
+                        append("）")
+                    }
+                }
+            }
+            // OCR 期间用户可能已开新 run；submitPrompt 自带 activeRunId 兜底，但状态
+            // 修改必须回主线程（composer/uiState 均为 Main 状态）。
+            withContext(Dispatchers.Main.immediate) {
+                submitPrompt(prompt, toolPreset = ScreenContextPreset.PICKUP_CODE.toolPreset)
+            }
+        }
+    }
+
+    /**
+     * 纯本地识别（严格离线）：对话流先注入一张 `pickup_code` 工具卡（Running 态 =
+     * 官方 LoadingIndicator「本地识别中」），OCR + 去重入库 + 提醒全部本地完成后把
+     * 同一张卡原位收尾（Success 对勾 + 结果摘要/明细，或 Failed 叉 + 未识别提示）。
+     * 不发起 run：[activeRunId] 保持 null、phase 不动；屏幕上下文按 submitPrompt 同款
+     * 口径消费。OCR 未命中/超时也 strictly 不碰模型（澎湃记口径），卡片即失败态。
+     */
+    private fun submitPickupPresetPureLocal(attachment: EtaScreenContextAttachment) {
+        val cardId = "pickup-ocr-${UUID.randomUUID()}"
+        screenContextAttachment = null
+        uiState = uiState.copy(
+            screenContext = EtaScreenContextStateReducer.consume(),
+            messages = uiState.messages + ToolActivityMessageUi(
+                id = cardId,
+                toolName = AgentPickupCodeToolCatalog.PICKUP_CODE,
+                status = ToolActivityStatusUi.Running,
+                argumentsSummary = getString(R.string.pickup_ocr_card_running),
+            ),
+        )
+        scope.launch {
+            val drafts = withTimeoutOrNull(PICKUP_OCR_TIMEOUT_MS) {
+                runCatching {
+                    PickupCodeExtractor.fromScreenContextReference(
+                        applicationContext,
+                        attachment.image.reference,
+                    )
+                }.onFailure {
+                    AndroidAgentLogger.warn(
+                        "Eta pickup preset pure-local OCR failed: type=${it.javaClass.simpleName}",
+                    )
+                }.getOrNull().orEmpty()
+            }.orEmpty()
+            // 去重入库与提醒逐条走既有链路（通知观察者同口径）；source=AGENT 与
+            // 管理页手动截屏识别行一致。
+            var savedCount = 0
+            if (drafts.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    val repository = PickupCodeRepository(applicationContext)
+                    drafts.forEach { draft ->
+                        if (repository.findUnfinishedByCode(draft.code) == null) {
+                            repository.insert(
+                                code = draft.code,
+                                orderType = draft.orderType,
+                                brandName = draft.brandName,
+                                pickupLocation = draft.pickupLocation,
+                                source = PickupCodeSource.AGENT,
+                                sourcePackage = packageName,
+                                fullText = draft.fullText,
+                            )
+                            savedCount++
+                        }
+                        PickupCodeNotifier.notifyNewCode(
+                            context = applicationContext,
+                            code = draft.code,
+                            orderType = draft.orderType,
+                            brandName = draft.brandName,
+                            pickupLocation = draft.pickupLocation,
+                        )
+                    }
+                }
+            }
+            withContext(Dispatchers.Main.immediate) {
+                uiState = uiState.copy(
+                    messages = uiState.messages.map { message ->
+                        if (message !is ToolActivityMessageUi || message.id != cardId) {
+                            message
+                        } else if (savedCount > 0) {
+                            message.copy(
+                                status = ToolActivityStatusUi.Success,
+                                resultSummary = getString(R.string.pickup_projection_done, savedCount),
+                                resultDetail = drafts.joinToString("\n") { draft ->
+                                    listOfNotNull(
+                                        draft.code,
+                                        draft.orderType,
+                                        draft.brandName?.takeIf { it.isNotBlank() },
+                                        draft.pickupLocation?.takeIf { it.isNotBlank() },
+                                    ).joinToString(" · ")
+                                },
+                            )
+                        } else {
+                            message.copy(
+                                status = ToolActivityStatusUi.Failed,
+                                resultSummary = getString(R.string.pickup_ocr_card_none),
+                            )
+                        }
+                    },
+                )
+            }
+        }
     }
 
     private fun removeScreenContext() {
@@ -1545,6 +1786,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         private const val FOREGROUND_DISMISS_TIMEOUT_MS = 2_000L
         /** 前置判断未附图时，唤醒截图的临时落盘目录（按 TTL 清理，不随 run 删除）。 */
         private const val ENTRY_SCREEN_CACHE_DIR = "eta-entry-screen"
+
+        /** 「记取餐码」预设本地 OCR 的有界等待：含首次模型加载，超时即走模型视觉兜底。 */
+        private const val PICKUP_OCR_TIMEOUT_MS = 6_000L
         /** 唤醒截图临时文件的保留时长：覆盖浮窗关闭后 run 在 Runtime 继续执行的时间。 */
         private const val ENTRY_SCREEN_FILE_TTL_MS = 60 * 60 * 1000L
         private val mainHandler = Handler(Looper.getMainLooper())

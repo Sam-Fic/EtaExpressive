@@ -482,6 +482,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.RemoteAgentEditor ->
         if (route.serverId == null) stringResource(R.string.remote_agents_new_title)
         else stringResource(R.string.remote_agents_edit_title)
+    is AppRoute.PickupCodes -> stringResource(R.string.settings_pickup_codes_title)
     null -> stringResource(R.string.app_name)
 }
 

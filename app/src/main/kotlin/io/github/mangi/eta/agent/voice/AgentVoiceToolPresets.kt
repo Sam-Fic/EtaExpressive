@@ -31,6 +31,13 @@ internal object AgentVoiceToolPresets {
     const val SCREEN_ORGANIZE = "screen_organize"
 
     /**
+     * 记取餐码：截图已附在用户消息里，只下发取餐码工具链。
+     * 面板宿主会先对截图跑本地 PP-OCR + 规则引擎，命中时把结构化结果注入 prompt，
+     * 模型只需调 `pickup_code` 落库，零视觉往返；未命中则由模型视觉兜底。
+     */
+    const val SCREEN_PICKUP_CODE = "screen_pickup_code"
+
+    /**
      * 创建日程的最小闭环。
      *
      * 截图直接给出事项，当前时间由 Runtime 在系统提示里注入（[Preset.injectCurrentTime]），
@@ -56,11 +63,20 @@ internal object AgentVoiceToolPresets {
     /** 需要把请求发起时刻的真实系统时间注入提示的预设（免去取时间的一次工具往返）。 */
     private val timeInjected: Set<String> = setOf(SCREEN_CALENDAR)
 
+    /**
+     * 记取餐码的最小闭环。
+     *
+     * 本地 OCR 已把码值/品牌/类型写进 prompt，`pickup_code` 的 save 动作即可落库；
+     * search 留下是为了 OCR 未命中、模型视觉兜底时先查重再保存，避免同一码重复入库。
+     */
+    private val PICKUP_CODE_TOOLS: Set<String> = setOf("pickup_code")
+
     /** 预设 id → 本次运行可见的全部工具（空集合 = 纯对话，零工具）。 */
     private val toolSets: Map<String, Set<String>> = mapOf(
         SCREEN_TRANSLATE to emptySet(),
         SCREEN_CALENDAR to CALENDAR_CREATE,
         SCREEN_ORGANIZE to emptySet(),
+        SCREEN_PICKUP_CODE to PICKUP_CODE_TOOLS,
     )
 
     /**
@@ -73,6 +89,7 @@ internal object AgentVoiceToolPresets {
         SCREEN_TRANSLATE to emptySet(),
         SCREEN_CALENDAR to setOf("calendar"),
         SCREEN_ORGANIZE to emptySet(),
+        SCREEN_PICKUP_CODE to emptySet(),
     )
 
     /** 一次快捷功能运行要下发的工具与预开组。 */

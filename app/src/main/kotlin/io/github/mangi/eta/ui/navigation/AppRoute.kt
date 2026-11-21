@@ -281,6 +281,10 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data class RemoteAgentEditor(val serverId: String? = null) : AppRoute
 
+    /** 取餐码记录管理页：未完成列表、通知方式与截图后端设置。 */
+    @Serializable
+    data object PickupCodes : AppRoute
+
     /**
      * 宽屏设置页右栏的兜底空态。
      *

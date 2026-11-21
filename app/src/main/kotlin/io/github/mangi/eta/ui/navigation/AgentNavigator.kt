@@ -91,6 +91,7 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.ToolRecipeEdit::class,
     AppRoute.RemoteAgents::class,
     AppRoute.RemoteAgentEditor::class,
+    AppRoute.PickupCodes::class,
 )
 
 /** 显式登记表的类型集合（容器兜底用；O(1) 判重，避免每次重组线性扫描 66 项）。 */

@@ -100,6 +100,8 @@ internal object AgentSensitiveToolPolicy {
         // 结果包含用户本机媒体的文件名与路径；原始结果不进入持久会话。
         "semantic_search_media",
         "read_image",
+        // 取餐码是个人敏感记录（取餐码/取件码本身即隐私内容），原始结果不进入持久会话。
+        "pickup_code",
         "set_setting",
         // 系统控制写入：参数与结果反映用户对本机开关的实时控制，原始内容不进入持久会话。
         "set_do_not_disturb",

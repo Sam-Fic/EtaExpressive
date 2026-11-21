@@ -53,6 +53,8 @@ internal object AgentToolRequirements {
             // 自进化：自写配方本身不需要 Root（配方内含需 Root 的步骤时按配方单独判定）。
             "eta_author_tool", "eta_list_recipes",
             "semantic_search_media",
+            // 取餐码读写自己的 SQLite 库，不触达设备，无 Root 需求。
+            "pickup_code",
         )
         // 调度台专用工具：只做会话查询与任务派发，不触达设备。名字与目录保持单一出处，
         // 漏登记会在目录投影时抛 IllegalArgumentException，导致调度台 run 在首次请求前就失败。

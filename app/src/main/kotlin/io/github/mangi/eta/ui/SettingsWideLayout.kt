@@ -119,6 +119,7 @@ private val settingsDetailAnchorKeys: Map<KClass<out AppRoute>, String> = mapOf(
     AppRoute.ToolRecipes::class to SettingsKeys.TOOL_RECIPES,
     AppRoute.SubAgents::class to SettingsKeys.SUB_AGENTS,
     AppRoute.RemoteAgents::class to SettingsKeys.REMOTE_AGENTS,
+    AppRoute.PickupCodes::class to SettingsKeys.PICKUP_CODES,
     AppRoute.VoiceSettings::class to SettingsKeys.VOICE,
     AppRoute.AppearanceSettings::class to SettingsKeys.APPEARANCE,
     AppRoute.UsageStats::class to SettingsKeys.USAGE_STATS,

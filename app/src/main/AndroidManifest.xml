@@ -18,6 +18,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- AppUpdateService 用 dataSync 前台服务下载更新包；Android 14+ 缺此权限会直接 SecurityException。 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- 取餐码截图识别的「共享屏幕」后端：单次 MediaProjection 前台服务取一帧即停。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Agent run 期间把执行通知提升为 Live Update，显示在状态栏胶囊与锁屏；普通权限，用户可在通知设置中关闭。 -->
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
@@ -295,6 +297,26 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!--
+          共享屏幕截屏后端（取码管理页手动「截屏识别」行）：单次截屏前台服务。
+          用户经 MediaProjectionManager.createScreenCaptureIntent 授权后启动，
+          VirtualDisplay + ImageReader 取到第一帧即停投影，不常驻。
+        -->
+        <service
+            android:name=".agent.capture.AssistantProjectionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <!-- Shizuku 截屏后端：Shizuku 服务进程经此 provider 与本应用建立连接。 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <provider
             android:name=".agent.accessibility.AgentAccessibilityHealthProvider"

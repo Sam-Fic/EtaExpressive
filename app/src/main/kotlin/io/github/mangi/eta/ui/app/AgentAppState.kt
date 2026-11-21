@@ -10043,6 +10043,7 @@ private fun toolItemCatalog(context: Context): List<ToolItemUi> = listOf(
         ToolItemUi("search_qq_chat_images", context.getString(R.string.tool_ui_qq_chat_pictures_e21bf9), context.getString(R.string.tool_ui_retrieve_recent_pictures_in_qq_chat_picture_cach_b8f009)),
         ToolItemUi("search_wechat_chat_images", context.getString(R.string.tool_ui_wechat_chat_pictures_72b268), context.getString(R.string.tool_ui_retrieve_recent_pictures_in_wechat_chat_picture__ab66f7)),
         ToolItemUi( "semantic_search_media", context.getString(R.string.tool_ui_semantic_search_media), context.getString(R.string.tool_ui_semantic_search_media_summary), ),
+        ToolItemUi("pickup_code", context.getString(R.string.tool_ui_pickup_code), context.getString(R.string.tool_ui_pickup_code_summary)),
         ToolItemUi("search_notes", context.getString(R.string.tool_ui_search_notes), context.getString(R.string.tool_ui_search_notes_summary)),
     // ── extensions ──
         ToolItemUi("memory_write", context.getString(R.string.tool_ui_organize_memory_2b08eb), context.getString(R.string.tool_ui_partially_update_append_or_clear_long_term_memor_c1bab6)),

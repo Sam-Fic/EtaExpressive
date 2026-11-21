@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MonitorHeart
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -363,6 +364,7 @@ internal object ToolPresentation {
         "search_messages" -> Icons.Rounded.Sms
         "search_media", "search_qq_chat_images", "search_wechat_chat_images" -> Icons.Rounded.Image
         "semantic_search_media" -> Icons.Rounded.Image
+        "pickup_code" -> Icons.AutoMirrored.Rounded.ReceiptLong
         "search_audio" -> Icons.Rounded.MusicNote
         "search_recordings", "search_coloros_recordings", "search_recording_summaries" -> Icons.Rounded.Mic
         "search_files" -> Icons.Rounded.FolderOpen

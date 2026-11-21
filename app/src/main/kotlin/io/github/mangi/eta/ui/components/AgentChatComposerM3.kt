@@ -295,6 +295,9 @@ internal fun Material3ComposerBody(
      *  经令牌重组触发（听写已停时再按电源键的意图就是再录一句）；start() 幂等（在录时空操作），
      *  服务侧已过麦克风权限。 */
     dictationStartRequest: Int = 0,
+    /** 服务侧显式停听写令牌：预设 chip 提交前收声（cancel 是 × 语义：停麦+丢弃转写，
+     *  未录制时空操作）。只增不消账，每次 ++ 触发一次 cancel；主应用不传（默认 0）。 */
+    dictationStopRequest: Int = 0,
     /** 本实例视为已消费的令牌初值（进程级已消费水位播种）：主应用 composer 随切会话
      *  整树销毁重建、实例内记账随之丢失——调用方播种水位后，重建实例不再把旧令牌当成
      *  新唤起重放（否则每次切会话都误开听写）。浮窗不传：面板重建即重放是刻意设计。 */
@@ -507,6 +510,13 @@ internal fun Material3ComposerBody(
                 onDictationStartRequestConsumed?.invoke(dictationStartRequest)
                 if (voiceEntry == ComposerVoiceEntry.DICTATION) dictation.start()
             }
+        }
+
+        // 服务侧显式停听写：预设 chip 在听写条在屏时同样可点（chips 显隐不与听写互斥），
+        // 点 chip 的意图是从「口述」切到「识别屏幕」，听写必须让位。VoiceModeController.stop
+        // 不覆盖这条会话（听写在 composer 内部自持），所以用令牌穿透到这里 cancel。
+        LaunchedEffect(dictationStopRequest) {
+            if (dictationStopRequest > 0) dictation.cancel()
         }
         // 未配置识别引擎：沿用旧语音入口的失败提示（同一句文案），原位展示在胶囊槽位，
         // 尾部圆钮改成「去配置」。它不是一个会话：不占麦克风，也不再弹 toast。

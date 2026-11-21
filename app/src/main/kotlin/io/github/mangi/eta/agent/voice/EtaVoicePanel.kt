@@ -53,6 +53,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CancelPresentation
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DesktopWindows
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -224,6 +225,12 @@ internal enum class ScreenContextPreset(
         toolPreset = AgentVoiceToolPresets.SCREEN_ORGANIZE,
         icon = Icons.Rounded.Summarize,
     ),
+    PICKUP_CODE(
+        labelRes = R.string.voice_screen_preset_pickup,
+        promptRes = R.string.voice_screen_preset_pickup_prompt,
+        toolPreset = AgentVoiceToolPresets.SCREEN_PICKUP_CODE,
+        icon = Icons.AutoMirrored.Rounded.ReceiptLong,
+    ),
 }
 
 /**
@@ -316,6 +323,7 @@ internal fun EtaVoicePanel(
     onStartVoiceMode: (VoiceEntryMode) -> Unit,
     onStopVoiceMode: () -> Unit,
     dictationStartRequest: Int,
+    dictationStopRequest: Int = 0,
     /** 系统选择器让位中：整窗内容隐身+触摸穿透（服务侧窗口 flags），选择器 Activity 在浮窗之下交互。 */
     pickerYield: Boolean,
     /** 附件/权限跳板发起信号：服务据此让位（隐身+穿透），跳板结束信号负责恢复。 */
@@ -471,6 +479,7 @@ internal fun EtaVoicePanel(
                     composer = composer,
                     voiceState = voiceState,
                     dictationStartRequest = dictationStartRequest,
+                dictationStopRequest = dictationStopRequest,
                     onSystemPickerLaunch = onSystemPickerLaunch,
                     focusRequester = focusRequester,
                     maxContentHeightPx = maxContentHeightPx,
@@ -535,6 +544,7 @@ private fun BoxScope.AssistantPanel(
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
     dictationStartRequest: Int,
+    dictationStopRequest: Int = 0,
     onSystemPickerLaunch: () -> Unit,
     focusRequester: FocusRequester,
     maxContentHeightPx: Float,
@@ -861,6 +871,7 @@ private fun AssistantComposer(
     composer: EtaAssistantComposerState,
     voiceState: VoiceModeState,
     dictationStartRequest: Int,
+    dictationStopRequest: Int = 0,
     onSystemPickerLaunch: () -> Unit,
     focusRequester: FocusRequester,
     composerConversationId: String?,
@@ -995,6 +1006,7 @@ private fun AssistantComposer(
             showModelPicker = false,
             voiceState = voiceState,
             dictationStartRequest = dictationStartRequest,
+            dictationStopRequest = dictationStopRequest,
             onDictationBarWidthChange = { voiceBarWidthCap = it },
             // 让位由服务侧窗口 flags + 面板整体退位动画承接；输入区只需在发起选择器/权限
             // 跳板前上报 onSystemPickerLaunch，不需要再持有让位状态。

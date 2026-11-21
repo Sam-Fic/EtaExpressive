@@ -172,6 +172,8 @@ internal object AgentToolCatalog {
         // 媒体语义搜索是个人数据组成员：个人数据开关放行、未被单独禁用才可见
         // （禁用与否由最后的 withheld 过滤统一裁决，没有独立的组级开关）。
         if (personalTools) AgentMediaSearchToolCatalog.appendTo(emitted)
+        // 取餐码同属个人数据组：读写 Eta 自有记录库，无 Root / 系统权限依赖。
+        if (personalTools) AgentPickupCodeToolCatalog.appendTo(emitted)
         // 只要存在「开关允许、但尚未打开」的组，就下发一个 tools_use_group。
         // 枚举只列这些组：全部打开、或开关全关时都不该出现一个必然失败或有多个空选项的工具。
         // 决策收窄（control）时再按 openableGroupLimit 过滤：提示里不能点名一个 gate 允许、
