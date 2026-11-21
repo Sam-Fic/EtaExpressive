@@ -198,6 +198,12 @@ Eta 的取餐码 / 取件码识别功能参考并移植自 badnng 的开源项�
 
 依据 GPL-3.0 第 13 条（Remote Network Interaction），AGPL-3.0 覆盖的代码可并入 GPL-3.0 工程，合并后的整体按 Eta 现行的 GPL-3.0 分发。移植进 Eta 的相关代码随之以 GPL-3.0 对外提供，对应源码可通过本仓库获取，满足原项目关于分发修改版须提供源码并保留许可证与归属的要求。
 
-原项目的识别能力依赖 PaddleOCR（PP-OCRv6 Tiny 模型）、ONNX Runtime、Google ML Kit 等第三方组件，各自适用其原始许可证。若后续将相关模型文件或二进制库随 Eta 打包，需另行核对并补充这些组件的授权与声明；本节当前仅覆盖移植自原项目的源码层面的归属义务。
+原项目的识别能力依赖 PaddleOCR（PP-OCRv6 Tiny 模型）、ONNX Runtime、Google ML Kit 等第三方组件，各自适用其原始许可证。Eta 现已随包以下识别组件（均来自原项目仓库的分发物，未引入 Google ML Kit）：
+
+- **PP-OCRv6 Tiny 模型**（`assets/models/ppocrv6_tiny/`，det/rec `inference.onnx` 与 `rec/inference.yml` 字典）：随原项目分发，源自 PaddleOCR，Apache-2.0。
+- **onnxruntime-slim.aar**（`app/libs/`）：ONNX Runtime Android（CPU 变体，不含 QNN/NPU 后端），Microsoft，[MIT](https://github.com/microsoft/onnxruntime/blob/main/LICENSE)。
+- **opencv-slim.aar**（`app/libs/`）：OpenCV Android（slim 裁剪版，DB 后处理的 findContours/minAreaRect 依赖），Apache-2.0。
+
+移植进 Eta 的源码遵循上游的文件头标注：`com.paddle.ocr` 包与规则引擎文件保留原版权声明或注明移植来源；Shizuku 截屏后端（`agent/pickup/capture/PickupScreenshotCapture.kt`）参考原项目 `RootHelper` / `ShizukuScreenshotHelper`，Shizuku SDK（dev.rikka.shizuku）为 Apache-2.0。
 
 “澎湃记”“Hyper Note”及原项目 Logo 是官方项目的标识，Eta 不使用这些名称与标识，也不暗示获得官方背书。原项目 OOBE 中移植自 HyperCeiler 的视觉与动画内容不在本次移植范围，相关归属以其 [NOTICE](https://github.com/badnng/Hyper-pick-up-code/blob/main/NOTICE) 为准。
