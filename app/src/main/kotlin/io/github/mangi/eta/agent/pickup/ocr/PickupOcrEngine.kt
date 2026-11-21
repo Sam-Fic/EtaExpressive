@@ -58,6 +58,14 @@ class PickupOcrEngine private constructor(private val context: Context) {
     @Volatile
     private var lastInferenceTimeMs = -1L
 
+    /**
+     * 最近一次初始化/识别失败的根因描述（供调用方在 UI 上直出诊断，不只依赖 logcat）。
+     * 成功初始化/识别后不清空——保留最后一次失败的现场。
+     */
+    @Volatile
+    var lastError: String? = null
+        private set
+
     val isInitialized: Boolean get() = initialized
 
     private fun isEmulator(): Boolean {
@@ -157,6 +165,7 @@ class PickupOcrEngine private constructor(private val context: Context) {
             } catch (error: Throwable) {
                 ocr = null
                 initialized = false
+                lastError = describe(error)
                 Log.e(TAG, "PP-OCRv6 Tiny 初始化失败: ${error.message}", error)
                 false
             }
@@ -176,6 +185,7 @@ class PickupOcrEngine private constructor(private val context: Context) {
                 logRawResults(result)
                 parseResult(result, bitmap.width, bitmap.height)
             } catch (error: Throwable) {
+                lastError = describe(error)
                 Log.e(TAG, "PP-OCRv6 Tiny 识别失败: ${error.message}", error)
                 null
             } finally {
@@ -309,6 +319,11 @@ class PickupOcrEngine private constructor(private val context: Context) {
     }
 
     fun getLastInferenceTime(): Long = lastInferenceTimeMs
+
+    /** 失败根因的单行描述：自身 message 优先，空缺时补根因 message（链上取第一个非空）。 */
+    private fun describe(error: Throwable): String = generateSequence(error as Throwable?) { it.cause }
+        .map { it.message?.takeIf { text -> text.isNotBlank() } }
+        .firstOrNull() ?: error.javaClass.simpleName
 
     companion object {
         private const val TAG = "PickupOcrEngine"

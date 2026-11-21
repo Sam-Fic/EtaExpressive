@@ -63,6 +63,7 @@ import io.github.mangi.eta.agent.model.AgentPickupCodeToolCatalog
 import io.github.mangi.eta.agent.pickup.PickupCodeExtractor
 import io.github.mangi.eta.agent.pickup.PickupCodeNotifier
 import io.github.mangi.eta.agent.pickup.PickupCodeSettings
+import io.github.mangi.eta.agent.pickup.ocr.PickupOcrEngine
 import io.github.mangi.eta.agent.model.AgentModelClient
 import io.github.mangi.eta.agent.question.AgentQuestionAnswer
 import io.github.mangi.eta.agent.question.AgentQuestionCodec
@@ -1522,6 +1523,10 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
      * 同一张卡原位收尾（Success 对勾 + 结果摘要/明细，或 Failed 叉 + 未识别提示）。
      * 不发起 run：[activeRunId] 保持 null、phase 不动；屏幕上下文按 submitPrompt 同款
      * 口径消费。OCR 未命中/超时也 strictly 不碰模型（澎湃记口径），卡片即失败态。
+     *
+     * 全链路兜底：[scope] 未挂 CoroutineExceptionHandler，任何异常逃逸都会以未捕获
+     * 异常杀进程（浮窗直接闪退）——这里把整个协程体包进 try/catch，所有 Throwable
+     * （CancellationException 除外）原位收敛为同一张卡的 Failed 态并带根因诊断。
      */
     private fun submitPickupPresetPureLocal(attachment: EtaScreenContextAttachment) {
         val cardId = "pickup-ocr-${UUID.randomUUID()}"
@@ -1536,73 +1541,126 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             ),
         )
         scope.launch {
-            val drafts = withTimeoutOrNull(PICKUP_OCR_TIMEOUT_MS) {
-                runCatching {
-                    PickupCodeExtractor.fromScreenContextReference(
-                        applicationContext,
-                        attachment.image.reference,
-                    )
-                }.onFailure {
-                    AndroidAgentLogger.warn(
-                        "Eta pickup preset pure-local OCR failed: type=${it.javaClass.simpleName}",
-                    )
-                }.getOrNull().orEmpty()
-            }.orEmpty()
-            // 去重入库与提醒逐条走既有链路（通知观察者同口径）；source=AGENT 与
-            // 管理页手动截屏识别行一致。
-            var savedCount = 0
-            if (drafts.isNotEmpty()) {
-                withContext(Dispatchers.IO) {
-                    val repository = PickupCodeRepository(applicationContext)
-                    drafts.forEach { draft ->
-                        if (repository.findUnfinishedByCode(draft.code) == null) {
-                            repository.insert(
-                                code = draft.code,
-                                orderType = draft.orderType,
-                                brandName = draft.brandName,
-                                pickupLocation = draft.pickupLocation,
-                                source = PickupCodeSource.AGENT,
-                                sourcePackage = packageName,
-                                fullText = draft.fullText,
-                            )
-                            savedCount++
-                        }
-                        PickupCodeNotifier.notifyNewCode(
-                            context = applicationContext,
-                            code = draft.code,
-                            orderType = draft.orderType,
-                            brandName = draft.brandName,
-                            pickupLocation = draft.pickupLocation,
+            var ocrThrownType: String? = null
+            var persistThrownType: String? = null
+            try {
+                val drafts = withTimeoutOrNull(PICKUP_OCR_TIMEOUT_MS) {
+                    runCatching {
+                        PickupCodeExtractor.fromScreenContextReference(
+                            applicationContext,
+                            attachment.image.reference,
                         )
+                    }.onFailure {
+                        ocrThrownType = it.javaClass.simpleName
+                        AndroidAgentLogger.warn(
+                            "Eta pickup preset pure-local OCR failed: type=${it.javaClass.simpleName}",
+                        )
+                    }.getOrNull().orEmpty()
+                }.orEmpty()
+                // 去重入库与提醒逐条走既有链路（通知观察者同口径）；source=AGENT 与
+                // 管理页手动截屏识别行一致。单条失败不中断其余条目，也不杀进程。
+                var savedCount = 0
+                if (drafts.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        val repository = PickupCodeRepository(applicationContext)
+                        drafts.forEach { draft ->
+                            runCatching {
+                                if (repository.findUnfinishedByCode(draft.code) == null) {
+                                    repository.insert(
+                                        code = draft.code,
+                                        orderType = draft.orderType,
+                                        brandName = draft.brandName,
+                                        pickupLocation = draft.pickupLocation,
+                                        source = PickupCodeSource.AGENT,
+                                        sourcePackage = packageName,
+                                        fullText = draft.fullText,
+                                    )
+                                    savedCount++
+                                }
+                                PickupCodeNotifier.notifyNewCode(
+                                    context = applicationContext,
+                                    code = draft.code,
+                                    orderType = draft.orderType,
+                                    brandName = draft.brandName,
+                                    pickupLocation = draft.pickupLocation,
+                                )
+                            }.onFailure {
+                                persistThrownType = it.javaClass.simpleName
+                                AndroidAgentLogger.warn(
+                                    "Eta pickup pure-local persist failed: type=${it.javaClass.simpleName}",
+                                )
+                            }
+                        }
                     }
                 }
-            }
-            withContext(Dispatchers.Main.immediate) {
-                uiState = uiState.copy(
-                    messages = uiState.messages.map { message ->
-                        if (message !is ToolActivityMessageUi || message.id != cardId) {
-                            message
-                        } else if (savedCount > 0) {
-                            message.copy(
-                                status = ToolActivityStatusUi.Success,
-                                resultSummary = getString(R.string.pickup_projection_done, savedCount),
-                                resultDetail = drafts.joinToString("\n") { draft ->
-                                    listOfNotNull(
-                                        draft.code,
-                                        draft.orderType,
-                                        draft.brandName?.takeIf { it.isNotBlank() },
-                                        draft.pickupLocation?.takeIf { it.isNotBlank() },
-                                    ).joinToString(" · ")
-                                },
-                            )
-                        } else {
-                            message.copy(
-                                status = ToolActivityStatusUi.Failed,
-                                resultSummary = getString(R.string.pickup_ocr_card_none),
-                            )
-                        }
-                    },
+                // 失败诊断直出卡片：按链路分派——提取层异常 → 落库层异常 → 引擎
+                // lastError；都为空说明引擎正常跑完但没检出/没命中码。
+                val diagnosis = when {
+                    drafts.isEmpty() && ocrThrownType != null -> ocrThrownType
+                    drafts.isEmpty() -> PickupOcrEngine.getInstance(applicationContext).lastError
+                        ?.let { "OCR: $it" }
+                        ?: getString(R.string.pickup_ocr_card_no_code_on_screen)
+                    else -> persistThrownType
+                }
+                withContext(Dispatchers.Main.immediate) {
+                    uiState = uiState.copy(
+                        messages = uiState.messages.map { message ->
+                            if (message !is ToolActivityMessageUi || message.id != cardId) {
+                                message
+                            } else if (savedCount > 0) {
+                                message.copy(
+                                    status = ToolActivityStatusUi.Success,
+                                    resultSummary = getString(R.string.pickup_projection_done, savedCount),
+                                    resultDetail = drafts.joinToString("\n") { draft ->
+                                        listOfNotNull(
+                                            draft.code,
+                                            draft.orderType,
+                                            draft.brandName?.takeIf { it.isNotBlank() },
+                                            draft.pickupLocation?.takeIf { it.isNotBlank() },
+                                        ).joinToString(" · ")
+                                    } + (persistThrownType?.let { "\n保存异常: $it" } ?: ""),
+                                )
+                            } else if (drafts.isNotEmpty() && persistThrownType == null) {
+                                // 识别到了但全部重复（同码未完成已存在）：不是失败，如实说明。
+                                message.copy(
+                                    status = ToolActivityStatusUi.Success,
+                                    resultSummary = getString(R.string.pickup_ocr_card_dup),
+                                    resultDetail = drafts.joinToString("\n") { it.code },
+                                )
+                            } else {
+                                message.copy(
+                                    status = ToolActivityStatusUi.Failed,
+                                    resultSummary = getString(R.string.pickup_ocr_card_none),
+                                    resultDetail = diagnosis,
+                                )
+                            }
+                        },
+                    )
+                }
+            } catch (error: CancellationException) {
+                // 面板销毁/会话取消的正常路径，交回协程框架。
+                throw error
+            } catch (error: Throwable) {
+                AndroidAgentLogger.warn(
+                    "Eta pickup pure-local crashed: type=${error.javaClass.simpleName}, " +
+                        "message=${error.message.orEmpty().take(200)}",
                 )
+                withContext(Dispatchers.Main.immediate) {
+                    uiState = uiState.copy(
+                        messages = uiState.messages.map { message ->
+                            if (message !is ToolActivityMessageUi || message.id != cardId) {
+                                message
+                            } else {
+                                message.copy(
+                                    status = ToolActivityStatusUi.Failed,
+                                    resultSummary = getString(R.string.pickup_ocr_card_none),
+                                    resultDetail = error.javaClass.simpleName +
+                                        (error.message?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""),
+                                )
+                            }
+                        },
+                    )
+                }
             }
         }
     }

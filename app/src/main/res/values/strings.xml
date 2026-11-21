@@ -474,6 +474,8 @@
   <string name="pickup_local_ocr_only_summary_off">Recognition results are confirmed and saved by the model</string>
   <string name="pickup_ocr_card_running">Recognizing pickup codes on screen…</string>
   <string name="pickup_ocr_card_none">No pickup codes recognized</string>
+  <string name="pickup_ocr_card_dup">Recognized, but all codes are already in the pending list</string>
+  <string name="pickup_ocr_card_no_code_on_screen">Engine ran without error but no code was matched (screen may contain no code)</string>
   <string name="assistant_screenshot_backend_group">Screen recognition</string>
   <string name="assistant_screenshot_backend_title">Screen capture backend</string>
   <string name="assistant_screenshot_backend_summary">The assistant reads the screen via accessibility; when no frame is captured, fall back to the selected backend</string>

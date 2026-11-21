@@ -1066,6 +1066,8 @@
   <string name="pickup_local_ocr_only_summary_off">识别结果由模型确认并保存</string>
   <string name="pickup_ocr_card_running">正在识别屏幕中的取码…</string>
   <string name="pickup_ocr_card_none">未识别到取码</string>
+  <string name="pickup_ocr_card_dup">识别到取码，但均已在待取记录中</string>
+  <string name="pickup_ocr_card_no_code_on_screen">引擎运行正常但未检出/未命中取码（屏幕上可能没有码）</string>
   <string name="assistant_screenshot_backend_group">屏幕识别</string>
   <string name="assistant_screenshot_backend_title">屏幕截图方式</string>
   <string name="assistant_screenshot_backend_summary">系统助手读屏以无障碍为主；取不到帧时按所选方式兜底</string>
