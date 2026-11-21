@@ -159,6 +159,8 @@ Eta 的离线语音识别、合成与 VAD 基于两个 k2-fsa 引擎，Kotlin JN
 
 两个引擎的 JNI 绑定从上游固定 tag 引入：sherpa-onnx 绑定原样 vendored 到 `app/src/main/kotlin/com/k2fsa/sherpa/onnx/`（包名、类名与 JNI 声明的配置字段逐字节保留，R8 keep 整个包）；sherpa-ncnn 绑定保留包与配置字段，裁去 demo 辅助并补充确定性 `AutoCloseable` 清理。原生库取官方 Android release，URL 与 SHA-256 固定在 `scripts/prepare-speech-runtime.py`，由 Gradle 在构建期下载校验。各引擎完整归属与模型清单见 `third_party/sherpa-onnx/NOTICE.md` 与 `third_party/sherpa-ncnn/NOTICE.md`。
 
+随包原生库的底层组件适用各自许可证，许可证全文已随包并在「关于 › 开源许可」页可查：`libonnxruntime.so` 为 ONNX Runtime 的 [MIT License](https://github.com/microsoft/onnxruntime/blob/main/LICENSE)（Copyright (c) Microsoft Corporation），全文见 `assets/licenses/onnxruntime-MIT.txt`；`libncnn.so` 为 Tencent [ncnn](https://github.com/Tencent/ncnn) 的 BSD 3-Clause License，其内嵌的 zlib、BSD-2 组件在官方 `LICENSE-ncnn` 中一并声明，全文见 `assets/licenses/ncnn-BSD-3-Clause.txt`。引擎的 Apache-2.0 授权不代替这两个库自身的许可义务。
+
 与 EmbeddingGemma 一致，**语音模型权重不打包进 APK**。用户在语音设置页选择模型包与下载源（Hugging Face 或 ModelScope 镜像）后按需下载，逐文件校验字节数与 SHA-256；权重许可证不由引擎的 Apache 授权涵盖，下载确认步骤已提示此限制。
 
 ## 动态取色

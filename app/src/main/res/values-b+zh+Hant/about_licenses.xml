@@ -9,5 +9,7 @@
     <string name="licenses_entry_gpl3_summary">GNU GPL v3.0 · 適用於改編自 OpenMinis 的內建瀏覽器</string>
     <string name="licenses_entry_agpl3_summary">GNU AGPL v3.0 · 適用於參考移植自 Hyper-pick-up-code 的取餐碼識別程式碼</string>
     <string name="licenses_entry_apache2_summary">Apache License 2.0 · 離線語音引擎及其他隨應用程式分發的 Apache-2.0 元件</string>
+    <string name="licenses_entry_onnxruntime_summary">MIT 授權 · ONNX Runtime，隨 sherpa-onnx 引擎以 libonnxruntime.so 分發</string>
+    <string name="licenses_entry_ncnn_summary">BSD 3-Clause · Tencent ncnn 推理框架，隨 sherpa-ncnn 引擎以 libncnn.so 分發</string>
     <string name="licenses_load_failed">授權條款檔案讀取失敗。</string>
 </resources>

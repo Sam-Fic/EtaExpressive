@@ -80,6 +80,18 @@ private fun licenseEntries(): List<LicenseEntry> = listOf(
         summary = stringResource(R.string.licenses_entry_apache2_summary),
         assetName = "licenses/Apache-2.0.txt",
     ),
+    LicenseEntry(
+        id = "onnxruntime",
+        title = "ONNX Runtime (MIT)",
+        summary = stringResource(R.string.licenses_entry_onnxruntime_summary),
+        assetName = "licenses/onnxruntime-MIT.txt",
+    ),
+    LicenseEntry(
+        id = "ncnn",
+        title = "ncnn (BSD 3-Clause)",
+        summary = stringResource(R.string.licenses_entry_ncnn_summary),
+        assetName = "licenses/ncnn-BSD-3-Clause.txt",
+    ),
 )
 
 /**
