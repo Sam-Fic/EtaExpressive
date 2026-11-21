@@ -2843,6 +2843,10 @@
   <string name="tool_detail_sensitive">參數與結果依隱私策略不寫入會話記錄</string>
   <string name="tool_detail_copy_arguments">複製參數</string>
   <string name="tool_detail_copy_result">複製結果</string>
+  <string name="tool_detail_argument_count">%1$d 項參數</string>
+  <string name="tool_detail_result_stats">%1$d 行 · %2$s</string>
+  <string name="tool_detail_expand_all">展開全部 %1$d 行</string>
+  <string name="tool_detail_collapse">收合</string>
 
   <string name="trace_apps_none">未找到符合的應用程式</string>
   <string name="trace_app_name_separator">、</string>

@@ -2868,6 +2868,10 @@
   <string name="tool_detail_sensitive">Arguments and output stay out of the conversation record</string>
   <string name="tool_detail_copy_arguments">Copy arguments</string>
   <string name="tool_detail_copy_result">Copy result</string>
+  <string name="tool_detail_argument_count">%1$d args</string>
+  <string name="tool_detail_result_stats">%1$d lines · %2$s</string>
+  <string name="tool_detail_expand_all">Show all %1$d lines</string>
+  <string name="tool_detail_collapse">Collapse</string>
 
   <string name="trace_apps_none">No matching apps found</string>
   <string name="trace_app_name_separator">", "</string>

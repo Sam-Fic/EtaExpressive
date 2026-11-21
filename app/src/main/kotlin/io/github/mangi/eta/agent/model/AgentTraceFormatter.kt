@@ -151,6 +151,9 @@ internal class AgentTraceFormatter(
      * 敏感工具（[AgentSensitiveToolPolicy]）在这里不做屏蔽——用户就在自己的屏幕上，
      * 展开时理应看到模型到底怎么调的；这类工具的原文由会话存储层在写库时剔除，
      * 只有当场能看到，重开会话后不再保留。
+     *
+     * 无参工具（`{}`）返回 null：空对象没有任何可读字段，卡片不该为它留下一整块
+     * 「调用参数」区域。
      */
     fun detailArguments(toolCall: AgentModelClient.ToolCall): String? {
         val json = runCatching { JSONObject(toolCall.argumentsJson) }.getOrNull()
@@ -160,6 +163,7 @@ internal class AgentTraceFormatter(
             if (json.length() == 0) return null
             return formatDetailPayload(json.toString(2), MAX_ARGUMENT_DETAIL_CHARS)
         }
+        if (json != null && json.length() == 0) return null
         return formatDetailPayload(toolCall.argumentsJson, MAX_ARGUMENT_DETAIL_CHARS)
     }
 

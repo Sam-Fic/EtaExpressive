@@ -2843,6 +2843,10 @@
   <string name="tool_detail_sensitive">参数与结果按隐私策略不写入会话记录</string>
   <string name="tool_detail_copy_arguments">复制参数</string>
   <string name="tool_detail_copy_result">复制结果</string>
+  <string name="tool_detail_argument_count">%1$d 项参数</string>
+  <string name="tool_detail_result_stats">%1$d 行 · %2$s</string>
+  <string name="tool_detail_expand_all">展开全部 %1$d 行</string>
+  <string name="tool_detail_collapse">收起</string>
 
   <string name="trace_apps_none">未找到匹配应用</string>
   <string name="trace_app_name_separator">、</string>

@@ -1400,7 +1400,7 @@ private fun UserMessageBubble(
                                         contentDescription = stringResource(
                                             if (copied) R.string.copy_copied else R.string.ui_copy_4edd1d,
                                         ),
-                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                                     )
                                 }
                             }
@@ -1422,7 +1422,7 @@ private fun UserMessageBubble(
                                     Icon(
                                         imageVector = Icons.Rounded.Edit,
                                         contentDescription = editTooltip,
-                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                                     )
                                 }
                             }
@@ -1442,7 +1442,7 @@ private fun UserMessageBubble(
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Rounded.CallSplit,
                                         contentDescription = branchTooltip,
-                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                                     )
                                 }
                             }
@@ -1462,7 +1462,7 @@ private fun UserMessageBubble(
                                     Icon(
                                         imageVector = Icons.Rounded.Delete,
                                         contentDescription = deleteTooltip,
-                                        modifier = Modifier.size(IconButtonDefaults.extraSmallIconSize),
+                                        modifier = Modifier.size(IconButtonDefaults.smallIconSize),
                                     )
                                 }
                             }
@@ -3814,7 +3814,7 @@ private fun ToolActivityInline(
     // 派发卡的身份信封（resultDetail）不算「可看内容」，只有能跳转时才可展开。
     val hasDetails = !message.command.isNullOrBlank() ||
         (dispatchMeta == null && !message.resultSummary.isNullOrBlank()) ||
-        !message.argumentsDetail.isNullOrBlank() ||
+        message.argumentsDetail?.trim()?.takeIf { it != "{}" } != null ||
         (dispatchMeta == null && !message.resultDetail.isNullOrBlank()) ||
         message.mediaPreviews.isNotEmpty() ||
         message.detailsWithheld ||
@@ -3895,22 +3895,20 @@ private fun ToolActivityInline(
                                 context = message.argumentsSummary,
                             )
                         }
-                        // 完整调用参数：工具真正收到的字段。命令块已经把命令原文
-                        // 摆在上面时，参数里不再重复这一项（由 formatter 去掉）。
-                        message.argumentsDetail?.takeIf { it.isNotBlank() }?.let { detail ->
-                            ToolDetailBlock(
-                                text = detail,
-                                label = stringResource(R.string.tool_detail_arguments),
-                                copyLabel = stringResource(R.string.tool_detail_copy_arguments),
-                            )
-                        }
-                        if (message.mediaPreviews.isNotEmpty()) {
-                            ToolMediaStrip(sources = message.mediaPreviews)
-                        }
+                        // 参数与结果收进同一张「调用详情」面板：同一个 Surface 内用段标题
+                        // + 发丝线分隔，参数段在空对象时不出现，结果段默认只露前 6 行。
                         if (dispatchMeta != null) {
                             // 派发卡只负责「派发记录」定位：子会话身份、状态与跳转。
                             // 完整汇报正文（最终答复 / 失败原因）由紧随其后的「派发回报」
                             // 回执卡独占展示，这里再画一遍就等于同一条内容显示两次。
+                            // 调用参数仍是本卡自己的输入（任务描述等），照常展示。
+                            ToolDetailPanel(
+                                arguments = message.argumentsDetail,
+                                resultSummary = null,
+                                resultDetail = null,
+                                status = message.status,
+                                itemKey = message.id,
+                            )
                             if (waitingQuestion != null) {
                                 // 子会话正在等的问题：只读展示；作答入口在子会话自己的问题卡
                                 // （下方「打开会话」跳转），调度台不提供第二张表单，避免
@@ -3942,48 +3940,18 @@ private fun ToolActivityInline(
                                     }
                                 }
                             }
-                        } else if (!message.resultSummary.isNullOrBlank() || !message.resultDetail.isNullOrBlank()) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = stringResource(R.string.ui_result_0a2c91),
-                                    style = chatQuaternaryStyle(),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                // 摘要是一行结论，完整返回内容在下面：模型当时读到的就是那份文本。
-                                // 有完整内容时摘要只留首行，避免终端输出的预览行重复一遍。
-                                message.resultSummary?.takeIf { it.isNotBlank() }?.let { summary ->
-                                    val summaryLine = if (message.resultDetail.isNullOrBlank()) {
-                                        summary
-                                    } else {
-                                        summary.lineSequence().firstOrNull().orEmpty()
-                                    }
-                                    if (summaryLine.isNotBlank()) {
-                                        HapticSelectionContainer {
-                                            Text(
-                                                text = summaryLine,
-                                                style = chatExpandedBodyStyle(),
-                                            )
-                                        }
-                                    }
-                                }
-                                message.resultDetail?.takeIf { it.isNotBlank() }?.let { detail ->
-                                    ToolDetailBlock(
-                                        text = detail,
-                                        // 「结果」标题就在上面，这里不再重复一遍。
-                                        label = null,
-                                        copyLabel = stringResource(R.string.tool_detail_copy_result),
-                                    )
-                                }
-                                // 图片张数：结果摘要往往只描述「看到了什么」，
-                                // 不说明带回了多少张图，这里补一行计数。
-                                if (imageCountLabel != null) {
-                                    Text(
-                                        text = imageCountLabel,
-                                        style = chatQuaternaryStyle(),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
+                        } else {
+                            ToolDetailPanel(
+                                arguments = message.argumentsDetail,
+                                resultSummary = message.resultSummary,
+                                resultDetail = message.resultDetail,
+                                status = message.status,
+                                itemKey = message.id,
+                                imageCountLabel = imageCountLabel,
+                            )
+                        }
+                        if (message.mediaPreviews.isNotEmpty()) {
+                            ToolMediaStrip(sources = message.mediaPreviews)
                         }
                         if (showBrowserShortcut) {
                             browserSnapshot?.takeIf { it.available }?.let { snapshot ->
@@ -4239,7 +4207,7 @@ private fun ToolCommandBlock(
 }
 
 /**
- * 工具卡片展开区的通用文本块：调用参数与完整返回内容共用。
+ * 派发卡里「等待回答」的只读文本块；常规工具的参数/结果已收进 [ToolDetailPanel]。
  *
  * 文本按原样展示（等宽、可选中、可复制），高度到上限后在块内滚动——
  * 展开都点了，就不该再截成一行省略号。超过上限的部分由格式化层截断并注明。
