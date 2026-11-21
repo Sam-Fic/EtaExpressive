@@ -3,6 +3,7 @@ package io.github.mangi.eta.config
 import android.content.Context
 import android.content.SharedPreferences
 import io.github.libxposed.service.XposedService
+import io.github.mangi.eta.agent.capture.AssistantScreenshotBackend
 import io.github.mangi.eta.agent.device.AgentTaskSurface
 
 /**
@@ -36,6 +37,16 @@ internal object Prefs {
         const val ASSISTANT_AUTO_CONFIG = "assistant_auto_config"
         /** 系统助手唤起后的落点：键盘输入 / 语音识别，见 [AssistantEntryMode]。 */
         const val ASSISTANT_ENTRY_MODE = "assistant_entry_mode"
+        /**
+         * 实时活动提醒的呈现方式（原生 / 小米超级岛 / ColorOS 流体云），
+         * 见 [LiveActivityStyle]。
+         */
+        const val LIVE_ACTIVITY_STYLE = "live_activity_style"
+        /**
+         * 系统助手屏幕识别的截图后端（无障碍取不到帧时的兜底方式），
+         * 见 [io.github.mangi.eta.agent.capture.AssistantScreenshotBackend]。
+         */
+        const val ASSISTANT_SCREENSHOT_BACKEND = "assistant_screenshot_backend"
         const val HOTWORD_SELF_HEAL = "hotword_self_heal"
         const val GESTURE_BAR_CIRCLE_TO_SEARCH = "gesture_bar_circle_to_search"
         const val DOUBLE_FINGER_CIRCLE_TO_SEARCH = "double_finger_circle_to_search"
@@ -478,6 +489,19 @@ internal object Prefs {
         localAgent?.edit()?.putBoolean(key, value)?.apply()
     }
 
+    /** 实时活动提醒呈现方式：App 进程通知链路消费，写本地 Agent 配置。 */
+    fun putLiveActivityStyle(style: LiveActivityStyle) {
+        localAgent?.edit()?.putString(Keys.LIVE_ACTIVITY_STYLE, style.persistedValue)?.apply()
+    }
+
+    /** 缺少配置时保持既有默认（超级岛；非小米设备由消费方门控落回原生）。 */
+    fun liveActivityStyle(): LiveActivityStyle = liveActivityStyle(localAgent)
+
+    fun liveActivityStyle(preferences: SharedPreferences?): LiveActivityStyle =
+        LiveActivityStyle.resolve(
+            runCatching { preferences?.getString(Keys.LIVE_ACTIVITY_STYLE, null) }.getOrNull(),
+        )
+
     /** App 进程调用：初始化不依赖 Xposed Service 的 Agent 配置。 */
     fun initLocal(context: Context) {
         if (localAgent == null) {
@@ -529,6 +553,21 @@ internal object Prefs {
         AssistantEntryMode.resolve(
             runCatching { preferences?.getString(Keys.ASSISTANT_ENTRY_MODE, null) }.getOrNull(),
         )
+
+    /**
+     * 系统助手屏幕识别的截图后端。只由 App 进程消费（入口浮窗的无障碍兜底截屏），
+     * 读取本地 Agent 配置；缺少配置或值非法时保持自动探测（root → Shizuku）。
+     */
+    fun assistantScreenshotBackend(): AssistantScreenshotBackend =
+        assistantScreenshotBackend(localAgent)
+
+    fun assistantScreenshotBackend(preferences: SharedPreferences?): AssistantScreenshotBackend =
+        runCatching {
+            AssistantScreenshotBackend.valueOf(
+                preferences?.getString(Keys.ASSISTANT_SCREENSHOT_BACKEND, null)
+                    ?: AssistantScreenshotBackend.AUTO.name,
+            )
+        }.getOrDefault(AssistantScreenshotBackend.AUTO)
 
     fun powerAssistantTarget(): PowerAssistantTarget = powerAssistantTarget(remote)
 
