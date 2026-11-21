@@ -1,0 +1,62 @@
+# 行尾归一化：文本文件在仓库内统一 LF，检出时按下方规则处理。
+# 目的：避免跨平台（尤其从 Windows 拷贝）时 LF/CRLF 差异污染 git diff。
+# 参见 docs/RULES.md 与 AGENTS.md 的工程纪律。
+
+# 默认：让 git 自动判断文本/二进制，文本入库统一为 LF。
+* text=auto
+
+# ---------- 强制 LF（跨平台文本，任何平台检出都用 LF） ----------
+*.kt        text eol=lf
+*.java      text eol=lf
+*.kts       text eol=lf
+*.gradle    text eol=lf
+*.xml       text eol=lf
+*.json      text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.toml      text eol=lf
+*.properties text eol=lf
+*.pro       text eol=lf
+*.sql       text eol=lf
+*.sh        text eol=lf
+*.py        text eol=lf
+*.go        text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+*.patch     text eol=lf
+*.diff      text eol=lf
+*.list      text eol=lf
+*.prop      text eol=lf
+*.mod       text eol=lf
+*.pbtxt     text eol=lf
+*.svg       text eol=lf
+*.gradlew   text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+
+# ---------- 保留 CRLF（Windows 专用脚本） ----------
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# ---------- 二进制（禁止任何转换 / diff） ----------
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.jar       binary
+*.so        binary
+*.aar       binary
+*.tgz       binary
+*.tar       binary
+*.gz        binary
+*.zip       binary
+*.keystore  binary
+*.jks       binary
+*.bin       binary
+*.tflite    binary
+*.onnx      binary
+*.ncnn      binary
+*.perfetto  binary
