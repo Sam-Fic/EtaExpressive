@@ -68,6 +68,11 @@ internal object AgentPromptBuilder {
         presetRunAt: Instant? = null,
         /** 唤起即屏幕上下文（助手弹窗 run）：true 时注入 observe_screen 首轮规则（见 buildSystemMessages）。 */
         screenObservationRule: Boolean = false,
+        /**
+         * 唤醒截图兜底：入口进程已有「已采集、未附图」的屏幕截图。
+         * true 时提示优先引导 `view_entry_screenshot`，而不是重新截屏。
+         */
+        entryScreenFallback: Boolean = false,
         /** 「添加日程」快速路径：用一条专用短系统约束替换全部常驻规则。 */
         calendarFastTask: Boolean = false,
     ): JSONArray {
@@ -85,6 +90,7 @@ internal object AgentPromptBuilder {
             dynamicToolGroups = dynamicToolGroups,
             presetRunAt = presetRunAt,
             screenObservationRule = screenObservationRule,
+            entryScreenFallback = entryScreenFallback,
             calendarFastTask = calendarFastTask,
         )
         onSystemCount(messages.length())
@@ -165,6 +171,19 @@ internal object AgentPromptBuilder {
         "用户这条请求依赖其当前手机屏幕上正在显示的内容，而消息没有附带截图：" +
             "请先调用 observe_screen 且把 include_screenshot 置为 true 查看屏幕，再回答或执行；" +
             "不要凭空猜测屏幕内容，也不要不带截图先调用一次 observe_screen 再重复调用。"
+
+    /**
+     * 唤醒截图兜底规则（助手弹窗 run，入口已采集截图但前置判断未附图）。
+     *
+     * 与 [screenObservationRuleText] 互斥：优先取用入口截图，避免模型为了同一张屏多跑一次
+     * observe_screen（也避免在屏幕已被工具改动后仍误用旧截图）。
+     */
+    private fun entryScreenFallbackRuleText(): String =
+        "如果用户这条请求需要看当前手机屏幕上的内容，而消息没有附带截图，" +
+            "助手已经备好用户唤起时采集的屏幕截图：请先调用 view_entry_screenshot " +
+            "取回这张图，再回答或执行，不要重新调用 observe_screen 截同一张屏。" +
+            "只有该截图不可用（工具返回 ENTRY_SCREEN_UNAVAILABLE）、或你已经用工具改变了屏幕时，" +
+            "才调用 observe_screen 且把 include_screenshot 置为 true。不要凭空猜测屏幕内容。"
 
     /**
      * 日程预热的运行时间口径（语音「创建屏幕日程」预设与关键词命中的通用日程任务共用）。
@@ -263,6 +282,8 @@ internal object AgentPromptBuilder {
         presetRunAt: Instant? = null,
         /** 唤起即屏幕上下文（助手弹窗 run）；见 [buildInitialMessages]。 */
         screenObservationRule: Boolean = false,
+        /** 唤醒截图兜底（助手弹窗 run，已采集截图但未附图）；见 [buildInitialMessages]。 */
+        entryScreenFallback: Boolean = false,
         /**
          * 「添加日程」快速路径：为 true 时只下发人格 + [calendarFastTaskRule] 并直接返回，
          * 跳过所有常驻策略、组索引与被关闭能力说明。快捷任务的目录已收窄，这些段落既用不上，
@@ -349,8 +370,11 @@ internal object AgentPromptBuilder {
         // 模型可一步换算相对日期并调用创建工具，省掉「先取时间」的一次往返。
         presetRunAt?.let { messages.put(systemMessage(presetRunAtRule(it))) }
         // 唤起即屏幕上下文（助手弹窗）：用户指令依赖其当前屏幕内容且消息未附图，引导模型
-        // 一步到位带截图观察，省一次「解锁屏幕组 → 观察」的往返。屏幕组已由运行侧预开。
-        if (screenObservationRule) {
+        // 一步到位拿到画面，省一次「解锁屏幕组 → 观察」的往返。入口已备好截图时优先
+        // view_entry_screenshot（不重新截屏）；否则退回 observe_screen 带截图。
+        if (entryScreenFallback && !pureChat) {
+            messages.put(systemMessage(entryScreenFallbackRuleText()))
+        } else if (screenObservationRule) {
             messages.put(systemMessage(screenObservationRuleText()))
         }
         if (!pureChat && delegationAvailable && (!trimChatSections || delegationResultRuleInPrefix)) {
@@ -536,7 +560,9 @@ internal object AgentPromptBuilder {
                             "当前终端只支持 identity=user，以 Eta 的 App UID 执行；Linux 内模拟 root 不授予 Android 特权。用户未指定环境的命令使用 terminal 的 action=open_and_exec，" + environmentRule + "；"
                         }) +
                         "连续多步 shell 工作先 action=open 获取 session_id，再 action=exec 复用会话；" +
-                        "长时间命令使用 async=true 启动后用 read_async_result 轮询，完成后 close；" +
+                        "有明确结束点的命令（包括耗时数分钟的命令）一律不加 async，把 timeout_ms 设为覆盖预期时长（最大 180000）等它同步返回，不要在命令运行期间反复发消息；" +
+                        "只有需要与其他工作并行、或要在运行期间查看增量输出时才用 async=true，" +
+                        "随后用 read_async_result 带 wait_ms 一次阻塞等到结束再 close（wait_ms 到点仍 running 就再用 wait_ms 续等，禁止连续空轮询刷屏）；" +
                         "需要长期驻留的后台服务（监听端口、Web 面板等）用 action=daemon_start 启动，daemon_list 查看状态、daemon_logs 读日志、daemon_stop 停止；" +
                         "守护任务不随 run 或会话结束回收，也不要用 nohup 或 & 手工后台化；" +
                         "async 后台命令是独立 shell，不要和 session_id 混用。不要调用 search_apps 查询“终端”或“Termux”。" +

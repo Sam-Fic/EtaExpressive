@@ -56,7 +56,7 @@ internal object AgentTerminalToolCatalog {
                                                 .put("daemon_logs")
                                                 .put("daemon_stop")
                                         )
-                                        .put("description", "open: create session. exec: run in session/cwd. open_and_exec: one-shot. read_async_result: output by job_id. close: session_id or job_id. daemon_start: detached service, returns task_id. daemon_list: liveness. daemon_logs: tail. daemon_stop: terminate.")
+                                        .put("description", "open: create session. exec: run in session/cwd. open_and_exec: one-shot, blocks until the process exits (use this for commands with a known endpoint). read_async_result: output by job_id; pass wait_ms to block server-side until the job finishes instead of polling. close: session_id or job_id. daemon_start: detached service, returns task_id. daemon_list: liveness. daemon_logs: tail. daemon_stop: terminate.")
                                 )
                                 .put(
                                     "identity",
@@ -118,7 +118,7 @@ internal object AgentTerminalToolCatalog {
                                     "async",
                                     JSONObject()
                                         .put("type", "boolean")
-                                        .put("description", "Run in a separate background shell, return job_id immediately. Never combine with session_id; read output with read_async_result.")
+                                        .put("description", "Run in a separate background shell, return job_id immediately. Never combine with session_id. Only for jobs that must outlive a single tool call; read the result with read_async_result(wait_ms=...), never with repeated empty polls.")
                                 )
                                 .put(
                                     "offset_chars",
@@ -137,6 +137,12 @@ internal object AgentTerminalToolCatalog {
                                     JSONObject()
                                         .put("type", "boolean")
                                         .put("description", "For read_async_result, remove the async job when it has completed.")
+                                )
+                                .put(
+                                    "wait_ms",
+                                    JSONObject()
+                                        .put("type", "integer")
+                                        .put("description", "For read_async_result, block server-side until the job exits or this timeout elapses. Default 0 (immediate snapshot), max 180000. Cover the command's remaining runtime in one call; do not poll repeatedly.")
                                 )
                         )
                         .put("required", JSONArray().put("action"))

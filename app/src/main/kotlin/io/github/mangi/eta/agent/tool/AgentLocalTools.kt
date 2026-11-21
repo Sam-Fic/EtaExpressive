@@ -122,6 +122,14 @@ internal class AgentLocalTools(
     private val screenObservationProvider: (
         (AgentScreenObservationContract.Options) -> RootShellDeviceController.Observation
     )? = null,
+    /**
+     * 唤醒时已采集、但前置判断没有加进消息的屏幕截图。
+     *
+     * 只在助手弹窗 run 且消息未附图的条件下注入；模型调用 `view_entry_screenshot`
+     * 时把它作为工具结果图片返回，省掉一次重新截屏（也可在屏幕已变化时改用
+     * observe_screen）。null = 本次运行没有可用的唤醒截图。
+     */
+    private val entryScreenImageProvider: (() -> AgentModelClient.ToolResult?)? = null,
     private val beforeToolExecution: (String) -> ToolExecutionDecision = {
         ToolExecutionDecision.Allow
     },
@@ -1050,6 +1058,14 @@ internal class AgentLocalTools(
                     else textResult(webTools.execute(toolCall.name, args))
                 }
                 "observe_screen" -> observeScreen(args)
+                "view_entry_screenshot" -> entryScreenImageProvider?.invoke()
+                    ?: textResult(
+                        errorResult(
+                            code = "ENTRY_SCREEN_UNAVAILABLE",
+                            message = "本次运行没有可用的唤醒截图；如需查看屏幕，请调用 " +
+                                "observe_screen 并设置 include_screenshot=true。",
+                        )
+                    )
                 "tap" -> afterAction(tap(args))
                 "tap_area" -> afterAction(tapArea(args))
                 "tap_element" -> afterAction(tapElement(args))
@@ -2116,6 +2132,7 @@ internal class AgentLocalTools(
             closeIfDone = args.optBoolean("close_if_done", false),
             environment = args.optString("environment", "android"),
             taskId = args.optString("task_id").ifBlank { null },
+            waitMs = args.optInt("wait_ms", 0),
         )
     }
 

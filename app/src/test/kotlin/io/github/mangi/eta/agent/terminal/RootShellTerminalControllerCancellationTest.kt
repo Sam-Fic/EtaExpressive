@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -146,6 +147,85 @@ class RootShellTerminalControllerCancellationTest {
         }
         return !isProcessRunning(pid)
     }
+
+    @Test
+    fun readAsyncResultWithWaitMsBlocksUntilJobExits() {
+        val controller = RootShellTerminalController(NoOpLogger)
+        try {
+            val jobId = startAsyncWaitJob(controller, "sleep 1; printf async-wait-done")
+            val startedAt = System.nanoTime()
+            val result = JSONObject(readAsyncWithWait(controller, jobId, waitMs = 10_000))
+            val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+
+            assertFalse(result.toString(), result.getBoolean("running"))
+            assertEquals(0, result.getInt("exit_code"))
+            assertTrue(result.toString(), result.getString("stdout").contains("async-wait-done"))
+            assertTrue(result.toString(), result.getLong("waited_ms") >= 500)
+            assertTrue("单次调用必须真的等到进程退出，实际 ${elapsedMs}ms", elapsedMs >= 500)
+        } finally {
+            controller.closeAll()
+        }
+    }
+
+    @Test
+    fun readAsyncResultWaitTimeoutReturnsRunningAndAllowsContinueWaiting() {
+        val controller = RootShellTerminalController(NoOpLogger)
+        try {
+            val jobId = startAsyncWaitJob(controller, "sleep 2; printf async-wait-done")
+
+            val first = JSONObject(readAsyncWithWait(controller, jobId, waitMs = 200))
+            assertTrue(first.toString(), first.getBoolean("running"))
+            assertTrue(first.toString(), first.has("wait_hint"))
+            assertTrue(first.toString(), first.getLong("waited_ms") >= 150)
+
+            val second = JSONObject(readAsyncWithWait(controller, jobId, waitMs = 10_000))
+            assertFalse(second.toString(), second.getBoolean("running"))
+            assertTrue(second.toString(), second.getString("stdout").contains("async-wait-done"))
+        } finally {
+            controller.closeAll()
+        }
+    }
+
+    private fun startAsyncWaitJob(controller: RootShellTerminalController, command: String): String =
+        JSONObject(
+            controller.terminalAction(
+                action = "open_and_exec",
+                command = command,
+                cwd = System.getProperty("java.io.tmpdir"),
+                timeoutMs = 30_000,
+                identity = "user",
+                mergeStderr = false,
+                sessionId = null,
+                jobId = null,
+                async = true,
+                offsetChars = 0,
+                maxChars = 16_000,
+                closeIfDone = false,
+            )
+        ).let { started ->
+            assertTrue(started.toString(), started.getBoolean("ok"))
+            started.getString("job_id")
+        }
+
+    private fun readAsyncWithWait(
+        controller: RootShellTerminalController,
+        jobId: String,
+        waitMs: Int,
+    ): String = controller.terminalAction(
+        action = "read_async_result",
+        command = "",
+        cwd = null,
+        timeoutMs = 1_000,
+        identity = "user",
+        mergeStderr = false,
+        sessionId = null,
+        jobId = jobId,
+        async = false,
+        offsetChars = 0,
+        maxChars = 16_000,
+        closeIfDone = false,
+        waitMs = waitMs,
+    )
 
     private fun waitForAsyncResult(
         controller: RootShellTerminalController,

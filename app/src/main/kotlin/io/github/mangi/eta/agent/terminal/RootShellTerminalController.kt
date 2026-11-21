@@ -4,6 +4,7 @@ import io.github.mangi.eta.core.AgentLogger
 
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -34,6 +35,8 @@ internal class RootShellTerminalController(
         const val MAX_WRITE_BYTES = 512 * 1024
         const val MAX_LIST_ENTRIES = 200
         const val MAX_ASYNC_OUTPUT_CHARS = 64_000
+        /** read_async_result 单次等待上限，与命令执行上限对齐，避免工具调用无限挂起。 */
+        const val MAX_WAIT_MS = MAX_TIMEOUT_SECONDS * 1000
     }
 
     private val ownedDaemonIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -104,6 +107,7 @@ internal class RootShellTerminalController(
         closeIfDone: Boolean,
         environment: String = TerminalEnvironment.ANDROID.wireName,
         taskId: String? = null,
+        waitMs: Int = 0,
     ): String {
         return when (action.lowercase()) {
             "open" -> openSession(identity = identity, cwd = cwd, environment = environment)
@@ -131,7 +135,8 @@ internal class RootShellTerminalController(
                 jobId = jobId.orEmpty(),
                 offsetChars = offsetChars,
                 maxChars = maxChars,
-                closeIfDone = closeIfDone
+                closeIfDone = closeIfDone,
+                waitMs = waitMs
             )
             "close" -> closeTerminal(sessionId = sessionId, jobId = jobId)
             "daemon_start" -> daemonStart(
@@ -333,6 +338,9 @@ internal class RootShellTerminalController(
                 job.exitCode = runCatching { process.exitValue() }.getOrDefault(-2)
                 job.completedAt = System.currentTimeMillis()
             } finally {
+                // 先放行等待方：正常退出、超时杀进程、外部 close 都会走到这里，
+                // 即使 retire 抛异常也不能把 read_async_result 永久挂住。
+                job.done.countDown()
                 processSupervisor.retireExitedProcess(process)
             }
         }
@@ -362,22 +370,42 @@ internal class RootShellTerminalController(
             .toString()
     }
 
+    /**
+     * 读取后台任务输出。
+     *
+     * [waitMs] 大于 0 时在服务端阻塞到进程退出或超时，模型一次调用即可拿到终态，
+     * 不必靠反复 read_async_result 空轮询推进轮次；waitMs=0 保留即时快照语义。
+     * 完成信号由 AsyncCommand.done 给出，正常退出、超时杀进程、外部 close 都会触发，
+     * 因此工具调用不会被永久挂住。仍返回 running=true 时附带 wait_hint 纠正模型行为。
+     */
     private fun readAsyncResult(
         jobId: String,
         offsetChars: Int,
         maxChars: Int,
-        closeIfDone: Boolean
+        closeIfDone: Boolean,
+        waitMs: Int
     ): String {
         val job = synchronized(asyncJobs) { asyncJobs[jobId] }
             ?: return errorJson("JOB_NOT_FOUND", "未找到 async terminal job：$jobId")
         if (job.identity == "root" && !rootAvailable()) return errorJson("ROOT_REQUIRED", "Root 授权不可用")
+        val effectiveWaitMs = waitMs.coerceIn(0, MAX_WAIT_MS)
+        val waitStartedAt = System.currentTimeMillis()
+        if (effectiveWaitMs > 0 && job.exitCode == null) {
+            runCatching { job.done.await(effectiveWaitMs.toLong(), TimeUnit.MILLISECONDS) }
+        }
+        val waitedMs = System.currentTimeMillis() - waitStartedAt
+        val done = job.exitCode != null
+        if (done) {
+            // 进程退出到读线程排空管道之间有窗口，有界 join 保证最后一次读取拿到完整输出。
+            runCatching { if (job.stdoutThread.isAlive) job.stdoutThread.join(200) }
+            runCatching { if (job.stderrThread.isAlive) job.stderrThread.join(200) }
+        }
         val stdoutRaw = job.stdout.text()
         val stderrRaw = job.stderr.text()
         val merged = stdoutRaw
         val offset = offsetChars.coerceAtLeast(0).coerceAtMost(merged.length)
         val limit = maxChars.coerceIn(1, MAX_OUTPUT_CHARS)
         val slice = merged.substring(offset, (offset + limit).coerceAtMost(merged.length))
-        val done = job.exitCode != null
         if (done && closeIfDone) {
             synchronized(asyncJobs) { asyncJobs.remove(jobId) }?.let(::closeJob)
         }
@@ -402,6 +430,15 @@ internal class RootShellTerminalController(
             .put("stderr", if (job.mergeStderr) "" else stderrRaw.truncateForJson())
             .put("stdout_truncated", job.stdout.isTruncated())
             .put("stderr_truncated", !job.mergeStderr && job.stderr.isTruncated())
+            .put("waited_ms", waitedMs)
+            .apply {
+                if (!done) {
+                    put(
+                        "wait_hint",
+                        "job 仍在运行；不要连续调用 read_async_result 空轮询，改用 wait_ms 覆盖剩余时长一次等到完成或超时"
+                    )
+                }
+            }
             .toString()
     }
 
@@ -1203,6 +1240,9 @@ internal class RootShellTerminalController(
         val startedAt: Long,
         val timeoutMs: Int
     ) {
+        /** 进程终结信号：read_async_result 靠它在服务端阻塞到终态，而不是靠模型轮询。 */
+        val done: CountDownLatch = CountDownLatch(1)
+
         @Volatile
         var exitCode: Int? = null
 

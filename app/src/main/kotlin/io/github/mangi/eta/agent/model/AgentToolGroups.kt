@@ -522,7 +522,8 @@ internal object AgentToolGroups {
         TERMINAL_GROUP.id ->
             "Android 文件与系统命令用 environment=android，用户选择 Alpine/Debian 时统一用 " +
                 "environment=linux。连续多步先 action=open 取 session_id 再 action=exec 复用；" +
-                "长命令用 async=true 后 read_async_result 轮询；常驻服务用 daemon_start，不要用 nohup 或 &。"
+                "有终点的长命令不加 async，用 timeout_ms 等同步结果；确需后台时 read_async_result 带 wait_ms 一次等到结束，不要空轮询；" +
+                "常驻服务用 daemon_start，不要用 nohup 或 &。"
         DEVICE_GROUP.id ->
             "设备直写工具跟随用户开关；日程读写需要运行时权限，闹钟直写需要 Root 与系统时钟库，" +
                 "缺少权限时如实说明，不要改用 Shell 绕过。"
