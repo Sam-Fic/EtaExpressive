@@ -61,6 +61,7 @@ import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ConversationSubAgentEditor
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.LocalConversationSubAgentEditor
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.SubAgentDropdownMenu
 import io.github.mangi.eta.ui.components.SubAgentEditorState
 import io.github.mangi.eta.ui.components.SubAgentPresetDirectoryStatus
@@ -214,12 +215,11 @@ internal fun SubAgentSettingsScreen(
                                         }
                                     },
                                     enabled = editable,
+                                    // 行首类别图标走共享 PreferenceIcon（中性 onSurfaceVariant）；
+                                    // 不可编辑时随官方禁用档（onSurface × 0.38）压暗，
+                                    // 此前硬编码 primary，禁用后仍全亮。
                                     leadingContent = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.AccountTree,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                        )
+                                        PreferenceIcon(icon = Icons.Rounded.AccountTree, enabled = editable)
                                     },
                                     supportingContent = {
                                         Text(

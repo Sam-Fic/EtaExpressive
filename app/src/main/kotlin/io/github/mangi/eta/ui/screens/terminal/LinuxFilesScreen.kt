@@ -60,6 +60,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -494,12 +495,10 @@ private fun LazyListScope.materialLinuxFileItems(
                     EtaSegmentedRow(
                         onClick = onNavigateUp,
                         enabled = !busy,
+                        // 行首图标走共享 PreferenceIcon：busy 禁用期间随官方禁用档
+                        // （onSurface × 0.38）压暗，不再恒亮。
                         leadingContent = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.DriveFileMove,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            PreferenceIcon(icon = Icons.AutoMirrored.Rounded.DriveFileMove, enabled = !busy)
                         },
                         content = {
                             M3Text(

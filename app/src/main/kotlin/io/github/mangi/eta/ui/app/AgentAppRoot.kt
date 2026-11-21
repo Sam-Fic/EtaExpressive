@@ -1305,6 +1305,8 @@ fun AgentAppRoot(
                             is AgentSkillsAction.ToggleSkill -> agentState.toggleSkill(action.skillId, action.enabled)
                             is AgentSkillsAction.DeleteSkill -> agentState.deleteSkill(action.skillId)
                             is AgentSkillsAction.ReinstallBuiltin -> agentState.reinstallBuiltin(action.skillId)
+                            is AgentSkillsAction.ToggleSkills -> agentState.toggleSkills(action.skillIds, action.enabled)
+                            is AgentSkillsAction.DeleteSkills -> agentState.deleteSkills(action.skillIds)
                         }
                     },
                 )
@@ -1729,7 +1731,17 @@ fun AgentAppRoot(
                 WebToolsSettingsScreen(onBack = ::popRoute)
             }
             entry<AppRoute.MijiaSettings>(swipeDismiss = navSwipeDismiss) {
-                io.github.mangi.eta.ui.screens.tools.MijiaSettingsScreen(onBack = ::popRoute)
+                io.github.mangi.eta.ui.screens.tools.MijiaSettingsScreen(
+                    onBack = ::popRoute,
+                    onOpenOAuth = { pushRoute(AppRoute.MijiaOAuth) },
+                    onOpenSearch = { pushRoute(AppRoute.MijiaSearch) },
+                )
+            }
+            entry<AppRoute.MijiaOAuth>(swipeDismiss = navSwipeDismiss) {
+                io.github.mangi.eta.ui.screens.tools.MijiaOAuthScreen(onBack = ::popRoute)
+            }
+            entry<AppRoute.MijiaSearch>(swipeDismiss = navSwipeDismiss) {
+                io.github.mangi.eta.ui.screens.tools.MijiaSearchScreen(onBack = ::popRoute)
             }
             entry<AppRoute.VoiceSettings>(swipeDismiss = navSwipeDismiss) {
                 io.github.mangi.eta.ui.VoiceSettingsScreen(

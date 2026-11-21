@@ -407,14 +407,6 @@ internal fun SettingsScreen(
                     )
                 }
 
-                row(key = SettingsKeys.MIJIA_SETTINGS) {
-                    EtaClickableRow(
-                        title = "米家直连",
-                        leading = { PreferenceIcon(icon = Icons.Rounded.Hub) },
-                        onClick = { onNavigate(AppRoute.MijiaSettings) },
-                    )
-                }
-
                 row(key = SettingsKeys.THINKING_DEFAULT) {
                     SwitchPref(
                         context = context,
@@ -487,6 +479,14 @@ internal fun SettingsScreen(
                             )
                         },
                         onClick = { onNavigate(AppRoute.ToolRecipes) },
+                    )
+                }
+
+                row(key = SettingsKeys.MIJIA_SETTINGS) {
+                    EtaClickableRow(
+                        title = stringResource(R.string.mijia_title),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.Hub) },
+                        onClick = { onNavigate(AppRoute.MijiaSettings) },
                     )
                 }
 
@@ -787,7 +787,10 @@ internal fun SettingsScreen(
                         },
                         enabled = !exportingLogs && !clearingLogs,
                         leading = {
-                            PreferenceIcon(icon = Icons.Rounded.Share)
+                            PreferenceIcon(
+                                icon = Icons.Rounded.Share,
+                                enabled = !exportingLogs && !clearingLogs,
+                            )
                         },
                         onClick = {
                             if (exportingLogs || clearingLogs) return@EtaClickableRow
@@ -809,7 +812,11 @@ internal fun SettingsScreen(
                         title = stringResource(R.string.settings_clear_logs),
                         enabled = !exportingLogs && !clearingLogs,
                         leading = {
-                            PreferenceIcon(icon = Icons.Rounded.DeleteSweep, destructive = true)
+                            PreferenceIcon(
+                                icon = Icons.Rounded.DeleteSweep,
+                                enabled = !exportingLogs && !clearingLogs,
+                                destructive = true,
+                            )
                         },
                         onClick = {
                             if (exportingLogs || clearingLogs) return@EtaClickableRow

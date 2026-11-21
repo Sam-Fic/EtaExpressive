@@ -5,7 +5,8 @@
   「清空」按钮由「多选 → 全选 → 删除」替代，顶栏不再有清空/删除图标；
 - 长按行进入多选并勾中该行；多选态点按/长按都是勾选切换，行尾换官方 Checkbox；
 - 「已选 n 项」计数并入标题行（点号隔开），不另立计数行；
-- 批量操作栏是官方 M3E HorizontalFloatingToolbar 纯图标药丸（底部居中悬浮）：
+- 批量操作栏是共享多选套件（ui/adaptive/EtaSelectionKit.kt）的官方 M3E 浮动图标药丸
+  （底部居中悬浮；套件装配由 test_selection_kit_contract.py 锁死）：
   管理聊天 = 全选 + 置顶/取消置顶 + 删除；回收站 = 全选 + 恢复 + 彻底删除；
   分类 = 全选 + 删除；删除执行前另有确认弹窗；「取消」不落底栏；
 - 全选以可操作列表为全集：管理聊天不含调度台系统条目；
@@ -30,23 +31,18 @@ class ChatManageMultiselectContractTest(unittest.TestCase):
 
     def test_top_bar_has_search_and_multiselect_only(self):
         # 管理聊天 / 回收站顶栏 = 搜索 + 多选；分类页原本没有搜索入口，只有多选。
+        # 多选入口统一走共享件 EtaSelectionTopBarAction（Checklist→Close 原位切换
+        # 由 test_selection_kit_contract.py 锁死）。
         for name, source in (('管理聊天', self.chats), ('回收站', self.trash)):
             with self.subTest(page=name):
-                actions = source.split('actions = {', 1)[1].split('},', 1)[0]
+                actions = source.split('actions = {', 1)[1].split('EtaSelectionTopBarAction(', 1)[0]
                 self.assertIn('Icons.Rounded.Search', actions)
-                self.assertIn(
-                    'icon = if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist,',
-                    source,
-                )
-                self.assertIn(
-                    'if (selectionMode) R.string.action_cancel else R.string.media_action_multiselect,',
-                    source,
-                )
+                self.assertIn('EtaSelectionTopBarAction(', source)
                 # 旧清空按钮退场：顶栏不再有 DeleteSweep 图标。
                 self.assertNotIn('Icons.Rounded.DeleteSweep', source)
         folders_actions = self.folders.split('actions = {', 1)[1].split('},', 1)[0]
         self.assertNotIn('Icons.Rounded.Search', folders_actions)
-        self.assertIn('Icons.Rounded.Checklist', folders_actions)
+        self.assertIn('EtaSelectionTopBarAction(', folders_actions)
         self.assertNotIn('Icons.Rounded.DeleteSweep', self.folders)
 
     def test_delete_all_wiring_removed(self):
@@ -77,33 +73,25 @@ class ChatManageMultiselectContractTest(unittest.TestCase):
 
     # ---- 批量操作栏：官方浮动工具条 ----
 
-    def test_selection_bar_is_official_floating_toolbar(self):
-        bars = (
-            ('ChatSelectionBar', self.chats),
-            ('TrashSelectionBar', self.trash),
-            ('FolderSelectionBar', self.folders),
-        )
-        for bar_name, source in bars:
-            with self.subTest(bar=bar_name):
-                self.assertIn('HorizontalFloatingToolbar(', source)
-                bar = source.split(f'private fun {bar_name}(', 1)[1]
-                self.assertIn('expanded = true,', bar)
-                self.assertIn('leadingContent = {},', bar)
-                self.assertIn('EtaFloatingToolbarConcentricPadding(', bar)
-                self.assertIn(
-                    'if (allSelected) Icons.Rounded.Deselect else Icons.Rounded.SelectAll', bar)
+    def test_selection_bar_is_shared_kit_pill(self):
+        # 药丸装配（官方 HorizontalFloatingToolbar + vibrant 容器 + 端盖同心）由
+        # test_selection_kit_contract.py 在共享套件内锁死；页面只负责引用共享件。
+        for name, source in (('管理聊天', self.chats), ('回收站', self.trash), ('分类', self.folders)):
+            with self.subTest(bar=name):
+                self.assertIn('EtaSelectionBar(', source)
+                self.assertIn('EtaSelectionBarOverlay(', source)
 
     def test_bar_actions_per_page(self):
         # 管理聊天：全选 + 置顶/取消置顶 + 删除。
-        bar = self.chats.split('private fun ChatSelectionBar(', 1)[1]
+        bar = self.chats.split('EtaSelectionBar(', 1)[1]
         self.assertIn('if (allPinned) Icons.Rounded.LabelOff else Icons.Rounded.PushPin', bar)
         self.assertIn('Icons.Rounded.Delete', bar)
         # 回收站：全选 + 恢复 + 彻底删除。
-        bar = self.trash.split('private fun TrashSelectionBar(', 1)[1]
+        bar = self.trash.split('EtaSelectionBar(', 1)[1]
         self.assertIn('Icons.Rounded.RestoreFromTrash', bar)
         self.assertIn('Icons.Rounded.DeleteForever', bar)
         # 分类：全选 + 删除（没有置顶/恢复）。
-        bar = self.folders.split('private fun FolderSelectionBar(', 1)[1]
+        bar = self.folders.split('EtaSelectionBar(', 1)[1]
         self.assertNotIn('Icons.Rounded.PushPin', bar)
         self.assertNotIn('Icons.Rounded.RestoreFromTrash', bar)
         self.assertIn('Icons.Rounded.Delete', bar)

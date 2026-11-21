@@ -35,6 +35,8 @@ internal fun AppRoute.frameDiagnosticPage(): FrameDiagnosticPage = when (this) {
     AppRoute.LiveActivitySettings -> FrameDiagnosticPage.Settings
     AppRoute.WebToolsSettings -> FrameDiagnosticPage.Settings
     AppRoute.MijiaSettings -> FrameDiagnosticPage.Settings
+    AppRoute.MijiaOAuth -> FrameDiagnosticPage.Settings
+    AppRoute.MijiaSearch -> FrameDiagnosticPage.Settings
     AppRoute.SubAgents -> FrameDiagnosticPage.SubAgents
     is AppRoute.SubAgentPresetDetail -> FrameDiagnosticPage.SubAgents
     AppRoute.VoiceModeSettings -> FrameDiagnosticPage.VoiceSettings

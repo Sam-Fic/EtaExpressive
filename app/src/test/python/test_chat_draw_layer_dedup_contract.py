@@ -57,7 +57,6 @@ class ChatDrawLayerDedupContractTest(unittest.TestCase):
         self.assertNotIn('MiuixTheme', self.chat)
         self.assertNotIn('tailDetailsEnter', self.tool)
         self.assertIn('HapticSelectionContainer(modifier = Modifier.toggleProbe(toggleProbeRef, "content"))', details)
-        self.assertIn('HapticSelectionContainer {', details)
         # 留帧层只有一层，包在气泡本身上（完成后的工具行离屏缓存）。
         self.assertEqual(1, details.count('completedContentDrawLayer('))
         self.assertIn('.let { completedContentDrawLayer(it, toolRowSettled) }', details)

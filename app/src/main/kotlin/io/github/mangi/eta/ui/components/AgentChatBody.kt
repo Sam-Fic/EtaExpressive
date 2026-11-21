@@ -2613,7 +2613,7 @@ private val ChatInputBarBottomGap = 12.dp
  * 构成（固定常量，不随页脚容器档位变化）：输入栏间距 [ConversationComposerGap]（14dp）
  * + 底部哨兵（1dp）+ 页脚垂直内边距（8dp）+ 页脚按钮半径（16dp）。
  * 页脚容器实际走 small 档 40dp（半径 20dp），比本常量低 4dp，故页脚组由
- * `AgentChatSpacing.ActionRowCenterLift` 上移对齐，本常量与右侧定位保持不变。
+ * `AgentChatSpacing.ActionRowCenterLift` 下移对齐，本常量与右侧定位保持不变。
  */
 private val TurnNavigationCenterAboveBottom = 39.dp
 
@@ -3503,4 +3503,3 @@ internal class ComposerRestClip(private val occlusion: Dp) : Shape {
 
     override fun hashCode(): Int = occlusion.hashCode()
 }
-

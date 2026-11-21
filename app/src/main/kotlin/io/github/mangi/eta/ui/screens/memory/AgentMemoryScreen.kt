@@ -31,8 +31,9 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.layout.horizontalCutoutPadding
 import io.github.mangi.eta.ui.model.AgentMemoryAction
 import io.github.mangi.eta.ui.model.AgentMemoryUiState
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -41,11 +42,11 @@ import androidx.compose.material3.TextButton as M3TextButton
 import java.text.NumberFormat
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.components.TopBarIconButton
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -67,6 +68,24 @@ internal fun AgentMemoryScreen(
             stringResource(R.string.memory_editor_title, state.assistantName)
         },
         onBack = { onAction(AgentMemoryAction.NavigateBack) },
+        actions = {
+            // 清除/保存走顶栏图标按钮（编辑页保存顶栏同款；TopBarIconButton 自带 Tooltip +
+            // 触觉 + 官方默认 shapes）：破坏性动作用 error 色，主要动作保存收在最右缘。
+            // 底部按钮行撤掉后，键盘弹出时不再有按钮行挤占下方 MEMORY.md 编辑框。
+            TopBarIconButton(
+                icon = Icons.Rounded.Delete,
+                contentDescription = stringResource(R.string.ui_clear_84fcd7),
+                destructive = true,
+                enabled = !state.isLoading && !state.isSaving && state.draft.isNotEmpty(),
+                onClick = { showClearDialog = true },
+            )
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(R.string.memory_save),
+                enabled = state.canSave,
+                onClick = { onAction(AgentMemoryAction.Save) },
+            )
+        },
     ) { paddingValues, scrollConnection, sidePadding ->
         Column(
             modifier = Modifier
@@ -156,71 +175,48 @@ internal fun AgentMemoryScreen(
                     ),
                     title = "MEMORY.md",
                 ) {
-                    item {
-                        EtaSegmentedItemContainer {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                        OutlinedTextField(
-                            value = state.draft,
-                            onValueChange = { onAction(AgentMemoryAction.DraftChanged(it)) },
-                            label = { M3Text(stringResource(R.string.ui_core_memory_user_name_long_term_preferences_aa6ff9)) },
-                            enabled = !state.isLoading && !state.isSaving,
-                            minLines = 6,
-                            maxLines = 12,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            val overLimit = state.draftBytes > state.maxBytes
-                            val statusColor = if (overLimit) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                            M3Text(
-                                text = when {
-                                    overLimit -> stringResource(R.string.memory_over_limit)
-                                    state.hasUnsavedChanges -> stringResource(R.string.memory_unsaved_changes)
-                                    else -> ""
-                                },
-                                color = statusColor,
-                                style = MaterialTheme.typography.bodySmall,
+                    // 输入框不套分段卡片，直接落在页面背景上：item(surface = false)
+                    // （EtaSegmentedList.kt:399——非卡片条目不绘制底色、不参与首末外圆角），
+                    // 与助手编辑页 MEMORY.md 编辑框/提示词框同款。
+                    item(surface = false) {
+                        Column {
+                            OutlinedTextField(
+                                value = state.draft,
+                                onValueChange = { onAction(AgentMemoryAction.DraftChanged(it)) },
+                                label = { M3Text(stringResource(R.string.ui_core_memory_user_name_long_term_preferences_aa6ff9)) },
+                                enabled = !state.isLoading && !state.isSaving,
+                                minLines = 6,
+                                maxLines = 12,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                                modifier = Modifier.fillMaxWidth(),
                             )
-                            M3Text(
-                                text = "${formatBytes(state.draftBytes)} / 1 MiB",
-                                color = statusColor,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            M3TextButton(
-                                onClick = { showClearDialog = true },
-                                enabled = !state.isLoading && !state.isSaving && state.draft.isNotEmpty(),
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error,
-                                ),
-                                modifier = Modifier.weight(1f),
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                M3Text(stringResource(R.string.ui_clear_84fcd7))
+                                val overLimit = state.draftBytes > state.maxBytes
+                                val statusColor = if (overLimit) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                                M3Text(
+                                    text = when {
+                                        overLimit -> stringResource(R.string.memory_over_limit)
+                                        state.hasUnsavedChanges -> stringResource(R.string.memory_unsaved_changes)
+                                        else -> ""
+                                    },
+                                    color = statusColor,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                M3Text(
+                                    text = "${formatBytes(state.draftBytes)} / 1 MiB",
+                                    color = statusColor,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
-                            Button(
-                                onClick = { onAction(AgentMemoryAction.Save) },
-                                enabled = state.canSave,
-                                modifier = Modifier.weight(1f),
-                                shapes = ButtonDefaults.shapes(),
-                            ) {
-                                M3Text(if (state.isSaving) stringResource(R.string.memory_saving) else stringResource(R.string.memory_save))
-                            }
-                        }
-                        }
                         }
                     }
                 }

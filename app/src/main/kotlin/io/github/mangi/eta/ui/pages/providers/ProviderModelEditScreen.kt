@@ -7,13 +7,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text as MaterialText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +47,7 @@ import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -79,8 +81,8 @@ internal fun contextWindowInputError(
  * `docs/RULES.md` §3.3 必须做成路由（编辑身份 providerId + Model.id 可序列化），
  * 进出场交给 miuix `NavDisplay` 的程序化转场，不再走 `EtaPageSurface` 窗口。
  *
- * 保存成功静默返回（AssistantEditScreen 同款，不再回列表页 banner 提示）；
- * 删除确认框就地弹在本页上，确认后删除并返回。
+ * 保存成功静默返回（AssistantEditScreen 同款，不再回列表页 banner 提示）；保存/删除走
+ * 顶栏图标按钮（编辑页同款），取消由返回箭头代替，删除确认框就地弹在本页上。
  */
 @Composable
 internal fun ProviderModelEditScreen(
@@ -207,46 +209,51 @@ private fun ModelEditPage(
     )
 
     val dismissPage = { if (!busy) onBack() }
-    // 多字段编辑已超出弹窗的决策语义：改为整屏页面，动作固定在底部，正文由 Scaffold 统一滚动。
-    // 页面骨架走官方 Scaffold + LargeFlexibleTopAppBar（EtaScaffold 已做官方取证），
+    // 保存/删除走顶栏图标按钮（编辑页同款；TopBarIconButton 自带 Tooltip + 触觉 + 官方默认 shapes）：
+    // 保存收在最右缘，破坏性删除靠标题侧、确认弹窗就地衔接；取消由返回箭头（dismissPage）代替，
+    // 底栏撤掉后正文占满到底。页面骨架走官方 Scaffold + LargeFlexibleTopAppBar（EtaScaffold 已做官方取证），
     // 整页背景 surfaceContainer 与路由页一致。
+    fun saveModel() {
+        if (busy) return
+        scope.launch {
+            isSaving = true
+            error = null
+            try {
+                ModelRepository.saveModel(providerId, updated())
+                RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
+                onBack()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (throwable: Throwable) {
+                error = throwable.message ?: context.getString(R.string.page_save_failed_40525a)
+            } finally {
+                isSaving = false
+            }
+        }
+    }
     EtaScaffold(
         title = if (isNew) context.getString(R.string.page_add_model_532a64) else context.getString(R.string.page_edit_model_29e31e),
         onBack = dismissPage,
         modifier = Modifier.fillMaxSize().imePadding(),
-        bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                EtaDialogActions(
-                    modifier = Modifier.navigationBarsPadding().imePadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    confirmText = if (isSaving) context.getString(R.string.page_saving_d70d42) else context.getString(R.string.page_save_fadf24),
-                    confirmEnabled = !busy &&
-                        displayName.isNotBlank() &&
-                        modelId.isNotBlank() &&
-                        contextError == null,
-                    cancelEnabled = !busy,
-                    onCancel = onBack,
-                    onConfirm = {
-                        if (!isSaving) {
-                            scope.launch {
-                                isSaving = true
-                                error = null
-                                try {
-                                    ModelRepository.saveModel(providerId, updated())
-                                    RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
-                                    onBack()
-                                } catch (cancelled: CancellationException) {
-                                    throw cancelled
-                                } catch (throwable: Throwable) {
-                                    error = throwable.message ?: context.getString(R.string.page_save_failed_40525a)
-                                } finally {
-                                    isSaving = false
-                                }
-                            }
-                        }
-                    },
+        actions = {
+            if (!isNew) {
+                TopBarIconButton(
+                    icon = Icons.Rounded.Delete,
+                    contentDescription = stringResource(R.string.ui_delete_model_cf24da),
+                    destructive = true,
+                    enabled = !busy,
+                    onClick = { showDeleteConfirm = true },
                 )
             }
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(R.string.page_save_fadf24),
+                enabled = !busy &&
+                    displayName.isNotBlank() &&
+                    modelId.isNotBlank() &&
+                    contextError == null,
+                onClick = { saveModel() },
+            )
         },
     ) { padding, scrollConnection, _ ->
         Column(
@@ -364,19 +371,6 @@ private fun ModelEditPage(
                     onClick = {
                         TouchHaptics.click(view)
                         resetAutomaticReasoning()
-                    },
-                    enabled = !busy,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                )
-            }
-            if (!isNew) {
-                ProviderDestructiveAction(
-                    text = stringResource(R.string.ui_delete_model_cf24da),
-                    onClick = {
-                        TouchHaptics.click(view)
-                        showDeleteConfirm = true
                     },
                     enabled = !busy,
                     modifier = Modifier

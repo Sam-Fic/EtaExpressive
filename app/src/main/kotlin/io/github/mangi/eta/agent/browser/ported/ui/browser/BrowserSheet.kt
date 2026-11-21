@@ -1022,6 +1022,9 @@ private fun BrowserNavToolbar(
     ) {
         HorizontalFloatingToolbar(
             expanded = true,
+            // vibrant 变体默认容器 primaryContainer/onPrimaryContainer——standard 默认 surfaceContainer
+            // 与页面背景同色融合（深色下不可辨）；官方 vibrant 令牌见 srczip FloatingToolbar.kt:1119-1128。
+            colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
             // 内外距全部合成进单个 padding 节点、直接挂在工具栏自己的 modifier 上（外层 Box
             // 不再垫）：exitAlwaysScrollBehavior 的滑出行程按「工具栏顶边 → 最近包裹节点
             // 底边」计算,这个 padding 节点必须一路贴到屏幕底缘,工具栏才能滑出整块屏幕;

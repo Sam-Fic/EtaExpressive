@@ -8,6 +8,8 @@ data class AgentSkillsUiState(
     val isLoading: Boolean = false,
     val isImporting: Boolean = false,
     val busySkillId: String? = null,
+    /** 批量启停/删除进行中：与单条 busySkillId 一样整页门控，防并发写注册表。 */
+    val isBatchBusy: Boolean = false,
     val replacement: SkillReplacementUi? = null,
     val notice: SkillNoticeUi? = null,
 )

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
@@ -44,7 +45,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTextField
 import io.github.mangi.eta.ui.adaptive.EtaStatus
 import io.github.mangi.eta.ui.adaptive.foregroundColor
-import io.github.mangi.eta.ui.components.EtaTextButton
+import io.github.mangi.eta.ui.components.TopBarIconButton
 
 @Composable
 internal fun WebToolsSettingsScreen(onBack: () -> Unit) {
@@ -69,6 +70,17 @@ internal fun WebToolsSettingsScreen(onBack: () -> Unit) {
     EtaScaffoldPage(
         title = stringResource(R.string.web_tools_settings_title),
         onBack = onBack,
+        actions = {
+            // 保存走顶栏图标按钮（工具配方/远程智能体/助手编辑页同款）：大标题旁放全宽文字按钮
+            // 显得像正文，图标按钮与返回箭头左右对称，底部留白给表单与结果消息。
+            // 顶栏动作统一走 TopBarIconButton（自带 Tooltip + 触觉 + 官方默认 shapes）。
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(R.string.action_save),
+                enabled = store.loaded && !store.saving,
+                onClick = store::save,
+            )
+        },
         listModifier = Modifier.imePadding(),
     ) {
         item {
@@ -169,12 +181,6 @@ internal fun WebToolsSettingsScreen(onBack: () -> Unit) {
                     )
                     WebToolsNote(stringResource(R.string.web_tools_custom_fetch_note))
                 }
-                EtaTextButton(
-                    text = stringResource(if (store.saving) R.string.web_tools_saving else R.string.action_save),
-                    enabled = store.loaded && !store.saving,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = store::save,
-                )
                 store.message?.let { message ->
                     Text(
                         text = message,

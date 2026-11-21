@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +49,10 @@ internal fun SkillSwitchRow(
     onDelete: (() -> Unit)? = null,
     showSwitch: Boolean = true,
     showMenu: Boolean = true,
+    selectionMode: Boolean = false,
+    checked: Boolean = false,
+    onCheckedChange: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
 ) {
     var showDescription by remember(skill.id) { mutableStateOf(false) }
     val description = skill.description.ifBlank { stringResource(R.string.skills_no_description) }
@@ -57,6 +62,12 @@ internal fun SkillSwitchRow(
         enabled = enabled,
         // 行尾带开关时属于「开关类」，保持官方内边距；没有开关（只有溢出菜单）时按动作行补留白。
         choiceRow = showSwitch,
+        // 多选态整行点按=勾选切换；常态整行不响应（启停走行尾开关，说明/删除走行尾菜单）。
+        onClick = {
+            if (selectionMode) onCheckedChange()
+        },
+        onLongClick = onLongClick,
+        onLongClickLabel = stringResource(R.string.action_enter_selection),
         leadingContent = {
             Icon(
                 imageVector = iconForSkill(skill.id),
@@ -94,21 +105,26 @@ internal fun SkillSwitchRow(
             )
         },
         trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (showMenu) {
-                    SkillOverflowMenu(
-                        contentDescription = stringResource(R.string.skills_more_named, skill.name),
-                        enabled = enabled,
-                        onViewDescription = { showDescription = true },
-                        onDelete = onDelete,
-                    )
-                }
-                if (showSwitch) {
-                    EtaSwitch(
-                        checked = skill.enabled,
-                        onCheckedChange = onToggle,
-                        enabled = enabled,
-                    )
+            if (selectionMode) {
+                // 多选态：开关与菜单让位，行尾只剩官方 Checkbox（点按/长按整行都是勾选切换）。
+                Checkbox(checked = checked, onCheckedChange = { onCheckedChange() })
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (showMenu) {
+                        SkillOverflowMenu(
+                            contentDescription = stringResource(R.string.skills_more_named, skill.name),
+                            enabled = enabled,
+                            onViewDescription = { showDescription = true },
+                            onDelete = onDelete,
+                        )
+                    }
+                    if (showSwitch) {
+                        EtaSwitch(
+                            checked = skill.enabled,
+                            onCheckedChange = onToggle,
+                            enabled = enabled,
+                        )
+                    }
                 }
             }
         },

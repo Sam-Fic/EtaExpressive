@@ -277,17 +277,6 @@ internal fun settingsCatalog(): List<SettingsEntry> {
         )
         add(
             SettingsEntry(
-                key = SettingsKeys.MIJIA_SETTINGS,
-                title = "米家直连",
-                summary = "小米账号 OAuth 授权后，Agent 可查询与控制米家设备",
-                keywords = "mijia mi home 米家 小米 智能家居 设备 灯 空调 开关 控制小米",
-                icon = Icons.Rounded.Hub,
-                group = groupModelFeatures,
-                destination = SettingsDestination.Route(AppRoute.MijiaSettings),
-            ),
-        )
-        add(
-            SettingsEntry(
                 key = SettingsKeys.THINKING_DEFAULT,
                 title = stringResource(R.string.ui_deep_thinking_enabled_by_default_c032d6),
                 summary = null,
@@ -352,6 +341,17 @@ internal fun settingsCatalog(): List<SettingsEntry> {
                 icon = Icons.Rounded.Handyman,
                 group = groupContextExtensions,
                 destination = SettingsDestination.Route(AppRoute.ToolRecipes),
+            ),
+        )
+        add(
+            SettingsEntry(
+                key = SettingsKeys.MIJIA_SETTINGS,
+                title = stringResource(R.string.mijia_title),
+                summary = stringResource(R.string.mijia_entry_summary),
+                keywords = "mijia mi home 米家 小米 智能家居 设备 灯 空调 开关 控制小米",
+                icon = Icons.Rounded.Hub,
+                group = groupContextExtensions,
+                destination = SettingsDestination.Route(AppRoute.MijiaSettings),
             ),
         )
         add(

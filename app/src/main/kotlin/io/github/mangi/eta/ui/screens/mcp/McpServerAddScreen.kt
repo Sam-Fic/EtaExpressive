@@ -8,14 +8,14 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,10 +42,10 @@ import io.github.mangi.eta.data.model.McpAuthorizationType
 import io.github.mangi.eta.data.model.McpProtocolMode
 import io.github.mangi.eta.data.model.McpServerSetting
 import io.github.mangi.eta.data.repository.McpServerRepository
-import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
+import io.github.mangi.eta.ui.components.TopBarIconButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -215,22 +215,16 @@ internal fun McpServerAddScreen(
         title = stringResource(R.string.mcp_add_server),
         onBack = { if (!working) onBack() },
         modifier = Modifier.fillMaxSize().imePadding(),
-        bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                EtaDialogActions(
-                    modifier = Modifier.navigationBarsPadding().imePadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    confirmText = if (working) {
-                        stringResource(R.string.mcp_connecting)
-                    } else {
-                        stringResource(R.string.mcp_add_server)
-                    },
-                    confirmEnabled = !working,
-                    cancelEnabled = !working,
-                    onCancel = { if (!working) onBack() },
-                    onConfirm = onSubmit,
-                )
-            }
+        actions = {
+            // 提交走顶栏图标按钮（编辑页保存顶栏同款；TopBarIconButton 自带 Tooltip + 触觉 +
+            // 官方默认 shapes），取消由返回箭头代替，底栏撤掉后正文占满到底。
+            // 连接中的进行态反馈由表单内的加载行承担（按钮只负责置灰防双击）。
+            TopBarIconButton(
+                icon = Icons.Rounded.Save,
+                contentDescription = stringResource(R.string.mcp_add_server),
+                enabled = !working,
+                onClick = onSubmit,
+            )
         },
     ) { padding, scrollConnection, _ ->
         Column(

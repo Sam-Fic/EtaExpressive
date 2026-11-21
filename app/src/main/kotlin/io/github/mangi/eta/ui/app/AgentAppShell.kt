@@ -437,7 +437,9 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.LiveActivitySettings -> stringResource(R.string.live_activity_settings_title)
     is AppRoute.TtsSettings -> stringResource(R.string.tts_title)
     is AppRoute.WebToolsSettings -> stringResource(R.string.web_tools_settings_title)
-    is AppRoute.MijiaSettings -> "米家直连"
+    is AppRoute.MijiaSettings -> stringResource(R.string.mijia_title)
+    is AppRoute.MijiaOAuth -> stringResource(R.string.mijia_oauth_title)
+    is AppRoute.MijiaSearch -> stringResource(R.string.mijia_search_label)
     is AppRoute.VoiceModeSettings -> stringResource(R.string.voice_mode_title)
     is AppRoute.AppearanceSettings -> stringResource(R.string.appearance_title)
     is AppRoute.DataBackup -> stringResource(R.string.data_backup_title)

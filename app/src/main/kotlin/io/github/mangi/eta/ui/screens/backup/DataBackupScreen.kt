@@ -33,7 +33,6 @@ import io.github.mangi.eta.data.repository.EtaBackupRepository
 import io.github.mangi.eta.data.repository.EtaBackupSummary
 import io.github.mangi.eta.data.repository.EtaModelBackupSummary
 import io.github.mangi.eta.agent.tool.ToolRecipePaths
-import io.github.mangi.eta.ui.adaptive.EtaAlphas
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaDimens
@@ -44,6 +43,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedCheckboxRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import java.io.InputStream
 import java.io.OutputStream
 import java.text.SimpleDateFormat
@@ -563,16 +563,9 @@ private fun BackupActionRow(
                     size = EtaDimens.RowLeadingLoadingSize,
                 )
             } else {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    // 行首类别图标统一 onSurfaceVariant；禁用行按 M3 惯例降到 38%。
-                    tint = if (enabled) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = EtaAlphas.DisabledContent)
-                    },
-                )
+                // 着色走共享 PreferenceIcon：启用 onSurfaceVariant、禁用官方禁用档
+                // （onSurface × 0.38），与设置页行首图标同一套状态配色。
+                PreferenceIcon(icon = icon, enabled = enabled)
             }
         },
         content = { M3Text(text = title) },

@@ -7,8 +7,14 @@ SOURCE = ROOT / 'src/main/kotlin/io/github/mangi/eta'
 class WebViewRendererExitContractTest(unittest.TestCase):
     def test_all_installed_clients_handle_renderer_exit(self):
         sources = [p for p in SOURCE.rglob('*.kt') if 'object : WebViewClient()' in p.read_text()]
-        # Antigravity 后端已退役（14225a5a2），全仓只剩 BrowserUseManager 一个匿名 WebViewClient。
-        self.assertEqual(1, len(sources))
+        # 全仓两个匿名 WebViewClient：浏览器池（带退休逻辑）与米家 OAuth 授权页
+        # （渲染进程崩溃即销毁，用户经顶栏「清 Cookie 重载」换 key 重建）。
+        # 米家 WebView 此前漏登记（MijiaSettingsScreen 旧实现无 onRenderProcessGone），
+        # 路由化重建时一并补齐。
+        self.assertEqual(
+            {'BrowserUseManager.kt', 'MijiaOAuthScreen.kt'},
+            {p.name for p in sources},
+        )
         for path in sources:
             self.assertIn('override fun onRenderProcessGone', path.read_text(), str(path))
 

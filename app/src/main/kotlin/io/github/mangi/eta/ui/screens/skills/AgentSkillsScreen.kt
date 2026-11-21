@@ -2,11 +2,16 @@ package io.github.mangi.eta.ui.screens.skills
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.ToggleOff
+import androidx.compose.material.icons.rounded.ToggleOn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,8 +19,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
@@ -23,13 +32,19 @@ import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExtendedFab
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
-import io.github.mangi.eta.ui.adaptive.rememberEtaLoadingShown
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBarOverlay
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
+import io.github.mangi.eta.ui.adaptive.EtaSelectionTopBarAction
+import io.github.mangi.eta.ui.adaptive.rememberEtaLoadingShown
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentSkillsAction
 import io.github.mangi.eta.ui.model.AgentSkillsUiState
 import io.github.mangi.eta.ui.model.SkillItemUi
@@ -41,17 +56,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text as M3Text
 
-private val CardHorizontalPadding = 12.dp
-private val CardBottomPadding = 12.dp
-
 @Composable
 fun AgentSkillsScreen(
     state: AgentSkillsUiState,
     onAction: (AgentSkillsAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val view = LocalView.current
     var deleteTarget by remember { mutableStateOf<SkillItemUi?>(null) }
-    val operationPending = state.isImporting || state.busySkillId != null
+    // 多选态与勾选集合：入口在顶栏（Checklist→Close 原位切换），长按行也可进入。
+    // 批量启停/删除逐条走既有单条 API（state 层循环），不新建批量 API。
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    val operationPending = state.isImporting || state.busySkillId != null || state.isBatchBusy
     val zipPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -69,22 +87,66 @@ fun AgentSkillsScreen(
     val listState = rememberLazyListState()
     val fabExpanded by rememberFabExpandedState(listState)
 
+    // 可勾选全集 = 内置 + 用户已安装技能；已移除组只能重装，不参与多选（多选态整组隐藏）。
+    val installed = state.skills.filter { it.installed }
+    val selectableSkills = remember(installed) { installed }
+    val allSelected = selectableSkills.isNotEmpty() &&
+        selectedIds.containsAll(selectableSkills.map { it.id })
+    val selectedSkills = remember(selectableSkills, selectedIds) {
+        selectableSkills.filter { it.id in selectedIds }
+    }
+    // 批量启停的目标状态按勾选集算（勾集中有停用 → 全部启用），启停图标口径与之一致。
+    val selectedAllEnabled = selectedSkills.isNotEmpty() && selectedSkills.all { it.enabled }
+    // 删除资格分离：勾选集混入内置技能（只能移除重装、不可删）时删除禁用。
+    val selectedAllDeletable = selectedSkills.all { it.canDeleteUserSkill }
+
+    // 返回键优先退出多选，不退页面。
+    val selectionBackState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = selectionBackState,
+        isBackEnabled = selectionMode,
+        onBackCompleted = {
+            selectionMode = false
+            selectedIds = emptySet()
+        },
+    )
+
+    fun exitSelection() {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
     EtaScaffoldPage(
         title = stringResource(R.string.route_skills),
         onBack = { onAction(AgentSkillsAction.NavigateBack) },
         modifier = modifier,
         listState = listState,
         // 安装入口从「安装」卡片换成 MCP 服务器页同款 FAB：滚动收起、回顶展开。
-        floatingActionButton = {
-            EtaExtendedFab(
-                text = stringResource(R.string.skills_import_zip),
-                icon = Icons.Rounded.Add,
-                expanded = fabExpanded,
-                onClick = { if (!operationPending) openZipPicker() },
+        // 多选态隐藏：批量操作栏占住底部，FAB 让位。
+        floatingActionButton = if (!selectionMode) {
+            {
+                EtaExtendedFab(
+                    text = stringResource(R.string.skills_import_zip),
+                    icon = Icons.Rounded.Add,
+                    expanded = fabExpanded,
+                    onClick = { if (!operationPending) openZipPicker() },
+                )
+            }
+        } else {
+            null
+        },
+        actions = {
+            // 多选入口原位切换：Checklist→Close，退出并清空勾选。无技能可管时禁用。
+            EtaSelectionTopBarAction(
+                selectionMode = selectionMode,
+                onToggle = {
+                    TouchHaptics.click(view)
+                    if (selectionMode) exitSelection() else selectionMode = true
+                },
+                enabled = selectableSkills.isNotEmpty() || selectionMode,
             )
         },
     ) {
-        val installed = state.skills.filter { it.installed }
         val builtinInstalled = installed.filter { it.source == "builtin" }
         val userInstalled = installed.filter { it.canDeleteUserSkill }
         val removed = state.skills.filter { !it.installed }
@@ -93,7 +155,13 @@ fun AgentSkillsScreen(
             item(key = "builtin-card") {
                 EtaSegmentedColumn(
                     modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
-                    title = stringResource(R.string.ui_built_in_skills_1ceedf),
+                    // 多选态把「已选 n 项」并入分组标题（点号隔开），不另立计数行。
+                    title = if (selectionMode) {
+                        stringResource(R.string.ui_built_in_skills_1ceedf) + " · " +
+                            stringResource(R.string.media_selected_count, selectedIds.size)
+                    } else {
+                        stringResource(R.string.ui_built_in_skills_1ceedf)
+                    },
                 ) {
                     builtinInstalled.forEach { skill ->
                         item {
@@ -102,6 +170,21 @@ fun AgentSkillsScreen(
                                 enabled = !operationPending,
                                 onToggle = { enabled ->
                                     onAction(AgentSkillsAction.ToggleSkill(skill.id, enabled))
+                                },
+                                selectionMode = selectionMode,
+                                checked = skill.id in selectedIds,
+                                onCheckedChange = {
+                                    selectedIds = if (skill.id in selectedIds) {
+                                        selectedIds - skill.id
+                                    } else {
+                                        selectedIds + skill.id
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!selectionMode) {
+                                        selectionMode = true
+                                        selectedIds = setOf(skill.id)
+                                    }
                                 },
                             )
                         }
@@ -114,7 +197,12 @@ fun AgentSkillsScreen(
             item(key = "user-card") {
                 EtaSegmentedColumn(
                     modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
-                    title = stringResource(R.string.ui_user_skills_748e7f),
+                    title = if (selectionMode) {
+                        stringResource(R.string.ui_user_skills_748e7f) + " · " +
+                            stringResource(R.string.media_selected_count, selectedIds.size)
+                    } else {
+                        stringResource(R.string.ui_user_skills_748e7f)
+                    },
                 ) {
                     userInstalled.forEach { skill ->
                         item {
@@ -125,6 +213,21 @@ fun AgentSkillsScreen(
                                     onAction(AgentSkillsAction.ToggleSkill(skill.id, enabled))
                                 },
                                 onDelete = { deleteTarget = skill },
+                                selectionMode = selectionMode,
+                                checked = skill.id in selectedIds,
+                                onCheckedChange = {
+                                    selectedIds = if (skill.id in selectedIds) {
+                                        selectedIds - skill.id
+                                    } else {
+                                        selectedIds + skill.id
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!selectionMode) {
+                                        selectionMode = true
+                                        selectedIds = setOf(skill.id)
+                                    }
+                                },
                             )
                         }
                     }
@@ -132,7 +235,9 @@ fun AgentSkillsScreen(
             }
         }
 
-        if (removed.isNotEmpty()) {
+        // 多选态不管理已移除组：它只能整组重装，不可勾选也不可启停/删除（对齐分类页
+        // 多选态隐藏远程设备组的先例）。
+        if (removed.isNotEmpty() && !selectionMode) {
             item(key = "removed-card") {
                 EtaSegmentedColumn(
                     modifier = Modifier.padding(start = EtaGroupHorizontalPadding, end = EtaGroupHorizontalPadding, bottom = EtaSegmentedGroupSpacing),
@@ -161,6 +266,80 @@ fun AgentSkillsScreen(
                     summary = stringResource(R.string.skills_choose_package),
                 )
             }
+        }
+
+        item(key = "bottom_spacer", contentType = "spacer") {
+            // 多选操作栏悬浮在底部时预留高度，避免遮挡最后一个列表项。
+            EtaSelectionBottomSpacer(isSelecting = selectionMode)
+        }
+    }
+
+    // 批量操作栏：共享多选套件的官方 M3E 浮动药丸，底部居中悬浮。
+    // 动作序：全选（全不选）→ 批量启停 → 删除（error 色标破坏性，执行前另有确认弹窗）。
+    Box(modifier = Modifier.fillMaxSize()) {
+        EtaSelectionBarOverlay(visible = selectionMode) {
+            EtaSelectionBar(
+                selectedCount = selectedIds.size,
+                allSelected = allSelected,
+                enabled = !operationPending,
+                onSelectAll = {
+                    TouchHaptics.click(view)
+                    selectedIds = if (allSelected) {
+                        emptySet()
+                    } else {
+                        selectableSkills.map { it.id }.toSet()
+                    }
+                },
+                actions = listOf(
+                    // 批量启停：按当前勾选集合的状态自适应图标（有停用 → 全部启用）。
+                    EtaSelectionAction(
+                        icon = if (selectedAllEnabled) Icons.Rounded.ToggleOff else Icons.Rounded.ToggleOn,
+                        contentDescription = stringResource(
+                            if (selectedAllEnabled) R.string.recipe_disable else R.string.recipe_enable,
+                        ),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            onAction(AgentSkillsAction.ToggleSkills(selectedIds, !selectedAllEnabled))
+                        },
+                    ),
+                    // 删除是破坏性操作：error 色图标区分；勾选集混入内置技能（不可删，
+                    // 只能移除重装）时禁用——删除资格与启停分离。
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.Delete,
+                        contentDescription = stringResource(R.string.action_delete),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            showBatchDeleteDialog = true
+                        },
+                        enabled = selectedAllDeletable,
+                        destructive = true,
+                    ),
+                ),
+            )
+        }
+    }
+
+    // 批量删除二次确认：逐条走既有 deleteSkill（整目录备份 + journal 回滚），不新建批量 API。
+    if (showBatchDeleteDialog) {
+        EtaDialog(
+            show = true,
+            title = stringResource(R.string.ui_delete_user_skills_f319a9),
+            summary = stringResource(R.string.skills_batch_delete_message, selectedIds.size),
+            onDismissRequest = { showBatchDeleteDialog = false },
+            actions = {
+                EtaDialogActions(
+                    confirmText = stringResource(R.string.ui_delete_3755f5),
+                    destructive = true,
+                    confirmEnabled = !operationPending,
+                    onCancel = { showBatchDeleteDialog = false },
+                    onConfirm = {
+                        showBatchDeleteDialog = false
+                        onAction(AgentSkillsAction.DeleteSkills(selectedIds))
+                        exitSelection()
+                    },
+                )
+            },
+        ) {
         }
     }
 

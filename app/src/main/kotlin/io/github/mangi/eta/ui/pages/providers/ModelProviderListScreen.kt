@@ -1,22 +1,15 @@
 package io.github.mangi.eta.ui.pages.providers
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,7 +28,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
@@ -46,7 +38,6 @@ import io.github.mangi.eta.data.model.ProviderSourceTypes
 import io.github.mangi.eta.data.model.typeLabel
 import io.github.mangi.eta.data.repository.ProviderRepository
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
-import io.github.mangi.eta.ui.adaptive.EtaCard
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
@@ -58,6 +49,11 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBarOverlay
+import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
+import io.github.mangi.eta.ui.adaptive.EtaSelectionTopBarAction
 import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.TopBarIconButton
@@ -70,7 +66,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.material3.Text as M3Text
 
 /** 分组标题（已含上下留白）+ 分段列表的组合外边距：取组边距 token，与模型 Tab 分组节奏一致。 */
@@ -97,10 +92,6 @@ internal fun ModelProviderListScreen(
     var selectedProviderIds by remember { mutableStateOf(setOf<String>()) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        RuntimeConfigRepository.ensureDefaults(EtaApp.serviceInstance)
-    }
 
     // 主页不过滤（query 恒空即全量），搜索交给独立搜索页。
     val filteredProviders = providers
@@ -129,6 +120,14 @@ internal fun ModelProviderListScreen(
         },
     )
 
+    fun exitSelection() {
+        selectionMode = false
+        selectedProviderIds = emptySet()
+    }
+
+    val allSelected = selectableProviders.isNotEmpty() &&
+        selectedProviderIds.containsAll(selectableProviders.map { it.id })
+
     Box(modifier = Modifier.fillMaxSize()) {
         EtaScaffoldPage(
             title = stringResource(R.string.ui_model_provider_e8c7f5),
@@ -149,6 +148,16 @@ internal fun ModelProviderListScreen(
                     onClick = { onNavigate(AppRoute.ModelProviderSearch) },
                     shapes = IconButtonDefaults.shapes(),
                 )
+                // 多选入口原位切换：Checklist→Close，退出并清空勾选。无可管供应商时禁用
+                // （此前只能长按行进入多选，入口与其他管理页对齐）。
+                EtaSelectionTopBarAction(
+                    selectionMode = selectionMode,
+                    onToggle = {
+                        TouchHaptics.click(view)
+                        if (selectionMode) exitSelection() else selectionMode = true
+                    },
+                    enabled = selectableProviders.isNotEmpty() || selectionMode,
+                )
             },
         ) {
             materialProviderListContent(
@@ -163,17 +172,6 @@ internal fun ModelProviderListScreen(
                         selectedProviderIds - id
                     } else {
                         selectedProviderIds + id
-                    }
-                },
-                onSelectAll = {
-                    TouchHaptics.click(view)
-                    selectedProviderIds = if (
-                        selectableProviders.isNotEmpty() &&
-                        selectedProviderIds.containsAll(selectableProviders.map { it.id })
-                    ) {
-                        emptySet()
-                    } else {
-                        selectableProviders.mapTo(mutableSetOf()) { it.id }
                     }
                 },
                 onOpen = { id ->
@@ -200,39 +198,38 @@ internal fun ModelProviderListScreen(
             // 选择模式下预留底部操作条高度；其余场景用骨架自带的底距。
             if (selectionMode) {
                 item(key = "selection_spacer") {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(88.dp)
-                            .navigationBarsPadding(),
-                    )
+                    EtaSelectionBottomSpacer(isSelecting = true)
                 }
             }
         }
 
-        AnimatedVisibility(
-            visible = selectionMode,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            // 批量选择栏的进退场：位移走 M3E Spatial（轻微过冲），透明度走 Effects（无过冲）。
-            enter = slideInVertically(
-                animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-            ) { it } + fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()),
-            exit = slideOutVertically(
-                animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
-            ) { it } + fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()),
-        ) {
-            ProviderSelectionBar(
+        // 批量操作栏：共享多选套件的官方 M3E 浮动药丸，底部居中悬浮（原 EtaCard 文字按钮卡
+        // 迁成标准药丸；全选钮并入药丸，「取消」由顶栏入口与返回键承载）。
+        EtaSelectionBarOverlay(visible = selectionMode) {
+            EtaSelectionBar(
                 selectedCount = selectedProviderIds.size,
+                allSelected = allSelected,
                 enabled = !isDeleting,
-                onDelete = {
+                onSelectAll = {
                     TouchHaptics.click(view)
-                    showBatchDeleteDialog = true
+                    selectedProviderIds = if (allSelected) {
+                        emptySet()
+                    } else {
+                        selectableProviders.mapTo(mutableSetOf()) { it.id }
+                    }
                 },
-                onExit = {
-                    TouchHaptics.click(view)
-                    selectionMode = false
-                    selectedProviderIds = emptySet()
-                },
+                actions = listOf(
+                    // 删除是破坏性操作：error 色图标区分，执行前另有确认弹窗。
+                    EtaSelectionAction(
+                        icon = Icons.Rounded.Delete,
+                        contentDescription = stringResource(R.string.ui_delete_3755f5),
+                        onClick = {
+                            TouchHaptics.click(view)
+                            showBatchDeleteDialog = true
+                        },
+                        destructive = true,
+                    ),
+                ),
             )
         }
     }
@@ -290,7 +287,9 @@ internal fun ModelProviderListScreen(
 
 /**
  * Material 3 列表内容：KernelSU 式分段列表布局 —— 添加组标题+分段列、
- * 已配置标题行（含全选）+ 分段供应商行；空态为无容器的居中文本。
+ * 已配置标题行 + 分段供应商行；空态为无容器的居中文本。
+ * 全选动作在底部多选操作药丸（共享 [io.github.mangi.eta.ui.adaptive.EtaSelectionBar]），
+ * 不再落标题行 TextButton。
  *
  * 供应商主页（大标题栏，query 恒空即全量）与独立搜索页共用。
  */
@@ -302,7 +301,6 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.materialProviderList
     selectedProviderIds: Set<String>,
     selectedProviderId: String?,
     onToggleChecked: (String) -> Unit,
-    onSelectAll: () -> Unit,
     onOpen: (String) -> Unit,
     onEnterSelection: (String) -> Unit,
     onAddProvider: (NewProviderType) -> Unit,
@@ -340,25 +338,14 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.materialProviderList
     }
 
     item(key = "list_title") {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
-                EtaSectionTitle(
-                    text = pluralStringResource(
-                        R.plurals.provider_configured_count,
-                        filteredProviders.size,
-                        filteredProviders.size,
-                    ),
-                )
-            }
-            if (selectionMode && selectableProviders.isNotEmpty()) {
-                // M3：官方 TextButton。
-                M3TextButton(onClick = onSelectAll) {
-                    M3Text(text = stringResource(R.string.page_select_all_3e44b2))
-                }
-            }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            EtaSectionTitle(
+                text = pluralStringResource(
+                    R.plurals.provider_configured_count,
+                    filteredProviders.size,
+                    filteredProviders.size,
+                ),
+            )
         }
     }
 
@@ -402,43 +389,6 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.materialProviderList
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ProviderSelectionBar(
-    selectedCount: Int,
-    enabled: Boolean,
-    onDelete: () -> Unit,
-    onExit: () -> Unit,
-) {
-    EtaCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp)
-            .padding(bottom = 12.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ProviderDestructiveAction(
-                text = stringResource(R.string.ui_delete_3755f5),
-                onClick = onDelete,
-                enabled = selectedCount > 0 && enabled,
-                modifier = Modifier.weight(1f),
-            )
-            ProviderPrimaryAction(
-                text = stringResource(R.string.action_cancel),
-                onClick = onExit,
-                enabled = enabled,
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }

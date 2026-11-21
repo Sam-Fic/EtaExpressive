@@ -2,6 +2,8 @@ package io.github.mangi.eta.agent.mijia
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -104,6 +106,27 @@ internal object MijiaStore {
                 return added
             }
         })
+
+    /**
+     * OAuth 授权页（独立整屏路由）与设置页之间的 code 总线：
+     * 授权页拦截/收到回调 code 后写入并弹栈，设置页收集后统一完成换 Token 与设备同步。
+     * 用 StateFlow 而非 SharedFlow：设置页被导航覆盖销毁后返回时，
+     * LaunchedEffect 重新收集仍能拿到最近一次值，不会丢 code。
+     */
+    private val pendingOAuthCodeFlow = MutableStateFlow<String?>(null)
+
+    /** 待换取 Token 的 OAuth 回调 code；null 表示无待处理项。 */
+    val pendingOAuthCode: StateFlow<String?> = pendingOAuthCodeFlow
+
+    /** 授权页写入回调 code（写入方：MijiaOAuthScreen）。 */
+    fun publishOAuthCode(code: String) {
+        pendingOAuthCodeFlow.value = code
+    }
+
+    /** 设置页取走 code 后清空，避免重复消费。 */
+    fun consumeOAuthCode() {
+        pendingOAuthCodeFlow.value = null
+    }
 
     private fun prefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
