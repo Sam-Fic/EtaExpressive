@@ -1,5 +1,7 @@
 # 第三方声明
 
+新增、移植或随包分发第三方组件时，按 [第三方许可证核查清单](THIRD_PARTY_LICENSE_CHECKLIST.md) 逐项核对，保证本页、README「参考与致谢」与应用内关于页三处登记同时对齐。
+
 ## 终端原生组件
 
 Eta 的免 Root Linux 后端以独立进程运行 [PRoot](https://github.com/termux/proot)，并静态链接 [talloc](https://talloc.samba.org/) 与 [libandroid-shmem](https://github.com/termux/libandroid-shmem)。PRoot 源码采用 GPL-2.0-or-later；talloc 采用 LGPL-3.0-or-later；libandroid-shmem 采用 BSD-3-Clause。附带的组合 PRoot 可执行程序按 GPL-3.0-or-later 分发，各组件版权与许可证保留。
