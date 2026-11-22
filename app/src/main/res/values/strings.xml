@@ -465,7 +465,6 @@
   <string name="voice_screen_preset_pickup_local_result">Local OCR result (ready to save):</string>
 
   <string name="settings_pickup_codes_title">Pickup codes</string>
-  <string name="settings_pickup_codes_summary">Records and alerts for food and parcel pickup codes</string>
   <string name="pickup_group_notification">Alerts &amp; recognition</string>
   <string name="pickup_interception_title">Auto-recognize delivery notifications</string>
   <string name="pickup_interception_summary">Watch food delivery and courier app notifications and extract pickup codes automatically</string>
@@ -473,6 +472,7 @@
   <string name="pickup_local_ocr_only_summary">With the pickup chip, local OCR recognizes, saves and alerts directly without a model round trip</string>
   <string name="pickup_local_ocr_only_summary_off">Recognition results are confirmed and saved by the model</string>
   <string name="pickup_ocr_card_running">Recognizing pickup codes on screen…</string>
+  <string name="pickup_ocr_card_done">Screen pickup code recognition finished</string>
   <string name="pickup_ocr_card_none">No pickup codes recognized</string>
   <string name="pickup_ocr_card_dup">Recognized, but all codes are already in the pending list</string>
   <string name="pickup_ocr_card_no_code_on_screen">Engine ran without error but no code was matched (screen may contain no code)</string>
@@ -484,10 +484,6 @@
   <string name="assistant_screenshot_backend_shizuku">Shizuku</string>
   <string name="assistant_screenshot_shizuku_grant_title">Grant Shizuku capture</string>
   <string name="assistant_screenshot_shizuku_grant_summary">Requires a running Shizuku service; enables rootless capture fallback</string>
-  <string name="pickup_projection_grant_title">Capture &amp; recognize</string>
-  <string name="pickup_projection_grant_summary">Capture one frame after screen consent, then recognize and save pickup codes locally</string>
-  <string name="pickup_projection_failed">Screen capture failed</string>
-  <string name="pickup_projection_none">No pickup codes recognized</string>
   <string name="pickup_projection_done">Saved %d pickup code(s)</string>
   <string name="pickup_group_pending">Pending (%d)</string>
   <string name="pickup_group_completed">Completed (%d)</string>
@@ -512,7 +508,7 @@
   <string name="pickup_island_hint_drink">Watch for your number in the lobby / on screen</string>
   <string name="pickup_island_hint_express">Please double-check your pickup code</string>
   <string name="pickup_action_mark_done">Mark done</string>
-  <string name="pickup_projection_notification_title">Capturing screen…</string>
+  <string name="pickup_island_action_done">Picked up</string>
 
   <string name="tool_ui_pickup_code">Pickup code records</string>
   <string name="tool_ui_pickup_code_summary">Save, search, complete and delete pickup codes</string>

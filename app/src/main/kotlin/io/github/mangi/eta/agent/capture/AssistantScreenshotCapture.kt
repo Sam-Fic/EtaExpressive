@@ -1,7 +1,6 @@
 // 系统助手屏幕识别的统一兜底截屏入口。
 // root / Shizuku 后端移植自 badnng/Hyper-pick-up-code（AGPL-3.0-only）
-//   com.Badnng.moe.helper.RootHelper / ShizukuScreenshotHelper（screencap -p 读原始字节流）；
-// 共享屏幕后端见 [AssistantProjectionService]（取码管理页手动截屏识别行专用）。
+//   com.Badnng.moe.helper.RootHelper / ShizukuScreenshotHelper（screencap -p 读原始字节流）。
 // 合规登记见 docs/THIRD_PARTY_NOTICES.md「Hyper-pick-up-code」一节。
 
 package io.github.mangi.eta.agent.capture

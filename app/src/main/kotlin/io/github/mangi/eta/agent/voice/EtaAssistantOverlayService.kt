@@ -497,7 +497,6 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
     /**
      * 无障碍截屏不可用时的兜底：按「屏幕截图方式」设置取帧（root/Shizuku，
      * [AssistantScreenshotCapture.capture] 内部按可用性秒回），再转屏幕上下文附件。
-     * 共享屏幕不进此链路：授权结果必须由 Activity 接收，见 AssistantProjectionService。
      */
     private suspend fun captureFallbackAttachment(): EtaScreenContextAttachment? =
         AssistantScreenshotCapture.capture()?.let(::encodeScreenContextAttachment)
@@ -1603,12 +1602,16 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     else -> persistThrownType
                 }
                 withContext(Dispatchers.Main.immediate) {
+                    // 收尾同时换掉卡片标题：argumentsSummary 是卡头 title（ChatMessageItem
+                    // 3785 行口径），停在「正在识别…」会与终态正文自相矛盾。
+                    val finishedTitle = getString(R.string.pickup_ocr_card_done)
                     uiState = uiState.copy(
                         messages = uiState.messages.map { message ->
                             if (message !is ToolActivityMessageUi || message.id != cardId) {
                                 message
                             } else if (savedCount > 0) {
                                 message.copy(
+                                    argumentsSummary = finishedTitle,
                                     status = ToolActivityStatusUi.Success,
                                     resultSummary = getString(R.string.pickup_projection_done, savedCount),
                                     resultDetail = drafts.joinToString("\n") { draft ->
@@ -1623,12 +1626,14 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                             } else if (drafts.isNotEmpty() && persistThrownType == null) {
                                 // 识别到了但全部重复（同码未完成已存在）：不是失败，如实说明。
                                 message.copy(
+                                    argumentsSummary = finishedTitle,
                                     status = ToolActivityStatusUi.Success,
                                     resultSummary = getString(R.string.pickup_ocr_card_dup),
                                     resultDetail = drafts.joinToString("\n") { it.code },
                                 )
                             } else {
                                 message.copy(
+                                    argumentsSummary = finishedTitle,
                                     status = ToolActivityStatusUi.Failed,
                                     resultSummary = getString(R.string.pickup_ocr_card_none),
                                     resultDetail = diagnosis,
@@ -1652,6 +1657,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                                 message
                             } else {
                                 message.copy(
+                                    argumentsSummary = getString(R.string.pickup_ocr_card_done),
                                     status = ToolActivityStatusUi.Failed,
                                     resultSummary = getString(R.string.pickup_ocr_card_none),
                                     resultDetail = error.javaClass.simpleName +

@@ -382,7 +382,7 @@ internal fun settingsCatalog(): List<SettingsEntry> {
             SettingsEntry(
                 key = SettingsKeys.PICKUP_CODES,
                 title = stringResource(R.string.settings_pickup_codes_title),
-                summary = stringResource(R.string.settings_pickup_codes_summary),
+                summary = null,
                 keywords = "pickup code 取码 取餐码 取件码 取货码 提货码 快递 外卖 拾取 提醒",
                 icon = Icons.AutoMirrored.Rounded.ReceiptLong,
                 group = groupContextExtensions,

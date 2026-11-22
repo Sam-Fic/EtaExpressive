@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 岛面品类图（饮品）：图形逐字移植自 material-icons-extended 1.7.8 Icons.Rounded.LocalDrink
+     （Apache-2.0，AOSP），通知路径无 Compose 组合，故落成 vector drawable 离线渲染；
+     琥珀色与模板 16 提示卡 colorContentDark(#FFC44D) 同源，供暗底圆砖衬托。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFC44D"
+        android:pathData="M5.23 2 C4.04 2 3.11 3.04 3.24 4.22 l1.77 16.01 C5.13 21.23 5.97 22 7 22 h10 c1.03 0 1.87 -0.77 1.99 -1.77 l1.77 -16.01 c0.13 -1.18 -0.8 -2.22 -1.99 -2.22 L5.23 2 M12 19 c-1.66 0 -3 -1.34 -3 -3 c0 -1.55 1.81 -3.95 2.62 -4.94 c0.2 -0.25 0.57 -0.25 0.77 0 c0.81 1 2.62 3.39 2.62 4.94 c-0.01 1.66 -1.35 3 -3.01 3 M18.33 8 L5.67 8 l-0.32 -2.89 c-0.06 -0.59 0.4 -1.11 1 -1.11 h11.3 c0.59 0 1.06 0.52 0.99 1.11 L18.33 8" />
+</vector>

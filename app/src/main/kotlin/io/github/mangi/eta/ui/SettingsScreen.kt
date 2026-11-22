@@ -505,7 +505,6 @@ internal fun SettingsScreen(
 
                 row(key = SettingsKeys.PICKUP_CODES) {
                     EtaClickableRow(title = stringResource(R.string.settings_pickup_codes_title),
-                        summary = stringResource(R.string.settings_pickup_codes_summary),
                         leading = { PreferenceIcon(icon = Icons.AutoMirrored.Rounded.ReceiptLong) },
                         onClick = { onNavigate(AppRoute.PickupCodes) })
                 }

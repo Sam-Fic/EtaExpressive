@@ -1167,7 +1167,6 @@
   <string name="voice_screen_preset_pickup_local_result">本地 OCR 識別結果（可直接儲存）：</string>
 
   <string name="settings_pickup_codes_title">取碼</string>
-  <string name="settings_pickup_codes_summary">取餐碼/取件碼的記錄與提醒</string>
   <string name="pickup_group_notification">提醒與識別</string>
   <string name="pickup_interception_title">自動識別外送/快遞通知</string>
   <string name="pickup_interception_summary">監聽外送與快遞應用的通知，自動擷取取餐碼/取件碼</string>
@@ -1175,6 +1174,7 @@
   <string name="pickup_local_ocr_only_summary">點「記取碼」後由本地 OCR 直接識別入庫並提醒，不經模型</string>
   <string name="pickup_local_ocr_only_summary_off">識別結果由模型確認並儲存</string>
   <string name="pickup_ocr_card_running">正在識別屏幕中的取碼…</string>
+  <string name="pickup_ocr_card_done">螢幕取碼識別完成</string>
   <string name="pickup_ocr_card_none">未識別到取碼</string>
   <string name="pickup_ocr_card_dup">識別到取碼，但均已在待取記錄中</string>
   <string name="pickup_ocr_card_no_code_on_screen">引擎執行正常但未檢出/未命中取碼（螢幕上可能沒有碼）</string>
@@ -1186,10 +1186,6 @@
   <string name="assistant_screenshot_backend_shizuku">Shizuku</string>
   <string name="assistant_screenshot_shizuku_grant_title">授權 Shizuku 截屏</string>
   <string name="assistant_screenshot_shizuku_grant_summary">需要正在執行的 Shizuku 服務；授權後可免 Root 兜底截屏</string>
-  <string name="pickup_projection_grant_title">截圖識別</string>
-  <string name="pickup_projection_grant_summary">授權目前螢幕後擷取一幀，本地識別取碼並儲存</string>
-  <string name="pickup_projection_failed">截圖失敗</string>
-  <string name="pickup_projection_none">未識別到取碼</string>
   <string name="pickup_projection_done">已儲存 %d 個取碼</string>
   <string name="pickup_group_pending">待取（%d）</string>
   <string name="pickup_group_completed">已完成（%d）</string>
@@ -1214,7 +1210,7 @@
   <string name="pickup_island_hint_drink">請注意大堂/螢幕叫號</string>
   <string name="pickup_island_hint_express">請仔細核對您的取件碼</string>
   <string name="pickup_action_mark_done">標記完成</string>
-  <string name="pickup_projection_notification_title">正在擷取螢幕…</string>
+  <string name="pickup_island_action_done">已取</string>
 
   <string name="tool_ui_pickup_code">取碼記錄</string>
   <string name="tool_ui_pickup_code_summary">儲存、查詢、標記完成與刪除取餐碼/取件碼</string>

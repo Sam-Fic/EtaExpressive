@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 岛面品类图（餐食）：图形逐字移植自 material-icons-extended 1.7.8 Icons.Rounded.Fastfood
+     （Apache-2.0，AOSP），通知路径无 Compose 组合，故落成 vector drawable 离线渲染；
+     琥珀色与模板 16 提示卡 colorContentDark(#FFC44D) 同源，供暗底圆砖衬托。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFC44D"
+        android:pathData="M21.9 5 H18 V2 c0 -0.55 -0.45 -1 -1 -1 s-1 0.45 -1 1 v3 h-3.9 c-0.59 0 -1.05 0.51 -1 1.1 l0.12 1.21 C14.9 8.16 18 10.77 18 15 l0.02 8 h1.7 c0.84 0 1.53 -0.65 1.63 -1.47 L22.89 6.1 c0.06 -0.59 -0.4 -1.1 -0.99 -1.1 M15 21 H2 c-0.55 0 -1 0.45 -1 1 s0.45 1 1 1 h13 c0.55 0 1 -0.45 1 -1 s-0.45 -1 -1 -1 M2.1 15 h12.8 c0.62 0 1.11 -0.56 0.99 -1.16 c-0.65 -3.23 -4.02 -4.85 -7.39 -4.85 s-6.73 1.62 -7.39 4.85 c-0.12 0.6 0.38 1.16 0.99 1.16 M15 17 H2 c-0.55 0 -1 0.45 -1 1 s0.45 1 1 1 h13 c0.55 0 1 -0.45 1 -1 s-0.45 -1 -1 -1" />
+</vector>

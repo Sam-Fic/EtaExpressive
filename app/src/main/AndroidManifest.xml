@@ -298,16 +298,6 @@
             </intent-filter>
         </service>
 
-        <!--
-          共享屏幕截屏后端（取码管理页手动「截屏识别」行）：单次截屏前台服务。
-          用户经 MediaProjectionManager.createScreenCaptureIntent 授权后启动，
-          VirtualDisplay + ImageReader 取到第一帧即停投影，不常驻。
-        -->
-        <service
-            android:name=".agent.capture.AssistantProjectionService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
-
         <!-- Shizuku 截屏后端：Shizuku 服务进程经此 provider 与本应用建立连接。 -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
@@ -448,6 +438,12 @@
 
         <receiver
             android:name=".ui.components.ScheduledSendReceiver"
+            android:exported="false" />
+
+        <!-- 取码提醒的「标记完成/已取」动作（原生通知与超级岛岛面按钮共用）：按码值
+             完成记录并撤掉提醒；仅应用自建 PendingIntent 显式送达，不对外。 -->
+        <receiver
+            android:name=".agent.pickup.PickupCodeCompleteReceiver"
             android:exported="false" />
 
         <!-- 媒体语义索引自动更新：定时闹钟到点跑一轮；开机后补排周期闹钟。 -->

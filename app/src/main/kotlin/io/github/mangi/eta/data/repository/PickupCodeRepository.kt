@@ -2,6 +2,9 @@
 // 组织形态跟随 NotificationHistoryRepository（原生 SQLiteOpenHelper 独立库，不进
 // EtaDatabase 主迁移链）：取餐码是通知派生的低频个人记录，生命周期与保留策略
 // 独立于主业务库。全部方法为同步阻塞实现，调用方负责切到 Dispatchers.IO。
+// 记录变更与提醒通知联动（参考澎湃记 cancelNotification(orderId)）：提醒通知常驻到
+// 记录完成/删除为止，所以 markCompleted/delete/update/clearAll 在此统一撤卡
+// （id = code.hashCode()，原生与超级岛共用同一槽位，撤不存在的 id 是无害 no-op）。
 
 package io.github.mangi.eta.data.repository
 
@@ -9,6 +12,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import io.github.mangi.eta.agent.pickup.PickupCodeNotifier
 import java.util.UUID
 
 /** 记录来源。 */
@@ -41,7 +45,8 @@ data class PickupCodeRecord(
 
 /** 仅在 Eta 内部保存取餐码记录；未完成记录常驻，已完成记录限期清理。 */
 internal class PickupCodeRepository(context: Context) {
-    private val database = Database(context.applicationContext)
+    private val appContext = context.applicationContext
+    private val database = Database(appContext)
 
     /** 插入记录，返回记录 id。调用方负责去重（[findUnfinishedByCode]）。 */
     fun insert(
@@ -87,6 +92,19 @@ internal class PickupCodeRepository(context: Context) {
             "1",
         ).use { cursor -> if (cursor.moveToFirst()) cursor.toRecord() else null }
 
+    /** 按 id 查单条记录（变更路径联动撤卡前取码值用）。 */
+    private fun findById(id: String): PickupCodeRecord? =
+        database.readableDatabase.query(
+            TABLE,
+            COLUMNS,
+            "id=?",
+            arrayOf(id),
+            null,
+            null,
+            null,
+            "1",
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.toRecord() else null }
+
     /** 未完成列表（新→旧）。 */
     fun pending(limit: Int = DEFAULT_LIST_LIMIT): List<PickupCodeRecord> =
         query("is_completed=0", limit)
@@ -121,35 +139,50 @@ internal class PickupCodeRepository(context: Context) {
         brandName: String?,
         pickupLocation: String?,
     ): Boolean {
+        val oldCode = findById(id)?.code
         val values = ContentValues().apply {
             put("code", code.take(MAX_CODE_CHARS))
             put("order_type", orderType.take(MAX_TYPE_CHARS))
             put("brand_name", brandName.bounded())
             put("pickup_location", pickupLocation.bounded())
         }
-        return database.writableDatabase.update(TABLE, values, "id=?", arrayOf(id)) > 0
+        val changed = database.writableDatabase.update(TABLE, values, "id=?", arrayOf(id)) > 0
+        // 码值被改 = 原提醒内容作废，撤掉旧码的常驻提醒（新码不重发，岛面不再展示旧码）。
+        if (changed) oldCode?.let { PickupCodeNotifier.cancelCode(appContext, it) }
+        return changed
     }
 
     /** 标记完成；已完成记录返回 false。 */
     fun markCompleted(id: String): Boolean {
+        val record = findById(id) ?: return false
         val values = ContentValues().apply {
             put("is_completed", 1)
             put("completed_at", System.currentTimeMillis())
         }
-        return database.writableDatabase.update(
+        val changed = database.writableDatabase.update(
             TABLE, values, "id=? AND is_completed=0", arrayOf(id),
         ) > 0
+        if (changed) PickupCodeNotifier.cancelCode(appContext, record.code)
+        return changed
     }
 
-    fun delete(id: String): Boolean =
-        database.writableDatabase.delete(TABLE, "id=?", arrayOf(id)) > 0
+    fun delete(id: String): Boolean {
+        val record = findById(id)
+        val deleted = database.writableDatabase.delete(TABLE, "id=?", arrayOf(id)) > 0
+        // 删未完成记录时撤掉它的常驻提醒；已完成记录的提醒早已撤过，重复撤无害。
+        if (deleted) record?.code?.let { PickupCodeNotifier.cancelCode(appContext, it) }
+        return deleted
+    }
 
     /** 一键清空已完成记录（待取记录不动）；返回删除的条数。 */
     fun clearCompleted(): Int =
         database.writableDatabase.delete(TABLE, "is_completed=1", null)
 
-    fun clearAll(): Boolean =
-        database.writableDatabase.delete(TABLE, null, null) >= 0
+    fun clearAll(): Boolean {
+        // 清库前把未完成记录的常驻提醒一并撤掉，避免留幽灵岛。
+        pending(limit = MAX_RECORDS).forEach { PickupCodeNotifier.cancelCode(appContext, it.code) }
+        return database.writableDatabase.delete(TABLE, null, null) >= 0
+    }
 
     /**
      * 清理：已完成超 [RETENTION_DAYS] 的记录删除，总数超出 [MAX_RECORDS] 时按

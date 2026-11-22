@@ -8,10 +8,6 @@
 
 package io.github.mangi.eta.ui.screens.pickup
 
-import android.app.Activity
-import android.media.projection.MediaProjectionManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,7 +49,6 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import io.github.mangi.eta.R
-import io.github.mangi.eta.agent.capture.AssistantProjectionService
 import io.github.mangi.eta.agent.pickup.PickupCodeSettings
 import io.github.mangi.eta.data.repository.PickupCodeRecord
 import io.github.mangi.eta.data.repository.PickupCodeRepository
@@ -66,6 +61,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
@@ -80,12 +76,8 @@ import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -152,63 +144,6 @@ fun PickupCodesScreen(onBack: () -> Unit) {
         reloadSettings()
     }
 
-    // 共享屏幕授权：系统弹窗回传 resultData 后转交单次截屏前台服务，
-    // 截到的帧走本地 OCR + 规则引擎识别并入库（管理页内的手动截屏识别通道）。
-    val projectionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            AssistantProjectionService.clearResult()
-            AssistantProjectionService.start(context, result.resultCode, result.data!!)
-            scope.launch {
-                // 有界等待首帧：前台服务自带 3s 超时兜底会发 null，这里再封顶一层。
-                val bitmap = withTimeoutOrNull(PROJECTION_RESULT_TIMEOUT_MS) {
-                    AssistantProjectionService.resultFlow().filterNotNull().first()
-                }
-                AssistantProjectionService.clearResult()
-                if (bitmap == null) {
-                    toast(context, R.string.pickup_projection_failed)
-                    return@launch
-                }
-                val drafts = withContext(Dispatchers.IO) {
-                    runCatching {
-                        io.github.mangi.eta.agent.pickup.PickupCodeExtractor.fromBitmap(
-                            context.applicationContext,
-                            bitmap,
-                        )
-                    }.getOrDefault(emptyList())
-                }
-                bitmap.recycle()
-                if (drafts.isEmpty()) {
-                    toast(context, R.string.pickup_projection_none)
-                } else {
-                    withContext(Dispatchers.IO) {
-                        val repository = PickupCodeRepository(context.applicationContext)
-                        drafts.forEach { draft ->
-                            if (repository.findUnfinishedByCode(draft.code) == null) {
-                                repository.insert(
-                                    code = draft.code,
-                                    orderType = draft.orderType,
-                                    brandName = draft.brandName,
-                                    pickupLocation = draft.pickupLocation,
-                                    source = io.github.mangi.eta.data.repository.PickupCodeSource.AGENT,
-                                    sourcePackage = context.packageName,
-                                    fullText = draft.fullText,
-                                )
-                            }
-                        }
-                    }
-                    toast(
-                        context,
-                        R.string.pickup_projection_done,
-                        drafts.size,
-                    )
-                    reloadRecords()
-                }
-            }
-        }
-    }
-
     EtaScaffoldPage(
         title = stringResource(R.string.settings_pickup_codes_title),
         onBack = onBack,
@@ -254,22 +189,6 @@ fun PickupCodesScreen(onBack: () -> Unit) {
                         summaryOff = stringResource(R.string.pickup_local_ocr_only_summary_off),
                     )
                 }
-                item {
-                    // 手动「截屏识别」：直接发起共享屏幕授权 + 单帧 OCR，不依赖
-                    // 「屏幕截图方式」设置（该设置在系统接管页，管助手兜底链路）。
-                    EtaClickableRow(
-                        title = stringResource(R.string.pickup_projection_grant_title),
-                        summary = stringResource(R.string.pickup_projection_grant_summary),
-                        onClick = {
-                            val manager = context.getSystemService(
-                                MediaProjectionManager::class.java,
-                            )
-                            manager?.createScreenCaptureIntent()?.let { intent ->
-                                projectionLauncher.launch(intent)
-                            }
-                        },
-                    )
-                }
             }
         }
 
@@ -298,12 +217,16 @@ fun PickupCodesScreen(onBack: () -> Unit) {
                 )
             }
             if (pending.isEmpty()) {
-                // 空态说明不是卡片行：不参与分段圆角，直接落页面背景。
+                // 非整页零态走分段卡片做底板（全仓空态两档约定，空态说明与行同宽同圆角）。
                 item(key = "pending_empty") {
-                    ListEmptyState(
-                        title = stringResource(R.string.pickup_empty_title),
-                        summary = stringResource(R.string.pickup_empty_summary),
-                    )
+                    EtaSegmentedItemContainer(
+                        modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                    ) {
+                        ListEmptyState(
+                            title = stringResource(R.string.pickup_empty_title),
+                            summary = stringResource(R.string.pickup_empty_summary),
+                        )
+                    }
                 }
             }
             itemsIndexed(
@@ -767,11 +690,3 @@ private fun pickupGroupModifier(): Modifier = Modifier.padding(
     start = EtaGroupHorizontalPadding,
     end = EtaGroupHorizontalPadding,
 )
-
-private fun toast(context: android.content.Context, resId: Int, arg: Int? = null) {
-    val text = arg?.let { context.getString(resId, it) } ?: context.getString(resId)
-    Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
-}
-
-/** 共享屏幕截屏结果的有界等待上限（服务侧 3s 超时 + 网络余量）。 */
-private const val PROJECTION_RESULT_TIMEOUT_MS = 8_000L
