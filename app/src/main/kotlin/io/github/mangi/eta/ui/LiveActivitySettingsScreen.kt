@@ -4,6 +4,9 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import io.github.mangi.eta.R
 import io.github.mangi.eta.config.LiveActivityStyle
+import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
@@ -61,6 +65,7 @@ internal fun LiveActivitySettingsScreen(onBack: () -> Unit) {
                     EtaSwitchRow(
                         title = stringResource(R.string.live_activity_enable_title),
                         summary = stringResource(R.string.live_activity_enable_summary),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.PictureInPicture) },
                         checked = masterEnabled,
                         onCheckedChange = { value ->
                             masterEnabled = value
@@ -103,6 +108,7 @@ internal fun LiveActivitySettingsScreen(onBack: () -> Unit) {
                     EtaSwitchRow(
                         title = stringResource(R.string.live_completion_enable_title),
                         summary = stringResource(R.string.live_completion_enable_summary),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.NotificationsActive) },
                         checked = checked,
                         enabled = masterEnabled,
                         onCheckedChange = { value ->
@@ -118,6 +124,7 @@ internal fun LiveActivitySettingsScreen(onBack: () -> Unit) {
                     EtaSwitchRow(
                         title = stringResource(R.string.live_suppress_enable_title),
                         summary = stringResource(R.string.live_suppress_enable_summary),
+                        leading = { PreferenceIcon(icon = Icons.Rounded.NotificationsOff) },
                         checked = checked,
                         enabled = masterEnabled,
                         onCheckedChange = { value ->
