@@ -187,4 +187,98 @@ class DesignSystemRulesTest {
             hits.isEmpty(),
         )
     }
+
+    /**
+     * R6：空态两档（RULES §2.14）。轻量档 `ListEmptyState` 禁止裸用——必须包在
+     * `EtaSegmentedItemContainer`（分段卡片）里；整页零态走 `EtaStatusPage`，本测试
+     * 只执法可判定的一半（卡片包裹），零态判据与选型靠评审自查。
+     *
+     * 判定方式：从每个 `ListEmptyState(` 调用点向前配平花括号，逐层检查候选包裹块
+     * 的块头符号是否为 `EtaSegmentedItemContainer`——容器内再嵌 if/else 分支包空态
+     * （如 WorkspaceScreen 的 loading 门控块）同样合规；多行参数与 modifier 链不受
+     * 影响（先配平圆括号再取块头符号）。
+     */
+    @Test
+    fun `list empty states sit inside segmented containers`() {
+        val hits = mainSources.flatMap { (path, text) ->
+            val out = mutableListOf<String>()
+            for (match in Regex("""ListEmptyState\(""").findAll(text)) {
+                val head = text.substring(0, match.range.first)
+                // `fun ListEmptyState(` 是定义不是调用。
+                if (head.endsWith("fun ")) continue
+                if (!insideSegmentedContainer(text, match.range.first)) {
+                    out += "$path:${head.count { it == '\n' } + 1}"
+                }
+            }
+            out
+        }
+        assertTrue(
+            "ListEmptyState 禁止裸用（RULES R6 / §2.14）：必须包在 EtaSegmentedItemContainer " +
+                "分段卡片里；整页零态（页面无其他常驻条目）请改用 EtaStatusPage：\n" +
+                hits.joinToString("\n"),
+            hits.isEmpty(),
+        )
+    }
+
+    /** 调用点向前配平花括号：逐层候选包裹块的块头符号是 `EtaSegmentedItemContainer` 即合规。 */
+    private fun insideSegmentedContainer(text: String, callStart: Int): Boolean {
+        var depth = 0
+        var i = callStart - 1
+        while (i >= 0) {
+            when (text[i]) {
+                '}' -> depth++
+                '{' -> {
+                    if (depth > 0) {
+                        depth--
+                    } else if (headIdentifier(text, i) == "EtaSegmentedItemContainer") {
+                        return true
+                    }
+                }
+            }
+            i--
+        }
+        return false
+    }
+
+    /**
+     * 取 `{` 块头的符号名：跳过空白与注释；紧邻是 `)`（带参调用 / 修饰符链）时先向后
+     * 配平圆括号再取其前的符号。用于区分 `EtaSegmentedItemContainer(...) {` 与
+     * if / else 等普通块。
+     */
+    private fun headIdentifier(text: String, braceIndex: Int): String {
+        var i = braceIndex - 1
+        while (i >= 0) {
+            val c = text[i]
+            when {
+                c.isWhitespace() -> i--
+                c == '/' && i > 0 && text[i - 1] == '/' -> {
+                    // 行注释：退回行首。
+                    while (i >= 0 && text[i] != '\n') i--
+                }
+                c == '/' && i > 0 && text[i - 1] == '*' -> {
+                    // 块注释：跳到 `/*` 之前（Kotlin 块注释不嵌套）。
+                    var d = i - 2
+                    while (d >= 1 && !(text[d] == '/' && text[d - 1] == '*')) d--
+                    i = d - 1
+                }
+                c == ')' -> {
+                    var parenDepth = 1
+                    i--
+                    while (i >= 0 && parenDepth > 0) {
+                        when (text[i]) {
+                            ')' -> parenDepth++
+                            '(' -> parenDepth--
+                        }
+                        i--
+                    }
+                }
+                else -> {
+                    var start = i
+                    while (start >= 0 && (text[start].isLetterOrDigit() || text[start] == '_')) start--
+                    return text.substring(start + 1, i + 1)
+                }
+            }
+        }
+        return ""
+    }
 }

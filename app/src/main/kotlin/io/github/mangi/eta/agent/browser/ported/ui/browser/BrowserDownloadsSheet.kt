@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -45,6 +46,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
+import io.github.mangi.eta.ui.components.EtaStatusPage
 
 /**
  * [T-android-browser-download-ux] Downloads panel — Android port of iOS
@@ -99,8 +101,11 @@ fun BrowserDownloadsSheet(
             )
 
             if (downloads.isEmpty()) {
-                BrowserSheetEmptyState(
+                // 空态收敛到共享状态页 [EtaStatusPage]（图标随面板语义取 Download）。
+                EtaStatusPage(
+                    icon = Icons.Rounded.Download,
                     title = stringResource(R.string.om_browser_downloads_empty),
+                    modifier = Modifier.fillMaxSize(),
                 )
             } else {
                 EtaSegmentedColumn(

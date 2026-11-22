@@ -60,6 +60,7 @@ import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
 import io.github.mangi.eta.ui.adaptive.EtaMotion
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
@@ -548,11 +549,19 @@ internal fun DoubaoVoiceSettings(onBack: () -> Unit) {
                                     } else {
                                         null
                                     }
-                                    ListEmptyState(
-                                        title = stringResource(R.string.dv_empty_title),
-                                        summary = if (config.cloneKey.isBlank()) stringResource(R.string.dv_empty_no_account) else stringResource(R.string.dv_empty_has_account),
-                                        action = emptyAction,
-                                    )
+                                    // 非整页零态走分段卡片做底板（与上方 VoiceGroup 左右边距对齐）。
+                                    EtaSegmentedItemContainer(
+                                        modifier = Modifier.padding(
+                                            start = EtaGroupHorizontalPadding,
+                                            end = EtaGroupHorizontalPadding,
+                                        ),
+                                    ) {
+                                        ListEmptyState(
+                                            title = stringResource(R.string.dv_empty_title),
+                                            summary = if (config.cloneKey.isBlank()) stringResource(R.string.dv_empty_no_account) else stringResource(R.string.dv_empty_has_account),
+                                            action = emptyAction,
+                                        )
+                                    }
                                 } else {
                                     VoiceGroup {
                                         myVoices.forEach { voice ->

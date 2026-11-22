@@ -57,6 +57,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
 import io.github.mangi.eta.ui.adaptive.EtaSelectionTopBarAction
 import io.github.mangi.eta.ui.adaptive.EtaTextButton
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.components.FolderNameDialog
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
@@ -181,8 +182,10 @@ internal fun ManageFoldersScreen(
         },
         content = {
             if (foldersEmpty && remoteServersEmpty) {
+                // 整页零态（分类与远程设备都空）：状态页占满视口居中，入口按钮留在页内。
                 item(key = "empty") {
-                    ListEmptyState(
+                    EtaStatusPage(
+                        icon = Icons.Rounded.Folder,
                         title = stringResource(R.string.folders_page_empty),
                         action = {
                             EtaTextButton(
@@ -190,6 +193,7 @@ internal fun ManageFoldersScreen(
                                 onClick = onOpenRemoteAgents,
                             )
                         },
+                        modifier = Modifier.fillParentMaxSize(),
                     )
                 }
             } else {

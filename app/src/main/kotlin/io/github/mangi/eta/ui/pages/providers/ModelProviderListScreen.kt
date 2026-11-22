@@ -45,6 +45,7 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSectionTitle
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
@@ -350,14 +351,19 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.materialProviderList
     }
 
     if (filteredProviders.isEmpty()) {
+        // 非整页零态走分段卡片做底板（全仓空态两档约定，见 EtaStatusPage KDoc）。
         item(key = "empty") {
-            ListEmptyState(
-                title = if (searchQuery.isBlank()) {
-                    stringResource(R.string.provider_empty)
-                } else {
-                    stringResource(R.string.provider_no_matches)
-                },
-            )
+            EtaSegmentedItemContainer(
+                modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+            ) {
+                ListEmptyState(
+                    title = if (searchQuery.isBlank()) {
+                        stringResource(R.string.provider_empty)
+                    } else {
+                        stringResource(R.string.provider_no_matches)
+                    },
+                )
+            }
         }
     } else {
         items(

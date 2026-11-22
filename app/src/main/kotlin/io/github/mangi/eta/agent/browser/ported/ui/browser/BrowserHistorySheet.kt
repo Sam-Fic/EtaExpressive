@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -43,6 +44,7 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -153,9 +155,12 @@ fun BrowserHistorySheet(
                 )
 
                 if (entries.values.flatten().isEmpty()) {
-                    BrowserSheetEmptyState(
+                    // 空态收敛到共享状态页 [EtaStatusPage]（图标随面板语义取 History）。
+                    EtaStatusPage(
+                        icon = Icons.Rounded.History,
                         title = stringResource(R.string.om_browser_history_empty_title),
                         summary = stringResource(R.string.om_browser_history_empty_subtitle),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 } else {
                     LazyColumn(

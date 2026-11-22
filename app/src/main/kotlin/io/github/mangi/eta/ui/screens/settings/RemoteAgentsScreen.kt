@@ -67,7 +67,6 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBarOverlay
@@ -79,7 +78,7 @@ import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaTooltipIconButton
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.adaptive.etaConnectedColor
-import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.remote.RemoteCoordinator
@@ -94,8 +93,9 @@ import kotlinx.coroutines.launch
  * （[RemoteAgentEditorScreen]，表单 + 协议 + 测试连接一屏铺开），本页只保留
  * 列表、本地网络闸门行与删除确认。
  *
- * 版式与 MCP 服务器页一致：单组分段列表 + 组标题计数，空态用居中的 [ListEmptyState]
- * 承载，新增入口交给右下角 FAB（滚动时收起、回顶展开），列表里不再重复放「添加」行。
+ * 版式与 MCP 服务器页一致：单组分段列表 + 组标题计数，空态升格为整页状态页
+ * （[EtaStatusPage]，与 MCP 页同款，契约 test_remote_agents_page_contract 钉齐），
+ * 新增入口交给右下角 FAB（滚动时收起、回顶展开），列表里不再重复放「添加」行。
  */
 @Composable
 internal fun RemoteAgentsScreen(
@@ -224,39 +224,39 @@ internal fun RemoteAgentsScreen(
                 }
             }
         }
-        // 服务器行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
-        // animateItem 承载删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
-        item(key = "servers_header") {
-            Text(
-                text = if (selectionMode) {
-                    stringResource(R.string.remote_agents_configured_servers, servers.size) + " · " +
-                        stringResource(R.string.media_selected_count, selectedIds.size)
-                } else {
-                    stringResource(R.string.remote_agents_configured_servers, servers.size)
-                },
-                style = MaterialTheme.typography.titleSmallEmphasized,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    // 与 local-network 组的既有 bottom 间距衔接，不再叠加 top，避免双倍。
-                    bottom = EtaSegmentedTitleSpacing,
-                ),
-            )
-        }
         if (servers.isEmpty()) {
-            // 空态是「非行」内容，用分段容器承载；新增入口交给右下角 FAB，避免重复按钮。
+            // 空态升格为整页状态页（EtaStatusPage），与 MCP 服务器页同款（契约
+            // test_remote_agents_page_contract 钉两页同版式）；计数行在零态失去意义不再出。
+            // 新增入口交给右下角 FAB，避免重复按钮。
             item(key = "servers_empty") {
-                EtaSegmentedItemContainer(
-                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
-                ) {
-                    ListEmptyState(
-                        title = stringResource(R.string.remote_agents_empty),
-                        summary = stringResource(R.string.remote_agents_empty_summary),
-                    )
-                }
+                EtaStatusPage(
+                    icon = Icons.Rounded.Wifi,
+                    title = stringResource(R.string.remote_agents_empty),
+                    summary = stringResource(R.string.remote_agents_empty_summary),
+                    modifier = Modifier.fillParentMaxSize(),
+                )
             }
         } else {
+            // 服务器行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+            // animateItem 承载删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
+            item(key = "servers_header") {
+                Text(
+                    text = if (selectionMode) {
+                        stringResource(R.string.remote_agents_configured_servers, servers.size) + " · " +
+                            stringResource(R.string.media_selected_count, selectedIds.size)
+                    } else {
+                        stringResource(R.string.remote_agents_configured_servers, servers.size)
+                    },
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        // 与 local-network 组的既有 bottom 间距衔接，不再叠加 top，避免双倍。
+                        bottom = EtaSegmentedTitleSpacing,
+                    ),
+                )
+            }
             itemsIndexed(
                 items = servers,
                 key = { _, config -> config.id },

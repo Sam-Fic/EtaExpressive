@@ -18,6 +18,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSearchPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.model.MessageSearchHit
 
@@ -67,8 +68,13 @@ internal fun MessageSearchScreen(
         // 结果尚未对齐当前搜索词时不画列表，避免上一轮的命中短暂残留。
         if (searchedQuery == query) {
             if (results.isEmpty()) {
+                // 非整页零态走分段卡片做底板（全仓空态两档约定）。
                 item(key = "message_search_empty") {
-                    ListEmptyState(title = stringResource(R.string.search_history_no_results))
+                    EtaSegmentedItemContainer(
+                        modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                    ) {
+                        ListEmptyState(title = stringResource(R.string.search_history_no_results))
+                    }
                 }
             } else {
                 results.forEachIndexed { index, hit ->

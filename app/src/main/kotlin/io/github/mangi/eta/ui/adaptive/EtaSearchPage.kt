@@ -2,7 +2,6 @@ package io.github.mangi.eta.ui.adaptive
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -58,11 +56,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.layout.rememberPageContentSidePadding
 import kotlinx.coroutines.delay
 
@@ -356,8 +354,9 @@ fun EtaSearchGridScaffold(
  *
  * 未输入时：有历史则显示「搜索记录」列表（点一条回填搜索框，可一键清除）；
  * 无历史则显示官方 Empty state（空状态）——居中的非交互占位图标 + 提示标语，
- * 图标下方垫一块 M3E 装饰形状（纯装饰，轮廓每次进页面随机换一枚，见 [EtaDecorativeShape]），
- * **不复制宿主页内容**（避免与主页重复）；有搜索结果由各页自己的空态文案兜底。
+ * 图标下方垫一块 M3E 装饰形状（纯装饰，轮廓每次进页面随机换一枚），
+ * 版式收敛在 [EtaStatusPage] 单源，**不复制宿主页内容**（避免与主页重复）；
+ * 有搜索结果由各页自己的空态文案兜底。
  *
  * 记录口径（全应用统一）：**IME 提交**由本页按 [historyKey] 自动记一条；**点开某条结果**
  * 由各页在跳转前调 `EtaSearchHistory.add(context, historyKey, query)` 补记一条——两者合起来
@@ -382,9 +381,6 @@ fun EtaSearchPage(
     content: LazyListScope.(query: String) -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
-    // 空态装饰形状：每次进页面随机换一枚官方 M3E 轮廓。用 remember 存住，
-    // 于是同一次停留内（输入再清空、列表重组）都保持同一枚，不会跳。
-    val emptyStateShape = remember { etaRandomDecorativeShape() }
     val context = LocalContext.current
     // 历史状态只在页内两处变更（IME 提交 / 清除），结果点按方直接写盘，
     // 返回本页时 remember 重建自然重读。
@@ -432,41 +428,13 @@ fun EtaSearchPage(
                 )
             } else {
                 item(key = "search_empty_state") {
-                    Box(
+                    // 官方 Empty state 观感收敛到共享状态页 [EtaStatusPage]（单源，
+                    // 版式即本页原内联实现：装饰形状 + 大图标 + bodyLarge 标语）。
+                    EtaStatusPage(
+                        icon = Icons.Rounded.Search,
+                        title = searchPlaceholder,
                         modifier = Modifier.fillParentMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                            modifier = Modifier.padding(horizontal = 32.dp),
-                        ) {
-                            // 图标坐在一块 M3E 装饰形状正中：形状垫在图标下方四周均匀露出，
-                            // 每次进页面换一枚轮廓（见 [etaRandomDecorativeShape]），
-                            // 给「没有结果」的空态一点形状趣味（纯装饰，不承载信息）。
-                            Box(
-                                modifier = Modifier.size(EtaDimens.EmptyStateShapeSize),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                EtaDecorativeShape(
-                                    modifier = Modifier.size(EtaDimens.EmptyStateShapeSize),
-                                    shape = emptyStateShape,
-                                )
-                                Icon(
-                                    imageVector = Icons.Rounded.Search,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(EtaDimens.EmptyStateGraphicIconSize),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(
-                                text = searchPlaceholder,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
+                    )
                 }
             }
         } else {

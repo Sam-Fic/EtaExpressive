@@ -108,7 +108,6 @@ import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.MediaKind
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
-import io.github.mangi.eta.ui.adaptive.EtaDecorativeShape
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
@@ -133,10 +132,9 @@ import io.github.mangi.eta.ui.adaptive.EtaSlider
 import io.github.mangi.eta.ui.adaptive.EtaText
 import io.github.mangi.eta.ui.adaptive.EtaTextStyle
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
-import io.github.mangi.eta.ui.adaptive.etaRandomDecorativeShape
 import io.github.mangi.eta.ui.adaptive.rememberEtaSheetState
-import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.components.ContainedMorphLoadingIndicator
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.components.horizontalScrollEdgeFade
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.navigation.AppRoute
@@ -667,8 +665,10 @@ internal fun MediaSearchScreen(
                     )
                 } else {
                     item(key = "search-idle") {
-                        MediaSearchEmptyState(
-                            text = stringResource(R.string.media_search_hint),
+                        // 官方 Empty state 观感收敛到共享状态页 [EtaStatusPage]（与其它搜索页同源）。
+                        EtaStatusPage(
+                            icon = Icons.Rounded.Search,
+                            title = stringResource(R.string.media_search_hint),
                             modifier = Modifier.fillParentMaxSize(),
                         )
                     }
@@ -1105,50 +1105,6 @@ private fun MediaFilterBar(
                 selected = selectedIndex == index,
                 onClick = { onSelect(index) },
                 label = { Text(text = stringResource(labelRes)) },
-            )
-        }
-    }
-}
-
-/**
- * 空闲态：官方 Empty state 观感——装饰形状 + 放大镜 + 一句说明（与其它搜索页一致）。
- *
- * 装饰形状每次进页面换一枚轮廓，页内保持稳定（纯装饰，不承载信息）。
- */
-@Composable
-private fun MediaSearchEmptyState(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    val decorativeShape = remember { etaRandomDecorativeShape() }
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(horizontal = 32.dp),
-        ) {
-            Box(
-                modifier = Modifier.size(EtaDimens.EmptyStateShapeSize),
-                contentAlignment = Alignment.Center,
-            ) {
-                EtaDecorativeShape(
-                    modifier = Modifier.size(EtaDimens.EmptyStateShapeSize),
-                    shape = decorativeShape,
-                )
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(EtaDimens.EmptyStateGraphicIconSize),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            EtaText(
-                text = text,
-                style = EtaTextStyle.Secondary,
-                textAlign = TextAlign.Center,
             )
         }
     }

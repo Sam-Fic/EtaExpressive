@@ -30,6 +30,7 @@ import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.TopBarIconButton
@@ -188,8 +189,14 @@ internal fun LazyListScope.assistantItems(
         }
     }
     if (filtered.isEmpty()) {
+        // 非整页零态走分段卡片做底板（全仓空态两档约定；本列表被主页/搜索/弹窗共用，
+        // 卡片高度自适应，各宿主都成立）。
         item(key = "empty") {
-            ListEmptyState(title = stringResource(R.string.assistant_empty))
+            EtaSegmentedItemContainer(
+                modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+            ) {
+                ListEmptyState(title = stringResource(R.string.assistant_empty))
+            }
         }
     }
 }

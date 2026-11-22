@@ -22,6 +22,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSearchPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaStatus
 import io.github.mangi.eta.ui.components.ListEmptyState
 import kotlinx.coroutines.Dispatchers
@@ -135,15 +136,24 @@ internal fun MijiaSearchScreen(onBack: () -> Unit) {
         }
 
         if (devices.isEmpty()) {
+            // 非整页零态走分段卡片做底板（全仓空态两档约定）。
             item(key = "empty") {
-                ListEmptyState(
-                    title = stringResource(R.string.mijia_empty_devices),
-                    summary = stringResource(R.string.mijia_empty_devices_hint),
-                )
+                EtaSegmentedItemContainer(
+                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                ) {
+                    ListEmptyState(
+                        title = stringResource(R.string.mijia_empty_devices),
+                        summary = stringResource(R.string.mijia_empty_devices_hint),
+                    )
+                }
             }
         } else if (matched.isEmpty()) {
             item(key = "empty") {
-                ListEmptyState(title = stringResource(R.string.mijia_no_match))
+                EtaSegmentedItemContainer(
+                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                ) {
+                    ListEmptyState(title = stringResource(R.string.mijia_no_match))
+                }
             }
         } else {
             matched.forEachIndexed { index, device ->

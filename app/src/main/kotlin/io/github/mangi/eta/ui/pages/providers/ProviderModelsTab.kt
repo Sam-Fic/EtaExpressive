@@ -69,6 +69,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSelectionBarOverlay
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
 import io.github.mangi.eta.ui.adaptive.EtaSelectionEntryAction
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaPickerSheet
@@ -326,14 +327,18 @@ internal fun ProviderModelsTab(
                     EtaSectionTitle(text = modelListTitle)
                 }
                 item(key = "models_empty", contentType = "empty") {
-                    // 与供应商列表页一致：空态是无容器的居中文本，不再塞进分段容器。
-                    ListEmptyState(
-                        title = if (provider.models.isEmpty()) {
-                            context.getString(R.string.page_there_is_no_model_yet_please_pull_it_from_the_remote_ced865)
-                        } else {
-                            context.getString(R.string.page_no_matching_model_found_ae7e96)
-                        },
-                    )
+                    // 非整页零态走分段卡片做底板（全仓空态两档约定，与供应商列表页一致）。
+                    EtaSegmentedItemContainer(
+                        modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                    ) {
+                        ListEmptyState(
+                            title = if (provider.models.isEmpty()) {
+                                context.getString(R.string.page_there_is_no_model_yet_please_pull_it_from_the_remote_ced865)
+                            } else {
+                                context.getString(R.string.page_no_matching_model_found_ae7e96)
+                            },
+                        )
+                    }
                 }
             } else {
                 item(key = "models_title", contentType = "section_title") {
@@ -781,9 +786,12 @@ private fun RemoteModelPickDialog(
             )
         }
         if (visible.isEmpty()) {
-            ListEmptyState(
-                title = stringResource(R.string.page_no_matching_model_found_ae7e96),
-            )
+            // 弹窗内非整页零态：同样用分段卡片做底板（行本身不带水平边距，卡片对齐行）。
+            EtaSegmentedItemContainer {
+                ListEmptyState(
+                    title = stringResource(R.string.page_no_matching_model_found_ae7e96),
+                )
+            }
         } else {
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
                 itemsIndexed(

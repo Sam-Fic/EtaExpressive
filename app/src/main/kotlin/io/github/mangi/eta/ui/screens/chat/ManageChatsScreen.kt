@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.LabelOff
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
@@ -58,7 +59,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSelectionBarOverlay
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
 import io.github.mangi.eta.ui.adaptive.EtaSelectionTopBarAction
 import io.github.mangi.eta.ui.adaptive.EtaTooltip
-import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.components.streamDiagnosticDraw
 import io.github.mangi.eta.ui.components.streamDiagnosticMeasure
@@ -177,9 +178,12 @@ internal fun ManageChatsScreen(
         },
         content = {
             if (ordered.isEmpty()) {
+                // 空态升格为整页状态页（与搜索页官方 Empty state 同观感）。
                 item(key = "empty") {
-                    ListEmptyState(
+                    EtaStatusPage(
+                        icon = Icons.Rounded.Forum,
                         title = stringResource(R.string.history_page_empty),
+                        modifier = Modifier.fillParentMaxSize(),
                     )
                 }
             } else {

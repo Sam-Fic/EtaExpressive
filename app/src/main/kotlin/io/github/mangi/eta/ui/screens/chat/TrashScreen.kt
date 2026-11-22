@@ -44,6 +44,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSearchHistory
 import io.github.mangi.eta.ui.adaptive.EtaSearchPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
@@ -134,10 +135,15 @@ internal fun TrashScreen(
         },
         content = {
             if (trash.isEmpty()) {
+                // 非整页零态走分段卡片做底板（全仓空态两档约定）。
                 item(key = "empty") {
-                    ListEmptyState(
-                        title = stringResource(R.string.drawer_trash_empty),
-                    )
+                    EtaSegmentedItemContainer(
+                        modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                    ) {
+                        ListEmptyState(
+                            title = stringResource(R.string.drawer_trash_empty),
+                        )
+                    }
                 }
             } else {
                 itemsIndexed(
@@ -397,10 +403,15 @@ internal fun TrashSearchScreen(
     ) { query ->
         val hits = onSearch(query)
         if (hits.isEmpty()) {
+            // 非整页零态走分段卡片做底板（全仓空态两档约定）。
             item(key = "empty") {
-                ListEmptyState(
-                    title = stringResource(R.string.trash_search_empty),
-                )
+                EtaSegmentedItemContainer(
+                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                ) {
+                    ListEmptyState(
+                        title = stringResource(R.string.trash_search_empty),
+                    )
+                }
             }
         } else {
             itemsIndexed(

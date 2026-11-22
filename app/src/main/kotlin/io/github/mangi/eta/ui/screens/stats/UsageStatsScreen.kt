@@ -399,16 +399,20 @@ private fun ModelUsagePane(
             },
         )
         if (filtered.providers.isEmpty()) {
-            ListEmptyState(
-                title = stringResource(
-                    if (startBound.isSet || endBound.isSet) {
-                        R.string.stats_model_filter_empty
-                    } else {
-                        R.string.stats_model_empty
-                    },
-                ),
+            // 非整页零态走分段卡片做底板（全仓空态两档约定）；面板已自带 16dp 水平边距。
+            EtaSegmentedItemContainer(
                 modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
-            )
+            ) {
+                ListEmptyState(
+                    title = stringResource(
+                        if (startBound.isSet || endBound.isSet) {
+                            R.string.stats_model_filter_empty
+                        } else {
+                            R.string.stats_model_empty
+                        },
+                    ),
+                )
+            }
         } else {
             EtaSegmentedColumn(
                 modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),

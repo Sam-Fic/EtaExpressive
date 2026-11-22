@@ -64,6 +64,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSelectionTopBarAction
 import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.adaptive.EtaTrailingChevron
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.haptics.TouchHaptics
@@ -147,35 +148,36 @@ internal fun McpServersScreen(
             )
         },
     ) {
-        // 服务器行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
-        // animateItem 承载批量删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
-        item(key = "servers_header") {
-            M3Text(
-                text = if (selectionMode) {
-                    stringResource(R.string.mcp_configured_servers, servers.size) + " · " +
-                        stringResource(R.string.media_selected_count, selectedIds.size)
-                } else {
-                    stringResource(R.string.mcp_configured_servers, servers.size)
-                },
-                style = MaterialTheme.typography.titleSmallEmphasized,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedTitleSpacing,
-                ),
-            )
-        }
         if (servers.isEmpty()) {
-            // 空态是「非行」内容，用分段容器承载；新增入口交给右下角 FAB，避免重复按钮。
+            // 空态升格为整页状态页（与搜索页官方 Empty state 同观感，EtaStatusPage 单源）：
+            // 占满列表视口居中；计数行在零态失去意义不再出。新增入口交给右下角 FAB，避免重复按钮。
             item(key = "servers_empty") {
-                EtaSegmentedItemContainer(
-                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
-                ) {
-                    ListEmptyState(title = stringResource(R.string.mcp_empty_title))
-                }
+                EtaStatusPage(
+                    icon = Icons.Rounded.Dns,
+                    title = stringResource(R.string.mcp_empty_title),
+                    modifier = Modifier.fillParentMaxSize(),
+                )
             }
         } else {
+            // 服务器行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+            // animateItem 承载批量删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
+            item(key = "servers_header") {
+                M3Text(
+                    text = if (selectionMode) {
+                        stringResource(R.string.mcp_configured_servers, servers.size) + " · " +
+                            stringResource(R.string.media_selected_count, selectedIds.size)
+                    } else {
+                        stringResource(R.string.mcp_configured_servers, servers.size)
+                    },
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedTitleSpacing,
+                    ),
+                )
+            }
             itemsIndexed(
                 items = servers,
                 key = { _, server -> server.id },

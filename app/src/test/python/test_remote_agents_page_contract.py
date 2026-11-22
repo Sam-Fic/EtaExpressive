@@ -19,20 +19,26 @@ class RemoteAgentsPageContractTest(unittest.TestCase):
     def test_page_matches_the_mcp_servers_layout(self):
         source = read(SCREEN)
         mcp = read(KOTLIN / "ui/screens/mcp/McpServersScreen.kt")
-        # 版式与 MCP 服务器页对齐：单组分段列表 + 组标题计数 + 右下角扩展 FAB。
-        # 行已升格为顶层 LazyColumn item（animateItem 行增删动画，会话管理页同款），
-        # 分段容器只承载空态单卡，故 needle 取调用形态而不限参数写法。
+        # 版式与 MCP 服务器页对齐：分组列表 + 组标题计数 + 右下角扩展 FAB。
+        # 行已升格为顶层 LazyColumn item（animateItem 行增删动画，会话管理页同款）；
+        # 整页空态升格为状态页（EtaStatusPage，与搜索页官方 Empty state 同观感），
+        # 计数行收进非空分支，零态不再出。故 needle 取调用形态而不限参数写法。
         for needle in (
             "EtaScaffoldPage(",
             "EtaSegmentedColumn(",
-            "EtaSegmentedItemContainer(",
-            "ListEmptyState(",
+            "EtaStatusPage(",
             "EtaExtendedFab(",
             "rememberFabExpandedState(listState)",
             "Icons.Rounded.Add",
         ):
             self.assertIn(needle, source)
             self.assertIn(needle, mcp)
+        # 主列表零态不再走「分段单卡 + 轻量空态」：分段容器与 ListEmptyState 只留在
+        # MCP 详情子列表（同文件工具空态；容器那处是尾 lambda 形态，needle 不带括号）。
+        self.assertNotIn("EtaSegmentedItemContainer", source)
+        self.assertNotIn("ListEmptyState(", source)
+        self.assertIn("EtaSegmentedItemContainer", mcp)
+        self.assertIn("ListEmptyState(", mcp)
         # 空态与新增入口的分工：空态只描述「还没有」，新增交给 FAB。
         self.assertIn("R.string.remote_agents_empty", source)
         self.assertIn("R.string.remote_agents_configured_servers, servers.size", source)

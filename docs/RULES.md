@@ -66,13 +66,14 @@ powershell -ExecutionPolicy Bypass -File tools\fetch-maven-sources.ps1 -Refresh
 
 ## 2. 设计护栏
 
-R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改本文。
+R1–R6 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改本文。
 
 1. **R1 颜色字面量**只允许出现在颜色的定义处（白名单钉死）。
 2. **R2 工具元数据单源**：图标与显示名只在 `ToolPresentation` 维护，旧映射表不得复活。
 3. **R3 私有令牌 helper**：`private fun chat…Color/Style/Shape/Border` 只允许留在白名单，新文件禁止。
 4. **R4 进度/加载指示器**必须走 `EtaLoadingSlot` / `EtaProgressBar`，业务文件禁止直接实例化任何指示器。
 5. **R5 Tooltip 单源**：`TooltipBox` / `PlainTooltip` / `RichTooltip` / `rememberTooltipState` 只允许在 `EtaTooltips` 实现内部调用。
+6. **R6 空态卡片包裹**：`ListEmptyState` 禁止裸用，必须包在 `EtaSegmentedItemContainer` 分段卡片里；整页零态的选型判据见 §2.14（靠评审自查）。
 
 ### 2.1 状态色
 
@@ -116,7 +117,7 @@ R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改�
    - `etc.`、URL、路径、文件名、版本号中的点不是句末标点，保持原样；
    - 带格式占位符（`%1$s`、`%2$d`）不改变判定，仍按句数决定末尾是否加标点。
 3. 适用范围是全局资源规范（`strings.xml` 及 `speech.xml` / `tts.xml` 等同类用户可见资源），不是只针对某一组预设；新增或改写任意语言的条目都要遵守。
-4. `DesignSystemRulesTest` 只执法 R1–R5，**没有**字符串标点检查；本条靠评审自查，不新增测试。
+4. `DesignSystemRulesTest` 只执法 R1–R6，**没有**字符串标点检查；本条靠评审自查，不新增测试。
 
 ### 2.7 透明度弱化
 
@@ -154,6 +155,15 @@ R1–R5 由 `DesignSystemRulesTest` 执法；规则变更先改测试，再改�
 2. **嵌入分段行**：无边框输入嵌成分段行统一走 `EtaSegmentedTextField`（行即输入框，KernelSU 同款），只用于分段组内。
 
 豁免：聊天 / 终端输入区；bottomBar 输入条面板（输入框 + 按钮的功能面板）。样板：`AgentMemoryScreen` 的 MEMORY.md 编辑框、`ModelProviderDetailScreen` 连接配置组、`AssistantEditScreen` 提示词框。本条靠评审自查，不新增测试（同 §2.6）。
+
+### 2.14 空态两档
+
+「没有内容」的空态只有两种合法形态，按页面结构二选一（官方 material3 没有空态/状态页组件，alpha29 classes.jar 全类清单与 release notes 双重取证为空集——新版本出现官方组件前不得自造形状尺寸）：
+
+1. **整页零态**（页面除去顶栏 / FAB / 底栏后没有其他任何常驻条目——设置行、分组、计数行均无）→ `ui/components/EtaStatusPage.kt` 的 `EtaStatusPage`：装饰形状垫语义图标 + 主标语（可选 summary / action 槽）。LazyColumn 里作 `fillParentMaxSize()` 的 item，非列表宿主 `fillMaxSize()`；计数行在零态失去意义，收进非空分支；图标复用该页行首或页面语义图标，不新造。
+2. **其余一切空态**（分组级、筛选无结果、子区域、弹窗）→ 分段卡片做底板：`EtaSegmentedItemContainer` 包 `ListEmptyState`，禁止裸文案直接落页面背景。LazyColumn 顶层 item 外层挂 `padding(horizontal = EtaGroupHorizontalPadding)` 与行同宽；`EtaSegmentedColumn` DSL 内部照 `McpServersScreen` 详情页先例不带 padding。
+
+R6（`ListEmptyState` 必须在分段卡片内）由 `DesignSystemRulesTest` 执法；「是否整页零态」的判据与 `EtaStatusPage` 选型靠评审自查（同 §2.6）。引导 / 占位形态不属于「无条目空态」，不在本条射程：聊天主页空态（Hero 标语 + M3E 色块建议网格）、终端引导态（带动作按钮）、VirtualDisplay 占位态（loading 语义）。
 
 ## 3. 行为红线
 

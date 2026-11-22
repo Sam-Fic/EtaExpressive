@@ -16,6 +16,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSearchPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.components.PreferenceIcon
 import io.github.mangi.eta.ui.navigation.AppRoute
@@ -92,8 +93,13 @@ internal fun SettingsSearchScreen(
         // 高亮取最长的那个词：多词查询时它是最有信息量的那一段。
         val highlightTerm = tokens.maxByOrNull { it.length }.orEmpty()
         if (matched.isEmpty()) {
+            // 非整页零态走分段卡片做底板（全仓空态两档约定）。
             item(key = "empty") {
-                ListEmptyState(title = stringResource(R.string.settings_search_no_matches))
+                EtaSegmentedItemContainer(
+                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
+                ) {
+                    ListEmptyState(title = stringResource(R.string.settings_search_no_matches))
+                }
             }
         } else {
             matched.forEachIndexed { index, hit ->

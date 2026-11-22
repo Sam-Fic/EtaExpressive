@@ -14,6 +14,7 @@ import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.components.ListEmptyState
 import io.github.mangi.eta.ui.model.ConversationTokenUsageUi
@@ -36,11 +37,17 @@ internal fun ConversationTokenUsageScreen(
         onBack = onBack,
     ) {
         if (!usage.hasUsage) {
+            // 非整页零态走分段卡片做底板（全仓空态两档约定）。
             item(key = "empty") {
-                ListEmptyState(
-                    title = stringResource(R.string.token_usage_empty),
-                    modifier = Modifier.padding(bottom = EtaSegmentedGroupSpacing),
-                )
+                EtaSegmentedItemContainer(
+                    modifier = Modifier
+                        .padding(horizontal = EtaGroupHorizontalPadding)
+                        .padding(bottom = EtaSegmentedGroupSpacing),
+                ) {
+                    ListEmptyState(
+                        title = stringResource(R.string.token_usage_empty),
+                    )
+                }
             }
         } else {
             item(key = "usage") {

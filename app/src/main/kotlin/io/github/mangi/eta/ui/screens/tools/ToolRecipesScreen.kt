@@ -57,7 +57,6 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedGap
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedItem
-import io.github.mangi.eta.ui.adaptive.EtaSegmentedItemContainer
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedRow
 import io.github.mangi.eta.ui.adaptive.EtaSelectionAction
 import io.github.mangi.eta.ui.adaptive.EtaSelectionBar
@@ -66,7 +65,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
 import io.github.mangi.eta.ui.adaptive.EtaSelectionTopBarAction
 import io.github.mangi.eta.ui.adaptive.EtaSwitch
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
-import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.components.TopBarIconButton
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.navigation.AppRoute
@@ -298,39 +297,39 @@ internal fun ToolRecipesScreen(
                 ),
             )
         }
-        // 配方行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
-        // animateItem 承载删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
-        // 组标题独立成 item（多选态把「已选 n 项」并入标题，不另立计数行）。
-        item(key = "recipes") {
-            M3Text(
-                text = if (selectionMode) {
-                    stringResource(R.string.recipe_list_title, recipes.size) + " · " +
-                        stringResource(R.string.media_selected_count, selectedIds.size)
-                } else {
-                    stringResource(R.string.recipe_list_title, recipes.size)
-                },
-                style = MaterialTheme.typography.titleSmallEmphasized,
-                color = MaterialTheme.colorScheme.primary,
-                // 与上方说明文字的既有 bottom 间距衔接，不再叠加 top，避免双倍。
-                modifier = Modifier.padding(
-                    start = EtaGroupHorizontalPadding,
-                    end = EtaGroupHorizontalPadding,
-                    bottom = EtaSegmentedTitleSpacing,
-                ),
-            )
-        }
         if (recipes.isEmpty()) {
+            // 空态升格为整页状态页（与搜索页官方 Empty state 同观感）；计数行在零态
+            // 失去意义不再出。导入入口交给右下角 FAB，避免重复按钮。
             item(key = "recipes-empty") {
-                EtaSegmentedItemContainer(
-                    modifier = Modifier.padding(horizontal = EtaGroupHorizontalPadding),
-                ) {
-                    ListEmptyState(
-                        title = stringResource(R.string.recipe_empty_title),
-                        summary = stringResource(R.string.recipe_empty_summary),
-                    )
-                }
+                EtaStatusPage(
+                    icon = Icons.Rounded.Build,
+                    title = stringResource(R.string.recipe_empty_title),
+                    summary = stringResource(R.string.recipe_empty_summary),
+                    modifier = Modifier.fillParentMaxSize(),
+                )
             }
         } else {
+            // 配方行升格为顶层 LazyColumn item（会话管理页/取码管理页同款）：官方
+            // animateItem 承载删除淡出与补位弹簧；分段外观由 EtaSegmentedItem 逐行注入。
+            // 组标题独立成 item（多选态把「已选 n 项」并入标题，不另立计数行）。
+            item(key = "recipes") {
+                M3Text(
+                    text = if (selectionMode) {
+                        stringResource(R.string.recipe_list_title, recipes.size) + " · " +
+                            stringResource(R.string.media_selected_count, selectedIds.size)
+                    } else {
+                        stringResource(R.string.recipe_list_title, recipes.size)
+                    },
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = MaterialTheme.colorScheme.primary,
+                    // 与上方说明文字的既有 bottom 间距衔接，不再叠加 top，避免双倍。
+                    modifier = Modifier.padding(
+                        start = EtaGroupHorizontalPadding,
+                        end = EtaGroupHorizontalPadding,
+                        bottom = EtaSegmentedTitleSpacing,
+                    ),
+                )
+            }
             // 按名字排序：启停会刷新 updatedAtMillis，按更新时间排会让行在切换开关后跳位。
             itemsIndexed(
                 items = sortedRecipes,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.ToggleOff
 import androidx.compose.material.icons.rounded.ToggleOn
 import androidx.compose.runtime.Composable
@@ -47,7 +48,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSelectionBottomSpacer
 import io.github.mangi.eta.ui.adaptive.EtaSelectionTopBarAction
 import io.github.mangi.eta.ui.adaptive.rememberEtaLoadingShown
 import io.github.mangi.eta.ui.adaptive.rememberFabExpandedState
-import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.haptics.TouchHaptics
 import io.github.mangi.eta.ui.model.AgentSkillsAction
 import io.github.mangi.eta.ui.model.AgentSkillsUiState
@@ -352,10 +353,13 @@ fun AgentSkillsScreen(
 
         if (state.skills.isEmpty() && !state.isLoading) {
             item(key = "empty") {
-                // 空态的安装入口交给右下角 FAB，避免重复按钮。
-                ListEmptyState(
+                // 空态升格为整页状态页（与搜索页官方 Empty state 同观感）；安装入口
+                // 交给右下角 FAB，避免重复按钮。removed 组以 skills 为全集，零态时必空。
+                EtaStatusPage(
+                    icon = Icons.Rounded.Extension,
                     title = stringResource(R.string.ui_no_skills_installed_yet_4e960f),
                     summary = stringResource(R.string.skills_choose_package),
+                    modifier = Modifier.fillParentMaxSize(),
                 )
             }
         }

@@ -111,7 +111,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
@@ -121,6 +120,7 @@ import io.github.mangi.eta.agent.browser.ported.browser.BrowserHistoryStore
 import io.github.mangi.eta.agent.browser.ported.browser.BrowserTabPool
 import io.github.mangi.eta.agent.browser.ported.browser.UserAgentProfile
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
+import io.github.mangi.eta.ui.components.EtaStatusPage
 import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
@@ -209,45 +209,6 @@ internal fun BrowserSheetTopBar(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     )
-}
-
-/** 空状态：官方空态排版（居中占位图标 + 标题 + 可选说明），与页内搜索页一致。 */
-@Composable
-internal fun BrowserSheetEmptyState(
-    title: String,
-    summary: String? = null,
-) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(horizontal = 32.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Public,
-                contentDescription = null,
-                modifier = Modifier.size(EtaDimens.EmptyStateGraphicIconSize),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            if (summary != null) {
-                Text(
-                    text = summary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-    }
 }
 
 /**
@@ -616,12 +577,15 @@ fun BrowserPage(
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
-                    BrowserSheetEmptyState(
+                    // 空态收敛到共享状态页 [EtaStatusPage]（与搜索页官方 Empty state 同观感）。
+                    EtaStatusPage(
+                        icon = Icons.Rounded.Public,
                         title = if (selectedTab == null) {
                             stringResource(R.string.om_browser_no_tab_open)
                         } else {
                             stringResource(R.string.om_browser_enter_url_hint)
                         },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
 
