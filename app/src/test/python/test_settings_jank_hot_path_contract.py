@@ -19,7 +19,8 @@ class SettingsJankHotPathContract(unittest.TestCase):
         self.assertIn('if (isStaleUsageAfterCompact(runId, round)) return', source)
         self.assertIn('if (targetIndex < 0)', source)
         self.assertIn('messages + AgentMessageUi(', source)
-        self.assertIn('messages.incrementalSnapshot().replacing(targetIndex, target.copy(usage = usage))', source)
+        # usage 诊断补齐后单槽替换携带 usageDiagnostics 透传（不改「只换目标槽」的契约本体）。
+        self.assertIn('messages.incrementalSnapshot().replacing(\n                    targetIndex,\n                    target.copy(usage = usage, usageDiagnostics = diagnostics ?: target.usageDiagnostics),\n                )', source)
         self.assertNotIn('mapIndexed', source)
 
     def test_measurement_slots_are_opt_in_without_changing_effect_chain(self):
