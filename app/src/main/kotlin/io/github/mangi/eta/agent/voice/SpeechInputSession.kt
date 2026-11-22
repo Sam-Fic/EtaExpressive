@@ -38,6 +38,31 @@ internal object SpeechInputSession {
         mode != VoiceEntryMode.DOUBAO_DUPLEX && VoiceEntryPolicy.enabled(DoubaoVoiceConfig.state.value, mode) &&
             if (config.cloudAsr) config.asrKey.isNotBlank() else OfflineSpeechPack.state.value.ready
 
+    /**
+     * [ready] 的可挂起版：离线识别等包校验落定后再判资格，云端凭据缺失仍同步判死。
+     *
+     * 冷进程被系统助理唤醒时（浮窗唤起即听写），[OfflineSpeechPack.initialize] 的校验
+     * 协程（237 MB 模型逐件 SHA-256，冷缓存下秒级）还在 IO 线程上跑，[ready] 同步读
+     * `state.value.ready` 会把「校验中」误判成「未配置」——听写首帧组合早于校验发布。
+     * 这里等 `checking` 归零再判；真未下载的离线包校验快速失败（文件缺失逐件长度即断），
+     * 不会白等。
+     *
+     * [context] 非空时补一脚幂等的 [OfflineSpeechPack.initialize]：调用方若早于任何
+     * 控制器构造（控制器 init 会触发 initialize），校验从未起步，等待将永不落定。
+     */
+    suspend fun awaitReady(
+        mode: VoiceEntryMode = VoiceEntryMode.DICTATION,
+        config: DoubaoVoiceConfig.Config = configFor(mode),
+        context: Context? = null,
+    ): Boolean {
+        if (mode == VoiceEntryMode.DOUBAO_DUPLEX ||
+            !VoiceEntryPolicy.enabled(DoubaoVoiceConfig.state.value, mode)
+        ) return false
+        if (config.cloudAsr) return config.asrKey.isNotBlank()
+        context?.let { OfflineSpeechPack.initialize(it) }
+        return OfflineSpeechPack.state.first { !it.checking }.ready
+    }
+
     suspend fun recognize(
         context: Context,
         onListening: suspend () -> Unit,

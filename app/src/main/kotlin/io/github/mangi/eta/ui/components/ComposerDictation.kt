@@ -113,7 +113,11 @@ internal class ComposerDictation(private val context: Context) {
         // 直接原位给出旧语音入口的同一句提示，避免 toast 一闪而过且无处可去。
         DoubaoVoiceConfig.load(context)
         val settings = SpeechInputSession.configFor(VoiceEntryMode.UNIVERSAL)
-        if (!SpeechInputSession.ready(VoiceEntryMode.UNIVERSAL, settings)) {
+        // 云端凭据在 load() 里同步解密到位，ready=false 即真未配置，同步判死；
+        // 离线识别的资格判定挪进下方协程（awaitReady）：冷进程被系统助理唤醒时，
+        // OfflineSpeechPack 的校验协程（237 MB 模型逐件哈希）还没跑完、ready 尚未发布，
+        // 唤起即听写的首帧组合早于校验完成——同步判会把「校验中」误报成「未配置」。
+        if (settings.cloudAsr && !SpeechInputSession.ready(VoiceEntryMode.UNIVERSAL, settings)) {
             notice = NotConfiguredMessage
             return
         }
@@ -131,6 +135,15 @@ internal class ComposerDictation(private val context: Context) {
         stopSignal = stop
         job = scope.launch {
             try {
+                // 离线识别：等包校验落定再判资格（云端已同步判过）。等待期间听写条按
+                // 「连接中」在场（listening=false），× 可随时取消；落定后仍未就绪才给
+                // 「去配置」提示（finally 收摊，notice 保留、active 翻 false）。
+                if (!settings.cloudAsr &&
+                    !SpeechInputSession.awaitReady(VoiceEntryMode.UNIVERSAL, settings, context)
+                ) {
+                    if (session == id) notice = NotConfiguredMessage
+                    return@launch
+                }
                 val heard = SpeechInputSession.recognize(
                     context = context.applicationContext,
                     onListening = { listening = true },

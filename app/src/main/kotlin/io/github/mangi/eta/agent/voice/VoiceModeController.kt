@@ -118,14 +118,6 @@ internal class VoiceModeController(
 
     private fun startUniversal() {
         io.github.mangi.eta.agent.voice.doubao.DoubaoVoiceConfig.load(app)
-        if (!SpeechInputSession.ready(VoiceEntryMode.UNIVERSAL)) {
-            mutableState.value = VoiceModeState(
-                VoiceEntryMode.UNIVERSAL,
-                VoiceModePhase.Error,
-                error = "请在语音 → 语音对话中配置识别方式，或下载离线语音包",
-            )
-            return
-        }
         stop()
         // Snapshot each feature's own choices once; read-aloud/dictation changes cannot leak in.
         val recognitionSettings = SpeechInputSession.configFor(VoiceEntryMode.UNIVERSAL)
@@ -135,6 +127,19 @@ internal class VoiceModeController(
         trace.mark("session.begin")
         job = scope.launch {
             try {
+                // 资格判定挪进协程（awaitReady）：云端凭据缺失同步判死；离线识别等包校验
+                // 落定再判——应用冷启动后立刻进语音对话时校验可能还在跑，同步读 ready
+                // 会把「校验中」误报成「未配置」（浮窗唤起即听写同源竞态）。等待期间先
+                // 进 Connecting，不在判据上多闪一帧 Off。
+                mutableState.value = VoiceModeState(VoiceEntryMode.UNIVERSAL, VoiceModePhase.Connecting)
+                if (!SpeechInputSession.awaitReady(VoiceEntryMode.UNIVERSAL, recognitionSettings, app)) {
+                    mutableState.value = VoiceModeState(
+                        VoiceEntryMode.UNIVERSAL,
+                        VoiceModePhase.Error,
+                        error = "请在语音 → 语音对话中配置识别方式，或下载离线语音包",
+                    )
+                    return@launch
+                }
                 while (true) {
                     var text = ""
                     mutableState.value = VoiceModeState(VoiceEntryMode.UNIVERSAL, VoiceModePhase.Connecting)

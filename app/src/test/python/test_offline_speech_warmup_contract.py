@@ -100,6 +100,20 @@ class OfflineSpeechWarmupContractTest(unittest.TestCase):
             router,
         )
 
+    def test_wake_dictation_awaits_pack_settlement_before_judging(self):
+        # 冷进程被系统助理唤醒时，浮窗唤起即听写的首帧组合早于 237 MB 模型校验发布；
+        # 离线识别的资格判定必须等包校验落定（awaitReady），同步读 ready 会把
+        # 「校验中」误报成「未配置」。云端凭据同步解密到位，仍走同步判死。
+        router = read('agent/voice/SpeechInputSession.kt')
+        self.assertIn('suspend fun awaitReady(', router)
+        self.assertIn('OfflineSpeechPack.state.first { !it.checking }.ready', router)
+        dictation = read('ui/components/ComposerDictation.kt')
+        # 云端同步判死保留；离线判定挪进会话协程，等待期按「连接中」在场。
+        self.assertIn('if (settings.cloudAsr && !SpeechInputSession.ready(', dictation)
+        self.assertIn('SpeechInputSession.awaitReady(VoiceEntryMode.UNIVERSAL, settings, context)', dictation)
+        controller = read('agent/voice/VoiceModeController.kt')
+        self.assertIn('SpeechInputSession.awaitReady(VoiceEntryMode.UNIVERSAL, recognitionSettings, app)', controller)
+
     def test_timeouts_use_recording_and_ready_clocks(self):
         policy = read(OFFLINE / 'SpeechInputPolicy.kt')
         self.assertIn(
