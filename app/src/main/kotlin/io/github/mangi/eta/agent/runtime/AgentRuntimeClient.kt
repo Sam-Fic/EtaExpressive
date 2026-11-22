@@ -311,22 +311,6 @@ internal class AgentRuntimeClient(
             true
         }
     }
-    fun pauseRun(runId: String) {
-        if (runId.isBlank()) return
-        withRuntimeMessenger(Unit) { serviceMessenger ->
-            val msg = Message.obtain(null, AgentRuntimeWire.MSG_PAUSE_RUN)
-            msg.data = AgentRuntimeWire.ackBundle(runId)
-            serviceMessenger.send(msg)
-        }
-    }
-    fun resumeRun(runId: String) {
-        if (runId.isBlank()) return
-        withRuntimeMessenger(Unit) { serviceMessenger ->
-            val msg = Message.obtain(null, AgentRuntimeWire.MSG_RESUME_RUN)
-            msg.data = AgentRuntimeWire.ackBundle(runId)
-            serviceMessenger.send(msg)
-        }
-    }
     fun compactRun(runId: String, keepRecent: Int, compressModelConfig: AgentModelClient.ModelConfig? = null,
         childTaskId: String? = null): Boolean {
         if (runId.isBlank()) return false

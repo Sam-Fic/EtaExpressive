@@ -785,16 +785,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                     )
                 }
 
-                AgentRuntimeWire.MSG_PAUSE_RUN -> {
-                    val runId = AgentRuntimeWire.runIdFromBundle(msg.data ?: return)
-                    requestPause(runId)
-                }
-
-                AgentRuntimeWire.MSG_RESUME_RUN -> {
-                    val runId = AgentRuntimeWire.runIdFromBundle(msg.data ?: return)
-                    requestResume(runId)
-                }
-
                 AgentRuntimeWire.MSG_COMPACT_RUN -> {
                     val data = msg.data ?: return
                     val accepted = requestCompactRun(
@@ -1620,10 +1610,10 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             orbView == null && bubbleView == null && capsuleView == null && resultCardView == null) stopSelf()
     }
 
-    private fun requestPause() {
-        requestPause(overlayRunId.orEmpty())
-    }
-
+    /**
+     * 运行时内部的暂停/恢复：只剩预算闸门与虚拟屏接管两类触发，不再暴露给用户按钮
+     * （用户可见的暂停/继续已移除，停止即真停止）。
+     */
     private fun requestPause(runId: String) {
         if (runId.isBlank()) return
         val session = sessions.get(runId)?.takeUnless { it.isTerminal || it.controller.isCancelled } ?: return
@@ -1638,20 +1628,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         }
     }
 
-    private fun requestResume() {
-        requestResume(overlayRunId.orEmpty())
-    }
-
-    private fun requestCompactRun(
-        runId: String,
-        keepRecent: Int? = null,
-        compressModelConfig: AgentModelClient.ModelConfig? = null,
-        childTaskId: String? = null,
-    ): Boolean {
-        if (runId.isBlank()) return false
-        return sessions.get(runId)?.requestCompact(keepRecent, compressModelConfig, childTaskId) ?: false
-    }
-
     private fun requestResume(runId: String) {
         if (runId.isBlank()) return
         val session = sessions.get(runId)?.takeUnless { it.isTerminal || it.controller.isCancelled } ?: return
@@ -1663,6 +1639,16 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 status = AgentOverlayStatus.Continuing,
             )
         }
+    }
+
+    private fun requestCompactRun(
+        runId: String,
+        keepRecent: Int? = null,
+        compressModelConfig: AgentModelClient.ModelConfig? = null,
+        childTaskId: String? = null,
+    ): Boolean {
+        if (runId.isBlank()) return false
+        return sessions.get(runId)?.requestCompact(keepRecent, compressModelConfig, childTaskId) ?: false
     }
 
     private fun requestSupplementForRun(runId: String, text: String, requestId: String = "", imagesJson: String = "[]") {
@@ -1871,7 +1857,7 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
     }
 
     /**
-     * 顶部状态胶囊：状态栏下方居中，收起时只有阶段指示器 + 一句状态，展开后补充/暂停/停止，
+     * 顶部状态胶囊：状态栏下方居中，收起时只有阶段指示器 + 一句状态，展开后补充/停止，
      * 虚拟屏激活时追加画廊装裱视窗与接管、全屏投射。
      */
     private fun showCapsuleOverlay(wm: WindowManager, session: AgentRuntimeSession) {
@@ -1884,14 +1870,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
                 supplementRequestCount = islandSupplementRequests.intValue,
                 onToggleExpanded = ::toggleCapsule,
                 onCollapsedSettled = ::onCapsuleCollapsedSettled,
-                onPause = {
-                    if (ownerPresence == null) VirtualDisplayController.setUserControlling(false)
-                    requestPause(controlRunId)
-                },
-                onResume = {
-                    if (ownerPresence == null) VirtualDisplayController.setUserControlling(false)
-                    requestResume(controlRunId)
-                },
                 onStop = { stopMainRun(controlRunId) },
                 onSupplementModeChange = ::setCapsuleInputMode,
                 onSupplement = { text -> requestSupplement(text, controlRunId) },
@@ -2311,8 +2289,6 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
             AgentOverlayBubble(
                 state = state.value,
                 onCollapse = ::toggleCollapse,
-                onPause = ::requestPause,
-                onResume = ::requestResume,
                 onStop = ::requestStop,
                 onSupplementModeChange = ::setBubbleInputMode,
                 onSupplement = { text -> requestSupplement(text) },

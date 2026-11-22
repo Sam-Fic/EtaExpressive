@@ -86,11 +86,8 @@ internal object AgentRuntimeWire {
     /** client -> service：向当前 run 追加补充指令。 */
     const val MSG_STEER_RUN = 13
 
-    /** client -> service：暂停当前 run。 */
-    const val MSG_PAUSE_RUN = 14
-
-    /** client -> service：恢复当前 run。 */
-    const val MSG_RESUME_RUN = 15
+    // 14/15 曾是跨进程暂停/恢复（MSG_PAUSE_RUN/MSG_RESUME_RUN）；用户可见的暂停已移除，
+    // 暂停只剩运行时内部闸门（预算闸门、虚拟屏接管），不再走 IPC。编号保留不复用。
 
     /** client -> service：在当前 run 内压缩，不另开 run。 */
     const val MSG_COMPACT_RUN = 16
