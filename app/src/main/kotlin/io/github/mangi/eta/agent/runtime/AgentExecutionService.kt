@@ -193,11 +193,16 @@ internal class AgentExecutionService : Service() {
         // 跑完/暂停/停止后若仍挂着「不确定进度 + promoted ongoing」，系统会保留一个实时活动壳，
         // 用户点开的是系统渲染的实时活动展开面板（内容是本卡文案，不是 Eta 界面），
         // 那个面板本身不支持滚动，看起来就像「进了个不一样的界面且翻不动」。
-        if (streamActive && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
+        if (streamActive && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA) {
+            // promoted API 分层：ProgressStyle / setShortCriticalText 自 16.0（BAKLAVA）可用，
+            // setRequestPromotedOngoing 是 16.1（BAKLAVA_1）新增——16.0 设备只带前两者也走
+            // LiveUpdate 形态（T30），整档跳过会退化成普通通知（真机实证）。
             builder
                 .setStyle(Notification.ProgressStyle().setProgressIndeterminate(true))
                 .setShortCriticalText(status.shortText())
-                .setRequestPromotedOngoing(true)
+            if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
+                builder.setRequestPromotedOngoing(true)
+            }
         } else if (streamActive) {
             // 旧系统没有提升样式，思维流的思考/输出尾部摘要放进下拉展开卡。
             val expanded = stream?.expanded

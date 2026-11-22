@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import io.github.mangi.eta.R
 import io.github.mangi.eta.config.LiveActivityStyle
 import io.github.mangi.eta.config.Prefs
@@ -25,6 +26,7 @@ import io.github.mangi.eta.ui.haptics.AppForeground
  * 前台不响：Eta 界面可见时用户正看着对话，结果就在眼前；未授权通知或开关关闭时静默跳过。
  */
 internal object AgentCompletionNotifier {
+    private const val TAG = "AgentCompletionNotifier"
 
     enum class TerminalKind { COMPLETED, FAILED, STOPPED }
 
@@ -132,12 +134,20 @@ internal object AgentCompletionNotifier {
         if (!Prefs.isEnabled(Prefs.Keys.LIVE_ACTIVITY_ENABLE)) return
         // 呈现方式门控（应用级设置，实时活动页）：原生=不上岛；超级岛=小米可用性；
         // 流体云=官方 promoted 通道（Android 16+），各厂商自行桥接成自家实时活动形态。
-        when (Prefs.liveActivityStyle()) {
+        val style = Prefs.liveActivityStyle()
+        when (style) {
             LiveActivityStyle.NATIVE -> return
             LiveActivityStyle.XIAOMI_ISLAND ->
-                if (!MiuiIslandFocus.islandTerminalSupported()) return
+                if (!MiuiIslandFocus.islandTerminalSupported()) {
+                    Log.w(TAG, "岛终态跳过：岛不可用（小米判定/焦点协议探测未过）style=$style")
+                    return
+                }
             LiveActivityStyle.COLOROS_FLUID ->
-                if (Build.VERSION.SDK_INT_FULL < Build.VERSION_CODES_FULL.BAKLAVA_1) return
+                // 纯 LiveUpdate 形态自 Android 16.0（BAKLAVA）起即可被厂商桥接（T30）。
+                if (Build.VERSION.SDK_INT_FULL < Build.VERSION_CODES_FULL.BAKLAVA) {
+                    Log.w(TAG, "岛终态跳过：低于 Android 16.0 style=$style")
+                    return
+                }
         }
         val manager = context.getSystemService(NotificationManager::class.java)
         if (!manager.areNotificationsEnabled()) return
@@ -162,12 +172,17 @@ internal object AgentCompletionNotifier {
             .addAction(
                 Notification.Action.Builder(null, context.getString(R.string.island_action_view), open).build(),
             )
-        if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
+        // promoted API 分层：ProgressStyle / setShortCriticalText 自 16.0（BAKLAVA）可用，
+        // setRequestPromotedOngoing 是 16.1（BAKLAVA_1）新增——16.0 设备只带前两者也走
+        // LiveUpdate 形态（T30），整档跳过会退化成普通通知（真机实证）。
+        if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA) {
             // 与执行卡同一套 promoted 三件套：HyperOS 3 把它桥接为岛展开的首发通知。
             builder
                 .setStyle(Notification.ProgressStyle().setProgressIndeterminate(true))
                 .setShortCriticalText(text)
-                .setRequestPromotedOngoing(true)
+            if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
+                builder.setRequestPromotedOngoing(true)
+            }
         }
         // miui.focus 焦点参数是小米私有形态的岛面渲染数据：只在超级岛档注入；
         // 流体云档走纯官方 promoted 通道，参数留给厂商自家桥接。
