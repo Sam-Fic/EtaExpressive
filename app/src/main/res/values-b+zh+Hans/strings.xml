@@ -396,8 +396,6 @@
   <string name="overlay_substatus_paused">已暂停，可点击继续</string>
   <string name="overlay_substatus_finished">已完成</string>
   <string name="overlay_substatus_failed">执行失败</string>
-  <string name="overlay_pause">暂停</string>
-  <string name="overlay_resume">继续</string>
   <string name="overlay_dismiss">关闭</string>
   <string name="overlay_expand">展开</string>
   <string name="overlay_collapse">收起</string>
@@ -1680,7 +1678,6 @@
   <string name="chat_edit_replace_message">发送后将替换此消息</string>
   <string name="chat_eta_working">Eta 正在执行……</string>
   <string name="chat_eta_working_named">%1$s 正在执行……</string>
-  <string name="chat_eta_paused_named">%1$s 已暂停，点右侧继续</string>
   <string name="chat_input_hint">交给 Eta 去完成</string>
   <string name="chat_input_hint_named">交给 %1$s 去完成</string>
   <string name="chat_stop">停止</string>
@@ -1811,7 +1808,6 @@
   <string name="chat_video_generation_empty">模型没有返回视频</string>
   <string name="chat_video_generation_unsupported">当前供应商不支持生视频</string>
   <string name="chat_continue">继续</string>
-  <string name="chat_paused_run_abandoned">已结束暂停的回复</string>
   <string name="chat_continue_abort">长按结束暂停的回复</string>
   <string name="chat_continue_prompt">请从上次中断处继续输出，不要重复已经给出的内容</string>
   <string name="chat_reasoning_effort">推理强度，当前为 %1$s</string>

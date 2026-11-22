@@ -380,8 +380,6 @@
   <string name="overlay_substatus_paused">Paused · tap to continue</string>
   <string name="overlay_substatus_finished">Completed</string>
   <string name="overlay_substatus_failed">Failed</string>
-  <string name="overlay_pause">Pause</string>
-  <string name="overlay_resume">Resume</string>
   <string name="overlay_dismiss">Dismiss</string>
   <string name="overlay_expand">Expand</string>
   <string name="overlay_collapse">Collapse</string>
@@ -1671,7 +1669,6 @@
   <string name="chat_edit_replace_message">Sending will replace this message</string>
   <string name="chat_eta_working">Eta is working…</string>
   <string name="chat_eta_working_named">%1$s is working…</string>
-  <string name="chat_eta_paused_named">%1$s is paused. Tap continue to resume</string>
   <string name="chat_input_hint">Ask Eta to do something</string>
   <string name="chat_input_hint_named">Ask %1$s to do something</string>
   <string name="chat_stop">Stop</string>
@@ -1802,7 +1799,6 @@
   <string name="chat_video_generation_empty">The model didn\'t return a video</string>
   <string name="chat_video_generation_unsupported">This provider doesn\'t support video generation</string>
   <string name="chat_continue">Continue</string>
-  <string name="chat_paused_run_abandoned">Paused reply ended</string>
   <string name="chat_continue_abort">Long press to end the paused reply</string>
   <string name="chat_continue_prompt">Continue from where you left off. Do not repeat content already written</string>
   <string name="chat_reasoning_effort">Reasoning effort: %1$s</string>
