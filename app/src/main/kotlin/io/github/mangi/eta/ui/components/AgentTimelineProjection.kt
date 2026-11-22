@@ -71,6 +71,13 @@ internal fun List<AgentChatMessageUi>.toTimelineEntries(aggressive: Boolean = fa
         if (message is SystemNoticeMessageUi && message.code == SystemNoticeCode.ModelRetry) {
             return@forEach
         }
+        // 空正文的非流式回复不渲染：AgentMessageBlock 对空内容仍占上下各 8dp 的行盒，
+        // 且作为 Message 条目把连续分段列表断开，会在相邻步骤卡之间留下一段看不见的
+        // 空隙（工作组步骤间出现 reasoning→tool 单侧大间距的根因）。流式中的空回复
+        // 保留——它渲染成打字指示器。
+        if (message is AgentMessageUi && message.content.isBlank() && !message.isStreaming) {
+            return@forEach
+        }
         // 真实用户消息开新轮（steer 补充只是续跑）：先落掉进行中的卡片，再放气泡。
         if (message is UserMessageUi && !message.isSteerSupplement()) {
             flushWorkProcess()
