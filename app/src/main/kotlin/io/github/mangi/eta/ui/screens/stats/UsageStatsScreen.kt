@@ -40,6 +40,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -56,6 +59,7 @@ import io.github.mangi.eta.data.repository.heatmapAlpha
 import io.github.mangi.eta.data.repository.heatmapQuartiles
 import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaDimens
+import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaLoadingGate
 import io.github.mangi.eta.ui.adaptive.EtaLoadingSlot
@@ -83,9 +87,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.material3.toShape
 
@@ -156,8 +159,11 @@ internal fun UsageStatsScreen(onBack: () -> Unit) {
 /**
  * 概览 / 模型视图切换。
  *
- * 走官方单选分段按钮 [SingleChoiceSegmentedButtonRow] + [SegmentedButton]
- * （形状取官方 [SegmentedButtonDefaults]，配色/行高/字阶均使用官方默认值）。
+ * 独立胶囊单选行（图一豆包式）：官方 `ToggleButton` 全圆角胶囊经 [EtaExpressiveToggleButton]
+ * 封装、等分整行；选中 primary/onPrimary、未选中 surfaceContainerHighest/onSurface。
+ * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
+ * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；单体胶囊按 RULES §2.5 传
+ * `shapesFor(ButtonDefaults.MinHeight)`，按压 morph 由官方 shapes 自带。
  */
 @Composable
 private fun UsageStatsTabs(
@@ -169,12 +175,18 @@ private fun UsageStatsTabs(
         stringResource(R.string.stats_tab_overview) to UsageStatsTab.Overview,
         stringResource(R.string.stats_tab_models) to UsageStatsTab.Models,
     )
-    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         tabs.forEachIndexed { index, (label, tab) ->
-            SegmentedButton(
-                selected = selected == tab,
-                onClick = { onSelect(tab) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
+            EtaExpressiveToggleButton(
+                checked = selected == tab,
+                onCheckedChange = { checked -> if (checked) onSelect(tab) },
+                shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { role = Role.RadioButton },
             ) {
                 M3Text(text = label)
             }

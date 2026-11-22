@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +38,9 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -46,6 +50,7 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaScaffold
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
@@ -82,9 +87,8 @@ import kotlinx.coroutines.withContext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.Text as M3Text
 
 @Composable
@@ -347,8 +351,12 @@ internal fun ModelProviderDetailScreen(
 /**
  * 配置 / 模型视图切换。
  *
- * 与「Usage stats」页同款：官方单选分段按钮 [SingleChoiceSegmentedButtonRow] +
- * [SegmentedButton]（形状取官方 [SegmentedButtonDefaults]，配色/行高/字阶均使用官方默认值）。
+ * 与「Usage stats」页同款：独立胶囊单选行（图一豆包式）——官方 `ToggleButton` 全圆角胶囊
+ * 经 [EtaExpressiveToggleButton] 封装、等分整行；选中 primary/onPrimary、未选中
+ * surfaceContainerHighest/onSurface（深色填充无描边）。
+ * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
+ * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；单体胶囊按 RULES §2.5 传
+ * `shapesFor(ButtonDefaults.MinHeight)`，按压 morph 由官方 shapes 自带。
  */
 @Composable
 private fun ProviderTabs(
@@ -358,12 +366,18 @@ private fun ProviderTabs(
     modifier: Modifier = Modifier,
 ) {
     val safeIndex = selectedIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
-    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         tabs.forEachIndexed { index, label ->
-            SegmentedButton(
-                selected = safeIndex == index,
-                onClick = { onSelect(index) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
+            EtaExpressiveToggleButton(
+                checked = safeIndex == index,
+                onCheckedChange = { checked -> if (checked) onSelect(index) },
+                shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics { role = Role.RadioButton },
             ) {
                 M3Text(text = label)
             }

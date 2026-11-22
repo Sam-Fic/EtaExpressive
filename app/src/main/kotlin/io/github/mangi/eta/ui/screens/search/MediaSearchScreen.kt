@@ -57,9 +57,8 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -85,6 +84,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -110,6 +111,7 @@ import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
+import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
 import io.github.mangi.eta.ui.adaptive.EtaGroupHorizontalPadding
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
 import io.github.mangi.eta.ui.adaptive.EtaIconSize
@@ -1340,16 +1342,13 @@ private fun MediaThresholdRow(
 }
 
 /**
- * 视图模式行：标签 + 官方单选分段按钮（列表 / 宫格），切换即时回调（调用方落盘）。
+ * 视图模式行：标签 + 独立胶囊单选行（列表 / 宫格），切换即时回调（调用方落盘）。
  *
- * 走官方 [SingleChoiceSegmentedButtonRow] + [SegmentedButton]（签名已对 material3-android
- * 1.5.0-alpha29 sources 核验：`SegmentedButton(selected, onClick, shape, modifier, enabled,
- * colors, border, contentPadding, interactionSource, icon, label)`，
- * `SegmentedButtonDefaults.itemShape(index, count, baseShape)` 为 @Composable），写法照抄
- * UsageStatsScreen 的 UsageStatsTabs 范本：形状取官方 itemShape，配色 / 行高 / 字阶均为
- * 官方默认值。取证（RULES §1.3）：`~/.gradle/caches/modules-2/files-2.1/
- * androidx.compose.material3/material3-android/1.5.0-alpha29/…-sources.jar` →
- * `commonMain/…/material3/SegmentedButton.kt`；该族无 ExperimentalMaterial3Api 注解。
+ * 独立胶囊单选行（图一豆包式）：官方 `ToggleButton` 全圆角胶囊经 [EtaExpressiveToggleButton]
+ * 封装、等分整行；选中 primary/onPrimary、未选中 surfaceContainerHighest/onSurface。
+ * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
+ * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；单体胶囊按 RULES §2.5 传
+ * `shapesFor(ButtonDefaults.MinHeight)`，按压 morph 由官方 shapes 自带。
  */
 @Composable
 private fun MediaViewModeRow(
@@ -1366,22 +1365,28 @@ private fun MediaViewModeRow(
         ),
     ) {
         EtaText(text = stringResource(R.string.media_view_mode_label))
-        SingleChoiceSegmentedButtonRow(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = EtaSegmentedTitleSpacing),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             listOf(
                 false to R.string.media_view_mode_list,
                 true to R.string.media_view_mode_grid,
             ).forEachIndexed { index, (grid, labelRes) ->
-                SegmentedButton(
-                    selected = viewGrid == grid,
-                    onClick = {
-                        TouchHaptics.click(view)
-                        onViewGridChange(grid)
+                EtaExpressiveToggleButton(
+                    checked = viewGrid == grid,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            TouchHaptics.click(view)
+                            onViewGridChange(grid)
+                        }
                     },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                    shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { role = Role.RadioButton },
                 ) {
                     Text(text = stringResource(labelRes))
                 }
