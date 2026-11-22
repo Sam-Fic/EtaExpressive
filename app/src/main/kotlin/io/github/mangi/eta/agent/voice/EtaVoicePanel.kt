@@ -479,7 +479,7 @@ internal fun EtaVoicePanel(
                     composer = composer,
                     voiceState = voiceState,
                     dictationStartRequest = dictationStartRequest,
-                dictationStopRequest = dictationStopRequest,
+                    dictationStopRequest = dictationStopRequest,
                     onSystemPickerLaunch = onSystemPickerLaunch,
                     focusRequester = focusRequester,
                     maxContentHeightPx = maxContentHeightPx,
@@ -830,6 +830,10 @@ private fun BoxScope.AssistantPanel(
                 composer = composer,
                 voiceState = voiceState,
                 dictationStartRequest = dictationStartRequest,
+                // 停听写令牌必须接进 composer：AssistantComposer 参数默认 0，漏传则
+                // AgentChatComposerM3 的 LaunchedEffect(dictationStopRequest) 永不触发，
+                // 预设 chip（含「记取码」）提交后听写条继续占麦（b2209f559 漏接的一跳）。
+                dictationStopRequest = dictationStopRequest,
                 onSystemPickerLaunch = onSystemPickerLaunch,
                 focusRequester = focusRequester,
                 composerConversationId = composerConversationId,
