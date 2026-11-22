@@ -38,8 +38,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -307,8 +305,6 @@ private val BubbleRestingCorner = 16.dp
 internal fun AgentOverlayBubble(
     state: AgentOverlayState,
     onCollapse: () -> Unit,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
     onStop: () -> Unit,
     onSupplementModeChange: (Boolean) -> Unit,
     onSupplement: (String) -> Unit,
@@ -447,33 +443,8 @@ internal fun AgentOverlayBubble(
                                 tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
-                        if (state.phase == AgentOverlayPhase.RUNNING) {
-                            IconButton(
-                                onClick = onPause,
-                                modifier = Modifier.size(28.dp),
-                                shapes = IconButtonDefaults.shapes(),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Pause,
-                                    contentDescription = stringResource(R.string.overlay_pause),
-                                    modifier = Modifier.size(EtaDimens.StatusIconSize),
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        } else if (state.phase == AgentOverlayPhase.PAUSED) {
-                            IconButton(
-                                onClick = onResume,
-                                modifier = Modifier.size(28.dp),
-                                shapes = IconButtonDefaults.shapes(),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = stringResource(R.string.overlay_resume),
-                                    modifier = Modifier.size(EtaDimens.StatusIconSize),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        }
+                        // 暂停/恢复钮已随用户可见的暂停逻辑一并移除：停止即真停止，
+                        // PAUSED 只剩状态文案显示（预算闸门、虚拟屏接管）。
                         IconButton(
                             onClick = onStop,
                             modifier = Modifier.size(28.dp),

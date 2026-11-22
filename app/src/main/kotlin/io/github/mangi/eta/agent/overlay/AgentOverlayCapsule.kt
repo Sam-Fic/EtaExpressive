@@ -49,7 +49,6 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroup
@@ -127,7 +126,7 @@ import kotlinx.coroutines.launch
 
 /**
  * 顶部状态胶囊：收起时只显示阶段指示器 + 一句当前步骤（不再嵌屏幕预览），
- * 点击展开补充、暂停、停止及画廊装裱式虚拟屏交互视窗。
+ * 点击展开补充、停止及画廊装裱式虚拟屏交互视窗。
  *
  * 位置固定在状态栏下方居中，不随 Agent 的点击位置移动，避免和目标控件重叠。
  * 状态文字只在语义变化时以上滑淡入切换，流式正文不进入胶囊。
@@ -142,8 +141,6 @@ internal fun AgentOverlayCapsule(
     supplementRequestCount: Int = 0,
     onToggleExpanded: () -> Unit,
     onCollapsedSettled: () -> Unit,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
     onStop: () -> Unit,
     onSupplementModeChange: (Boolean) -> Unit,
     onSupplement: (String) -> Unit,
@@ -226,7 +223,7 @@ internal fun AgentOverlayCapsule(
     // 因此这里统一收口到官方规格，只保留脉冲/进度这类自有节奏。
     val motionScheme = MaterialTheme.motionScheme
 
-    // 展开的所有布局轴（展开进度 / 正文高度 / 正文三态容器高度 / 暂停钮宽度）
+    // 展开的所有布局轴（展开进度 / 正文高度 / 正文三态容器高度）
     // 共用同一条 320ms 定长时间轴：彼此同时起步、同时收尾，不会出现
     // 「宽度先胀开、正文随后才浮出」的串联观感，也不会有一条弹簧在主轴收尾后继续跑。
     // 逐层套 Expressive spatial 弹簧会各自带过冲长尾，叠起来就是慢动作
@@ -860,18 +857,12 @@ internal fun AgentOverlayCapsule(
                                             )
                                             Spacer(Modifier.height(EtaDimens.SpaceSm))
                                             CapsuleActions(
-                                                phase = state.phase,
                                                 onSupplement = { setSupplementMode(true) },
-                                                onPause = onPause,
-                                                onResume = onResume,
                                                 onStop = onStop,
                                             )
                                         }
                                         CapsuleBody.Controls -> CapsuleActions(
-                                            phase = state.phase,
                                             onSupplement = { setSupplementMode(true) },
-                                            onPause = onPause,
-                                            onResume = onResume,
                                             onStop = onStop,
                                         )
                                         CapsuleBody.Supplement -> SupplementInput(
@@ -897,21 +888,21 @@ internal fun AgentOverlayCapsule(
 private enum class CapsuleBody { Stage, Controls, Supplement }
 
 /**
- * 补充 / 暂停恢复 / 停止：官方 M3 button group **标准档** `ButtonGroup`——三枚纯 icon
+ * 补充 / 停止：官方 M3 button group **标准档** `ButtonGroup`——两枚纯 icon
  * 胶囊钮（官方 [FilledTonalButton] Small 档，仅 Icon 内容，58×40dp）按官方
  * `clickableItem` 模板排布，间距取官方 12dp（`ButtonGroupDefaults.HorizontalArrangement.spacing`）。
  * 按压原生动效：胶囊被挤宽约束拉宽、邻居等量压缩（`Modifier.animateWidth`，官方默认
- * `ExpandedRatio` 0.15）。展开定宽后三枚胶囊排得下；但宽度弹簧从收起宽度过渡时
+ * `ExpandedRatio` 0.15）。展开定宽后两枚胶囊排得下；但宽度弹簧从收起宽度过渡时
  * 会短暂窄于按钮总和，溢出菜单因此可能被测量与放置（菜单项照官方
  * `ClickableButtonGroupItem.MenuContent`：先回调再 `dismiss()`）。常规动作取官方
  * tertiaryContainer / onTertiaryContainer 档，停止单独取 error 档。
+ *
+ * 暂停/恢复钮已随用户可见的暂停逻辑一并移除：停止即真停止；PAUSED 只剩状态显示
+ * （预算闸门、虚拟屏接管），不再有恢复入口。
  */
 @Composable
 private fun CapsuleActions(
-    phase: AgentOverlayPhase,
     onSupplement: () -> Unit,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
     onStop: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -920,7 +911,6 @@ private fun CapsuleActions(
     // 共享的 interaction source 同时喂给 animateWidth 与按钮本身：按压时
     // 按钮组测量逻辑据此把本钮加宽、邻居等量压缩。
     val supplementSource = remember { MutableInteractionSource() }
-    val phaseSource = remember { MutableInteractionSource() }
     val stopSource = remember { MutableInteractionSource() }
     ButtonGroup(
         overflowIndicator = { menuState ->
@@ -958,59 +948,6 @@ private fun CapsuleActions(
                     text = { Text(stringResource(R.string.overlay_supplement)) },
                     onClick = {
                         onSupplement()
-                        menuState.dismiss()
-                    },
-                )
-            },
-        )
-        customItem(
-            buttonGroupContent = {
-                val actionMotionScheme = MaterialTheme.motionScheme
-                AnimatedContent(
-                    targetState = phase,
-                    transitionSpec = {
-                        // 暂停/继续图标切换时中间钮的宽度也是布局轴：默认 SizeTransform 用的是
-                        // Compose 通用弹簧（~350ms+），会在主轴 320ms 之后继续改宽度、并让整组
-                        // 重新居中——这正是「按钮段末尾还在动」的另一条时长来源。并到主轴。
-                        (fadeIn(actionMotionScheme.fastEffectsSpec()) togetherWith
-                            fadeOut(actionMotionScheme.fastEffectsSpec())) using
-                            SizeTransform(clip = false) { _, _ -> CapsuleAxisSizeSpec }
-                    },
-                    modifier = Modifier.animateWidth(phaseSource),
-                    label = "capsule_phase_action",
-                ) { current ->
-                    when (current) {
-                        AgentOverlayPhase.RUNNING -> CapsuleAction(
-                            icon = Icons.Rounded.Pause,
-                            label = stringResource(R.string.overlay_pause),
-                            containerColor = scheme.tertiaryContainer,
-                            contentColor = scheme.onTertiaryContainer,
-                            interactionSource = phaseSource,
-                            onClick = onPause,
-                        )
-                        AgentOverlayPhase.PAUSED -> CapsuleAction(
-                            icon = Icons.Rounded.PlayArrow,
-                            label = stringResource(R.string.overlay_resume),
-                            containerColor = scheme.tertiaryContainer,
-                            contentColor = scheme.onTertiaryContainer,
-                            interactionSource = phaseSource,
-                            onClick = onResume,
-                        )
-                        else -> Spacer(Modifier.size(0.dp))
-                    }
-                }
-            },
-            menuContent = { menuState ->
-                val paused = phase == AgentOverlayPhase.PAUSED
-                DropdownMenuItem(
-                    leadingIcon = {
-                        Icon(if (paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, null)
-                    },
-                    text = {
-                        Text(stringResource(if (paused) R.string.overlay_resume else R.string.overlay_pause))
-                    },
-                    onClick = {
-                        if (paused) onResume() else onPause()
                         menuState.dismiss()
                     },
                 )
