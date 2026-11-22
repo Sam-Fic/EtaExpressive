@@ -446,6 +446,34 @@ internal object AgentConversationCodec {
         return SENSITIVE_TOOL_OMITTED_TEXT + "\n结构化字段：" + kept.toString()
     }
 
+    /**
+     * 敏感参数的脱敏占位说明。占位以 assistant 工具调用的 arguments 形态进入模型可见历史，
+     * 必须自带「这是占位、不可照抄」的自述：模型重调敏感工具时唯一看得见的调用示例就是这些
+     * 占位，不带说明就会被当成可重放的调用原样回传（真实会话里出现过：tool_call 收到
+     * {"redacted":true}，参数校验报缺 name，白耗一轮）。与 [SENSITIVE_TOOL_OMITTED_TEXT]
+     * 的「调用确实已执行」是同一类误判的参数侧镜像。
+     */
+    private const val SENSITIVE_ARGUMENTS_REDACTED_NOTE =
+        "历史脱敏占位，不是真实参数；重新调用时按该工具的参数文档自行构造，不要照抄"
+
+    /**
+     * 脱敏占位的固定形态。`redacted` 布尔键是 UI（ConversationToolEvidence）识别脱敏调用
+     * 的依据，不能改名或改值类型；说明只通过 `note` 键附加。
+     */
+    private fun redactedArgumentsPlaceholder(): String = JSONObject()
+        .put("redacted", true)
+        .put("note", SENSITIVE_ARGUMENTS_REDACTED_NOTE)
+        .toString()
+
+    /**
+     * 判断 arguments 是否为脱敏占位（兼容旧持久化会话的无 note 形态，只看 `redacted` 键）：
+     * 模型把占位当真实参数回传时参数校验必然失败，调用方据此换定向纠正文案。
+     */
+    fun isRedactedArgumentsPlaceholder(argumentsJson: String?): Boolean {
+        if (argumentsJson.isNullOrBlank()) return false
+        return runCatching { JSONObject(argumentsJson).has("redacted") }.getOrDefault(false)
+    }
+
     private fun redactSensitiveToolData(
         source: JSONObject,
         sensitiveToolCallIds: Set<String>,
@@ -463,7 +491,7 @@ internal object AgentConversationCodec {
             val call = calls.optJSONObject(index) ?: continue
             if (call.optString("id") !in sensitiveToolCallIds) continue
             call.optJSONObject("function")
-                ?.put("arguments", JSONObject().put("redacted", true).toString())
+                ?.put("arguments", redactedArgumentsPlaceholder())
         }
         return copy
     }

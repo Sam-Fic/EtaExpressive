@@ -589,7 +589,8 @@ internal class AgentLocalTools(
             return textResult(
                 errorResult(
                     "TOOL_GROUP_NOT_LOADED",
-                    "工具「$requested」所属组 $groupId 还没加载。先调用 tools_use_group(group=$groupId) " +
+                    "工具「$requested」所属组 $groupId 还没加载（组的加载状态只在本次运行内有效，" +
+                        "历史里先前打开过不代表本次运行已打开）。先调用 tools_use_group(group=$groupId) " +
                         "或 tools_search，从回执的 tool_docs 确认工具名与参数后再用 tool_call 调用。",
                 ),
             )

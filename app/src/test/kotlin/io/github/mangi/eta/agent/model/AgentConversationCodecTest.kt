@@ -225,7 +225,7 @@ class AgentConversationCodecTest {
                 images = listOf(
                     AgentConversationCodec.PersistedImage(
                         path = "/data/user/0/io.github.mangi.eta/cache/eta-chat-images/c1/a.mp4",
-                        mimeType = "video/mp4",
+                        mimeType = "image/jpeg",
                         displayName = "chat-video-1.mp4",
                     ),
                 ),
@@ -235,5 +235,47 @@ class AgentConversationCodecTest {
         assertTrue(message.contentJson.contains("/data/user/0/io.github.mangi.eta/cache/eta-chat-images/c1/a.mp4"))
         assertFalse(message.contentJson.contains("base64"))
         assertFalse(message.contentJson.contains("未写入持久会话"))
+    }
+
+    @Test
+    fun sensitiveArgumentsRedactIntoSelfDescribingPlaceholder() {
+        val assistant = JSONObject()
+            .put("role", "assistant")
+            .put("content", "")
+            .put(
+                "tool_calls",
+                JSONArray().put(
+                    JSONObject()
+                        .put("id", "call-1")
+                        .put("type", "function")
+                        .put(
+                            "function",
+                            JSONObject()
+                                .put("name", "tool_call")
+                                .put("arguments", "{\"name\":\"mcp_demo_read\",\"arguments\":{\"query\":\"私密\"}}"),
+                        ),
+                ),
+            )
+
+        val durable = AgentConversationCodec.durableMessage(assistant, setOf("call-1"))
+        val replayed = AgentConversationCodec.toJsonObject(durable)
+        val arguments = replayed.getJSONArray("tool_calls").getJSONObject(0)
+            .getJSONObject("function").getString("arguments")
+
+        // `redacted` 布尔键是 UI 识别脱敏调用的依据；note 自述占位性质，防止模型照抄。
+        assertTrue(JSONObject(arguments).optBoolean("redacted"))
+        assertTrue(arguments.contains("历史脱敏占位"))
+        assertTrue(arguments.contains("不要照抄"))
+        assertFalse(arguments.contains("私密"))
+    }
+
+    @Test
+    fun redactedArgumentsPlaceholderDetectionCoversLegacyAndNotedShapes() {
+        assertTrue(AgentConversationCodec.isRedactedArgumentsPlaceholder("{\"redacted\":true}"))
+        assertTrue(AgentConversationCodec.isRedactedArgumentsPlaceholder("{\"redacted\":true,\"note\":\"x\"}"))
+        assertFalse(AgentConversationCodec.isRedactedArgumentsPlaceholder("{}"))
+        assertFalse(AgentConversationCodec.isRedactedArgumentsPlaceholder("not-json"))
+        assertFalse(AgentConversationCodec.isRedactedArgumentsPlaceholder(""))
+        assertFalse(AgentConversationCodec.isRedactedArgumentsPlaceholder(null))
     }
 }

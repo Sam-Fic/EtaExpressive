@@ -34,7 +34,8 @@ internal class AgentInvalidToolArgumentsGuard {
                 "若组已打开仍报未声明，说明该能力在本设备上不可用，请改用其它方式。"
         } else {
             "工具 ${toolName.trim()} 属于尚未打开的延迟工具组 $groupId（$count/$MAX_GROUP_HINTS）：" +
-                "$validationError。本次调用未执行；请先调用 tools_use_group(group=$groupId)，" +
+                "$validationError。组的加载状态只在本次运行内有效，历史里先前打开过不代表本次运行已打开。" +
+                "本次调用未执行；请先调用 tools_use_group(group=$groupId)，" +
                 "下一轮再调用它，不要重放已成功的工具。"
         }
         return Rejection(TOOL_GROUP_HINT_CODE, message)

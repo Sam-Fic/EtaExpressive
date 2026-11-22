@@ -1589,10 +1589,20 @@ internal class AgentLoop(
                     )
                 }
             }
+            // 模型把历史脱敏占位 {"redacted":true} 当真实参数回传时，通用校验文案只说
+            // 「缺少必填字段」，模型看不出自己错在哪（真实会话里照抄占位白耗过一轮）。
+            // 换成定向说明：占位是历史形态、不可照抄 + 正确的重调方式；预算仍走 reject
+            // 的硬停计数，不给无限重试。
+            val rejectionError = if (AgentConversationCodec.isRedactedArgumentsPlaceholder(toolCall.argumentsJson)) {
+                "arguments 是历史脱敏占位（{\"redacted\":true}），不是真实参数：敏感工具的参数只在" +
+                    "执行它的回合内可见，之后在历史里一律显示为该占位。重新调用时请按该工具的参数文档" +
+                    "自行构造 arguments（经 tool_call 转发的组工具还需给出回执里列出的 name），" +
+                    "不要把占位原样回传。"
+            } else validationError
             val rejection = invalidToolArgumentsGuard.reject(
                 toolName = toolCall.name,
                 declared = declared,
-                validationError = validationError,
+                validationError = rejectionError,
             )
             invalidArgumentsInBatch++
             return rejectedToolOutcome(

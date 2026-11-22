@@ -171,6 +171,25 @@ class AgentInvalidToolArgumentsLoopIntegrationTest {
         }
     }
 
+    @Test fun redactedPlaceholderCopyGetsTargetedGuidanceInsideTheSameBudget() {
+        // 真实会话里模型把历史脱敏占位 {"redacted":true} 当作 tool_call 的真实参数回传，
+        // 通用的「缺少必填字段」看不出错因；纠正文案必须自述占位性质，预算照常计数。
+        val catalog = tools().put(function("tool_call", "name"))
+        val run = runBatches(
+            List(3) { index -> listOf(invalid("copy-$index", name = "tool_call", arguments = "{\"redacted\":true}")) },
+            catalog = catalog,
+        )
+        assertStopped(run, requests = 3, results = 3)
+        assertTrue(run.executed.isEmpty())
+        assertEquals(listOf(INVALID, INVALID, STOP), run.results.map { it.getString("code") })
+        run.results.take(2).forEach { result ->
+            val message = result.getString("message")
+            assertTrue(message.contains("历史脱敏占位"))
+            assertTrue(message.contains("不要把占位原样回传"))
+            assertFalse(message.contains("缺少必填字段"))
+        }
+    }
+
     private data class Call(val id: String, val name: String, val arguments: String)
     private data class Run(
         val requests: Int,
