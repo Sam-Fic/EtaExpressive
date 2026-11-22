@@ -1150,9 +1150,10 @@ fun AgentAppRoot(
                                 is AgentHomeAction.OpenConversation -> agentState.selectConversation(action.conversationId)
                                 is AgentHomeAction.ModelSelected -> agentState.selectModel(action.modelId, action.providerId)
                                 is AgentHomeAction.SubmitMessage -> { requestExecutionNotifications(); agentState.sendCurrentMessage(action.text) }
-                                AgentHomeAction.StopRun -> agentState.pauseCurrentRun()
-                                AgentHomeAction.ContinueRun -> agentState.continuePausedGeneration()
-                                AgentHomeAction.AbortPausedRun -> stopMainReply()
+                                // 用户显式按停止：真停止（不再有暂停/继续态；想继续就发新消息）。
+                                AgentHomeAction.StopRun -> stopMainReply()
+                                // 失败/断线后的续跑（RuntimeFailed 收尾）；不是暂停恢复。
+                                AgentHomeAction.ContinueRun -> agentState.continueDisconnectedGeneration()
                                 is AgentHomeAction.AssistantSelected -> agentState.selectAssistant(action.id)
                                 is AgentHomeAction.ImageAttached -> agentState.attachImage(action.uri)
                                 is AgentHomeAction.VideoAttached -> agentState.attachVideo(action.uri)

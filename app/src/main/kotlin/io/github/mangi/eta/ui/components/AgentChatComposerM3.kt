@@ -125,7 +125,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
@@ -356,8 +355,8 @@ internal fun Material3ComposerBody(
     onCycleGptSpeedMode: () -> Unit,
     onSubmit: (String) -> Unit,
     onStop: () -> Unit,
+    /** 失败/断线续跑（RuntimeFailed 收尾）后的「继续」；暂停恢复已移除。 */
     onContinue: () -> Unit,
-    onAbortPausedRun: () -> Unit,
 ) {
     // 远程重连 / 失败：整颗输入框胶囊让位给状态胶囊——外形不变（36dp 同心圆角、官方
     // ContainerSize 高），整颗换成状态色，提示语顶替输入框，麦克风圆位由 LoadingIndicator
@@ -390,7 +389,6 @@ internal fun Material3ComposerBody(
         conversationMentions.pending.isNotEmpty()
     val sendMode = resolveChatComposerSendMode(
         isStreaming = isStreaming,
-        isPaused = isPaused,
         canContinueDisconnected = canContinueDisconnected,
         hasSteerContent = hasContent,
         canStartNewSend = canSend,
@@ -846,7 +844,6 @@ internal fun Material3ComposerBody(
                             textFieldState = textFieldState,
                             focusRequester = focusRequester,
                             isStreaming = isStreaming,
-                            isPaused = isPaused,
                             // 左下角有 40dp 圆钮（编辑态取消 / 生成中加载）时留 48dp 起始占位；
                             // 失败旁路下加载圆钮立即让位，占位一并收回。
                             reserveLeadingSlot = (showMorphLoading && !morphLoadingFailVisible) || isEditingMessage,
@@ -986,7 +983,6 @@ internal fun Material3ComposerBody(
                         !isCompressingContext
                     val modeNow = resolveChatComposerSendMode(
                         isStreaming = isStreaming,
-                        isPaused = isPaused,
                         hasSteerContent = hasContentNow,
                         canStartNewSend = canStartNow,
                         isCompressingContext = isCompressingContext,
@@ -1106,11 +1102,9 @@ internal fun Material3ComposerBody(
                             // 想立刻送进当前运行则点队列项的闪电图标立即插话。
                             ComposerTrailing.SEND -> M3ComposerSendButton(
                                 sendMode = sendMode,
-                                isPaused = isPaused,
                                 onSend = sendDraft,
-                                onStop = onStop,
                                 onContinue = onContinue,
-                                onAbortPausedRun = onAbortPausedRun,
+                                onStop = onStop,
                                 onBlocked = blockedNotice,
                             )
                             // DICTATION 与 VOICE_ENTRY 渲染同一枚入口钮（contentKey 已归并，
@@ -1525,18 +1519,11 @@ private val ComposerMorphIconSpec: FiniteAnimationSpec<Float> = tween(250, easin
 @Composable
 private fun composerHintText(
     isStreaming: Boolean,
-    /** 暂停态优先于「正在执行」：暂停的运行停在原地，提示必须说出来，否则用户不知道要按继续。 */
-    isPaused: Boolean,
     remoteAgentName: String?,
     assistantName: String,
 ): String {
     val displayName = (remoteAgentName ?: assistantName).trim()
     return when {
-        // 暂停态在 UI 上只有继续/停止按钮一个线索（消息流不动、加载指示器已让位），
-        // 输入框提示是最稳定的常驻位：把「已暂停 + 怎么恢复」写在这里。
-        isPaused && displayName.isNotEmpty() ->
-            stringResource(R.string.chat_eta_paused_named, displayName)
-        isPaused -> stringResource(R.string.chat_eta_paused_named, "Eta")
         isStreaming && displayName.isNotEmpty() ->
             stringResource(R.string.chat_eta_working_named, displayName)
         isStreaming -> stringResource(R.string.chat_eta_working)
@@ -1561,8 +1548,6 @@ private fun M3ComposerTextField(
     textFieldState: TextFieldState,
     focusRequester: FocusRequester,
     isStreaming: Boolean,
-    /** 暂停态提示语优先级最高：见 [composerHintText]。 */
-    isPaused: Boolean,
     /** 胶囊左下角是否有 40dp 圆钮；有则起始侧留同宽占位，避免多行文字压到圆钮上。 */
     reserveLeadingSlot: Boolean,
     /** 本机会话当前助手的名字；远程会话由 `LocalRemoteAgentName` 覆盖它。 */
@@ -1578,7 +1563,6 @@ private fun M3ComposerTextField(
             Text(
                 text = composerHintText(
                     isStreaming = isStreaming,
-                    isPaused = isPaused,
                     remoteAgentName = io.github.mangi.eta.ui.remote.LocalRemoteAgentName.current,
                     assistantName = assistantName,
                 ),
@@ -2467,23 +2451,24 @@ private data class ComposerMenuEntry(
 )
 
 /**
- * 发送 / 停止 / 继续 按钮：按状态直接选用官方图标按钮
- * （停止＝`FilledTonalIconButton`、发送/继续＝`FilledIconButton`、
+ * 发送 / 停止 按钮：按状态直接选用官方图标按钮
+ * （停止＝`FilledTonalIconButton`、发送＝`FilledIconButton`、
  * 上下文已满＝`OutlinedIconButton`、空闲＝禁用的 `IconButton`）。
  *
  * 形状、容器色、内容色与水波纹全部使用各组件的官方默认值，不传 `shape` / `colors`；
  * 按下不做任何自制视觉——按压缩放（0.9）已按用户 2026-11-11 决定移除，只留官方涟漪。
- * 官方图标按钮没有长按槽位（M3 仅 `ListItem` 暴露 `onLongClick`），因此“长按中止暂停中的运行”
- * 通过官方 `Modifier.semantics` 的 `onLongClick` 动作提供。
+ *
+ * 「暂停后的继续」不再是按钮态：用户可见的暂停已移除，停止即真停止。`continue` 态
+ * 只剩失败/断线（RuntimeFailed 收尾）后的续跑键（`canContinueDisconnected`），仍用
+ * 播放图标 + 专属文案，与「发送新消息」在视觉上区分开。
  */
 @Composable
 private fun M3ComposerSendButton(
     sendMode: String,
-    isPaused: Boolean,
     onSend: () -> Unit,
-    onStop: () -> Unit,
+    /** `continue`（失败续跑）态的点击回调；与发送草稿不同，它内部补占位 prompt 开新逻辑轮。 */
     onContinue: () -> Unit,
-    onAbortPausedRun: () -> Unit,
+    onStop: () -> Unit,
     onBlocked: () -> Unit,
 ) {
     val view = LocalView.current
@@ -2509,23 +2494,10 @@ private fun M3ComposerSendButton(
             "blocked" -> onBlocked()
             "stop" -> onStop()
             "continue" -> onContinue()
-            "send" -> onSend()
+            else -> onSend()
         }
     }
-    val abortModifier = if (sendMode == "stop" || (sendMode == "continue" && isPaused)) {
-        Modifier.semantics {
-            onLongClick(label = description) {
-                TouchHaptics.longPress(view)
-                onAbortPausedRun()
-                true
-            }
-        }
-    } else {
-        Modifier
-    }
-    val modifier = Modifier
-        .size(IconButtonDefaults.smallContainerSize())
-        .then(abortModifier)
+    val modifier = Modifier.size(IconButtonDefaults.smallContainerSize())
 
     when (sendMode) {
         "stop" -> FilledTonalIconButton(
@@ -2533,7 +2505,7 @@ private fun M3ComposerSendButton(
             modifier = modifier,
             content = content,
         )
-        "continue", "send" -> FilledIconButton(
+        "send", "continue" -> FilledIconButton(
             onClick = click,
             modifier = modifier,
             content = content,

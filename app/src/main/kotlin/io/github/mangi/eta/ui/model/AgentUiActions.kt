@@ -15,8 +15,11 @@ sealed interface AgentHomeAction {
     data object CycleGptSpeedMode : AgentHomeAction
     data class SubmitMessage(val text: String) : AgentHomeAction
     data object StopRun : AgentHomeAction
+    /**
+     * 失败/断线后的「继续」：上一轮以 RuntimeFailed 收尾时，补一条占位 prompt 开新逻辑轮续跑。
+     * 注意这不是暂停恢复——用户可见的暂停/继续已移除，停止即真停止；这个键只服务故障续跑。
+     */
     data object ContinueRun : AgentHomeAction
-    data object AbortPausedRun : AgentHomeAction
     data class AssistantSelected(val id: String) : AgentHomeAction
     data class ImageAttached(val uri: String) : AgentHomeAction
     data class VideoAttached(val uri: String) : AgentHomeAction
@@ -72,8 +75,6 @@ sealed interface AgentChatAction {
     data object CycleGptSpeedMode : AgentChatAction
     data class SubmitMessage(val text: String) : AgentChatAction
     data object StopRun : AgentChatAction
-    data object ContinueRun : AgentChatAction
-    data object AbortPausedRun : AgentChatAction
     data class AssistantSelected(val id: String) : AgentChatAction
     data object OpenBrowser : AgentChatAction
     data class EditAssistant(val id: String) : AgentChatAction

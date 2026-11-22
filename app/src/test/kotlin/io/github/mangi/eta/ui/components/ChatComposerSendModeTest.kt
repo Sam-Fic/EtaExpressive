@@ -3,6 +3,10 @@ package io.github.mangi.eta.ui.components
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
+/**
+ * 输入栏尾部按钮态真值表。用户可见的「暂停/继续」已移除（停止即真停止），
+ * `continue` 态只剩失败/断线（RuntimeFailed 收尾）后的续跑键。
+ */
 class ChatComposerSendModeTest {
     @Test
     fun streamingEmptyShowsStop() {
@@ -10,7 +14,6 @@ class ChatComposerSendModeTest {
             "stop",
             resolveChatComposerSendMode(
                 isStreaming = true,
-                isPaused = false,
                 hasSteerContent = false,
                 canStartNewSend = false,
             ),
@@ -23,33 +26,6 @@ class ChatComposerSendModeTest {
             "send",
             resolveChatComposerSendMode(
                 isStreaming = true,
-                isPaused = false,
-                hasSteerContent = true,
-                canStartNewSend = true,
-            ),
-        )
-    }
-
-    @Test
-    fun pausedEmptyShowsContinue() {
-        assertEquals(
-            "continue",
-            resolveChatComposerSendMode(
-                isStreaming = true,
-                isPaused = true,
-                hasSteerContent = false,
-                canStartNewSend = false,
-            ),
-        )
-    }
-
-    @Test
-    fun pausedWithTextShowsSend() {
-        assertEquals(
-            "send",
-            resolveChatComposerSendMode(
-                isStreaming = true,
-                isPaused = true,
                 hasSteerContent = true,
                 canStartNewSend = true,
             ),
@@ -62,7 +38,6 @@ class ChatComposerSendModeTest {
             "idle",
             resolveChatComposerSendMode(
                 isStreaming = false,
-                isPaused = false,
                 hasSteerContent = false,
                 canStartNewSend = false,
             ),
@@ -75,7 +50,6 @@ class ChatComposerSendModeTest {
             "send",
             resolveChatComposerSendMode(
                 isStreaming = false,
-                isPaused = false,
                 hasSteerContent = true,
                 canStartNewSend = true,
             ),
@@ -88,20 +62,6 @@ class ChatComposerSendModeTest {
             "send",
             resolveChatComposerSendMode(
                 isStreaming = true,
-                isPaused = false,
-                hasSteerContent = true,
-                canStartNewSend = true,
-            ),
-        )
-    }
-
-    @Test
-    fun pausedWithAttachmentsShowsSend() {
-        assertEquals(
-            "send",
-            resolveChatComposerSendMode(
-                isStreaming = true,
-                isPaused = true,
                 hasSteerContent = true,
                 canStartNewSend = true,
             ),
@@ -114,7 +74,6 @@ class ChatComposerSendModeTest {
             "idle",
             resolveChatComposerSendMode(
                 isStreaming = false,
-                isPaused = false,
                 hasSteerContent = true,
                 canStartNewSend = false,
             ),
@@ -127,37 +86,8 @@ class ChatComposerSendModeTest {
             "blocked",
             resolveChatComposerSendMode(
                 isStreaming = true,
-                isPaused = false,
                 hasSteerContent = true,
                 canStartNewSend = true,
-                isCompressingContext = true,
-            ),
-        )
-    }
-
-    @Test
-    fun compressingWhilePausedBlocksSteerAndContinue() {
-        assertEquals(
-            "blocked",
-            resolveChatComposerSendMode(
-                isStreaming = true,
-                isPaused = true,
-                hasSteerContent = true,
-                canStartNewSend = true,
-                isCompressingContext = true,
-            ),
-        )
-    }
-
-    @Test
-    fun compressingWhilePausedWithoutDraftShowsContinue() {
-        assertEquals(
-            "continue",
-            resolveChatComposerSendMode(
-                isStreaming = true,
-                isPaused = true,
-                hasSteerContent = false,
-                canStartNewSend = false,
                 isCompressingContext = true,
             ),
         )
@@ -169,7 +99,6 @@ class ChatComposerSendModeTest {
             "blocked",
             resolveChatComposerSendMode(
                 isStreaming = false,
-                isPaused = false,
                 hasSteerContent = true,
                 canStartNewSend = true,
                 isCompressingContext = true,
@@ -183,7 +112,6 @@ class ChatComposerSendModeTest {
             "continue",
             resolveChatComposerSendMode(
                 isStreaming = false,
-                isPaused = false,
                 hasSteerContent = false,
                 canStartNewSend = false,
                 canContinueDisconnected = true,
@@ -197,7 +125,6 @@ class ChatComposerSendModeTest {
             "send",
             resolveChatComposerSendMode(
                 isStreaming = false,
-                isPaused = false,
                 hasSteerContent = true,
                 canStartNewSend = true,
                 canContinueDisconnected = true,
@@ -211,7 +138,6 @@ class ChatComposerSendModeTest {
             "idle",
             resolveChatComposerSendMode(
                 isStreaming = false,
-                isPaused = false,
                 hasSteerContent = false,
                 canStartNewSend = false,
                 isCompressingContext = true,
@@ -226,7 +152,6 @@ class ChatComposerSendModeTest {
             "stop",
             resolveChatComposerSendMode(
                 isStreaming = true,
-                isPaused = false,
                 hasSteerContent = false,
                 canStartNewSend = true,
                 isCompressingContext = true,

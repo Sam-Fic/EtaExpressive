@@ -143,7 +143,6 @@ class AgentChatComposerAttachMenuTest {
                     onSubmit = {},
                     onStop = {},
                     onContinue = {},
-                    onAbortPausedRun = {},
                 )
             }
         }

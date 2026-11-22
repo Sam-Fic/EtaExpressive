@@ -214,8 +214,8 @@ internal fun AgentChatInputBar(
     onModelSelected: (String, String) -> Unit,
     onSubmit: (String) -> Unit,
     onStop: () -> Unit,
+    /** 失败/断线续跑（RuntimeFailed 收尾）后的「继续」；暂停恢复已移除，停止即真停止。 */
     onContinue: () -> Unit = {},
-    onAbortPausedRun: () -> Unit = {},
     isPaused: Boolean = false,
     canContinueDisconnected: Boolean = false,
     onAttachImage: (String) -> Unit,
@@ -558,7 +558,6 @@ internal fun AgentChatInputBar(
             onSubmit = onSubmit,
             onStop = onStop,
             onContinue = onContinue,
-            onAbortPausedRun = onAbortPausedRun,
         )
     }
     }
@@ -1071,23 +1070,19 @@ internal fun AssistantPickerButton(
 
 internal fun resolveChatComposerSendMode(
     isStreaming: Boolean,
-    isPaused: Boolean,
     hasSteerContent: Boolean,
     canStartNewSend: Boolean,
     isCompressingContext: Boolean = false,
     canContinueDisconnected: Boolean = false,
 ): String = when {
-    // 压缩进行中禁止追加/续写：有待发内容时显示灰色发送键，点击只提示。
-    // 没有内容时，暂停后显示继续；未暂停的流式仍可停止。
+    // 压缩进行中禁止追加/续写：有待发内容时显示灰色发送键，点击只提示；
+    // 没有内容时流式仍可停止。
     isCompressingContext && hasSteerContent -> "blocked"
-    isCompressingContext && isPaused -> "continue"
     isCompressingContext && isStreaming -> "stop"
     isCompressingContext -> "idle"
-    (isStreaming || isPaused) && hasSteerContent -> "send"
-    isPaused -> "continue"
+    (isStreaming || canContinueDisconnected) && hasSteerContent -> "send"
     isStreaming -> "stop"
     // Terminal failure: Continue creates a new logical turn, never resumes the failed one.
-    canContinueDisconnected && hasSteerContent -> "send"
     canContinueDisconnected -> "continue"
     canStartNewSend -> "send"
     else -> "idle"

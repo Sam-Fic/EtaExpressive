@@ -210,7 +210,6 @@ class Material3ComposerBodyTokenGateTest {
                     onSubmit = {},
                     onStop = {},
                     onContinue = {},
-                    onAbortPausedRun = {},
                 )
             }
         }

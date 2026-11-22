@@ -350,13 +350,6 @@ internal class AgentAppState(
         }
     }
 
-    fun stopBudgetBlockedRun(runId: String) {
-        val prompt = contextBudgetBlockedRuns[runId] ?: return
-        if (prompt.conversationId != selectedConversationId) return
-        contextBudgetPrompt = null
-        abandonPausedRun()
-    }
-
     private val persistenceLock = Any()
     private val persistenceQueue by lazy {
         LatestConversationSaveQueue<ConversationSaveSnapshot>(
@@ -1335,8 +1328,8 @@ internal class AgentAppState(
      *
      * 暂停 / 用户显式停止期间**绝不自动起轮**，否则「停止」形同虚设：只把终态写进
      * `task_dispatch` 卡、追加一条「派发回报」回执卡，并把文本积压到
-     * [pendingConsoleReceipts]，等用户恢复（[continuePausedGeneration] → steer）或下次
-     * 主动发言（[drainPendingConsoleReceipts] → 并入那一轮 history）时再让模型读到。
+     * [pendingConsoleReceipts]，等用户下次主动发言（[drainPendingConsoleReceipts] →
+     * 并入那一轮 history；预算闸门暂停的运行由插话 steer 顺带唤醒）时再让模型读到。
      */
     private fun deliverDispatchNotice(
         notice: io.github.mangi.eta.agent.dispatch.AgentDispatchNotifier.Notice,
@@ -1656,16 +1649,6 @@ internal class AgentAppState(
             if (contextBudgetPrompt?.runId == runId) contextBudgetPrompt = null
             stopRun(runId, keepChildren = true)
         }
-        return true
-    }
-
-    fun canPauseStopRequest(target: StopRequest): Boolean =
-        stopSelectionMatches(target, checkChildren = false) && target.selection.runId != null &&
-            target.selection.runId !in imageGenerationRunIds && !homeState.isPaused
-
-    fun pauseStopRequest(target: StopRequest): Boolean {
-        if (!canPauseStopRequest(target)) return false
-        pauseCurrentRun()
         return true
     }
 
@@ -6503,34 +6486,6 @@ internal class AgentAppState(
         persistConversations()
     }
 
-    fun pauseCurrentRun() {
-        val runId = activeRunIdForSelectedConversation() ?: return
-        if (stoppingRuns.containsKey(runId)) return
-        if (runId in imageGenerationRunIds) {
-            // Media APIs have no resumable pause contract. Stop local I/O instead of ignoring the button.
-            stopRun(runId)
-            return
-        }
-        if (homeState.isPaused) return
-        scope.launch(Dispatchers.IO) {
-            AgentRuntimeClient(appContext, AndroidAgentLogger).pauseRun(runId)
-        }
-        // 只标记暂停，不把消息冻成 isStreaming=false。否则 StreamingMarkdown 会当成
-        // 生成结束切到整段 Text；继续后每个 token 都整段重组，流式输出会明显卡顿。
-        updateCurrentConversation(homeState.copy(isPaused = true))
-    }
-
-    fun abandonPausedRun() {
-        if (rejectConversationArchiveMutation()) return
-        if (!homeState.isPaused) return
-        stopCurrentRun()
-        Toast.makeText(
-            appContext,
-            appContext.getString(R.string.chat_paused_run_abandoned),
-            Toast.LENGTH_SHORT,
-        ).show()
-    }
-
     fun selectAssistant(id: String) {
         if (rejectConversationArchiveMutation()) return
         if (homeState.isCompressingContext) {
@@ -6683,29 +6638,14 @@ internal class AgentAppState(
         }
     }
 
-    fun continuePausedGeneration() {
+    /**
+     * 失败/断线后的「继续」：上一轮以 RuntimeFailed 收尾（或断线重连被停）时，补一条占位
+     * prompt 开新逻辑轮续跑。与已移除的「暂停恢复」无关——用户可见的暂停/继续已删除，
+     * 停止即真停止；预算闸门暂停的运行由用户插话（steer）顺带唤醒，不走这里。
+     */
+    fun continueDisconnectedGeneration() {
         if (rejectConversationArchiveMutation()) return
-        // Resuming a paused run only releases Runtime's pause gate; an in-run compaction that
-        // was interrupted by the pause must be allowed to finish, not block its own resume.
-        if (!homeState.isPaused && rejectSendIfCompressing()) return
-        if (!homeState.isPaused) {
-            continueDisconnectedGeneration()
-            return
-        }
-        val runId = activeRunIdForSelectedConversation() ?: return
-        contextBudgetBlockedRuns[runId]?.let { contextBudgetPrompt = it; return }
-        // 调度台暂停期间积压的派发回报：恢复是显式动作，可以把它们并入当前 run（steer），
-        // 让模型在这一轮里读到并向用户报告；不另起一轮。
-        val pendingReceipts = takePendingConsoleReceiptsForSteer(selectedConversationId)
-        scope.launch(Dispatchers.IO) {
-            val client = AgentRuntimeClient(appContext, AndroidAgentLogger)
-            client.resumeRun(runId)
-            pendingReceipts?.let { runCatching { client.steerRun(runId, it) } }
-        }
-        updateCurrentConversation(homeState.copy(isPaused = false))
-    }
-
-    private fun continueDisconnectedGeneration() {
+        if (rejectSendIfCompressing()) return
         if (homeState.isStreaming || homeState.isPaused) return
         if (rejectSendIfModelUnavailable()) return
         if (!canContinueDisconnectedRun(homeState.messages)) return

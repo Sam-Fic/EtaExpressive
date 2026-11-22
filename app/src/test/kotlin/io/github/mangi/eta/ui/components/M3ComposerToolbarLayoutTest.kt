@@ -559,7 +559,6 @@ class M3ComposerToolbarLayoutTest {
                     onSubmit = {},
                     onStop = {},
                     onContinue = {},
-                    onAbortPausedRun = {},
                 )
             }
         }

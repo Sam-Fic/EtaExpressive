@@ -97,7 +97,6 @@ internal fun AgentHomeScreen(
             onSubmit = { text -> onAction(AgentHomeAction.SubmitMessage(text)) },
             onStop = { onAction(AgentHomeAction.StopRun) },
             onContinue = { onAction(AgentHomeAction.ContinueRun) },
-            onAbortPausedRun = { onAction(AgentHomeAction.AbortPausedRun) },
             onAttachImage = { uri -> onAction(AgentHomeAction.ImageAttached(uri)) },
             onAttachVideo = { uri -> onAction(AgentHomeAction.VideoAttached(uri)) },
             onRemoveImage = { id -> onAction(AgentHomeAction.RemoveImage(id)) },

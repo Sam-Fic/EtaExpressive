@@ -1040,9 +1040,8 @@ private fun AssistantComposer(
             onCycleGptSpeedMode = composer::cycleGptSpeedMode,
             onSubmit = onSubmit,
             onStop = onStop,
-            // 入口浮层不支持「继续 / 中止暂停运行」。
+            // 入口浮层没有失败续跑的去处。
             onContinue = {},
-            onAbortPausedRun = {},
         )
     }
 }
