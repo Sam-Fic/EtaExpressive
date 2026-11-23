@@ -155,8 +155,8 @@ class TopBarInteractiveModeContractTest(unittest.TestCase):
 
     def test_row_and_switch_are_both_clickable_without_dismissing_the_popup(self):
         self.assertIn('modifier = Modifier.testTag("top-bar-interactive-mode-row")', self.interactive)
-        # 图标改为位置参数写法（无需命名 imageVector）。
-        self.assertIn("Icon(Icons.Rounded.TouchApp,", self.interactive)
+        # 图标改为位置参数写法（无需命名 imageVector）；行文案是「更多询问」，所以用问答图标而非手指。
+        self.assertIn("Icon(Icons.Rounded.QuestionAnswer,", self.interactive)
         switch = arguments(self.interactive, "EtaSwitch")
         self.assertIn("checked = interactiveModeEnabled", switch)
         self.assertIn("interactiveModePreference.setEnabled(enabled)", callback(switch, "onCheckedChange"))
