@@ -153,12 +153,13 @@ internal fun AssistantEditScreen(
     }
 
     fun save() {
-        // 人格（eta-assistants/index.json）与记忆（MEMORY.md）是两套互不相干的存储。
-        // 旧实现把 memoryRevision.isBlank() 当成保存前置条件：只要记忆快照加载失败
-        // （MEMORY.md 读取异常等），提示词就永远存不进去，而且这里是静默 return——
-        // 表现为「保存按钮亮着但点了没反应」，文件 mtime 不变、日志为零、连存储锁都没拿到。
-        // 现在只有「记忆超限 / 保存中」才拦：记忆层真有改动而 baseRevision 为空串时，
-        // replaceAll 的乐观锁会抛 MEMORY_CONFLICT，走下方失败通道，不再静默。
+        // 人格（eta-assistants/index.json）与记忆（MEMORY.md）是两套互不相干的存储：
+        // 各自保存、各自报错，记忆一侧的乐观锁冲突不再连带吞掉提示词的落盘。
+        // 旧实现曾把 memoryRevision.isBlank() 当保存前置条件：记忆快照加载失败时
+        // 提示词永远存不进去且零日志（「保存按钮亮着但点了没反应」）。现在门禁只拦
+        // 「记忆超限 / 保存中」；而 baseRevision 空串只会来自加载失败——首建的
+        // revision 是 sha256("") 非空——所以带锁 replaceAll 在该场景抛 MEMORY_CONFLICT
+        // 走失败通道，拒绝盲写覆盖，等用户重载后再存。
         if (!dirty || saving || memoryOverLimit) return
         val targetMemory = memoryDraft
         val baseRevision = memoryRevision
@@ -168,27 +169,33 @@ internal fun AssistantEditScreen(
         val memoryChanged = targetMemory != memorySaved
         saving = true
         scope.launch {
-            var savedSnapshot: io.github.mangi.eta.data.repository.AgentMemorySnapshot? = null
-            val result = withContext(Dispatchers.IO) {
+            // 记忆：只在真有改动时写，带 revision 乐观锁。
+            val memoryResult = if (memoryChanged) withContext(Dispatchers.IO) {
+                runCatching { AgentMemoryRepository.replaceAll(targetMemory, assistantId, baseRevision) }
+            } else null
+            // 提示词：与记忆互不相干，记忆失败也照常落盘。
+            val promptResult = withContext(Dispatchers.IO) {
                 runCatching {
-                    if (memoryChanged) savedSnapshot = AgentMemoryRepository.replaceAll(targetMemory, assistantId, baseRevision)
                     AssistantRepository.update(targetProfile)
                     RuntimeConfigRepository.syncToRemotePreferences(EtaApp.serviceInstance)
                 }
             }
-            savedSnapshot?.let { snapshot ->
+            memoryResult?.getOrNull()?.let { snapshot ->
                 memoryRevision = snapshot.revision
                 memorySaved = snapshot.content
             }
             saving = false
-            if (result.isSuccess) onBack()
-            else {
+            val failure = memoryResult?.exceptionOrNull() ?: promptResult.exceptionOrNull()
+            if (failure == null) {
+                onBack()
+            } else {
                 // 失败必须留痕：旧版前置条件静默 return 的排障成本极高（零日志）。
                 io.github.mangi.eta.core.AndroidAgentLogger.warn(
                     "assistant save failed: id=$assistantId memoryChanged=$memoryChanged " +
-                        "error=${result.exceptionOrNull()?.safeLogType()}"
+                        "memoryError=${memoryResult?.exceptionOrNull()?.safeLogType()} " +
+                        "promptError=${promptResult.exceptionOrNull()?.safeLogType()}"
                 )
-                android.widget.Toast.makeText(context, result.exceptionOrNull()?.message ?: context.getString(R.string.aes_save_failed_draft_kept), android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, failure.message ?: context.getString(R.string.aes_save_failed_draft_kept), android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
