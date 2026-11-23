@@ -1,6 +1,5 @@
 package io.github.mangi.eta.ui.screens.tools
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,8 +10,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +29,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.tool.AgentToolCapabilities
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
@@ -220,11 +219,13 @@ private fun toolCapabilityIcon(capabilityId: String): ImageVector =
 /**
  * 工具页顶部分段切换。
  *
- * 独立胶囊单选行（图一豆包式）：官方 `ToggleButton` 全圆角胶囊经 [EtaExpressiveToggleButton]
- * 封装、等分整行；选中 primary/onPrimary、未选中 surfaceContainerHighest/onSurface。
- * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
- * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；单体胶囊按 RULES §2.5 传
- * `shapesFor(ButtonDefaults.MinHeight)`，按压 morph 由官方 shapes 自带。
+ * 官方连体 ToggleButton 组（M3E ButtonGroup connected 档）——[EtaConnectedGroupRow] 官方
+ * 2dp 缝 + [EtaExpressiveToggleButton]（官方 `ToggleButton` +
+ * `ButtonGroupDefaults.connected*ButtonShapes()`：外角全圆、内角 8dp、按压内角收到 4dp，
+ * 选中态 `checkedShape` = CornerFull 由官方 shapes 自带），等分整行。
+ * 取证（material3 1.5.0-alpha29 AAR javap）：connectedLeading/Middle/TrailingButtonShapes
+ * 均存在（三个形状参数可默认省略）、`ConnectedSpaceBetween` = 2dp（clinit `ldc2_w 2.0d`）、
+ * `connectedButtonCheckedShape` = `ShapeTokens.getCornerFull()`。
  */
 @Composable
 private fun ToolsSegmentTabs(
@@ -233,15 +234,16 @@ private fun ToolsSegmentTabs(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    EtaConnectedGroupRow(modifier = modifier.fillMaxWidth()) {
         tabs.forEachIndexed { index, title ->
             EtaExpressiveToggleButton(
                 checked = index == selectedIndex,
                 onCheckedChange = { checked -> if (checked) onSelect(index) },
-                shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
                 modifier = Modifier
                     .weight(1f)
                     .semantics { role = Role.RadioButton },

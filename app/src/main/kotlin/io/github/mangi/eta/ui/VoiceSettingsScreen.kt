@@ -5,10 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -97,13 +96,9 @@ internal fun VoiceSettingsScreen(
     EtaScaffold(title = stringResource(R.string.voice_title), onBack = onBack) { padding, scrollConnection, sidePadding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
             .padding(horizontal = sidePadding).nestedScroll(scrollConnection)) {
-            // 分区选择器：独立胶囊单选行（图一豆包式）——官方 ToggleButton 全圆角胶囊各自成形、
-            // 8dp 缝（原相连组是 ButtonGroupDefaults 连体形状 + 2dp 缝）。每个按钮取文字自然宽度，
-            // 总宽超出屏幕时整组横向滚动，不做等分屏宽；点击即切、原地替换内容
-            // （key(selected) 重建分区内容），不经下拉弹层中转。
-            // 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(
-            //     height: Dp): ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；
-            //     单体胶囊按 RULES §2.5 传 `shapesFor(ButtonDefaults.MinHeight)`。
+            // 分区选择器：外观设置页主题模式同款的官方连体按钮组（ButtonGroupDefaults 连体形状），
+            // 每个按钮取文字自然宽度，总宽超出屏幕时整组横向滚动，不做等分屏宽；点击即切、
+            // 原地替换内容（key(selected) 重建分区内容），不经下拉弹层中转。
             val view = LocalView.current
             val sections = VoiceSettingsSection.entries
             val sectionScrollState = rememberScrollState()
@@ -115,9 +110,9 @@ internal fun VoiceSettingsScreen(
                     .horizontalScrollEdgeFade(sectionScrollState)
                     .horizontalScroll(sectionScrollState)
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {
-                sections.forEach { section ->
+                sections.forEachIndexed { index, section ->
                     EtaExpressiveToggleButton(
                         checked = selected == section,
                         onCheckedChange = { checked ->
@@ -127,7 +122,11 @@ internal fun VoiceSettingsScreen(
                             }
                         },
                         modifier = Modifier.semantics { role = Role.RadioButton },
-                        shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                        shapes = when (index) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            sections.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        },
                     ) {
                         Text(text = stringResource(section.title))
                     }

@@ -72,6 +72,7 @@ import io.github.mangi.eta.ui.components.FooterTooltipBox
 import io.github.mangi.eta.ui.components.toSpanStyle
 import androidx.compose.material3.Button as M3Button
 import androidx.compose.material3.ButtonDefaults as M3ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -80,11 +81,11 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconButtonShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.material3.TextButton as M3TextButton
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
 import io.github.mangi.eta.ui.adaptive.EtaFloatingToolbarConcentricPadding
 import io.github.mangi.eta.ui.adaptive.EtaIconButton
@@ -174,11 +175,13 @@ internal fun TerminalBodyText(
 /**
  * 环境切换标签（Android / Linux）。
  *
- * 独立胶囊单选行（图一豆包式）：官方 `ToggleButton` 全圆角胶囊经 [EtaExpressiveToggleButton]
- * 封装、weight 等分可用宽度；选中 primary/onPrimary、未选中 surfaceContainerHighest/onSurface。
- * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
- * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在（本文件 ButtonDefaults
- * 别名为 `M3ButtonDefaults`）；单体胶囊按 RULES §2.5 传 `shapesFor(M3ButtonDefaults.MinHeight)`。
+ * 官方连体 ToggleButton 组（M3E ButtonGroup connected 档）——[EtaConnectedGroupRow] 官方
+ * 2dp 缝 + [EtaExpressiveToggleButton]（官方 `ToggleButton` +
+ * `ButtonGroupDefaults.connected*ButtonShapes()`：外角全圆、内角 8dp、按压内角收到 4dp，
+ * 选中态 `checkedShape` = CornerFull 由官方 shapes 自带），weight 等分可用宽度。
+ * 取证（material3 1.5.0-alpha29 AAR javap）：connectedLeading/Middle/TrailingButtonShapes
+ * 均存在（三个形状参数可默认省略）、`ConnectedSpaceBetween` = 2dp（clinit `ldc2_w 2.0d`）、
+ * `connectedButtonCheckedShape` = `ShapeTokens.getCornerFull()`。
  */
 @Composable
 internal fun TerminalEnvironmentTabs(
@@ -188,7 +191,7 @@ internal fun TerminalEnvironmentTabs(
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    EtaConnectedGroupRow(modifier = modifier) {
         labels.forEachIndexed { index, label ->
             EtaExpressiveToggleButton(
                 checked = index == selectedIndex,
@@ -198,7 +201,11 @@ internal fun TerminalEnvironmentTabs(
                         onSelect(index)
                     }
                 },
-                shapes = ToggleButtonDefaults.shapesFor(M3ButtonDefaults.MinHeight),
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    labels.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
                 modifier = Modifier
                     .weight(1f)
                     .semantics { role = Role.RadioButton },

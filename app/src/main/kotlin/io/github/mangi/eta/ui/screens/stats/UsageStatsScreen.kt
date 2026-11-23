@@ -57,6 +57,7 @@ import io.github.mangi.eta.data.repository.formatStatCount
 import io.github.mangi.eta.data.repository.formatTokenCount
 import io.github.mangi.eta.data.repository.heatmapAlpha
 import io.github.mangi.eta.data.repository.heatmapQuartiles
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaExpandChevron
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
@@ -87,8 +88,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.material3.toShape
 
@@ -159,11 +159,13 @@ internal fun UsageStatsScreen(onBack: () -> Unit) {
 /**
  * 概览 / 模型视图切换。
  *
- * 独立胶囊单选行（图一豆包式）：官方 `ToggleButton` 全圆角胶囊经 [EtaExpressiveToggleButton]
- * 封装、等分整行；选中 primary/onPrimary、未选中 surfaceContainerHighest/onSurface。
- * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
- * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；单体胶囊按 RULES §2.5 传
- * `shapesFor(ButtonDefaults.MinHeight)`，按压 morph 由官方 shapes 自带。
+ * 官方连体 ToggleButton 组（M3E ButtonGroup connected 档）——[EtaConnectedGroupRow] 官方
+ * 2dp 缝 + [EtaExpressiveToggleButton]（官方 `ToggleButton` +
+ * `ButtonGroupDefaults.connected*ButtonShapes()`：外角全圆、内角 8dp、按压内角收到 4dp，
+ * 选中态 `checkedShape` = CornerFull 由官方 shapes 自带），等分整行。
+ * 取证（material3 1.5.0-alpha29 AAR javap）：connectedLeading/Middle/TrailingButtonShapes
+ * 均存在（三个形状参数可默认省略）、`ConnectedSpaceBetween` = 2dp（clinit `ldc2_w 2.0d`）、
+ * `connectedButtonCheckedShape` = `ShapeTokens.getCornerFull()`。
  */
 @Composable
 private fun UsageStatsTabs(
@@ -175,15 +177,16 @@ private fun UsageStatsTabs(
         stringResource(R.string.stats_tab_overview) to UsageStatsTab.Overview,
         stringResource(R.string.stats_tab_models) to UsageStatsTab.Models,
     )
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    EtaConnectedGroupRow(modifier = modifier.fillMaxWidth()) {
         tabs.forEachIndexed { index, (label, tab) ->
             EtaExpressiveToggleButton(
                 checked = selected == tab,
                 onCheckedChange = { checked -> if (checked) onSelect(tab) },
-                shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
                 modifier = Modifier
                     .weight(1f)
                     .semantics { role = Role.RadioButton },

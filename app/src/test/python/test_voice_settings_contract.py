@@ -38,15 +38,14 @@ class VoiceSettingsContractTest(unittest.TestCase):
         self.assertNotIn('DoubaoVoiceSettings(', screen)
         self.assertNotIn('BackHandler(onBack = onBack)', read('ui/PersonalVoicesScreen.kt'))
 
-    def test_selector_switches_in_place_with_independent_pill_toggle_buttons(self):
+    def test_selector_switches_in_place_with_connected_segmented_buttons(self):
         source = read('ui/VoiceSettingsScreen.kt')
-        # 与外观设置页主题模式同款：独立胶囊单选行（图一豆包式）——官方 ToggleButton 全圆角
-        # 胶囊（EtaExpressiveToggleButton + ToggleButtonDefaults.shapesFor(ButtonDefaults.
-        # MinHeight) 单体档），按钮按文字自然宽度排布、8dp 缝，超出屏宽整组横向滚动；
-        # 选中即原地替换内容，不经下拉弹层中转，也不再手写 clip + background + clickable 拼装。
+        # 与外观设置页主题模式同款：官方 ButtonGroupDefaults 连体形状的 ToggleButton 组，
+        # 按钮按文字自然宽度排布，超出屏宽整组横向滚动；选中即原地替换内容，
+        # 不经下拉弹层中转，也不再手写 clip + background + clickable 拼装。
         self.assertIn('EtaExpressiveToggleButton(', source)
-        self.assertIn('ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight)', source)
-        self.assertIn('Arrangement.spacedBy(8.dp)', source)
+        self.assertIn('ButtonGroupDefaults.connectedLeadingButtonShapes()', source)
+        self.assertIn('ButtonGroupDefaults.connectedTrailingButtonShapes()', source)
         self.assertIn('horizontalScroll(', source)
         self.assertIn('TouchHaptics.click(view)', source)
         self.assertIn('rememberSaveable', source)

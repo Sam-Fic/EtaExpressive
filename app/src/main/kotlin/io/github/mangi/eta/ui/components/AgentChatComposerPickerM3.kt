@@ -20,7 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.SmartToy
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,7 +28,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,6 +56,7 @@ import io.github.mangi.eta.data.repository.AssistantRepository
 import io.github.mangi.eta.data.repository.ProviderBalanceState
 import io.github.mangi.eta.data.repository.RuntimeConfigRepository
 import io.github.mangi.eta.ui.ModelPickerCheckRow
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedColumn
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
@@ -83,8 +83,8 @@ import kotlinx.coroutines.withContext
  * 结构：
  * 1. 标题行：标题 + 行尾配置图标按钮（随页签切换图标与目标：模型 / 助手）。
  *    （关闭走 ModalBottomSheet 的下拉 / 点遮罩，不放关闭按钮。）
- * 2. 独立胶囊单选行的页签：模型 / 助手（官方 `ToggleButton` 全圆角胶囊，等分整行，
- *    选中亮色填充、未选中深色填充，不再有连体外轮廓与选中 ✓）。
+ * 2. 连体 ToggleButton 页签：模型 / 助手（官方 M3E ButtonGroup connected 档——2dp 缝 +
+ *    connected*Shapes，等分整行；选中态官方 morph 到 CornerFull，无选中 ✓）。
  *    - 模型页签：官方搜索框 + 服务商分类标题 + 分组内的官方分段单选行（全部平铺，不折叠）。
  *    - 助手页签：官方搜索框 + KernelSU 式分段列表（行尾三点菜单提供复制 / 编辑 / 删除）。
  * 3. 底部固定两行「思考档位」「上下文用量」，复用输入区原有的两个控件（含各自弹窗 /
@@ -177,23 +177,21 @@ internal fun M3ComposerPickerSheet(
                 stringResource(R.string.conversation_dock_models),
                 stringResource(R.string.assistant_list_title),
             )
-            // 独立胶囊单选行（豆包语音页样式）：两颗官方 ToggleButton 全圆角胶囊各自成形、
-            // 8dp 缝隙等分整行；选中 primary/onPrimary、未选中 surfaceContainerHighest/onSurface
-            // （深色填充无描边，复用 EtaExpressiveToggleButton 的官方令牌配色），
-            // 替代原先连体 SegmentedButton 的共享外轮廓 + 分隔线 + 选中 ✓。
-            // 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(
-            //     height: Dp): ToggleButtonShapes` 存在（@Composable），`ButtonDefaults.MinHeight:
-            //     Dp` 存在；单体胶囊按 RULES §2.5 传 `shapesFor(ButtonDefaults.MinHeight)`
-            //     （40dp 高全圆角、按压 morph 由官方 shapes 自带）。
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            // 连体 ToggleButton 页签（官方 M3E ButtonGroup connected 档）：EtaConnectedGroupRow
+            // 官方 2dp 缝 + connected*ButtonShapes（外角全圆、内角 8dp，选中态 checkedShape =
+            // CornerFull 由官方 shapes 自带），等分整行；选中 primary/onPrimary、未选中
+            // surfaceContainerHighest/onSurface。取证（alpha29 AAR javap）：
+            // connected*ButtonShapes 与 ConnectedSpaceBetween = 2dp（clinit ldc2_w 2.0d）均实证。
+            EtaConnectedGroupRow(modifier = Modifier.fillMaxWidth()) {
                 tabs.forEachIndexed { index, title ->
                     EtaExpressiveToggleButton(
                         checked = index == tabIndex,
                         onCheckedChange = { if (it) tabIndex = index },
-                        shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                        shapes = when (index) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        },
                         modifier = Modifier
                             .weight(1f)
                             .semantics { role = Role.RadioButton },

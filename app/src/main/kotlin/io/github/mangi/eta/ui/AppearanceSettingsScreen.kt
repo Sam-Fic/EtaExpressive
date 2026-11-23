@@ -54,7 +54,7 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.UnfoldLess
 import androidx.compose.material.icons.rounded.Style
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconToggleButton
@@ -63,7 +63,6 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -698,12 +697,7 @@ private data class ThemeModeOption(
 )
 
 /**
- * 主题模式选择：独立胶囊单选行（图一豆包式）——官方 `ToggleButton` 全圆角胶囊经
- * [EtaExpressiveToggleButton] 封装、等分整行、8dp 缝（原 KernelSU `ExpressiveToggleButton`
- * + `ButtonGroupDefaults.connected*Shapes` 连体档已撤）。
- * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
- * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；单体胶囊按 RULES §2.5 传
- * `shapesFor(ButtonDefaults.MinHeight)`。
+ * 主题模式连接按钮组（KernelSU `ExpressiveToggleButton` + `ButtonGroupDefaults.connected*Shapes`）。
  * 4 态 = 跟随系统 / 浅色 / 深色 / 纯黑（AMOLED）：纯黑态 = 深色 + 纯黑背景，点深色会关掉纯黑、
  * 点纯黑会切到深色并打开——数据仍是 themeMode + pureBlackEnabled 两个字段，无需迁移。
  */
@@ -724,7 +718,7 @@ private fun ThemeModeButtonGroup(
                 end = EtaGroupHorizontalPadding,
                 bottom = EtaSegmentedGroupSpacing,
             ),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
         val options = listOf(
             ThemeModeOption(
@@ -760,7 +754,7 @@ private fun ThemeModeButtonGroup(
                 onSetPureBlack(true)
             },
         )
-        options.forEach { option ->
+        options.forEachIndexed { index, option ->
             EtaExpressiveToggleButton(
                 checked = option.checked,
                 onCheckedChange = { checked ->
@@ -772,7 +766,11 @@ private fun ThemeModeButtonGroup(
                 modifier = Modifier
                     .weight(1f)
                     .semantics { role = Role.RadioButton },
-                shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
             ) {
                 Icon(imageVector = option.icon, contentDescription = option.label)
             }

@@ -57,8 +57,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -109,6 +108,7 @@ import io.github.mangi.eta.data.db.EtaDatabase
 import io.github.mangi.eta.data.db.MediaKind
 import io.github.mangi.eta.ui.adaptive.EtaButtonStyle
 import io.github.mangi.eta.ui.adaptive.EtaClickableRow
+import io.github.mangi.eta.ui.adaptive.EtaConnectedGroupRow
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
 import io.github.mangi.eta.ui.adaptive.EtaExpressiveToggleButton
@@ -1342,13 +1342,14 @@ private fun MediaThresholdRow(
 }
 
 /**
- * 视图模式行：标签 + 独立胶囊单选行（列表 / 宫格），切换即时回调（调用方落盘）。
+ * 视图模式行：标签 + 官方连体 ToggleButton 组（列表 / 宫格），切换即时回调（调用方落盘）。
  *
- * 独立胶囊单选行（图一豆包式）：官方 `ToggleButton` 全圆角胶囊经 [EtaExpressiveToggleButton]
- * 封装、等分整行；选中 primary/onPrimary、未选中 surfaceContainerHighest/onSurface。
- * 取证（material3 1.5.0-alpha29 AAR javap）：`ToggleButtonDefaults.shapesFor(height: Dp):
- * ToggleButtonShapes` 与 `ButtonDefaults.MinHeight: Dp` 均存在；单体胶囊按 RULES §2.5 传
- * `shapesFor(ButtonDefaults.MinHeight)`，按压 morph 由官方 shapes 自带。
+ * 连体档 = [EtaConnectedGroupRow] 官方 2dp 缝 + [EtaExpressiveToggleButton]（官方
+ * `ToggleButton` + `ButtonGroupDefaults.connected*ButtonShapes()`：外角全圆、内角 8dp、
+ * 按压内角收到 4dp，选中态 `checkedShape` = CornerFull 由官方 shapes 自带），等分整行。
+ * 取证（material3 1.5.0-alpha29 AAR javap）：connectedLeading/Middle/TrailingButtonShapes
+ * 均存在（三个形状参数可默认省略）、`ConnectedSpaceBetween` = 2dp（clinit `ldc2_w 2.0d`）、
+ * `connectedButtonCheckedShape` = `ShapeTokens.getCornerFull()`。
  */
 @Composable
 private fun MediaViewModeRow(
@@ -1365,11 +1366,10 @@ private fun MediaViewModeRow(
         ),
     ) {
         EtaText(text = stringResource(R.string.media_view_mode_label))
-        Row(
+        EtaConnectedGroupRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = EtaSegmentedTitleSpacing),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             listOf(
                 false to R.string.media_view_mode_list,
@@ -1383,7 +1383,11 @@ private fun MediaViewModeRow(
                             onViewGridChange(grid)
                         }
                     },
-                    shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+                    shapes = when (index) {
+                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        1 -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .semantics { role = Role.RadioButton },
