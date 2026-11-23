@@ -76,7 +76,6 @@ private val appRouteTypes: List<KClass<out AppRoute>> = listOf(
     AppRoute.AssistantEdit::class,
     AppRoute.UsageStats::class,
     AppRoute.ManageChats::class,
-    AppRoute.ManageFolders::class,
     AppRoute.ConversationTrash::class,
     AppRoute.ConversationTrashSearch::class,
     AppRoute.MessageSearch::class,

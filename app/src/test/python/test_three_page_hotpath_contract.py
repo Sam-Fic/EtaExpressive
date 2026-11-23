@@ -57,12 +57,12 @@ class ThreePageHotpathContract(unittest.TestCase):
 
     def test_manage_batch_keeps_latest_row_delete_callback(self):
         s = (MAIN / 'ui/screens/chat/ManageChatsScreen.kt').read_text()
-        # 行尾删除按钮只把目标记进本地状态，真正的删除在确认对话框里执行；
-        # 对话框存活期间父级回调可能重建，因此确认时必须取最新的一份。
-        self.assertIn('itemsIndexed(', s)
+        # 批量删除在确认对话框里执行；对话框存活期间父级回调可能重建，因此确认时
+        # 必须取最新的一份（单条菜单删除改走宿主共享确认弹窗，不经本页回调）。
+        self.assertIn('item(key = conversation.id, visible = sectionExpanded)', s)
         self.assertIn('remember(nextOrder, byId)', s)
         self.assertIn('val currentOnDelete by rememberUpdatedState(onDeleteConversation)', s)
-        self.assertIn('currentOnDelete(conversation)', s)
+        self.assertIn('byId[id]?.let(currentOnDelete)', s)
         # 左滑删除已移除：管理页不再依赖 SwipeToDismissBox / 抬手势。
         self.assertNotIn('SwipeToDismissBox', s)
         self.assertNotIn('manageChatDeleteDrag', s)

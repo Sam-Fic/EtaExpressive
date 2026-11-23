@@ -208,12 +208,9 @@ sealed interface AppRoute : NavKey {
     @Serializable
     data object UsageStats : AppRoute
 
+    /** 管理页：会话库（按分类折叠分组）与分类的统一整理中枢；从抽屉工具栏的「管理」入口进入。 */
     @Serializable
     data object ManageChats : AppRoute
-
-    /** 分类管理页：新建 / 重命名 / 删除文件夹（会话分类）；从抽屉的「管理分类」入口进入。 */
-    @Serializable
-    data object ManageFolders : AppRoute
 
     /** 回收站：已软删除会话的恢复与彻底清理。 */
     @Serializable

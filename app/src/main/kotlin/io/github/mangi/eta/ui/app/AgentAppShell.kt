@@ -106,9 +106,8 @@ internal fun AgentAppShell(
     onConversationExport: (ConversationSummaryUi) -> Unit = {},
     onConversationAnalysisExport: (ConversationSummaryUi) -> Unit = {},
     onOpenManageChats: () -> Unit = {},
-    // 抽屉工具栏里的放大镜：与管理聊天页同一入口（全文搜索页，跨会话检索）。
+    // 抽屉工具栏里的放大镜：与管理页同一入口（全文搜索页，跨会话检索）。
     onOpenDrawerSearch: () -> Unit = {},
-    onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
     onRestoreConversation: (String) -> Unit = {},
     onConversationDeleteForever: (String) -> Unit = {},
@@ -259,7 +258,6 @@ internal fun AgentAppShell(
                 onNewConversation = onNewConversation,
                 onOpenSearchHistory = onOpenDrawerSearch,
                 onOpenManageChats = onOpenManageChats,
-                onOpenManageFolders = onOpenManageFolders,
                 onSelectFolder = onSelectFolder,
                 onRestoreConversation = onRestoreConversation,
                 onConversationDeleteForever = onConversationDeleteForever,
@@ -464,8 +462,7 @@ private fun titleForRoute(route: AppRoute?, currentConversationTitle: String? = 
     is AppRoute.ContextCompression -> stringResource(R.string.route_context_compression)
     is AppRoute.DecisionModel -> stringResource(R.string.route_decision_model)
     is AppRoute.UsageStats -> stringResource(R.string.stats_page_title)
-    is AppRoute.ManageChats -> stringResource(R.string.history_page_title)
-    is AppRoute.ManageFolders -> stringResource(R.string.folders_page_title)
+    is AppRoute.ManageChats -> stringResource(R.string.manage_page_title)
     is AppRoute.ConversationTrash -> stringResource(R.string.drawer_trash_title)
     is AppRoute.ConversationTrashSearch -> stringResource(R.string.trash_search_title)
     is AppRoute.MessageSearch -> stringResource(R.string.search_history_hint)

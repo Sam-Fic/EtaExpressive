@@ -135,7 +135,6 @@ import io.github.mangi.eta.ui.screens.backup.DataBackupScreen
 import io.github.mangi.eta.ui.screens.browser.AgentBrowserScreen
 import io.github.mangi.eta.ui.screens.chat.ConversationTokenUsageScreen
 import io.github.mangi.eta.ui.screens.chat.ManageChatsScreen
-import io.github.mangi.eta.ui.screens.chat.ManageFoldersScreen
 import io.github.mangi.eta.ui.screens.chat.TrashScreen
 import io.github.mangi.eta.ui.screens.chat.TrashSearchScreen
 import io.github.mangi.eta.ui.screens.chat.MessageSearchScreen
@@ -614,7 +613,7 @@ fun AgentAppRoot(
     fun isSettingsDetailRoute(route: AppRoute): Boolean = when (route) {
         AppRoute.Home, AppRoute.Browser, AppRoute.Terminal,
         AppRoute.Settings, AppRoute.SettingsDetailEmpty,
-        AppRoute.ManageChats, AppRoute.ManageFolders, AppRoute.ConversationTrash,
+        AppRoute.ManageChats, AppRoute.ConversationTrash,
         AppRoute.ConversationTrashSearch, AppRoute.ConversationTokenUsage,
         AppRoute.SubAgentStatus, AppRoute.TerminalDaemonTasks -> false
         is AppRoute.MessageSearch -> false
@@ -851,6 +850,30 @@ fun AgentAppRoot(
         val activeConversationKey = remoteTarget
             ?.let { appViewModel.remoteCoordinator.conversationKey(it) }
             ?: (agentState.conversationPaneState.selectedConversationId ?: "new-conversation")
+        // 抽屉与管理页（AppRoute.ManageChats）共用的会话动作流：重命名 / 删除 / 移动到分类的
+        // 目标弹窗与导出流程全部宿主在本组件——busy 守卫、确认弹窗、ActivityResultLauncher
+        // 不随入口复制，两条入口链路指向同一份目标状态。
+        val requestConversationRename: (ConversationSummaryUi) -> Unit = { conversationRenameTarget = it }
+        val requestConversationDelete: (ConversationSummaryUi) -> Unit = { conversationDeleteTarget = it }
+        val requestMoveConversationToFolder: (ConversationSummaryUi) -> Unit = { conversationMoveTarget = it }
+        val exportConversation: (ConversationSummaryUi) -> Unit = { conversation ->
+            if (conversationExportBusy || conversationExportId != null) {
+                Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
+            } else {
+                conversationExportId = conversation.id
+                conversationExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
+                conversationExportConfirmation = true
+            }
+        }
+        val exportConversationAnalysis: (ConversationSummaryUi) -> Unit = { conversation ->
+            if (conversationAnalysisExportBusy || conversationAnalysisExportId != null) {
+                Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
+            } else {
+                conversationAnalysisExportId = conversation.id
+                conversationAnalysisExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
+                conversationAnalysisExportOptions = true
+            }
+        }
         AgentAppShell(
             currentRoute = route,
             isCurrentRoute = currentRoute == route,
@@ -944,40 +967,17 @@ fun AgentAppRoot(
             onOpenSubAgentStatus = { pushRoute(AppRoute.SubAgentStatus) },
             selectedProviderId = agentState.modelPickerState.selectedModel?.providerId,
             onSelectConversation = { conversationId -> selectConversation(conversationId) },
-            onConversationRename = { conversation ->
-                conversationRenameTarget = conversation
-            },
-            onConversationDelete = { conversation ->
-                conversationDeleteTarget = conversation
-            },
-            onMoveConversationToFolder = { conversation ->
-                conversationMoveTarget = conversation
-            },
+            onConversationRename = requestConversationRename,
+            onConversationDelete = requestConversationDelete,
+            onMoveConversationToFolder = requestMoveConversationToFolder,
             onConversationTogglePin = { conversation ->
                 agentState.toggleConversationPinned(conversation.id)
             },
-            onConversationExport = { conversation ->
-                if (conversationExportBusy || conversationExportId != null) {
-                    Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
-                } else {
-                    conversationExportId = conversation.id
-                    conversationExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
-                    conversationExportConfirmation = true
-                }
-            },
-            onConversationAnalysisExport = { conversation ->
-                if (conversationAnalysisExportBusy || conversationAnalysisExportId != null) {
-                    Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
-                } else {
-                    conversationAnalysisExportId = conversation.id
-                    conversationAnalysisExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
-                    conversationAnalysisExportOptions = true
-                }
-            },
+            onConversationExport = exportConversation,
+            onConversationAnalysisExport = exportConversationAnalysis,
             onOpenManageChats = { pushFromDrawer(AppRoute.ManageChats) },
-            // 抽屉搜索与管理聊天页的放大镜同一个目的地：跨会话全文搜索。
+            // 抽屉搜索与管理页的放大镜同一个目的地：跨会话全文搜索。
             onOpenDrawerSearch = { pushFromDrawer(AppRoute.MessageSearch()) },
-            onOpenManageFolders = { pushFromDrawer(AppRoute.ManageFolders) },
             onSelectFolder = { folderId -> agentState.selectFolder(folderId) },
             onRestoreConversation = { conversationId -> agentState.restoreConversationFromTrash(conversationId) },
             onConversationDeleteForever = { conversationId -> agentState.deleteConversationForever(conversationId) },
@@ -1465,6 +1465,8 @@ fun AgentAppRoot(
             entry<AppRoute.ManageChats>(swipeDismiss = navSwipeDismiss) {
                 ManageChatsScreen(
                     conversations = agentState.conversationPaneState.historyConversations,
+                    folders = agentState.conversationPaneState.folders,
+                    remoteCoordinator = appViewModel.remoteCoordinator,
                     onBack = ::popRoute,
                     onOpenConversation = { conversationId ->
                         selectConversation(conversationId)
@@ -1476,19 +1478,17 @@ fun AgentAppRoot(
                     onDeleteConversation = { conversation ->
                         agentState.deleteConversation(conversation.id)
                     },
-                    onOpenSearchHistory = { pushRoute(AppRoute.MessageSearch()) },
-                )
-            }
-            entry<AppRoute.ManageFolders>(swipeDismiss = navSwipeDismiss) {
-                ManageFoldersScreen(
-                    folders = agentState.conversationPaneState.folders,
-                    conversations = agentState.conversationPaneState.historyConversations,
-                    remoteCoordinator = appViewModel.remoteCoordinator,
-                    onBack = ::popRoute,
+                    // 单条菜单动作全部走宿主共享弹窗/导出流程（与抽屉长按菜单同一条链路）。
+                    onRequestDeleteConversation = requestConversationDelete,
+                    onRenameConversation = requestConversationRename,
+                    onExportConversation = exportConversation,
+                    onExportConversationAnalysis = exportConversationAnalysis,
+                    onMoveConversationToFolder = requestMoveConversationToFolder,
                     onCreateFolder = { name -> agentState.createFolder(name) },
                     onRenameFolder = { folderId, name -> agentState.renameFolder(folderId, name) },
                     onDeleteFolder = { folderId -> agentState.deleteFolder(folderId) },
                     onOpenRemoteAgents = { pushRoute(AppRoute.RemoteAgents) },
+                    onOpenSearchHistory = { pushRoute(AppRoute.MessageSearch()) },
                 )
             }
             entry<AppRoute.ConversationTrash>(swipeDismiss = navSwipeDismiss) {

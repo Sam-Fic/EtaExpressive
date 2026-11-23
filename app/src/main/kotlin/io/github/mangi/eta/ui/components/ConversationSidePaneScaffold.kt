@@ -57,7 +57,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.ManageHistory
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.AddComment
@@ -95,6 +94,7 @@ import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text as M3Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -109,6 +109,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.github.mangi.eta.ui.adaptive.EtaConnectedPosition
 import io.github.mangi.eta.ui.adaptive.EtaDimens
 import io.github.mangi.eta.ui.adaptive.EtaDialog
 import io.github.mangi.eta.ui.adaptive.EtaDialogActions
@@ -126,6 +127,7 @@ import io.github.mangi.eta.ui.adaptive.EtaSegmentedTitleSpacing
 import io.github.mangi.eta.ui.adaptive.EtaTextField
 import io.github.mangi.eta.ui.adaptive.EtaType
 import io.github.mangi.eta.ui.adaptive.etaConnectedColor
+import io.github.mangi.eta.ui.adaptive.etaConnectedButtonShapes
 import io.github.mangi.eta.ui.adaptive.etaTextStyle
 import io.github.mangi.eta.ui.layout.LocalPageContentWidth
 import io.github.mangi.eta.ui.layout.rememberIsWideScreen
@@ -262,7 +264,6 @@ fun ConversationSidePaneScaffold(
     onNewConversation: () -> Unit = {},
     onOpenSearchHistory: () -> Unit = {},
     onOpenManageChats: () -> Unit = {},
-    onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
     onRestoreConversation: (String) -> Unit = {},
     onConversationDeleteForever: (String) -> Unit = {},
@@ -490,7 +491,6 @@ fun ConversationSidePaneScaffold(
                     onConversationExport = onConversationExport,
                     onConversationAnalysisExport = onConversationAnalysisExport,
                     onOpenManageChats = onOpenManageChats,
-                    onOpenManageFolders = onOpenManageFolders,
                     onSelectFolder = onSelectFolder,
                     onRestoreConversation = onRestoreConversation,
                     onConversationDeleteForever = onConversationDeleteForever,
@@ -703,7 +703,6 @@ private fun ConversationPanePanel(
     onConversationExport: (ConversationSummaryUi) -> Unit = {},
     onConversationAnalysisExport: (ConversationSummaryUi) -> Unit = {},
     onOpenManageChats: () -> Unit = {},
-    onOpenManageFolders: () -> Unit = {},
     onSelectFolder: (String?) -> Unit = {},
     onRestoreConversation: (String) -> Unit = {},
     onConversationDeleteForever: (String) -> Unit = {},
@@ -742,7 +741,6 @@ private fun ConversationPanePanel(
         onConversationExport = onConversationExport,
         onConversationAnalysisExport = onConversationAnalysisExport,
         onOpenManageChats = onOpenManageChats,
-        onOpenManageFolders = onOpenManageFolders,
         onSelectFolder = onSelectFolder,
         onRestoreConversation = onRestoreConversation,
         onConversationDeleteForever = onConversationDeleteForever,
@@ -826,7 +824,6 @@ private fun Material3ConversationPane(
     onConversationExport: (ConversationSummaryUi) -> Unit,
     onConversationAnalysisExport: (ConversationSummaryUi) -> Unit,
     onOpenManageChats: () -> Unit,
-    onOpenManageFolders: () -> Unit,
     onSelectFolder: (String?) -> Unit,
     onRestoreConversation: (String) -> Unit = {},
     onConversationDeleteForever: (String) -> Unit = {},
@@ -898,6 +895,7 @@ private fun Material3ConversationPane(
             // 文件夹）与远程胶囊互斥。服务器在设置页删除后这里自然回落本机（匹配不到即视为未选中）。
             val remoteServers = remoteSection?.servers ?: emptyList()
             val selectedRemoteServer = remoteServers.firstOrNull { it.id == selectedRemoteServerId }
+            val chipCount = 2 + folders.size + remoteServers.size
             val chipScrollState = rememberScrollState()
             CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 40.dp) {
             Row(
@@ -912,11 +910,13 @@ private fun Material3ConversationPane(
                         .horizontalScrollEdgeFade(chipScrollState, DrawerMetrics.ChipRowEdgeFadeWidth)
                         .horizontalScroll(chipScrollState),
                     verticalAlignment = Alignment.CenterVertically,
-                    // 独立胶囊缝：与全仓 chip 行同款 8dp（原相连组是官方 2dp ConnectedSpaceBetween）
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    // 官方相连按钮组间距：ButtonGroupDefaults.ConnectedSpaceBetween = 2dp
+                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
                 ) {
+                    var chipIndex = 0
                     Material3DrawerChip(
                         text = stringResource(R.string.drawer_chats_chip),
+                        position = drawerGroupPosition(chipIndex++, chipCount),
                         selected = selectedRemoteServer == null && state.selectedFolderId == null,
                         selectable = true,
                         leadingIcon = null,
@@ -926,6 +926,7 @@ private fun Material3ConversationPane(
                     remoteServers.forEach { server ->
                         Material3DrawerChip(
                             text = server.name,
+                            position = drawerGroupPosition(chipIndex++, chipCount),
                             selected = selectedRemoteServer?.id == server.id,
                             selectable = true,
                             leadingContent = { RemoteStatusDot(server.status) },
@@ -934,6 +935,7 @@ private fun Material3ConversationPane(
                     }
                     Material3DrawerChip(
                         text = stringResource(R.string.drawer_uncategorized_chip),
+                        position = drawerGroupPosition(chipIndex++, chipCount),
                         selected = selectedRemoteServer == null &&
                             state.selectedFolderId == UNCATEGORIZED_FOLDER_ID,
                         selectable = true,
@@ -945,6 +947,7 @@ private fun Material3ConversationPane(
                     folders.forEach { folder ->
                         Material3DrawerChip(
                             text = folder.name,
+                            position = drawerGroupPosition(chipIndex++, chipCount),
                             selected = selectedRemoteServer == null && state.selectedFolderId == folder.id,
                             selectable = true,
                             leadingIcon = Icons.Rounded.Folder,
@@ -952,16 +955,8 @@ private fun Material3ConversationPane(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                // 独立胶囊按钮：始终贴右，不随文件夹列表滚动。
-                // 文件夹的新建 / 重命名 / 删除都在独立管理页完成，这里只负责入口。
-                // 图标用 FolderOpen 与左侧文件夹胶囊的 Folder 区分：这是「进入管理」的动作。
-                Material3DrawerChip(
-                    text = stringResource(R.string.drawer_manage_folders),
-                    selected = false,
-                    leadingIcon = Icons.Rounded.FolderOpen,
-                    onClick = onOpenManageFolders,
-                )
+                // 文件夹的新建 / 重命名 / 删除统一收进管理页（抽屉工具栏「管理」入口），
+                // 这里不再提供独立管理胶囊。
             }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -1079,12 +1074,50 @@ private fun Material3ConversationPane(
 
 }
 
+/** M3 抽屉：相连按钮组里的位置，决定官方相连形状哪一侧保持完全圆角。 */
+private enum class DrawerGroupPosition { Single, Leading, Middle, Trailing }
+
+private fun drawerGroupPosition(index: Int, count: Int): DrawerGroupPosition = when {
+    count <= 1 -> DrawerGroupPosition.Single
+    index <= 0 -> DrawerGroupPosition.Leading
+    index >= count - 1 -> DrawerGroupPosition.Trailing
+    else -> DrawerGroupPosition.Middle
+}
+
 /**
- * 抽屉胶囊配色：与语音设置页 / 外观设置页同款（[EtaExpressiveToggleButton] 里的官方
+ * 语音设置页 / 外观设置页同款的官方 `ToggleButtonShapes`，全部取自 `ButtonGroupDefaults`：
+ * 外侧 `CornerFull`、内侧 8dp，按压时内圆角收到 4dp，选中态 `checkedShape` 为
+ * `connectedButtonCheckedShape`（四角全大圆角）。
+ *
+ * 抽屉里可选中胶囊（第二排的「聊天 / 未分类」）恒为相连组的首 / 中 / 末位，
+ * `Single` 分支用官方单体形状令牌（`ToggleButtonDefaults.shape` 三件套）兜底。
+ */
+@Composable
+private fun drawerToggleButtonShapes(position: DrawerGroupPosition): ToggleButtonShapes = when (position) {
+    DrawerGroupPosition.Single -> ToggleButtonShapes(
+        ToggleButtonDefaults.shape,
+        ToggleButtonDefaults.pressedShape,
+        ToggleButtonDefaults.checkedShape,
+    )
+    DrawerGroupPosition.Leading -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+    DrawerGroupPosition.Middle -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+    DrawerGroupPosition.Trailing -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+}
+
+/** 抽屉的组内位置 → M3E 套件的相连位置（[etaConnectedButtonShapes] / `EtaMorphChipShape` 取后者的枚举）。 */
+private fun DrawerGroupPosition.toEtaConnectedPosition(): EtaConnectedPosition = when (this) {
+    DrawerGroupPosition.Single -> EtaConnectedPosition.Single
+    DrawerGroupPosition.Leading -> EtaConnectedPosition.Leading
+    DrawerGroupPosition.Middle -> EtaConnectedPosition.Middle
+    DrawerGroupPosition.Trailing -> EtaConnectedPosition.Trailing
+}
+
+/**
+ * 抽屉相连按钮组配色：与语音设置页 / 外观设置页同款（[EtaExpressiveToggleButton] 里的官方
  * `ToggleButton` 默认档）—— 未选中 `surfaceContainerHighest` / `onSurface`，选中
  * `primary` / `onPrimary`。
  *
- * 供不可选中的 `FilledTonalButton` 胶囊（独立「管理文件夹」）取同一套色。
+ * 供组内非 `ToggleButton` 成员（不可选中的 `FilledTonalButton`）取同一套色。
  */
 @Composable
 private fun drawerConnectedGroupColors(selected: Boolean): Pair<Color, Color> {
@@ -1097,20 +1130,20 @@ private fun drawerConnectedGroupColors(selected: Boolean): Pair<Color, Color> {
 }
 
 /**
- * M3 抽屉：过滤胶囊组的文字按钮。
+ * M3 抽屉：相连按钮组里的文字按钮。
  *
- * 可选中项（`selectable = true`，「聊天 / 远程服务器 / 未分类 / 文件夹」）用语音设置页 /
- * 外观设置页同款的 [EtaExpressiveToggleButton]：官方 `ToggleButton` 全圆角胶囊独立成形
- * （`ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight)`，取证 material3
- * 1.5.0-alpha29 AAR javap），选中 / 取消选中由官方组件内部对形状做 morph，
+ * 可选中项（`selectable = true`，第二排的「聊天 / 未分类」）用语音设置页 / 外观设置页同款的
+ * [EtaExpressiveToggleButton]：官方 `ToggleButton` + 官方 `ButtonGroupDefaults` 连体形状，
+ * 选中 / 取消选中由官方组件内部对形状做 morph（`checkedShape` 已是四角全大圆角），
  * 因此是连续渐变而不是闪现。
  *
- * 不可选中项（独立「管理文件夹」）保持官方 `FilledTonalButton` + `ButtonDefaults.shapes()`
- * （不切换选中态、也就没有形状变化），配色对齐到同一套官方档位。
+ * 不可选中项（第一排动作按钮、独立「新建文件夹」）保持官方 `FilledTonalButton` + 官方连体形状
+ * （它们不切换选中态、也就没有形状变化），配色对齐到同一套官方档位。
  */
 @Composable
 private fun Material3DrawerChip(
     text: String,
+    position: DrawerGroupPosition,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
@@ -1154,7 +1187,7 @@ private fun Material3DrawerChip(
             checked = selected,
             // 单选组：只在「被选中」时回调，点已选中项不会产生 uncheck 的中间态。
             onCheckedChange = { checked -> if (checked) onClick() },
-            shapes = ToggleButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
+            shapes = drawerToggleButtonShapes(position),
             modifier = modifier.semantics { role = Role.RadioButton },
             content = content,
         )
@@ -1162,7 +1195,7 @@ private fun Material3DrawerChip(
         val (containerColor, contentColor) = drawerConnectedGroupColors(selected = false)
         FilledTonalButton(
             onClick = onClick,
-            shapes = ButtonDefaults.shapes(),
+            shapes = etaConnectedButtonShapes(position.toEtaConnectedPosition()),
             modifier = modifier,
             colors = ButtonDefaults.filledTonalButtonColors(
                 containerColor = containerColor,
@@ -1239,12 +1272,12 @@ private fun Material3DrawerToolbar(
                 icon = Icons.Rounded.Search,
                 contentDescription = stringResource(R.string.action_search_history),
                 contentColor = toolbarColors.toolbarContentColor,
-                // 与管理聊天页的放大镜同一个目的地：全文搜索页（跨会话检索标题与消息）。
+                // 与管理页的放大镜同一个目的地：全文搜索页（跨会话检索标题与消息）。
                 onClick = onOpenSearchHistory,
             )
             Material3DrawerToolbarButton(
                 icon = Icons.Rounded.ManageHistory,
-                contentDescription = stringResource(R.string.drawer_manage_chats),
+                contentDescription = stringResource(R.string.manage_page_title),
                 contentColor = toolbarColors.toolbarContentColor,
                 onClick = onOpenManageChats,
             )
