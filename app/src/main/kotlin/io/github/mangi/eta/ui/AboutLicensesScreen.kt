@@ -92,6 +92,12 @@ private fun licenseEntries(): List<LicenseEntry> = listOf(
         summary = stringResource(R.string.licenses_entry_ncnn_summary),
         assetName = "licenses/ncnn-BSD-3-Clause.txt",
     ),
+    LicenseEntry(
+        id = "jsoup",
+        title = "jsoup (MIT)",
+        summary = stringResource(R.string.licenses_entry_jsoup_summary),
+        assetName = "licenses/jsoup-MIT.txt",
+    ),
 )
 
 /**

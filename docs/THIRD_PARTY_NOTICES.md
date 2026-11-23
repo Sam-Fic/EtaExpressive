@@ -6,7 +6,7 @@
 
 Eta 的免 Root Linux 后端以独立进程运行 [PRoot](https://github.com/termux/proot)，并静态链接 [talloc](https://talloc.samba.org/) 与 [libandroid-shmem](https://github.com/termux/libandroid-shmem)。PRoot 源码采用 GPL-2.0-or-later；talloc 采用 LGPL-3.0-or-later；libandroid-shmem 采用 BSD-3-Clause。附带的组合 PRoot 可执行程序按 GPL-3.0-or-later 分发，各组件版权与许可证保留。
 
-APK 的 `assets/native-sources` 附带校验过的原始源码，以及从实际构建入口自动生成的脚本、PTY 源码和补丁包；`assets/licenses` 附带许可证全文。构建脚本与说明位于 [终端原生组件](TERMINAL_NATIVE.md)。这些独立第三方程序保持其开源许可权利，不受 Eta 主项目非商业许可证的附加限制。
+APK 的 `assets/native-sources` 附带校验过的原始源码，以及从实际构建入口自动生成的脚本、PTY 源码和补丁包；`assets/licenses` 附带许可证全文。构建脚本与说明位于 [终端原生组件](TERMINAL_NATIVE.md)。这些独立第三方程序保持其开源许可权利，不受 Eta 主项目现行 GPL-3.0 许可证的附加限制。
 
 ## Material 3 组件
 
@@ -192,6 +192,24 @@ JADX 的发行包许可证会随所需 CLI 文件一并保留；Apktool、smali 
 
 GitHub 的实际制品域名不可达或较慢时，安装器可能通过 `gh-proxy.com` 请求同一个公开 Release URL；Node.js 制品可能先通过 `cdn.npmmirror.com` 请求。下载入口会获知用户的网络地址及所请求的公开制品；Eta 不向其发送账号、Cookie、API Key 或其他 Eta 数据，并在落盘前继续校验内置的官方制品大小与 SHA-256。不希望使用下载入口的用户可以不安装对应可选档案。
 
+## 内置浏览器（改编自 OpenMinis）
+
+内置浏览器的源码改编自 [OpenMinis](https://github.com/OpenMinis/OpenMinis)（`agent/browser/ported/` 包，22 个 Kotlin 文件），上游以 GPL-3.0-only 分发。各文件头部带 `Adapted from OpenMinis/OpenMinis @ 4ef29002e88db1e20e462ec2ff46916e8a7dcb45` 固定版本钉与 `SPDX-License-Identifier: GPL-3.0-only` 标注，适配明细见 `third_party/openminis-browser/NOTICE.md` 与 `PORT_STATUS.md`（Eta 访客路径映射、Cookie 卸载、限额、接管编排等）。
+
+该项目随 APK 分发。Eta 项目许可证已于 commit 2fafe5d6c 由 PolyForm Noncommercial 1.0.0 改为 GPL-3.0，与上游 GPL-3.0-only 同族兼容——改编代码随整体按 GPL-3.0 分发，对应源码可通过本仓库获取，满足上游保留许可证与归属的要求。
+
+## miuix（导航容器）
+
+页面切换转场使用 [miuix](https://github.com/compose-miuix-ui/miuix)（Maven 依赖 `libs.miuix.nav`，版本由 `gradle/libs.versions.toml` 声明）的 `NavDisplay` 导航容器，提供栈式转场动画与系统屏幕圆角适配；界面组件本体为 Material Design 3 Expressive，不使用 miuix 组件。miuix 采用 [Apache License 2.0](https://github.com/compose-miuix-ui/miuix/blob/main/LICENSE)，许可证全文随包见 `assets/licenses/Apache-2.0.txt`。
+
+## libxposed API / Service
+
+系统助手接管的 LSPosed 模块形态使用 [libxposed/api](https://github.com/libxposed/api) 与 [libxposed/service](https://github.com/libxposed/service)（Maven 依赖 `libs.libxposed.api` / `libs.libxposed.service`）。采用 [Apache License 2.0](https://github.com/libxposed/api/blob/main/LICENSE)，许可证全文随包见 `assets/licenses/Apache-2.0.txt`。
+
+## Maven 网络与解析基础依赖
+
+随包分发的 Maven 基础依赖：[OkHttp](https://github.com/square/okhttp)（含 `okhttp-sse`，[Apache License 2.0](https://github.com/square/okhttp/blob/master/LICENSE.txt)）承担网络与 SSE 流；[jsoup](https://jsoup.org/) 1.23.2（[MIT License](https://jsoup.org/license)，Copyright © 2009-2026 Jonathan Hedley）承担 HTML 解析。Apache-2.0 全文随包见 `assets/licenses/Apache-2.0.txt`；MIT 全文随包见 `assets/licenses/jsoup-MIT.txt`。
+
 ## 取餐码识别模块（移植自 Hyper-pick-up-code）
 
 Eta 的取餐码 / 取件码识别功能参考并移植自 badnng 的开源项目 [Hyper-pick-up-code（澎湃记）](https://github.com/badnng/Hyper-pick-up-code)，原项目以 [GNU Affero General Public License v3.0（AGPL-3.0-only）](https://www.gnu.org/licenses/agpl-3.0.txt) 分发，版权归原作者所有。
@@ -204,6 +222,6 @@ Eta 的取餐码 / 取件码识别功能参考并移植自 badnng 的开源项�
 - **onnxruntime-slim.aar**（`app/libs/`）：ONNX Runtime Android（CPU 变体，不含 QNN/NPU 后端），Microsoft，[MIT](https://github.com/microsoft/onnxruntime/blob/main/LICENSE)。
 - **opencv-slim.aar**（`app/libs/`）：OpenCV Android（slim 裁剪版，DB 后处理的 findContours/minAreaRect 依赖），Apache-2.0。
 
-移植进 Eta 的源码遵循上游的文件头标注：`com.paddle.ocr` 包与规则引擎文件保留原版权声明或注明移植来源；Shizuku 截屏后端（`agent/pickup/capture/PickupScreenshotCapture.kt`）参考原项目 `RootHelper` / `ShizukuScreenshotHelper`，Shizuku SDK（dev.rikka.shizuku）为 Apache-2.0。
+移植进 Eta 的源码遵循上游的文件头标注：`com.paddle.ocr` 包、规则引擎与 OCR 编排文件注明移植来源；内置规则集 `assets/rules/default_rules.json` 为原项目 `assets/default_rules.json` 的逐字副本（仅路径改名）；提醒通知/超级岛形态移植自 `SuperIslandHelper` / `NotificationHelper`（`agent/pickup/PickupCodeNotifier.kt` 与 `agent/live/MiuiIslandFocus.kt` 模板 16 段落头注明）；Shizuku 截屏后端（`agent/capture/AssistantScreenshotCapture.kt`，原取码私有后端已上收为助手级能力）参考原项目 `RootHelper` / `ShizukuScreenshotHelper`，Shizuku SDK（dev.rikka.shizuku）为 Apache-2.0。
 
 “澎湃记”“Hyper Note”及原项目 Logo 是官方项目的标识，Eta 不使用这些名称与标识，也不暗示获得官方背书。原项目 OOBE 中移植自 HyperCeiler 的视觉与动画内容不在本次移植范围，相关归属以其 [NOTICE](https://github.com/badnng/Hyper-pick-up-code/blob/main/NOTICE) 为准。

@@ -155,6 +155,7 @@ Dedicated retrieval for contacts, SMS, and calendars currently still requires Ro
 - [Zafiro](https://github.com/niki914/zafiro): Style reference for user conversation bubbles. Its bubble design is highly similar to Google Material Design 3 Expressive example bubbles, hence adopted and adapted into this project.
 - [Material Design 3 Expressive](https://m3.material.io): Official Google Material Design 3 Expressive site; the program's interface design language and visual style are referenced from its examples and specifications.
 - [KernelSU](https://github.com/tiann/KernelSU): Design reference for this app's "Appearance and Theme" sub-settings page.
+- vd-preview-gateway: local preview gateway for development-time forensics (MIT, copyright AcidGr, full text in `tools/vd-preview-gateway/LICENSE`); not distributed with the APK.
 - Additionally, thanks to all open-source models deployed and run locally on phones—including speech synthesis and recognition models, Embedding models, etc.—they enable EtaExpressive to complete voice interaction, semantic retrieval, and local inference without relying on the cloud.
 
 ## Community

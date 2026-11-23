@@ -11,5 +11,6 @@
     <string name="licenses_entry_apache2_summary">Apache License 2.0 · Offline speech engines and other bundled Apache-2.0 components</string>
     <string name="licenses_entry_onnxruntime_summary">MIT License · ONNX Runtime, bundled as libonnxruntime.so by the sherpa-onnx engine</string>
     <string name="licenses_entry_ncnn_summary">BSD 3-Clause · Tencent ncnn inference framework, bundled as libncnn.so by the sherpa-ncnn engine</string>
+    <string name="licenses_entry_jsoup_summary">MIT License · jsoup HTML parser, bundled as a Maven dependency</string>
     <string name="licenses_load_failed">Could not load this license file.</string>
 </resources>

@@ -1,4 +1,5 @@
 // 移植自 badnng/Hyper-pick-up-code（AGPL-3.0-only）com.Badnng.moe.rules.SimpleRulePack，算法与阈值逐字保留。
+// 本类加载的内置规则集 assets/rules/default_rules.json 为原项目 assets/default_rules.json 的逐字副本（仅路径改名）。
 // 合规登记见 docs/THIRD_PARTY_NOTICES.md「Hyper-pick-up-code」一节。
 
 package io.github.mangi.eta.agent.pickup.rules

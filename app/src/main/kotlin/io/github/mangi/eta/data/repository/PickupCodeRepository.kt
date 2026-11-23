@@ -2,6 +2,9 @@
 // 组织形态跟随 NotificationHistoryRepository（原生 SQLiteOpenHelper 独立库，不进
 // EtaDatabase 主迁移链）：取餐码是通知派生的低频个人记录，生命周期与保留策略
 // 独立于主业务库。全部方法为同步阻塞实现，调用方负责切到 Dispatchers.IO。
+// 存储层为本仓自建（非参考实现逐字移植）；产品语义（待取/已完成、保留策略、
+// 同码去重、完成联动撤卡）参考 badnng/Hyper-pick-up-code（AGPL-3.0-only），
+// 合规登记见 docs/THIRD_PARTY_NOTICES.md。
 // 记录变更与提醒通知联动（参考澎湃记 cancelNotification(orderId)）：提醒通知常驻到
 // 记录完成/删除为止，所以 markCompleted/delete/update/clearAll 在此统一撤卡
 // （id = code.hashCode()，原生与超级岛共用同一槽位，撤不存在的 id 是无害 no-op）。
