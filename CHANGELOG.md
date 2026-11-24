@@ -49,6 +49,8 @@ v5.6.0 之后 69 个提交的功能批：取餐码识别全链路落地并接上
 
 - docs(rules): 全文按「一句硬规矩」精简重组
 
+- test(ci): 发版门禁断言同步取码工具组、前缀预算、时间线过滤与视频附件 MIME
+
 ### Fixed
 
 - fix(db): 迁移 25→40 取 fix/migration-defaults 终态——COALESCE 兜 NOT NULL、修 DDL 模板；identity hash 不符时删 master table 走全量校验
@@ -72,6 +74,12 @@ v5.6.0 之后 69 个提交的功能批：取餐码识别全链路落地并接上
 - fix(voice): 助手弹窗屏幕 chip 行按语音条可见宽度同步收窄对齐
 
 - fix(test): 岛通知用例改走 Robolectric ShadowNotificationManager，补齐发版单测门禁
+
+- fix(pickup): 地点占位符改贪婪匹配，空规则包走内置标签兜底
+
+- fix(agent): 新 run 强制刷新前台服务通知，续跑按钮与单选行选中语义回正
+
+- fix(db): 25→40 迁移可空列保留 NULL，不再把旧数据填成 0
 
 ### Performance
 

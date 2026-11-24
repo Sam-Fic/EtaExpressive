@@ -152,7 +152,7 @@ class ContextOverheadBudgetTest {
     @Test
     fun allCapabilitiesStayWithinTheDocumentedCeiling() {
         // 上界：所有开关打开、所有组都被模型打开、并带上关闭说明——最坏的一轮。
-        // 上一次实测 39169（system 9008 + tools 30161 / 150 个工具）：关闭说明改为按组
+        // 上一次实测 42056（system 9512 + tools 32544 / 153 个工具）：关闭说明改为按组
         // 声明「不可用」后多了约 171 token（见 screenOffKeepsTheDisabledPrefixUnderBudget）。
         // 这一轮所有组都在场，所以按组门禁的三条指引照旧付费，省下的只有委派结果规则
         // （本 run 尚未派发，−750）、重复的一句细节处理、以及 personalTools=false 时的习惯分析句。
@@ -164,7 +164,7 @@ class ContextOverheadBudgetTest {
             withDisabledNotice = true,
             openedToolGroups = AgentToolGroups.allIds,
         )
-        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 41_500)
+        assertTrue("all-opened prefix grew to ${allOpened}", allOpened.total <= 42_500)
     }
 
     @Test

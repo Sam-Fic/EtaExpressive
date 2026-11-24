@@ -511,25 +511,25 @@ class AgentLiveIslandTest {
         val activity = Robolectric.buildActivity(MainActivity::class.java).get()
         val update = MainActivity::class.java.getDeclaredMethod("updateNotificationTarget", Intent::class.java)
             .apply { isAccessible = true }
-        val pickupToken = MainActivity::class.java.getDeclaredField("openPickupCodesRequest")
+        val pickupToken = MainActivity::class.java.getDeclaredMethod("getOpenPickupCodesRequest")
             .apply { isAccessible = true }
-        val conversationTarget = MainActivity::class.java.getDeclaredField("liveTargetConversationId")
+        val conversationTarget = MainActivity::class.java.getDeclaredMethod("getLiveTargetConversationId")
             .apply { isAccessible = true }
 
         val pickupIntent = Intent().putExtra(PickupCodeNotifier.EXTRA_OPEN_PICKUP_CODES, true)
         update.invoke(activity, pickupIntent)
         assertFalse(pickupIntent.hasExtra(PickupCodeNotifier.EXTRA_OPEN_PICKUP_CODES))
-        assertEquals(1, pickupToken.getInt(activity))
+        assertEquals(1, pickupToken.invoke(activity))
         update.invoke(activity, pickupIntent)
-        assertEquals(1, pickupToken.getInt(activity))
+        assertEquals(1, pickupToken.invoke(activity))
         update.invoke(activity, Intent().putExtra(PickupCodeNotifier.EXTRA_OPEN_PICKUP_CODES, true))
-        assertEquals(2, pickupToken.getInt(activity))
+        assertEquals(2, pickupToken.invoke(activity))
 
         val conversationIntent = Intent()
             .putExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID, "conversation-target")
         update.invoke(activity, conversationIntent)
         assertFalse(conversationIntent.hasExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID))
-        assertEquals("conversation-target", conversationTarget.get(activity))
+        assertEquals("conversation-target", conversationTarget.invoke(activity))
     }
 
     private fun assertPickupDoneAction(action: Notification.Action, code: String) {

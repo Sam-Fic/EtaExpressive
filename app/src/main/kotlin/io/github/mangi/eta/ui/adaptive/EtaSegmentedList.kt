@@ -544,6 +544,7 @@ fun EtaSegmentedRow(
     } else if (hapticClick != null) {
         SegmentedListItem(
             verticalAlignment = Alignment.CenterVertically,
+            selected = if (choiceRow) false else null,
             onClick = hapticClick,
             onLongClick = onLongClick,
             onLongClickLabel = onLongClickLabel,

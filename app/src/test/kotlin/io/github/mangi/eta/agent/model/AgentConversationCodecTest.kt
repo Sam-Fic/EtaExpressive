@@ -225,7 +225,7 @@ class AgentConversationCodecTest {
                 images = listOf(
                     AgentConversationCodec.PersistedImage(
                         path = "/data/user/0/io.github.mangi.eta/cache/eta-chat-images/c1/a.mp4",
-                        mimeType = "image/jpeg",
+                        mimeType = "video/mp4",
                         displayName = "chat-video-1.mp4",
                     ),
                 ),

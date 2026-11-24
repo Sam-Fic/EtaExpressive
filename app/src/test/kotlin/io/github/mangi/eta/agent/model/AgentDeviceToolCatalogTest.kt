@@ -45,7 +45,8 @@ class AgentDeviceToolCatalogTest {
                 AgentDeviceToolCatalog.deviceStateReadToolNames() +
                 setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
                 AgentToolGroupCatalog.USE_GROUP +
-                AgentToolSearchCatalog.SEARCH,
+                AgentToolSearchCatalog.SEARCH +
+                setOf(AgentPickupCodeToolCatalog.PICKUP_CODE),
             personalOnly,
         )
 
@@ -76,7 +77,8 @@ class AgentDeviceToolCatalogTest {
             AgentDeviceToolCatalog.personalReadToolNames() +
                 AgentDeviceToolCatalog.deviceStateReadToolNames() +
                 setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
-                AgentToolGroups.CALENDAR_GROUP.toolNames,
+                AgentToolGroups.CALENDAR_GROUP.toolNames +
+                setOf(AgentPickupCodeToolCatalog.PICKUP_CODE),
             names(deviceTools = false, personalTools = true),
         )
     }
@@ -95,7 +97,8 @@ class AgentDeviceToolCatalogTest {
             AgentDeviceToolCatalog.personalReadToolNames() +
                 setOf(AgentMediaSearchToolCatalog.SEARCH_MEDIA) +
                 AgentToolGroupCatalog.USE_GROUP +
-                AgentToolSearchCatalog.SEARCH,
+                AgentToolSearchCatalog.SEARCH +
+                setOf(AgentPickupCodeToolCatalog.PICKUP_CODE),
             withheld,
         )
 

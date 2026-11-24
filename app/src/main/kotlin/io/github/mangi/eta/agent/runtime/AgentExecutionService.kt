@@ -66,6 +66,7 @@ internal class AgentExecutionService : Service() {
     }
 
     private fun ensureForeground(force: Boolean = false) {
+        if (force) startRejected = false
         if ((foregroundActive && !force) || startRejected) return
         leases.attachOwner(owner)
         try {
@@ -319,12 +320,7 @@ internal class AgentExecutionService : Service() {
                     }
                     MiuiIslandFocus.warmUpProbeAsync(context)
                 }
-                val service = instance
-                if (service != null && service.foregroundActive) {
-                    service.ensureForeground(force = runStatus != null)
-                } else {
-                    service?.refreshNotification()
-                }
+                instance?.ensureForeground(force = true)
             }
         }
 

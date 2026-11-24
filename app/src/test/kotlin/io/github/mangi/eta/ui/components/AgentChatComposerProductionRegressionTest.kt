@@ -53,6 +53,7 @@ class AgentChatComposerProductionRegressionTest {
     private val fontScale = mutableStateOf(1f)
     private val streaming = mutableStateOf(false)
     private val paused = mutableStateOf(false)
+    private val visible = mutableStateOf<List<AgentChatMessageUi>>(emptyList())
     private val callback = mutableStateOf<(String) -> Unit>({ calls += "old:$it" })
     private val calls = mutableListOf<String>()
     private var appliedHistory = ""
@@ -138,7 +139,8 @@ class AgentChatComposerProductionRegressionTest {
         compose.onNodeWithContentDescription(text(R.string.chat_stop)).performClick()
         compose.runOnIdle {
             Assert.assertEquals("stop", calls.last())
-            streaming.value = false; paused.value = true
+            streaming.value = false
+            visible.value = listOf(SystemNoticeMessageUi("failed", SystemNoticeCode.RuntimeFailed))
         }
         compose.waitForIdle()
         compose.onNodeWithContentDescription(text(R.string.chat_continue), substring = true).performClick()
@@ -161,7 +163,7 @@ class AgentChatComposerProductionRegressionTest {
                 SideEffect { appliedHistory = currentHistory.lastOrNull()?.content.orEmpty() }
                 Box(Modifier.width(width.value)) {
                     AgentChatScaffold(
-                        visibleMessages = emptyList(), timelineEntries = emptyList(), hasMessages = false,
+                        visibleMessages = visible.value, timelineEntries = emptyList(), hasMessages = visible.value.isNotEmpty(),
                         scrollState = rememberLazyListState(), input = "", draftField = draft,
                         modelPickerState = model, history = currentHistory,
                         measuredContextTokens = measured.value, autoCompressEnabled = auto.value,

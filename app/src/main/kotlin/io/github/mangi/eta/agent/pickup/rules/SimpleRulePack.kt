@@ -204,7 +204,7 @@ object SimpleRuleTemplateCompiler {
                         codeDigitsOnly,
                         atTemplateEnd = template.substring(match.range.last + 1).isBlank(),
                     )
-                    "location" -> append("(.{1,100}?)")
+                    "location" -> append("(.{1,100})")
                     // 用于吞掉链接、时间等会变化但不需要保存的片段，不创建捕获组。
                     "any" -> append("(?:.*?)")
                 }
@@ -735,8 +735,7 @@ object SimpleRuleRuntime {
         }
 
         if (matchedBrands.isEmpty()) {
-            logDebug("品牌锁定失败: 没有品牌规则命中")
-            return emptyList()
+            logDebug("品牌锁定失败: 没有品牌规则命中，转内置标签兜底")
         }
 
         val results = mutableListOf<Pair<Int, SimpleRuleMatch>>()

@@ -90,7 +90,7 @@ class AgentPersonalToolGroupTest {
         val deviceState = AgentDeviceToolCatalog.deviceStateReadToolNames()
         assertEquals(emptySet<String>(), personal.intersect(deviceState))
         assertEquals(
-            personal + AgentMediaSearchToolCatalog.SEARCH_MEDIA,
+            personal + AgentMediaSearchToolCatalog.SEARCH_MEDIA + setOf(AgentPickupCodeToolCatalog.PICKUP_CODE),
             AgentToolGroups.PERSONAL_GROUP.toolNames,
         )
         assertEquals(deviceState, AgentToolGroups.DEVICE_STATE_GROUP.toolNames)

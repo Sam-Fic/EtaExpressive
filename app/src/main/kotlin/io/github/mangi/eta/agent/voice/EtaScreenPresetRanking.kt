@@ -385,7 +385,7 @@ internal object EtaScreenPresetOrdering {
         current.drop(1).forEach { preset ->
             val score = usage[preset] ?: 0.0
             // 首位为 0 时要求对手 > 0 且达到绝对门槛，避免冷启动就乱动顺序。
-            val dominant = if (headScore <= 0.0) score >= 1.0 else score >= headScore * DOMINANT_RATIO
+            val dominant = if (headScore <= 0.0) score >= 2.0 else score >= headScore * DOMINANT_RATIO
             if (dominant && score > bestScore) {
                 best = preset
                 bestScore = score

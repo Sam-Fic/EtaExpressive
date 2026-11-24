@@ -198,16 +198,18 @@ class UserTerminalControllerTest {
             val sessionId = (open as UserTerminalController.OpenResult.Ready).sessionId
 
             val firstDelta = CountDownLatch(1)
+            val release = File(temporaryFolder.root, "release-second")
             val output = StringBuilder()
             val execThread = thread(name = "test-user-terminal-exec") {
-                controller.exec(sessionId, "echo first; sleep 1; echo second") { text, _ ->
+                controller.exec(sessionId, "echo first; while [ ! -e '$release' ]; do sleep 0.05; done; echo second") { text, _ ->
                     output.append(text)
                     if (output.contains("first")) firstDelta.countDown()
                 }
             }
 
-            // 命令整体约 1 秒才结束；首段输出必须在这之前流式到达。
-            assertTrue("first delta should arrive before exec completes", firstDelta.await(500, TimeUnit.MILLISECONDS))
+            // 第一段到达后才放行第二段，避免用固定墙钟窗口与 CI 调度竞争。
+            assertTrue("first delta should arrive before exec completes", firstDelta.await(5, TimeUnit.SECONDS))
+            assertTrue(release.createNewFile())
             execThread.join(5_000)
             assertFalse(execThread.isAlive)
             assertTrue(output.toString().contains("second"))

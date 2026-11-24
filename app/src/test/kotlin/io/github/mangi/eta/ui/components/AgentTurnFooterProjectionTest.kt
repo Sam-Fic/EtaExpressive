@@ -87,7 +87,10 @@ class AgentTurnFooterProjectionTest {
             val rows = rows(messages)
             assertSame(answer, rows.turnFooters().values.single())
             assertEquals(rows.last().key, rows.turnFooters().keys.single())
-            assertEquals(messages, rows.originalMessages())
+            assertEquals(
+                messages.filterNot { it is AgentMessageUi && it.content.isBlank() && !it.isStreaming },
+                rows.originalMessages(),
+            )
         }
     }
 
