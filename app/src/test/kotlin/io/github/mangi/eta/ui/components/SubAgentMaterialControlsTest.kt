@@ -180,15 +180,15 @@ class SubAgentMaterialControlsTest {
         compose.onNodeWithText("测试提供商").assertExists()
         compose.onNodeWithText("下一提供商").assertExists()
         compose.onNode(isSelectable() and hasText("测试模型")).assertIsSelected()
-        compose.onNode(isSelectable() and hasText(noneText)).assertExists()
+        compose.onNode(hasText(noneText)).assertExists()
         // 点选其它模型仅暂存，确认后才提交。
-        compose.onNode(isSelectable() and hasText("下一模型")).performClick()
+        compose.onNode(hasText("下一模型")).performClick()
         compose.runOnIdle { assertNull(selectedModelId) }
         compose.onNodeWithText(confirmText).performClick()
         compose.runOnIdle { assertEquals("m-next", selectedModelId) }
         // 取消不提交也不清除。
         selectedModelId = null
-        compose.onNode(isSelectable() and hasText(noneText)).performClick()
+        compose.onNode(hasText(noneText)).performClick()
         compose.onNodeWithText(cancelText).performClick()
         compose.runOnIdle {
             assertNull(selectedModelId)

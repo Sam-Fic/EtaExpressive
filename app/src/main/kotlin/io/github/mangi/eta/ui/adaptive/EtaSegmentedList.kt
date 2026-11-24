@@ -541,24 +541,6 @@ fun EtaSegmentedRow(
             contentPadding = contentPadding,
             content = content,
         )
-    } else if (hapticClick != null && choiceRow) {
-        SegmentedListItem(
-            verticalAlignment = Alignment.CenterVertically,
-            selected = false,
-            onClick = hapticClick,
-            onLongClick = onLongClick,
-            onLongClickLabel = onLongClickLabel,
-            enabled = enabled,
-            shapes = shapes,
-            colors = colors,
-            modifier = modifier,
-            leadingContent = leadingContent,
-            trailingContent = trailingContent,
-            overlineContent = overlineContent,
-            supportingContent = supportingContent,
-            contentPadding = contentPadding,
-            content = content,
-        )
     } else if (hapticClick != null) {
         SegmentedListItem(
             verticalAlignment = Alignment.CenterVertically,
