@@ -758,8 +758,8 @@ private fun PreviewPageIndicator(
  * 两侧 item 依焦点递减缩小到 40~56dp 并 mask 裁形，吸附走官方默认 singleAdvanceFlingBehavior）。
  *
  * 组件取证（docs/RULES.md §1.3）：androidx.compose.material3:material3 1.5.0-alpha29，carousel 包三个文件均无
- * Experimental 注解（非实验 API）。证据：`/home/sam/Desktop/eta-m3-refs/compose-material3-1.5.0-alpha29-sources/
- * commonMain/androidx/compose/material3/carousel/Carousel.kt:108` —— 签名摘要
+ * Experimental 注解（非实验 API）。证据：该坐标 sources jar 解包目录下的
+ * `commonMain/androidx/compose/material3/carousel/Carousel.kt:108` —— 签名摘要
  * `HorizontalMultiBrowseCarousel(state: CarouselState, preferredItemWidth: Dp, modifier = Modifier,
  * itemSpacing: Dp = 0.dp, flingBehavior = CarouselDefaults.singleAdvanceFlingBehavior(state),
  * userScrollEnabled = true, minSmallItemWidth = CarouselDefaults.MinSmallItemSize /* 40.dp */,
@@ -767,9 +767,9 @@ private fun PreviewPageIndicator(
  * contentPadding: PaddingValues = PaddingValues(0.dp),
  * content: @Composable CarouselItemScope.(itemIndex: Int) -> Unit)`；
  * `CarouselState.scrollToItem / animateScrollToItem(item: Int, animationSpec: AnimationSpec<Float> = spring())`
- * （CarouselState.kt:86/99，内部即 pagerState.scrollToPage，item 序号与本预览页 pager 的
+ * （`CarouselState.kt:86/99`，内部即 pagerState.scrollToPage，item 序号与本预览页 pager 的
  * page 序号同一坐标系——currentItem 就是 pagerState.currentPage）；item 写法照官方 sample
- * （`/home/sam/Desktop/eta-m3-refs/Compose-Material-3-Expressive-Catalog/.../samples/CarouselSamples.kt:98`）：
+ * （同版本 Compose-Material-3-Expressive-Catalog 的 `samples/CarouselSamples.kt:98`）：
  * `maskClip(shape)` 裁形 + 选中态 `maskBorder(BorderStroke, shape)` 高亮环 + 点击翻页。
  *
  * 联动：[pagerState] 是唯一真源——点缩略图 `animateScrollToPage` 翻主图；主图停页（settledPage）

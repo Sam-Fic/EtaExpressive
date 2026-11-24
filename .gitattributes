@@ -55,6 +55,9 @@
 *.zip       binary
 *.keystore  binary
 *.jks       binary
+*.p12       binary
+*.apk       binary
+*.aab       binary
 *.bin       binary
 *.tflite    binary
 *.onnx      binary
