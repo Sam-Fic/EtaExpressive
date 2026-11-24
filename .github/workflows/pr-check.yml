@@ -47,6 +47,11 @@ jobs:
             exit 1
           fi
 
+      # 本地 pre-commit 钩子需要每人配一次 core.hooksPath，PR 来自 fork 时不一定装过；
+      # 这里对全部已跟踪文件再兜一层，避免大文件绕过钩子混进历史。
+      - name: 校验无超大文件入库
+        run: ./scripts/check-large-files.sh --all
+
       - name: 上传检查报告
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

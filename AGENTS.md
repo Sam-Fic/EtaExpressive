@@ -16,4 +16,5 @@ Eta — Android Jetpack Compose（Kotlin）+ Material 3 Expressive（material3 1
 - **契约测试同步**：`app/src/test/python/` 下的契约测试对 Kotlin 源码做文本级结构断言；改动被断言的源码结构（类名、函数签名、调用形态）必须同步修改对应契约测试，否则 CI verify 挂掉。
 - **发版装机**：本地构建安装用 `./gradlew :app:assembleRelease -x prepareSpeechRuntime --console=plain && adb install -r ...`（`-x` 必带，联网拉语音包会 502）；发版全流程见 `docs/RELEASE.md`。
 - **多会话并行提交**：只提交自己改动的那部分文件，纯自己的用 `git add`；与他人共改的文件先 `git show HEAD:<path>` 核对，不得用 `git stash`（会卷走并行会话的改动）。
+- **大文件不入库**：单文件上限 8 MiB、动图（GIF/WebP）6 MiB，由 `scripts/check-large-files.sh` 把关。clone 后执行一次 `git config core.hooksPath scripts/git-hooks` 启用 pre-commit 拦截；CI 的 `校验无超大文件入库` 会再兜一层。演示视频/动图请走 issue 附件 + README 链接——GitHub 会剥离仓库内相对路径的 `<video>`，只有 user-attachments 地址能内联播放，所以 mp4 放仓库并无收益。体积一旦写进历史只能靠重写全部提交哈希与已发布标签来清除，成本远高于提交前压缩。
 - **单测环境**：Gradle 测试 worker 在含中文的 `GRADLE_USER_HOME` 路径下起不来（`ClassNotFoundException: GradleWorkerMain`），定向单测加 `-Dorg.gradle.jvmargs="-Xmx2048m -Dfile.encoding=GBK"`，根治办法是把 Gradle 用户目录挪到纯 ASCII 路径。
