@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# 提交前闸门：拦截会撑大仓库的二进制文件。
+#
+# 启用（每个 clone 各做一次）：
+#   git config core.hooksPath scripts/git-hooks
+#
+# 为什么钩子要版本化放在 scripts/ 而不是 .git/hooks/：
+# .git/hooks 不受版本控制，每人得手工装一遍，等于没有。指向 scripts/git-hooks 后
+# 钩子随仓库分发，clone 完执行上面那行即可生效。
+#
+# 紧急绕过：git commit --no-verify（脚本本身也会提示）。
+
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+exec "$repo/scripts/check-large-files.sh"
