@@ -428,7 +428,7 @@ class AgentLiveIslandTest {
         cases.forEach { (orderType, palette) ->
             val code = "code-$orderType"
             PickupCodeNotifier.notifyNewCode(context, code, orderType, "示例品牌", null)
-            val notification = requireNotNull(manager.getNotification(code.hashCode()))
+            val notification = requireNotNull(shadowOf(manager).getNotification(code.hashCode()))
             assertEquals(palette.accentArgb, notification.color)
             val v2 = JSONObject(requireNotNull(notification.extras.getString("miui.focus.param")))
                 .getJSONObject("param_v2")
@@ -454,7 +454,7 @@ class AgentLiveIslandTest {
         cases.forEach { (orderType, palette) ->
             val code = "native-$orderType"
             PickupCodeNotifier.notifyNewCode(context, code, orderType, null, null)
-            assertEquals(palette.accentArgb, requireNotNull(manager.getNotification(code.hashCode())).color)
+            assertEquals(palette.accentArgb, requireNotNull(shadowOf(manager).getNotification(code.hashCode())).color)
         }
     }
 
@@ -470,7 +470,7 @@ class AgentLiveIslandTest {
             manager.cancelAll()
             Prefs.putLiveActivityStyle(style)
             PickupCodeNotifier.notifyNewCode(context, code, "餐食", "示例品牌", null)
-            val notification = requireNotNull(manager.getNotification(code.hashCode()))
+            val notification = requireNotNull(shadowOf(manager).getNotification(code.hashCode()))
             val open = shadowOf(requireNotNull(notification.contentIntent)).savedIntent
             assertEquals(MainActivity::class.java.name, open.component?.className)
             assertTrue(open.getBooleanExtra(PickupCodeNotifier.EXTRA_OPEN_PICKUP_CODES, false))

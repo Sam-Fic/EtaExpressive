@@ -71,6 +71,8 @@ v5.6.0 之后 69 个提交的功能批：取餐码识别全链路落地并接上
 
 - fix(voice): 助手弹窗屏幕 chip 行按语音条可见宽度同步收窄对齐
 
+- fix(test): 岛通知用例改走 Robolectric ShadowNotificationManager，补齐发版单测门禁
+
 ### Performance
 
 - perf(memory): 长 MEMORY.md 预览改为按行虚拟化，编辑收敛为显式切换（PR #1）
@@ -86,6 +88,8 @@ v5.6.0 之后 69 个提交的功能批：取餐码识别全链路落地并接上
 - build: ORT slim AAR 重打包定稿——两套 onnxruntime 同进程独立共存；补 ONNX Runtime 混淆保留规则
 
 - build: 加 .gitattributes 固定文本行尾为 LF；gitignore 补会话导出与本地产物忽略
+
+- build(ci): Kotlin 守护进程堆提到 6g，修复 release 元数据序列化 OOM
 
 ### Docs
 
