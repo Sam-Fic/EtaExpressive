@@ -70,6 +70,7 @@ import androidx.compose.material3.Text as M3Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -169,6 +170,20 @@ internal data class EtaScreenContextUiState(
     val phase: EtaScreenContextPhase = EtaScreenContextPhase.CONSUMED,
     val previewDataUrl: String? = null,
     val selected: Boolean = false,
+    /**
+     * 快捷预设的当前顺序（排序后）。空 = 用 [ScreenContextPreset.entries] 的固定顺序。
+     *
+     * 只在「一次唤起只定一次」的时机写入，见 [EtaAssistantOverlayService] 的入口采集收尾：
+     * chips 首次亮相就是最终顺序，不在用户眼前二次跳位。
+     */
+    val presetOrder: List<ScreenContextPreset> = emptyList(),
+    /**
+     * 排序归位闸门：true = 排序已经落定（或已降级），chips 可以出现。
+     *
+     * 唤醒后「正在准备当前屏幕」这段时间里排序还在跑，此时先不出 chips，
+     * 避免先按旧顺序亮一帧再跳位。识别超时也会置 true（降级为频次排序）。
+     */
+    val presetRankingSettled: Boolean = false,
 )
 
 internal object EtaScreenContextStateReducer {
@@ -940,7 +955,10 @@ private fun AssistantComposer(
     }
     // 快捷预设只在屏幕已采好、且输入区还是空的时候出现：一点即发，不抢用户正在打的草稿。
     // 语音进行中也保留（点预设会先退出语音再发送），与「添加当前屏幕」同排常驻。
+    // 排序归位闸门：[EtaScreenContextUiState.presetRankingSettled] 为 false 时先不出 chips，
+    // 等排序落定再一次性按最终顺序亮相，避免先按旧顺序亮一帧再跳位。
     val showScreenPresets = state.screenContext.phase == EtaScreenContextPhase.AVAILABLE &&
+        state.screenContext.presetRankingSettled &&
         !hasDraftContent
     Column(modifier = modifier) {
         ScreenContextAttachment(
@@ -1069,6 +1087,9 @@ private fun ScreenContextActionRow(
     val fadeExitSpec: FiniteAnimationSpec<Float> = MaterialTheme.motionScheme.fastEffectsSpec()
     val sizeSpec: FiniteAnimationSpec<IntSize> = MaterialTheme.motionScheme.defaultSpatialSpec()
     val scrollState = rememberScrollState()
+    // 排序结果只影响 chip 之间的先后，不改变 chip 身份：用 key 让 Compose 按预设复用节点，
+    // 顺序变化只是换位，不会重建每个 chip 的涟漪 / 交互状态。
+    val presetOrder = state.presetOrder.ifEmpty { ScreenContextPreset.entries }
     // 两端淡出带：滚动到中间时，被视口切一半的 chip 会留下硬切边。浮窗背景是透明的，
     // 不能盖一层同色渐变，这里用 DstIn 蒙版直接淡化内容本身（见 horizontalScrollEdgeFade）。
     // 只在对应方向真的还有内容可滚时才出现，停在两端时不会把完整可见的 chip 罩暗。
@@ -1109,19 +1130,21 @@ private fun ScreenContextActionRow(
                 exit = fadeOut(fadeExitSpec) + shrinkHorizontally(sizeSpec),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ScreenContextPreset.entries.forEach { preset ->
-                        ScreenContextActionChip(
-                            label = stringResource(preset.labelRes),
-                            enabled = enabled,
-                            onClick = { onPreset(preset) },
-                            icon = {
-                                Icon(
-                                    imageVector = preset.icon,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SuggestionChipDefaults.IconSize),
-                                )
-                            },
-                        )
+                    presetOrder.forEach { preset ->
+                        key(preset) {
+                            ScreenContextActionChip(
+                                label = stringResource(preset.labelRes),
+                                enabled = enabled,
+                                onClick = { onPreset(preset) },
+                                icon = {
+                                    Icon(
+                                        imageVector = preset.icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SuggestionChipDefaults.IconSize),
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -1129,7 +1152,13 @@ private fun ScreenContextActionRow(
     }
 }
 
-/** 「添加当前屏幕」chip：文案与图标随采集进度变化，外观与快捷预设完全一致。 */
+/**
+ * 「添加当前屏幕」chip：文案与图标随采集进度变化，外观与快捷预设完全一致。
+ *
+ * 采集阶段分两段：截屏（phase=CAPTURING）与排序（AVAILABLE 但闸门未开）。两段对外都
+ * 呈现同一个加载态——否则截屏刚结束、排序还在跑的那一小段时间里，这一行只有它一枚
+ * chip 且已变成可点的「添加当前屏幕」，紧接着 chips 整排弹出，观感是跳动而非加载。
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AddScreenContextChip(
@@ -1137,32 +1166,37 @@ private fun AddScreenContextChip(
     enabled: Boolean,
     onSelect: () -> Unit,
 ) {
+    // 截屏中，或截屏完成但排序未落定：都还没到「可以添加」的时点。
+    val preparing = state.phase == EtaScreenContextPhase.CAPTURING ||
+        (state.phase == EtaScreenContextPhase.AVAILABLE && !state.presetRankingSettled)
     ScreenContextActionChip(
-        label = when (state.phase) {
-            EtaScreenContextPhase.CAPTURING -> stringResource(R.string.voice_screen_preparing)
-            EtaScreenContextPhase.AVAILABLE -> stringResource(R.string.voice_screen_add)
-            EtaScreenContextPhase.UNAVAILABLE -> stringResource(R.string.voice_screen_unavailable)
-            EtaScreenContextPhase.CONSUMED -> ""
+        label = when {
+            preparing -> stringResource(R.string.voice_screen_preparing)
+            state.phase == EtaScreenContextPhase.AVAILABLE -> stringResource(R.string.voice_screen_add)
+            state.phase == EtaScreenContextPhase.UNAVAILABLE -> stringResource(R.string.voice_screen_unavailable)
+            else -> ""
         },
-        enabled = state.phase == EtaScreenContextPhase.AVAILABLE && enabled,
+        enabled = state.phase == EtaScreenContextPhase.AVAILABLE &&
+            state.presetRankingSettled &&
+            enabled,
         onClick = onSelect,
         icon = {
-            when (state.phase) {
-                EtaScreenContextPhase.CAPTURING -> LoadingIndicator(
+            when {
+                preparing -> LoadingIndicator(
                     modifier = Modifier.size(SuggestionChipDefaults.IconSize),
                     color = LocalContentColor.current,
                 )
-                EtaScreenContextPhase.AVAILABLE -> Icon(
+                state.phase == EtaScreenContextPhase.AVAILABLE -> Icon(
                     imageVector = Icons.Rounded.DesktopWindows,
                     contentDescription = null,
                     modifier = Modifier.size(SuggestionChipDefaults.IconSize),
                 )
-                EtaScreenContextPhase.UNAVAILABLE -> Icon(
+                state.phase == EtaScreenContextPhase.UNAVAILABLE -> Icon(
                     imageVector = Icons.Rounded.CancelPresentation,
                     contentDescription = null,
                     modifier = Modifier.size(SuggestionChipDefaults.IconSize),
                 )
-                EtaScreenContextPhase.CONSUMED -> Unit
+                else -> Unit
             }
         },
     )

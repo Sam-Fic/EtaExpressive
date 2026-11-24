@@ -38,6 +38,7 @@ import io.github.mangi.eta.EtaApp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.capture.AssistantScreenshotBackend
 import io.github.mangi.eta.agent.capture.AssistantScreenshotCapture
+import io.github.mangi.eta.agent.voice.EtaScreenSmartRankingSettings
 import io.github.mangi.eta.agent.voice.EtaVoiceInteractionService
 import io.github.mangi.eta.config.AssistantEntryMode
 import io.github.mangi.eta.config.PowerAssistantTarget
@@ -55,6 +56,7 @@ import io.github.mangi.eta.ui.adaptive.EtaNoticeText
 import io.github.mangi.eta.ui.adaptive.EtaScaffoldPage
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedDropdownRow
 import io.github.mangi.eta.ui.adaptive.EtaSegmentedGroupSpacing
+import io.github.mangi.eta.ui.adaptive.EtaSwitchRow
 import io.github.mangi.eta.ui.app.EnhancementSettingsHistory
 import io.github.mangi.eta.ui.app.rememberDeviceCapabilities
 import io.github.mangi.eta.ui.components.PreferenceIcon
@@ -194,6 +196,15 @@ internal fun SystemTakeoverSettingsScreen(
     //（本仓未引入可核验签名的监听入口），点击后轮询 isShizukuAvailable。
     var shizukuReachable by remember { mutableStateOf(AssistantScreenshotCapture.isShizukuReachable()) }
     var shizukuAvailable by remember { mutableStateOf(AssistantScreenshotCapture.isShizukuAvailable()) }
+    // 预设智能排序：独立 SharedPreferences（与取码同口径），只被入口浮窗消费。
+    // 首次读取放 DisposableEffect 而不是 remember 的初始化块：组合期不做磁盘 IO，
+    // 且设置页可能在浮窗之前打开（此时内存里还没有值）。
+    var smartRankingEnabled by remember { mutableStateOf(EtaScreenSmartRankingSettings.enabled) }
+    DisposableEffect(Unit) {
+        EtaScreenSmartRankingSettings.ensureLoaded(context)
+        smartRankingEnabled = EtaScreenSmartRankingSettings.enabled
+        onDispose { }
+    }
     fun requestShizuku() {
         shizukuReachable = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
         if (!shizukuReachable) return
@@ -403,6 +414,21 @@ internal fun SystemTakeoverSettingsScreen(
                         onClick = { requestShizuku() },
                     )
                 }
+            }
+            row {
+                // 智能排序：复用唤醒时的屏幕识别，给入口浮窗的快捷预设定序。
+                // 存储与「取码」同口径用独立 SharedPreferences（EtaScreenSmartRankingSettings），
+                // 不进 Prefs.Keys 键空间——它只被入口浮窗消费，不需要导出/恢复与 hook 同步。
+                EtaSwitchRow(
+                    title = stringResource(R.string.assistant_screen_preset_ranking_title),
+                    checked = smartRankingEnabled,
+                    onCheckedChange = { value ->
+                        EtaScreenSmartRankingSettings.setEnabled(context, value)
+                        smartRankingEnabled = value
+                    },
+                    summary = stringResource(R.string.assistant_screen_preset_ranking_summary),
+                    summaryOff = stringResource(R.string.assistant_screen_preset_ranking_summary_off),
+                )
             }
         }
 

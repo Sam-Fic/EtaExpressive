@@ -476,6 +476,9 @@
   <string name="assistant_screenshot_backend_root">Root</string>
   <string name="assistant_screenshot_backend_shizuku">Shizuku</string>
   <string name="assistant_screenshot_shizuku_grant_title">Grant Shizuku capture</string>
+  <string name="assistant_screen_preset_ranking_title">Smart shortcut ordering</string>
+  <string name="assistant_screen_preset_ranking_summary">Orders actions by the foreground app and screen content; Add current screen stays first and payment or password screens are skipped</string>
+  <string name="assistant_screen_preset_ranking_summary_off">Keeps a fixed order and never reads the screen</string>
   <string name="assistant_screenshot_shizuku_grant_summary">Requires a running Shizuku service; enables rootless capture fallback</string>
   <string name="pickup_projection_done">Saved %d pickup code(s)</string>
   <string name="pickup_group_pending">Pending (%d)</string>

@@ -111,6 +111,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -312,6 +313,8 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         entryCaptureJob?.cancel()
         entryCaptureJob = null
         screenContextAttachment = null
+        // 唤醒识别结果与这一屏绑定，服务销毁后没有任何附件能再对上它，直接丢弃。
+        EtaScreenWakeOcrCache.clear()
         // 关闭浮窗只结束 UI 承载，不打断正在 Runtime 中推进的对话：运行协程挂在独立的
         // runScope 上，会在结果回执后自行回收；只有显式停止（stopCurrentRun）才取消运行。
         // onCreate 之前就被销毁（例如启动即失败）时这些对象还不存在，不能直接访问。
@@ -441,29 +444,257 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         }
     }
 
-    /** 入口截屏收尾：挂附件、落 AVAILABLE/UNAVAILABLE 态并呈现入口（过期代次丢弃）。 */
+    /**
+     * 入口截屏收尾：挂附件、落 AVAILABLE/UNAVAILABLE 态并呈现入口（过期代次丢弃）。
+     *
+     * 「唤醒即排序」的落点：附件就位就立刻落 AVAILABLE（「添加当前屏幕」保持即时可用，
+     * 不为排序多等），排序另开协程补齐——chips 由
+     * [EtaScreenContextUiState.presetRankingSettled] 闸门压住，落定后才一次性按最终顺序出现，
+     * 不会先按旧顺序亮一帧再跳位。
+     */
     private fun finalizeEntryCapture(
         generation: Long,
         voiceWake: Boolean,
         attachment: EtaScreenContextAttachment?,
     ) {
         scope.launch {
+            // 学习顺序在 IO 线程先读好：它只是 chips 的初始底座，不能占主线程做磁盘读。
+            // 整个读取必须自带兜底——本 scope 没有 CoroutineExceptionHandler，
+            // 排序这个增强项一旦抛异常就会连带跳过 presentEntry、把入口浮窗卡死。
+            val learnedOrder = if (attachment == null) {
+                emptyList()
+            } else {
+                readLearnedOrderSafely()
+            }
             withContext(Dispatchers.Main.immediate) {
                 if (generation != entryGeneration) return@withContext
                 entryCaptureJob = null
                 screenContextAttachment = attachment
                 uiState = uiState.copy(
                     screenContext = if (attachment == null) {
-                        EtaScreenContextUiState(phase = EtaScreenContextPhase.UNAVAILABLE)
+                        EtaScreenContextUiState(
+                            phase = EtaScreenContextPhase.UNAVAILABLE,
+                            presetRankingSettled = true,
+                        )
                     } else {
                         EtaScreenContextUiState(
                             phase = EtaScreenContextPhase.AVAILABLE,
                             previewDataUrl = attachment.previewDataUrl,
+                            // 先摆好已学习顺序（闸门未开，chips 还没显示），
+                            // 排序结果回来后覆盖它并揭开闸门。
+                            presetOrder = learnedOrder,
+                            presetRankingSettled = false,
                         )
                     },
                 )
                 presentEntry(generation, voiceWake)
             }
+            if (attachment == null) return@launch
+            settlePresetRanking(generation, attachment)
+        }
+    }
+
+    /** 读学习顺序；失败退回空表（空表 = UI 侧用固定顺序），绝不向上抛。 */
+    private fun readLearnedOrderSafely(): List<ScreenContextPreset> =
+        runCatching { EtaScreenPresetOrderStore.read(applicationContext) }
+            .onFailure {
+                AndroidAgentLogger.warnThrottled("eta_screen_preset_order_read_failed") {
+                    "Eta screen preset order read failed: type=${it.javaClass.simpleName}"
+                }
+            }
+            .getOrDefault(emptyList())
+
+    /**
+     * 当前屏幕的文本，供排序使用：无障碍树优先，取不到才 OCR。
+     *
+     * 无障碍树是纯内存遍历，比「解码位图 + 全图推理」便宜一个数量级，而且没有识别误差。
+     * 只在 WebView / Canvas / 图片这类读不到文字的页面上才需要走到 OCR。
+     * 任何一层失败都返回 null，由排序退回「已学习顺序 + 频次」。
+     */
+    private suspend fun screenTextForRanking(
+        reference: String,
+        signal: EtaScreenSignal,
+    ): String? = runCatching {
+        EtaScreenWakeOcr.screenTextForRanking(
+            context = applicationContext,
+            reference = reference,
+            accessibilityText = signal.text,
+        )
+    }.onFailure {
+        AndroidAgentLogger.warnThrottled("eta_assistant_wake_ocr_failed") {
+            "Eta assistant wake OCR failed: type=${it.javaClass.simpleName}"
+        }
+    }.getOrNull()
+
+    /**
+     * 采集当前屏幕的无障碍信号（文本 + 密码框）。
+     *
+     * 在排序阶段读，而不是复用截屏那次调用：`captureScreenshotExcludingOverlays` 只回
+     * 位图，不回节点树，两者没有可复用的中间结果。这次查询经 `runOnMainSync` 投递到
+     * 主线程，是纯内存遍历（上限 120 节点），相对 OCR 可忽略。
+     *
+     * 读不到（无障碍未启用 / 节点被系统裁剪）时返回空信号，排序退回 OCR。
+     * 敏感页判定依赖这里的密码框结果，因此无法省掉这一次查询。
+     */
+    private fun captureScreenSignal(): EtaScreenSignal =
+        runCatching {
+            val service = AgentAccessibilityService.current()
+                ?: return@runCatching EtaScreenSignal(text = "", hasPasswordField = false)
+            val nodes = service.queryNodes(EtaScreenWakeOcr.accessibilityNodeLimit())
+            EtaScreenWakeOcr.screenSignalOf(nodes)
+        }.onFailure {
+            AndroidAgentLogger.warnThrottled("eta_screen_ranking_a11y_failed") {
+                "Eta screen ranking accessibility signal failed: type=${it.javaClass.simpleName}"
+            }
+        }.getOrDefault(EtaScreenSignal(text = "", hasPasswordField = false))
+
+    /**
+     * 唤醒识别 + 定序，结果回写 UI（闸门置 true 让 chips 亮出）。
+     *
+     * 信号优先级：前台包名 > 屏幕文字 > 历史频次（见 [EtaScreenPresetRanking]）。
+     * 包名判得出来就完全不跑 OCR——这是唤醒延迟最省的一条路径。
+     *
+     * 识别以 [EtaScreenWakeOcr.RANKING_OCR_TIMEOUT_MS] 封顶：超时就先按已学习顺序 + 频次
+     * 收敛出 chips，**识别本身不取消**（[kotlinx.coroutines.async] 不是等待方的子作用域），
+     * 跑完后照常写缓存——用户随后点「记取码」仍命中。
+     *
+     * 全链路兜底：本方法任何位置抛异常都只降级排序，绝不影响已挂好的入口浮窗。
+     */
+    private suspend fun settlePresetRanking(
+        generation: Long,
+        attachment: EtaScreenContextAttachment,
+    ) {
+        try {
+            settlePresetRankingInternal(generation, attachment)
+        } catch (cancellation: CancellationException) {
+            // 服务销毁 / 重新唤起导致的作用域取消：不是失败，交回协程框架。
+            throw cancellation
+        } catch (error: Throwable) {
+            AndroidAgentLogger.warnThrottled("eta_screen_preset_ranking_failed") {
+                "Eta screen preset ranking failed: type=${error.javaClass.simpleName}"
+            }
+            // 排序失败必须揭开闸门，否则 chips 永远不出现——宁可顺序不智能，
+            // 也不能让用户看到一排空白。
+            withContext(Dispatchers.Main.immediate) {
+                if (generation != entryGeneration) return@withContext
+                uiState = uiState.copy(
+                    screenContext = uiState.screenContext.copy(presetRankingSettled = true),
+                )
+            }
+        }
+    }
+
+    /**
+     * 把某个固定顺序落到 UI 并揭开闸门。
+     *
+     * 「放弃智能排序」的三条出口（开关关闭 / 敏感页 / 任何异常）都走这里：顺序直接给定，
+     * 不写学习顺序、不记频次——放弃排序的语义就是「这一屏不参与任何推断」。
+     */
+    private suspend fun settleRanking(
+        order: List<ScreenContextPreset>,
+        generation: Long,
+    ) {
+        withContext(Dispatchers.Main.immediate) {
+            if (generation != entryGeneration) return@withContext
+            uiState = uiState.copy(
+                screenContext = uiState.screenContext.copy(
+                    presetOrder = order,
+                    presetRankingSettled = true,
+                ),
+            )
+        }
+    }
+
+    private suspend fun settlePresetRankingInternal(
+        generation: Long,
+        attachment: EtaScreenContextAttachment,
+    ) {
+        EtaScreenSmartRankingSettings.ensureLoaded(applicationContext)
+        val enabled = EtaScreenSmartRankingSettings.enabled
+        // 排序关闭时连屏幕文本都不读：设置页承诺「不读取屏幕内容」（
+        // assistant_screen_preset_ranking_summary_off），这里必须整段短路，
+        // 不能先读再做判断。回到固定顺序并立即揭开闸门。
+        if (!enabled) {
+            settleRanking(ScreenContextPreset.entries, generation)
+            return
+        }
+        val learned = readLearnedOrderSafely()
+        val usage = runCatching { EtaScreenPresetUsage.scores(applicationContext) }
+            .getOrDefault(emptyMap())
+        val reference = attachment.image.reference
+
+        // 包名与无障碍信号各一次查询、零 OCR，先拿到再决定要不要识别。
+        val foregroundPackage = runCatching {
+            AgentAccessibilityService.current()?.currentPackageName()
+        }.getOrNull()
+        val signal = captureScreenSignal()
+
+        // 敏感页（支付 / 银行 / 密码框 / 系统设置）整体放弃排序：
+        // 屏幕文本等于用户正在做什么，这类页面不推断、不学习、不记频次。
+        if (EtaScreenPresetAffinity.isSensitiveScreen(
+                packageName = foregroundPackage,
+                hasPasswordField = signal.hasPasswordField,
+            )
+        ) {
+            settleRanking(ScreenContextPreset.entries, generation)
+            return
+        }
+        val affinity = runCatching {
+            EtaScreenPresetAffinity.affinity(applicationContext, foregroundPackage)
+        }.getOrNull()
+
+        // 包名已判出：直接定序，不跑 OCR。这是唤醒延迟最省的一条路径，
+        // 也是这次「包名先验」相对纯 OCR 排序的主要收益。
+        //
+        // 这里必须直接在当前协程里 await，不要再套一层 scope.async：
+        // 超时语义是「只放弃等待、不取消识别」，嵌套两层会让外层超时后内层仍在跑，
+        // 而抛出的取消会顺着内层 scope 影响缓存写入时机。
+        val screenText: String? = if (affinity != null) {
+            null
+        } else {
+            // async 挂在 scope 上而不是本协程下：withTimeoutOrNull 超时只放弃「等待」，
+            // 不取消识别；识别跑完仍会把结果写进缓存供「记取码」复用。
+            //
+            // 注意：screenTextForRanking 内部**不得**再起一层 async。两层叠加时外层超时
+            // 只丢弃等待结果，内层继续跑并在稍后写缓存；而外层若因作用域取消而失败，
+            // 内层协程的写缓存时机会与下一次唤起的 entryGeneration 检查错位。
+            val textJob = scope.async(Dispatchers.IO) {
+                screenTextForRanking(reference, signal)
+            }
+            withTimeoutOrNull(EtaScreenWakeOcr.RANKING_OCR_TIMEOUT_MS) { textJob.await() }
+        }
+
+        val interfaceIsChinese = EtaScreenInterfaceLocale.isChinese(this)
+        val order = EtaScreenPresetRanking.rank(
+            learned = learned,
+            screenText = screenText,
+            usage = usage,
+            enabled = enabled,
+            affinity = affinity,
+            interfaceIsChinese = interfaceIsChinese,
+        )
+        // 频次收敛的结果回写学习顺序，下次唤醒从这里继续收敛；上下文信号（包名 / 关键词）
+        // 只作用于本次，免得偶发的一屏取码页把这个预设长期钉在首位。
+        val nextLearned = EtaScreenPresetRanking.learnedAfterWake(
+            learned = learned,
+            screenText = screenText,
+            usage = usage,
+            enabled = enabled,
+            affinity = affinity,
+            interfaceIsChinese = interfaceIsChinese,
+        )
+        if (nextLearned != learned) {
+            runCatching { EtaScreenPresetOrderStore.write(applicationContext, nextLearned) }
+        }
+
+        withContext(Dispatchers.Main.immediate) {
+            if (generation != entryGeneration) return@withContext
+            uiState = uiState.copy(
+                screenContext = uiState.screenContext.copy(
+                    presetOrder = order,
+                    presetRankingSettled = true,
+                ),
+            )
         }
     }
 
@@ -1454,6 +1685,26 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         uiState = uiState.copy(
             screenContext = uiState.screenContext.copy(selected = true),
         )
+        // 记一次点击：用于「无上下文命中」时的低频换位（EtaScreenPresetUsage）与表外应用的
+        // 包名关联学习（EtaScreenPresetAffinity）。落盘一律走 IO，不能落在点击的首帧上。
+        scope.launch(Dispatchers.IO) {
+            val foregroundPackage = runCatching {
+                AgentAccessibilityService.current()?.currentPackageName()
+            }.getOrNull()
+            // 敏感页上的点击不参与任何学习：那里的行为最能暴露用户私事，
+            // 记下来既无助于排序，也不该留下痕迹。
+            if (EtaScreenPresetAffinity.isSensitiveScreen(
+                    packageName = foregroundPackage,
+                    hasPasswordField = false,
+                )
+            ) {
+                return@launch
+            }
+            runCatching { EtaScreenPresetUsage.record(applicationContext, preset) }
+            runCatching {
+                EtaScreenPresetAffinity.record(applicationContext, foregroundPackage, preset)
+            }
+        }
         if (preset == ScreenContextPreset.PICKUP_CODE) {
             submitPickupPresetWithLocalOcr()
             return
@@ -1477,6 +1728,9 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
         }
         val basePrompt = getString(R.string.voice_screen_preset_pickup_prompt)
         scope.launch {
+            // 唤醒时已对同一帧跑过 Pass1（见 settlePresetRanking），这里直接接上，
+            // 省掉一次全图推理；缓存未命中（识别超时 / 关闭排序）时退回自行识别。
+            val cachedPass1 = EtaScreenWakeOcrCache.take(attachment.image.reference)?.pass1
             // 有界等待：首帧冷启动含模型加载也封顶 [PICKUP_OCR_TIMEOUT_MS]，超时走视觉兜底。
             // withTimeoutOrNull 超时返回 null → orEmpty 归一为空列表。
             val localResult = withTimeoutOrNull(PICKUP_OCR_TIMEOUT_MS) {
@@ -1484,6 +1738,7 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
                     PickupCodeExtractor.fromScreenContextReference(
                         applicationContext,
                         attachment.image.reference,
+                        existingPass1 = cachedPass1,
                     )
                 }.onFailure {
                     AndroidAgentLogger.warn(
@@ -1543,11 +1798,14 @@ internal class EtaAssistantOverlayService : Service(), LifecycleOwner, SavedStat
             var ocrThrownType: String? = null
             var persistThrownType: String? = null
             try {
+                // 唤醒时已对同一帧跑过 Pass1（见 settlePresetRanking），这里直接接上。
+                val cachedPass1 = EtaScreenWakeOcrCache.take(attachment.image.reference)?.pass1
                 val drafts = withTimeoutOrNull(PICKUP_OCR_TIMEOUT_MS) {
                     runCatching {
                         PickupCodeExtractor.fromScreenContextReference(
                             applicationContext,
                             attachment.image.reference,
+                            existingPass1 = cachedPass1,
                         )
                     }.onFailure {
                         ocrThrownType = it.javaClass.simpleName

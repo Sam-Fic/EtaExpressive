@@ -1068,6 +1068,9 @@
   <string name="assistant_screenshot_backend_root">Root</string>
   <string name="assistant_screenshot_backend_shizuku">Shizuku</string>
   <string name="assistant_screenshot_shizuku_grant_title">授权 Shizuku 截屏</string>
+  <string name="assistant_screen_preset_ranking_title">快捷功能智能排序</string>
+  <string name="assistant_screen_preset_ranking_summary">按前台应用与屏幕内容把最可能用到的功能排到前面；「添加当前屏幕」固定首位，支付与密码页不参与排序</string>
+  <string name="assistant_screen_preset_ranking_summary_off">按固定顺序排列，不读取屏幕内容</string>
   <string name="assistant_screenshot_shizuku_grant_summary">需要正在运行的 Shizuku 服务；授权后可免 Root 兜底截屏</string>
   <string name="pickup_projection_done">已保存 %d 个取码</string>
   <string name="pickup_group_pending">待取（%d）</string>

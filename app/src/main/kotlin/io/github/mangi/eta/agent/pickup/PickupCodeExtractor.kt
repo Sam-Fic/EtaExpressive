@@ -74,14 +74,24 @@ object PickupCodeExtractor {
         }
     }
 
-    /** 图片通道：截图识别。返回页面级裁决后的候选（通常 1 条，多卡列表可多条）。 */
+    /**
+     * 图片通道：截图识别。返回页面级裁决后的候选（通常 1 条，多卡列表可多条）。
+     *
+     * [existingPass1] 供唤醒链路复用：入口浮窗在排序阶段可能已对同一帧跑过 Pass1
+     * （包名与无障碍树都判不出来、必须靠 OCR 看文字时），这里直接接上，省掉一次全图推理。
+     * 命中时坐标口径一致（同一张位图、同一引擎、同一缩放），两步引擎的裁剪框仍按原图算。
+     *
+     * 未命中（包名或无障碍树已判出、排序没跑 OCR）时传 null，本方法自行识别——
+     * 功能不受影响，只是没有加速。
+     */
     suspend fun fromBitmap(
         context: Context,
         bitmap: Bitmap,
         sourcePackage: String? = null,
+        existingPass1: PickupOcrEngine.RecognizeResult? = null,
     ): List<PickupCodeDraft> {
         val engine = PickupOcrEngine.getInstance(context)
-        val pass1 = engine.recognizeAsync(bitmap)
+        val pass1 = existingPass1 ?: engine.recognizeAsync(bitmap)
             ?: return emptyList()
 
         // 瑞幸二维码在 Eta 无条码扫描通道（ML Kit 未引入），qrData 恒为 null；
@@ -124,16 +134,20 @@ object PickupCodeExtractor {
     /**
      * 屏幕上下文引用通道：解码 data URL / 本地文件引用为 Bitmap 后走 [fromBitmap]。
      * 助手面板的 screenContextAttachment.image.reference 是 base64 data URL（原生无损档）。
+     *
+     * [existingPass1] 是唤醒链路的复用入口：入口浮窗已对同一帧跑过 Pass1（见
+     * [fromBitmap]），此时只解码位图供两步引擎裁剪，Pass1 直接用传进来的结果。
      */
     suspend fun fromScreenContextReference(
         context: Context,
         reference: String,
+        existingPass1: PickupOcrEngine.RecognizeResult? = null,
     ): List<PickupCodeDraft> {
         val bytes = decodeReference(reference) ?: return emptyList()
         val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             ?: return emptyList()
         return try {
-            fromBitmap(context, bitmap)
+            fromBitmap(context, bitmap, existingPass1 = existingPass1)
         } finally {
             bitmap.recycle()
         }
@@ -152,6 +166,16 @@ object PickupCodeExtractor {
         }
         val file = java.io.File(trimmed.removePrefix("file://"))
         return file.takeIf { it.isFile }?.runCatching { readBytes() }?.getOrNull()
+    }
+
+    /**
+     * 引用 → 位图解码，供唤醒链路的 Pass1 使用（见 [pass1FromReference]）。
+     * 与 [fromScreenContextReference] 走同一条解码路径，保证两次拿到的像素完全一致；
+     * 调用方负责 recycle。
+     */
+    internal fun decodeReferenceBitmap(reference: String): Bitmap? {
+        val bytes = decodeReference(reference) ?: return null
+        return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
 
     /**
