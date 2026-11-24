@@ -7,8 +7,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import io.github.mangi.eta.R
 import io.github.mangi.eta.config.LiveActivityStyle
@@ -19,7 +17,7 @@ import io.github.mangi.eta.ui.haptics.AppForeground
 /**
  * 任务完成横幅：Agent run 终态的独立系统通知。
  *
- * 与执行卡（[io.github.mangi.eta.agent.runtime.AgentExecutionService]，LOW 渠道常驻）分开
+ * 与执行卡（[io.github.mangi.eta.agent.runtime.AgentExecutionService]）分开
  * 发布：独立 id 由会话派生，避免同 id 更新被系统静默合并——HyperOS / ColorOS 的岛对
  * 「新 id 首发」才渲染展开横幅。DEFAULT 渠道带声音振动，把终态提示出岛外。
  *
@@ -55,6 +53,7 @@ internal object AgentCompletionNotifier {
         )
         val builder = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(kind.palette.accentArgb)
             .setContentTitle(context.getString(kind.titleRes))
             .setContentIntent(open)
             .setAutoCancel(true)
@@ -113,15 +112,12 @@ internal object AgentCompletionNotifier {
     // ── 岛终态（实时活动提醒）──────────────────────────────────────
     // Number444 fork 真机定稿：岛「展开」只能跟着新 id 首发 alert 走（同 id 更新永不展开），
     // 且需频道在系统设置里开启「悬浮通知」。完成态在 eta_island 频道（静音 DEFAULT）用固定
-    // 新 id 首发，HyperOS 渲染为岛展开，约 8 秒后自动撤销；失败/停止不展开、由执行卡安静
-    // 收尾。持久横幅（notifyTerminal）并行发布，各司其职。呈现方式（应用级设置）门控：
+    // 新 id 首发，HyperOS 渲染为岛展开；不设定时撤销，直到用户清除或下一次任务替换。
+    // 失败/停止不展开、由执行卡安静收尾。持久横幅（notifyTerminal）并行发布，各司其职。呈现方式（应用级设置）门控：
     // 原生档不上岛；超级岛档要求小米岛可用；流体云档走纯官方 promoted 通道（Android 16+）。
 
     private const val ISLAND_CHANNEL = "eta_island"
     private const val ISLAND_NOTIFICATION_ID = 1208
-    private const val ISLAND_DISMISS_DELAY_MS = 8_000L
-    private val islandHandler = Handler(Looper.getMainLooper())
-    private var islandDismiss: Runnable? = null
 
     /** 岛终态：仅 COMPLETED 上岛展开；前台也发（岛展开是扫一眼的形态，不算打扰）。 */
     fun notifyIslandTerminal(
@@ -154,29 +150,33 @@ internal object AgentCompletionNotifier {
         ensureIslandChannel(context, manager)
         val text = context.getString(kind.islandRes)
         val summaryText = summary.trim().lineSequence().firstOrNull { it.isNotBlank() }.orEmpty()
-        // requestCode 与执行卡裸开主页的 0 号位错开：extras 不参与 PendingIntent 相等性比较。
+        // requestCode 与执行卡会话入口错开：extras 不参与 PendingIntent 相等性比较。
         val open = PendingIntent.getActivity(
             context, ISLAND_NOTIFICATION_ID,
             Intent(context, MainActivity::class.java).putExtra(EXTRA_CONVERSATION_ID, conversationId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val palette = IslandPalette.AgentCompleted
         val builder = Notification.Builder(context, ISLAND_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(palette.accentArgb)
             .setContentTitle(text)
             .setContentText(summaryText.ifBlank { context.getString(R.string.app_name) })
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_PROGRESS)
-            // 模板 17 的「查看」按钮语义：activity 型 action，官方规范点击后自动收起岛面板。
+            // 「查看」使用 activity 型 action，点击后回到对应会话并自动收起岛面板。
             .addAction(
                 Notification.Action.Builder(null, context.getString(R.string.island_action_view), open).build(),
             )
         // promoted API 分层：ProgressStyle / setShortCriticalText 自 16.0（BAKLAVA）可用，
         // setRequestPromotedOngoing 是 16.1（BAKLAVA_1）新增——16.0 设备只带前两者也走
         // LiveUpdate 形态（T30），整档跳过会退化成普通通知（真机实证）。
-        if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA) {
-            // 与执行卡同一套 promoted 三件套：HyperOS 3 把它桥接为岛展开的首发通知。
+        if (style == LiveActivityStyle.COLOROS_FLUID &&
+            Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA
+        ) {
+            // 流体云档只走官方 promoted 通道，参数留给厂商自家桥接。
             builder
                 .setStyle(Notification.ProgressStyle().setProgressIndeterminate(true))
                 .setShortCriticalText(text)
@@ -184,43 +184,37 @@ internal object AgentCompletionNotifier {
                 builder.setRequestPromotedOngoing(true)
             }
         }
-        // miui.focus 焦点参数是小米私有形态的岛面渲染数据：只在超级岛档注入；
-        // 流体云档走纯官方 promoted 通道，参数留给厂商自家桥接。
-        if (Prefs.liveActivityStyle() == LiveActivityStyle.XIAOMI_ISLAND) {
-            builder.extras.putBundle(
-                "miui.focus.pics",
-                MiuiIslandFocus.buildFocusPics(context, MiuiIslandFocus.launchIconBitmap(context)),
+        // 小米超级岛档使用与取码一致的模板 16；不得叠加 promoted 三件套，
+        // 否则 HyperOS 走 Live Update 管线并忽略 miui.focus 参数。
+        if (style == LiveActivityStyle.XIAOMI_ISLAND) {
+            val contentIcon = MiuiIslandFocus.taskTileIcon(context, palette)
+            builder.addExtras(MiuiIslandFocus.buildTemplate16Pics(context, contentIcon))
+            builder.addExtras(
+                MiuiIslandFocus.buildTemplate16Actions(
+                    context.getString(R.string.island_action_view),
+                    open,
+                ),
             )
             builder.extras.putString(
                 "miui.focus.param",
-                MiuiIslandFocus.buildFocusParam(
-                    text,
-                    // 大岛后置小字放结果摘要首行（系统自带超长压缩），空摘要退回应用名。
-                    summaryText.take(16).ifBlank { context.getString(R.string.app_name) },
-                    context.packageName,
-                    ISLAND_NOTIFICATION_ID,
+                MiuiIslandFocus.buildTaskFocusParam(
+                    ticker = text,
+                    islandTitle = text,
+                    iconTextContent = context.getString(R.string.app_name),
+                    // 大岛后置小字放结果摘要首行，空摘要退回应用名。
+                    hintTitle = summaryText.take(16).ifBlank { context.getString(R.string.app_name) },
+                    actionTitle = context.getString(R.string.island_action_view),
+                    targetPage = MainActivity::class.java.name,
+                    palette = palette,
                 ),
             )
         }
         manager.notify(ISLAND_NOTIFICATION_ID, builder.build())
-        scheduleIslandDismiss(manager)
     }
 
-    /** 新 run 开跑时立即撤掉上一单的岛终态与定时撤销（8 秒内开新任务不叠终态）。 */
+    /** 新 run 开跑时立即撤掉上一单的岛终态，避免与新任务的过程岛并存。 */
     fun cancelIslandTerminal(context: Context) {
-        islandDismiss?.let(islandHandler::removeCallbacks)
-        islandDismiss = null
         runCatching { context.getSystemService(NotificationManager::class.java)?.cancel(ISLAND_NOTIFICATION_ID) }
-    }
-
-    private fun scheduleIslandDismiss(manager: NotificationManager) {
-        islandDismiss?.let(islandHandler::removeCallbacks)
-        val dismiss = Runnable {
-            islandDismiss = null
-            runCatching { manager.cancel(ISLAND_NOTIFICATION_ID) }
-        }
-        islandDismiss = dismiss
-        islandHandler.postDelayed(dismiss, ISLAND_DISMISS_DELAY_MS)
     }
 
     private fun ensureIslandChannel(context: Context, manager: NotificationManager) {
@@ -263,5 +257,12 @@ internal object AgentCompletionNotifier {
             TerminalKind.COMPLETED -> R.string.island_terminal_done
             TerminalKind.FAILED -> R.string.island_terminal_failed
             TerminalKind.STOPPED -> R.string.island_terminal_stopped
+        }
+
+    private val TerminalKind.palette: IslandPalette
+        get() = when (this) {
+            TerminalKind.COMPLETED -> IslandPalette.AgentCompleted
+            TerminalKind.FAILED -> IslandPalette.AgentFailed
+            TerminalKind.STOPPED -> IslandPalette.AgentStopped
         }
 }

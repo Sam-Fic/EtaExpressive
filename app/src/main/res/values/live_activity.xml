@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="live_activity_channel">Live activities</string>
+    <string name="execution_island_channel_name">Run status (live)</string>
     <string name="live_activity_settings_title">Live activities</string>
     <string name="live_activity_group_title">Run notifications</string>
     <string name="live_activity_settings_summary">Run status on the status-bar island and completion banners</string>

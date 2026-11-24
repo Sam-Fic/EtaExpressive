@@ -2,7 +2,7 @@
 // 原生通知 / 小米超级岛（miui.focus 模板 16 焦点参数）/ ColorOS 流体云（纯官方 promoted 通道）。
 // 三档形态均移植自 badnng/Hyper-pick-up-code（AGPL-3.0-only）
 //   com.Badnng.moe.helper.NotificationHelper / SuperIslandHelper：岛档 = 模板 16 岛路径
-//   （MiuiIslandFocus.buildPickupFocus* 三件构造器，HyperOS 4 不渲染模板 1 安静胶囊参数），
+//   （MiuiIslandFocus.buildTemplate16* 三件构造器，HyperOS 4 不渲染模板 1 安静胶囊参数），
 //   流体云档 = 参考的非岛设备 promoted 路径；合规登记见 docs/THIRD_PARTY_NOTICES.md。
 
 package io.github.mangi.eta.agent.pickup
@@ -18,6 +18,7 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.util.Log
 import io.github.mangi.eta.R
+import io.github.mangi.eta.agent.live.IslandPalette
 import io.github.mangi.eta.agent.live.MiuiIslandFocus
 import io.github.mangi.eta.config.LiveActivityStyle
 import io.github.mangi.eta.config.Prefs
@@ -35,6 +36,17 @@ internal object PickupCodeNotifier {
     // 重建无效）；模板 16 的 islandFirstFloat 首浮需要警报级通道（参考实现岛通道
     // promoted_live_update_channel 即 IMPORTANCE_HIGH），换新 id 保证新旧装机都拿到 HIGH。
     private const val ISLAND_CHANNEL = "pickup_code_island_v2"
+
+    /** 通知本体与「查看」按钮点击后打开取码列表；MainActivity 一次性消费。 */
+    const val EXTRA_OPEN_PICKUP_CODES = "io.github.mangi.eta.extra.OPEN_PICKUP_CODES"
+    private const val REQUEST_OPEN_PICKUP_CODES = 1209
+
+    private fun openIntent(context: Context): PendingIntent = PendingIntent.getActivity(
+        context,
+        REQUEST_OPEN_PICKUP_CODES,
+        Intent(context, MainActivity::class.java).putExtra(EXTRA_OPEN_PICKUP_CODES, true),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     /**
      * 新取餐码提醒：按应用级「通知方式」（实时活动页）分发呈现；
@@ -88,12 +100,7 @@ internal object PickupCodeNotifier {
         brandName: String?,
     ) {
         ensureChannel(context, manager)
-        val open = PendingIntent.getActivity(
-            context,
-            code.hashCode(),
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val open = openIntent(context)
         val doneIntent = PendingIntent.getBroadcast(
             context,
             code.hashCode(),
@@ -106,6 +113,7 @@ internal object PickupCodeNotifier {
             ?: context.getString(R.string.pickup_notification_title)
         val notification = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(orderTypeVisuals(orderType).palette.accentArgb)
             .setContentTitle(title)
             .setContentText(code)
             .setStyle(Notification.BigTextStyle().bigText(code))
@@ -162,12 +170,7 @@ internal object PickupCodeNotifier {
         val title = brandName?.takeIf { it.isNotBlank() }
             ?: context.getString(R.string.pickup_notification_title)
         val content = context.getString(R.string.pickup_island_content, code)
-        val open = PendingIntent.getActivity(
-            context,
-            code.hashCode(),
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
+        val open = openIntent(context)
         // 与原生分支同一个广播语义（同 intent 自然复用同一个 PendingIntent）。
         val doneIntent = PendingIntent.getBroadcast(
             context,
@@ -177,8 +180,11 @@ internal object PickupCodeNotifier {
                 .putExtra(PickupCodeCompleteReceiver.EXTRA_CODE, code),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val visuals = orderTypeVisuals(orderType)
+        val palette = visuals.palette
         val builder = Notification.Builder(context, ISLAND_CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(palette.accentArgb)
             .setContentTitle(title)
             .setContentText(content)
             .setContentIntent(open)
@@ -189,13 +195,12 @@ internal object PickupCodeNotifier {
             // addExtras 合并进 extras（参考即 addExtras）——用 putBundle 会
             // 多套一层，systemui 在 extras["miui.focus.actions"] 下读不到动作表，
             // 岛面按钮整颗消失、岛图退化成应用图标（2026-11-22 真机实证）。
-            // 内容图 = 品类圆砖（参考口径 contentIcon=品牌/类型图；Eta 无品牌图标库，
-            // 用 M3 图标库品类图形顶位），失败退桌面图标。
-            val contentIcon = MiuiIslandFocus.typeTileIcon(context, orderTypeGlyph(orderType))
+            // 内容图 = 品类语义圆砖（图形与颜色都区分餐食/饮品/快递），失败退桌面图标。
+            val contentIcon = MiuiIslandFocus.typeTileIcon(context, visuals.glyphRes, palette)
                 ?: MiuiIslandFocus.launchIconBitmap(context)?.let(Icon::createWithBitmap)
-            builder.addExtras(MiuiIslandFocus.buildPickupFocusPics(context, contentIcon))
+            builder.addExtras(MiuiIslandFocus.buildTemplate16Pics(context, contentIcon))
             builder.addExtras(
-                MiuiIslandFocus.buildPickupFocusActions(
+                MiuiIslandFocus.buildTemplate16Actions(
                     context.getString(R.string.pickup_island_action_done),
                     doneIntent,
                 ),
@@ -210,6 +215,7 @@ internal object PickupCodeNotifier {
                     hintTitle = islandHint(context, orderType, pickupLocation),
                     actionTitle = context.getString(R.string.pickup_island_action_done),
                     targetPage = MainActivity::class.java.name,
+                    palette = palette,
                 ),
             )
         } else {
@@ -247,15 +253,15 @@ internal object PickupCodeNotifier {
                 else -> context.getString(R.string.pickup_island_hint_food)
             }
 
-    /**
-     * 岛面品类图（图形库三选一；orderType 是 DB 数据值「餐食/饮品/快递」，与编辑弹窗
-     * 三选一同源）：快递=货车、饮品=带吸管水杯、餐食=快餐；越界类型退餐食图形。
-     */
-    private fun orderTypeGlyph(orderType: String): Int =
+    /** 品类图形与色板同一映射，避免新增品类时只换图忘记换色。 */
+    private data class PickupVisuals(val glyphRes: Int, val palette: IslandPalette)
+
+    /** orderType 是 DB 数据值「餐食/饮品/快递」；未知值按餐食回退。 */
+    private fun orderTypeVisuals(orderType: String): PickupVisuals =
         when (orderType) {
-            "快递" -> R.drawable.ic_pickup_type_express
-            "饮品" -> R.drawable.ic_pickup_type_drink
-            else -> R.drawable.ic_pickup_type_food
+            "快递" -> PickupVisuals(R.drawable.ic_pickup_type_express, IslandPalette.PickupExpress)
+            "饮品" -> PickupVisuals(R.drawable.ic_pickup_type_drink, IslandPalette.PickupDrink)
+            else -> PickupVisuals(R.drawable.ic_pickup_type_food, IslandPalette.PickupFood)
         }
 
     private fun ensureIslandChannel(context: Context, manager: NotificationManager) {

@@ -8,8 +8,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.drawable.Icon
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -17,9 +17,11 @@ import android.os.SystemClock
 import io.github.mangi.eta.R
 import io.github.mangi.eta.agent.live.AgentCompletionNotifier
 import io.github.mangi.eta.agent.live.AgentRunStreamTracker
+import io.github.mangi.eta.agent.live.IslandPalette
 import io.github.mangi.eta.agent.live.MiuiIslandFocus
 import io.github.mangi.eta.agent.overlay.AgentOverlayStatus
 import io.github.mangi.eta.agent.overlay.localizedText
+import io.github.mangi.eta.config.LiveActivityStyle
 import io.github.mangi.eta.config.Prefs
 import io.github.mangi.eta.core.AndroidAgentLogger
 import io.github.mangi.eta.core.safeLogType
@@ -52,14 +54,22 @@ internal class AgentExecutionService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, getString(R.string.execution_channel), NotificationManager.IMPORTANCE_LOW),
         )
+        // 过程岛与取码岛同档：HIGH 才能触发 islandFirstFloat 首浮；声音振动仍关闭。
+        manager.createNotificationChannel(
+            NotificationChannel(ISLAND_CHANNEL, getString(R.string.execution_island_channel_name), NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+            },
+        )
         ensureForeground()
     }
 
-    private fun ensureForeground() {
-        if (foregroundActive || startRejected) return
+    private fun ensureForeground(force: Boolean = false) {
+        if ((foregroundActive && !force) || startRejected) return
         leases.attachOwner(owner)
         try {
-            startForeground(NOTIFICATION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(notificationId, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             foregroundActive = true
         } catch (failure: RuntimeException) {
             startRejected = true
@@ -113,7 +123,7 @@ internal class AgentExecutionService : Service() {
             return
         }
         ensureForeground()
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
+        getSystemService(NotificationManager::class.java).notify(notificationId, notification())
     }
 
     /** 「前台收起运行卡」开关 + Eta 界面可见；只在还有活动租约时有意义。 */
@@ -127,8 +137,13 @@ internal class AgentExecutionService : Service() {
         val streamActive = status != null &&
             status != AgentOverlayStatus.Paused &&
             status != AgentOverlayStatus.Stopping
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            runConversationId?.takeIf(String::isNotBlank)?.let {
+                putExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID, it)
+            }
+        }
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, REQUEST_OPEN_RUN, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val stop = PendingIntent.getService(
@@ -136,8 +151,25 @@ internal class AgentExecutionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val icon = MiuiIslandFocus.launchIconBitmap(this)
-        val builder = Notification.Builder(this, CHANNEL)
+        // 运行卡与取码提醒共用同一「通知方式」语义：小米超级岛走模板 16 私有焦点路径；
+        // ColorOS 流体云走纯官方 promoted 通道；原生档不申请任何实时活动形态。
+        val liveActivityStyle = if (Prefs.isEnabled(Prefs.Keys.LIVE_ACTIVITY_ENABLE)) {
+            Prefs.liveActivityStyle()
+        } else {
+            LiveActivityStyle.NATIVE
+        }
+        val useXiaomiIsland = status != null &&
+            liveActivityStyle == LiveActivityStyle.XIAOMI_ISLAND &&
+            MiuiIslandFocus.islandTerminalSupported()
+        val useFluidCloud = status != null &&
+            liveActivityStyle == LiveActivityStyle.COLOROS_FLUID &&
+            Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA
+        // 只有所选实时活动形态真正可用时才进 HIGH 岛渠道；关闭/不支持/原生档保留 LOW 普通通知。
+        val channelId = if (useXiaomiIsland || useFluidCloud) ISLAND_CHANNEL else CHANNEL
+        val palette = IslandPalette.AgentRunning
+        val builder = Notification.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(palette.accentArgb)
             .setContentTitle(getString(R.string.execution_title))
             .setContentText(
                 stream?.detail?.takeIf { streamActive && it.isNotBlank() }
@@ -178,6 +210,33 @@ internal class AgentExecutionService : Service() {
                     supplement,
                 ).build(),
             )
+            if (useXiaomiIsland) {
+                // 模板 16 的标准四图与动作表都是 addExtras 的外层包装，禁止再 putBundle 套一层。
+                // 私有焦点路径不得叠加 promoted 三件套，否则 HyperOS 忽略 miui.focus 退化成原生卡。
+                val contentIcon = MiuiIslandFocus.taskTileIcon(this, palette)
+                    ?: icon?.let(Icon::createWithBitmap)
+                builder.addExtras(MiuiIslandFocus.buildTemplate16Pics(this, contentIcon))
+                builder.addExtras(
+                    MiuiIslandFocus.buildTemplate16Actions(
+                        getString(R.string.live_supplement),
+                        supplement,
+                    ),
+                )
+                val hint = stream?.detail?.takeIf { streamActive && it.isNotBlank() }
+                    ?: getString(R.string.app_name)
+                builder.extras.putString(
+                    "miui.focus.param",
+                    MiuiIslandFocus.buildTaskFocusParam(
+                        ticker = status.shortText(),
+                        islandTitle = status.shortText(),
+                        iconTextContent = getString(R.string.app_name),
+                        hintTitle = hint,
+                        actionTitle = getString(R.string.live_supplement),
+                        targetPage = MainActivity::class.java.name,
+                        palette = palette,
+                    ),
+                )
+            }
         }
         builder.addAction(Notification.Action.Builder(null, getString(R.string.execution_stop), stop).build())
         if (icon != null) builder.setLargeIcon(icon)
@@ -193,7 +252,7 @@ internal class AgentExecutionService : Service() {
         // 跑完/暂停/停止后若仍挂着「不确定进度 + promoted ongoing」，系统会保留一个实时活动壳，
         // 用户点开的是系统渲染的实时活动展开面板（内容是本卡文案，不是 Eta 界面），
         // 那个面板本身不支持滚动，看起来就像「进了个不一样的界面且翻不动」。
-        if (streamActive && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA) {
+        if (streamActive && useFluidCloud) {
             // promoted API 分层：ProgressStyle / setShortCriticalText 自 16.0（BAKLAVA）可用，
             // setRequestPromotedOngoing 是 16.1（BAKLAVA_1）新增——16.0 设备只带前两者也走
             // LiveUpdate 形态（T30），整档跳过会退化成普通通知（真机实证）。
@@ -203,24 +262,10 @@ internal class AgentExecutionService : Service() {
             if (Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
                 builder.setRequestPromotedOngoing(true)
             }
-        } else if (streamActive) {
-            // 旧系统没有提升样式，思维流的思考/输出尾部摘要放进下拉展开卡。
+        } else if (streamActive && !useXiaomiIsland) {
+            // 原生通知或设备不支持所选岛形态：思维流的思考/输出尾部摘要放进下拉展开卡。
             val expanded = stream?.expanded
             if (!expanded.isNullOrBlank()) builder.setStyle(Notification.BigTextStyle().bigText(expanded))
-        }
-        // Android 16 以下的小米焦点协议路径：参数让执行卡渲染为「超级岛胶囊」（协议见 MiuiIslandFocus）。
-        if (status != null && Prefs.isEnabled(Prefs.Keys.LIVE_ACTIVITY_ENABLE) && MiuiIslandFocus.paramsApplicable()) {
-            builder.addExtras(
-                Bundle().apply {
-                    putBundle("miui.focus.pics", MiuiIslandFocus.buildFocusPics(this@AgentExecutionService, icon))
-                    putString(
-                        "miui.focus.param",
-                        MiuiIslandFocus.buildFocusParam(
-                            status.shortText(), getString(R.string.app_name), packageName, NOTIFICATION_ID,
-                        ),
-                    )
-                },
-            )
         }
         return builder.build()
     }
@@ -236,7 +281,10 @@ internal class AgentExecutionService : Service() {
 
     companion object {
         private const val CHANNEL = "eta_execution"
+        private const val ISLAND_CHANNEL = "eta_execution_island"
         private const val NOTIFICATION_ID = 1107
+        // extras 不参与 PendingIntent 相等性比较；独立请求码避免其他 MainActivity 通知覆盖会话目标。
+        private const val REQUEST_OPEN_RUN = 1207
         private const val ACTION_STOP = "io.github.mangi.eta.action.STOP_USER_EXECUTION"
         private val leases = ExecutionLeaseRegistry()
         private val ownerSequence = AtomicLong()
@@ -245,7 +293,40 @@ internal class AgentExecutionService : Service() {
         private var runStatus: AgentOverlayStatus? = null
         private var publishedStatusText: String? = null
         private var runStream: AgentRunStreamTracker.Snapshot? = null
+        private var runConversationId: String? = null
         private var publishedStreamKey: String? = null
+        private var nextNotificationId = NOTIFICATION_ID + 1
+        @Volatile private var notificationId = NOTIFICATION_ID
+
+        /**
+         * 新 run 首发：HyperOS 只对新通知 id 展开焦点岛，同 id 更新不会重新展开。
+         * 因此每次从空闲转入运行都换 id，并强制刷新前台服务通知；后续阶段仍用同 id 更新。
+         * 新 run 同时记下会话目标，过程岛/通知点击后直达该会话。
+         */
+        fun beginRun(context: Context, conversationId: String) {
+            mainHandler.post {
+                if (runStatus == null) {
+                    val previousId = notificationId
+                    notificationId = nextNotificationId++
+                    runStatus = AgentOverlayStatus.Preparing
+                    runConversationId = conversationId
+                    runStream = null
+                    publishedStatusText = null
+                    publishedStreamKey = null
+                    AgentCompletionNotifier.cancelIslandTerminal(context)
+                    runCatching {
+                        context.getSystemService(NotificationManager::class.java).cancel(previousId)
+                    }
+                    MiuiIslandFocus.warmUpProbeAsync(context)
+                }
+                val service = instance
+                if (service != null && service.foregroundActive) {
+                    service.ensureForeground(force = runStatus != null)
+                } else {
+                    service?.refreshNotification()
+                }
+            }
+        }
 
         /**
          * Agent run 的当前状态，供通知与状态栏胶囊展示；null 表示没有 Agent run 在跑。
@@ -253,15 +334,11 @@ internal class AgentExecutionService : Service() {
          */
         fun updateRunStatus(context: Context, status: AgentOverlayStatus?) {
             mainHandler.post {
-                val previous = runStatus
                 runStatus = status
                 if (status == null) {
+                    runConversationId = null
                     runStream = null
                     publishedStreamKey = null
-                } else if (previous == null) {
-                    // 新 run 开跑：撤掉上一单的岛终态残留，并后台预热小米焦点协议探测。
-                    AgentCompletionNotifier.cancelIslandTerminal(context)
-                    MiuiIslandFocus.warmUpProbeAsync(context)
                 }
                 val text = status?.localizedText(context.resources)
                 if (text == publishedStatusText) return@post

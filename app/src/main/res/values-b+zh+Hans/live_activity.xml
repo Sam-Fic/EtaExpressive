@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="live_activity_channel">实时活动</string>
+    <string name="execution_island_channel_name">运行状态（实时活动）</string>
     <string name="live_activity_settings_title">实时活动</string>
     <string name="live_activity_group_title">运行通知</string>
     <string name="live_activity_settings_summary">运行状态上岛与任务完成横幅</string>

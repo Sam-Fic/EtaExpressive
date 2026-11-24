@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="live_activity_channel">即時活動</string>
+    <string name="execution_island_channel_name">執行狀態（即時活動）</string>
     <string name="live_activity_settings_title">即時活動</string>
     <string name="live_activity_group_title">執行通知</string>
     <string name="live_activity_settings_summary">執行狀態上島與任務完成橫幅</string>

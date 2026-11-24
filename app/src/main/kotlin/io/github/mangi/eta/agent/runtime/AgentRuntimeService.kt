@@ -1057,6 +1057,12 @@ internal class AgentRuntimeService : Service(), LifecycleOwner, SavedStateRegist
         hostProxy?.let { hostProxies[request.runId] = it }
 
         try {
+            // 新 run 用新通知 id 首发过程岛；同 id 更新在 HyperOS 上不会重新展开。
+            // 同时绑定会话目标，过程岛与通知本体点击后回到这一单。
+            AgentExecutionService.beginRun(
+                this@AgentRuntimeService,
+                AgentConversationIdentity.fromHandoff(request.handoff, request.runId),
+            )
             run.prepared(request)
             thread(name = "agent-runtime") {
                 // 外部归档替换时等已取消的前任排空；等待中被取消则直接落终态，不再发模型请求。
