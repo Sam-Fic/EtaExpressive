@@ -4,6 +4,93 @@ All notable changes to **EtaExpressive** are documented here. Entries are groupe
 
 <!-- Ordered newest-first; generated from git tag history. -->
 
+## [v5.7.0] - 2026-11-24
+
+v5.6.0 之后 69 个提交的功能批：取餐码识别全链路落地并接上超级岛取码提醒，
+「看屏幕」新增截图兜底；实时活动运行卡上岛，智能体唤醒改为按前台上下文排序；
+对话流移除用户侧暂停入口，单选控件全面回到官方连体按钮组；数据库新增 25→40
+整库重建迁移，第三方许可证登记补齐。
+
+### Added
+
+- feat(pickup): 取餐码识别全链路（内核/工具/页面/提醒），vendored PP-OCR 本地依赖与超级岛取码提醒（模板 16 岛通道 v2），投影截屏通道下线
+
+- feat(capture/agent): 「看屏幕」截图兜底后端与 view_entry_screenshot 唤醒意图，按屏幕名词优先召回
+
+- feat(voice): 唤醒快捷预设按前台包名/屏幕文字/频次定序，识别结果供取码复用
+
+- feat(live): 运行卡上岛与语义色板统一，实时活动呈现方式按设置门控，promoted API 按 Android 16.0/16.1 分层
+
+- feat(db): 新增 25→40 整库重建迁移，兼容老版本数据
+
+- feat(ui): 全仓空态两档定稿——整页零态 EtaStatusPage 与分段卡片 ListEmptyState
+
+- feat(about): 开源许可子页与单条许可证全文页
+
+- feat(terminal): read_async_result 支持 wait_ms 服务端阻塞到终态
+
+- feat(settings): 深度思考开关改文案「允许推理」；实时活动三个开关补行首图标
+
+### Changed
+
+- refactor(chat): 对话流移除暂停/继续——停止即真停止，失败续跑独立保留；顶栏「交互模式」改「更多询问」
+
+- refactor(overlay/runtime): 悬浮胶囊/气泡删暂停钮，跨进程暂停恢复入口整体下线
+
+- refactor(ui): 单选选择器统一改官方连体 ToggleButton 组，外观/语音等 9 处独立胶囊撤除
+
+- refactor(chat): 管理页合并——ManageFolders 路由移除，ManageChats 重写为折叠树
+
+- refactor(ui): 工具参数与结果收进同一张「调用详情」面板，底部选择面板统一行尾对勾
+
+- refactor(settings): 执行位置偏好页改官方 EtaSegmentedRadioRow 单选行
+
+- fix(state): 会话列表时间/分组/排序改按最后活动时间
+
+- docs(rules): 全文按「一句硬规矩」精简重组
+
+### Fixed
+
+- fix(db): 迁移 25→40 取 fix/migration-defaults 终态——COALESCE 兜 NOT NULL、修 DDL 模板；identity hash 不符时删 master table 走全量校验
+
+- fix(voice): 离线听写等语音包校验落定再判资格；停听写令牌漏传导致提交后继续占麦
+
+- fix(calendar): 两条日程入口共用抽取与时间口径，限时活动不再被当广告跳过
+
+- fix(chat): 管理页补 Search 图标与 saveable 包路径导入；时间线跳过空正文非流式回复，消除工作组幽灵间距
+
+- fix(assistants): 编辑页保存拆分——记忆失败不再连带吞掉提示词落盘
+
+- fix(auth): 单条凭据解密失败等价未登录，不再拖垮供应商列表
+
+- fix(runtime): Eta 回前台收起结果卡；Live Update 提升门控 streamActive，跑完不再残留系统实时活动壳
+
+- fix(agent): 脱敏参数占位自述防照抄，组未加载文案补跨 run 说明
+
+- fix(live): 岛不可用补日志；promoted API 分层门控
+
+- fix(voice): 助手弹窗屏幕 chip 行按语音条可见宽度同步收窄对齐
+
+### Performance
+
+- perf(memory): 长 MEMORY.md 预览改为按行虚拟化，编辑收敛为显式切换（PR #1）
+
+- perf(chat): 逐字淡入按档位合并裁剪并限制字素预算
+
+- perf(media-index): 前台服务类型降级 + 运行标记自愈，索引可正常启动
+
+- perf(mobile-actions): 补提交链路日志，确认指令真正进入引擎
+
+### Build
+
+- build: ORT slim AAR 重打包定稿——两套 onnxruntime 同进程独立共存；补 ONNX Runtime 混淆保留规则
+
+- build: 加 .gitattributes 固定文本行尾为 LF；gitignore 补会话导出与本地产物忽略
+
+### Docs
+
+- docs: 新增第三方许可证核查清单，补齐 PP-OCR / jsoup / OpenMinis / miuix / libxposed / OkHttp / 语音引擎 / 动态取色许可证登记
+
 ## [v5.6.0] - 2026-11-15
 
 v5.5.0 之后 18 个提交的打磨批：技能页多选批量操作落地共享套件 EtaSelectionKit、
