@@ -38,6 +38,9 @@ google-services.json
 /local.properties
 # 本地导出产物（UI 设计稿等），不入库
 /exports/
+# 会话导出（AgentAppRoot 的「导出对话 / 导出分析」）默认落仓库根目录，属本地产物
+/Eta-*.json
+/Eta-*.zip
 /.analysis/
 /.tmp/
 /.tmp-tmp/
@@ -54,6 +57,8 @@ google-services.json
 
 # Box-Agent 本地任务登记数据
 /.box-agent/
+# Box-Agent 会话级临时脚本与中间产物（运行时按会话分配，随时可清）
+/.box-agent-scratch/
 
 # AI 助手本地工作目录
 /.trae/
