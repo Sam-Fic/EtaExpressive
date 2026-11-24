@@ -455,6 +455,94 @@ class AgentPromptBuilderTest {
     }
 
     /**
+     * 「添加日程」快速路径的抽取边界回归（2026-11-24 对话取证）。
+     *
+     * 旧规则「只取真实发生或明确要求用户办理的事项」让模型把限时活动的起止日期判成营销内容，
+     * 整轮不写日历；用户随后补一句「就是在结束前给我提醒一下」才补上。这里锁住两件事：
+     * 限时活动必须被正面点名算数，且提示里不再出现教模型找理由排除的否定式清单。
+     */
+    @Test
+    fun calendarFastTaskTreatsLimitedTimeOffersAsSchedulable() {
+        val system = AgentPromptBuilder.buildInitialMessages(
+            config = modelConfig("", terminalTools = false, browserTools = false),
+            prompt = "识别本条消息附带的截图中的日程或活动信息，并添加到系统日历",
+            images = emptyList(),
+            history = emptyList(),
+            skillContext = SkillContext.EMPTY,
+            calendarFastTask = true,
+        ).systemContents()
+
+        assertEquals(1, system.size)
+        val rule = system.single()
+        assertTrue(rule.contains("限时活动"))
+        assertTrue(rule.contains("别当成广告跳过"))
+        assertFalse(rule.contains("只取真实发生或明确要求用户办理的事项"))
+        assertFalse(rule.contains("明显已过去"))
+    }
+
+    /**
+     * 两条日程路径的抽取口径必须逐字一致。
+     *
+     * 快速路径（快捷 chip）与关键词命中（主界面直接说「帮我加个日程」）是同一个用户意图的两个入口，
+     * 2026-11-24 之前两边各写一份规则：chip 走宽松口径、输入框走「明显早于当前时间就跳过」的严格口径，
+     * 同一张海报从不同入口进来会得到相反结论。这里锁住共用常量被两条路径同时采用。
+     */
+    @Test
+    fun bothCalendarPathsShareTheSameExtractionRule() {
+        val fast = AgentPromptBuilder.buildInitialMessages(
+            config = modelConfig("", terminalTools = false, browserTools = false),
+            prompt = "添加这条截图里的日程",
+            images = emptyList(),
+            history = emptyList(),
+            skillContext = SkillContext.EMPTY,
+            calendarFastTask = true,
+        ).systemContents().single()
+
+        val warmup = AgentPromptBuilder.buildInitialMessages(
+            config = modelConfig("", terminalTools = false, browserTools = false),
+            prompt = "帮我加个日程",
+            images = emptyList(),
+            history = emptyList(),
+            skillContext = SkillContext.EMPTY,
+            presetRunAt = java.time.Instant.parse("2026-11-24T06:14:00Z"),
+        ).systemContents().joinToString("\n")
+
+        for (probe in listOf("抽取：凡带日期、时间或时间段的条目都算数", "限时活动、优惠或试用期的起止日期")) {
+            assertTrue("快速路径缺少共用抽取规则：$probe", fast.contains(probe))
+            assertTrue("关键词路径缺少共用抽取规则：$probe", warmup.contains(probe))
+        }
+        // 旧的严格口径必须两条路径都绝迹。
+        for (banned in listOf("只取真实发生", "明显早于当前时间，或属于示例")) {
+            assertFalse("快速路径仍有旧排除规则：$banned", fast.contains(banned))
+            assertFalse("关键词路径仍有旧排除规则：$banned", warmup.contains(banned))
+        }
+    }
+
+    /**
+     * 快速路径「工具使用范围」的两处话术必须同步（2026-11-24 用户决策）。
+     *
+     * 该路径的目录由 AgentVoiceToolPresets.calendarFastToolNames 收窄到 4 个日历工具，
+     * 「不要调用取时、屏幕、搜索等其它工具」属于重复约束，已按决策删除；但「搜索」一词
+     * 与必须保留的「必要时才用 search_calendar_events 核对」冲突，删的只能是前者。
+     * 这条断言防止将来有人把整个回执段的核对指引一起删掉——那会让保留在目录里的
+     * search_calendar_events 变成无人引用的空工具。
+     */
+    @Test
+    fun calendarFastTaskKeepsSearchGuidanceButDropsRedundantToolBan() {
+        val fast = AgentPromptBuilder.buildInitialMessages(
+            config = modelConfig("", terminalTools = false, browserTools = false),
+            prompt = "添加这条截图里的日程",
+            images = emptyList(),
+            history = emptyList(),
+            skillContext = SkillContext.EMPTY,
+            calendarFastTask = true,
+        ).systemContents().single()
+
+        assertTrue("失败核对指引必须保留：search_calendar_events", fast.contains("search_calendar_events"))
+        assertFalse("冗余的工具禁用话术应已删除", fast.contains("不要调用取时、屏幕、搜索等其它工具"))
+    }
+
+    /**
      * 首次派发时随回执下发、只有续跑/压缩后才回到前缀的结果解读规则。挑这几句是因为它们各自代表一类：
      * 后台继续语义、显式暂停不被覆盖、不许把「派发成功」当完成、分页取回、completed 的验收要求、
      * 以及供应商不可用错误码。它们全都不该在第一次 delegate_task 之前出现在系统前缀里。

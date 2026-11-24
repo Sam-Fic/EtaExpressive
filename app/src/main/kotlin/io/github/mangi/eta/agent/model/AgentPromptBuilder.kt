@@ -186,12 +186,45 @@ internal object AgentPromptBuilder {
             "才调用 observe_screen 且把 include_screenshot 置为 true。不要凭空猜测屏幕内容。"
 
     /**
+     * 日程抽取边界：两条日程路径（快捷 chip 的快速路径、主界面关键词命中）共用**同一份**文本。
+     *
+     * **必须是正面清单**（2026-11-24 对话取证）：旧版写成「只取真实发生或明确要求用户办理的事项」，
+     * 再列举「填表说明 / 举例 / 条件句 / 别人的时间安排」，模型据此把
+     * 「Qoder 匿名模型 HungerG 免费畅玩 11/23—11/30」判成营销宣传而非用户日程，整轮零工具调用；
+     * 用户紧接着补一句「就是在结束前给我提醒一下」，说明该意图本就存在。
+     * 否定式清单只会教模型找理由排除，限时活动 / 优惠期这类「有起止日期、用户会想被提醒」的
+     * 事项必须直接点名算数。唯一排除条件收敛为「整条没有任何时间信息」。
+     *
+     * 抽成常量而不是两处各写一份：两个入口的判定口径必须逐字一致，否则同一个「加日程」意图
+     * 从 chip 点进来和从输入框打字进来会得出相反结论，且后续改动极易漏掉其中一处。
+     */
+    private const val CALENDAR_EXTRACTION_RULE =
+        "抽取：凡带日期、时间或时间段的条目都算数——会议、约见、截止日期、行程、报名/考试/开场/结束时间，" +
+            "以及限时活动、优惠或试用期的起止日期（用户多半想被提醒，别当成广告跳过）。" +
+            "填表说明、举例、条件句（“如果…则填…”）不算日程；字段缺失时按截图能看到的内容合理补全，" +
+            "读不出来的不猜、不追问、不编造，也不要为了凑数硬造条目。" +
+            "整条确实没有任何时间信息时才不写。\n"
+
+    /**
+     * 相对时间换算口径：同样由两条日程路径共用。
+     *
+     * 关键取舍是「缺年份按当前时间推断」而不是「缺年份就跳过」：海报、通知里的日期常省略年份，
+     * 一律跳过等于把最常见的一类截图挡在门外。同理不因「可能已过去」整条丢弃，交回给模型判断具体日期。
+     * 但「不要改写成未来日期」必须保留：它防的是把历史截图里的旧日期顺手挪到未来，
+     * 与「不因过去而丢弃」是两件事——丢掉整条是少加，挪到未来是加错，后者更糟。
+     */
+    private const val CALENDAR_TIME_RULE =
+        "时间：指令里的“今天/明天/后天/周X/下周X”按上面的当前时间换算成具体日期与时刻；" +
+            "截图、聊天记录、通知等引用内容里的日期按原文理解，缺年份按当前时间推断，" +
+            "不要因为“可能已过去”就丢弃整条，也不要改写成未来日期。\n"
+
+    /**
      * 日程预热的运行时间口径（语音「创建屏幕日程」预设与关键词命中的通用日程任务共用）。
      *
      * 时间取 Runtime 在请求发起时刻捕获的 [Instant]，按设备本地时区展开；
      * 格式与日历工具 schema 一致（start/end = `YYYY-MM-DDTHH:MM` 设备本地时间，
      * match_date = `YYYY-MM-DD`，省略 end 默认 +1 小时，只写日期表示全天），
-     * 避免提示与参数格式打架。
+     * 避免提示与参数格式打架。抽取与相对时间口径取共用常量，与快速路径逐字一致。
      */
     private fun presetRunAtRule(instant: Instant): String {
         val local = instant.atZone(ZoneId.systemDefault()).truncatedTo(ChronoUnit.MINUTES)
@@ -199,9 +232,8 @@ internal object AgentPromptBuilder {
         val offset = local.offset.id.let { if (it == "Z") "UTC" else "UTC$it" }
         val weekday = local.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.SIMPLIFIED_CHINESE)
         return "当前时间（本次请求发起时刻）：$dateTime（$offset），时区 ${local.zone.id}，$weekday。\n" +
-            "用户**指令里**说的“今天/明天/后天/周五/下周一下午三点”等相对时间，按这一刻的本地时间换算成具体日期与时刻；" +
-            "用户指令引用的截图、聊天记录、通知或原文里出现的日期与时刻按原文理解，不要用当前年份去补，也不要把它换算成未来日期。" +
-            "日期缺少年份、明显早于当前时间，或属于示例、条件句、填表说明时，不要写成日程，在回复里说明跳过原因。\n" +
+            CALENDAR_EXTRACTION_RULE +
+            CALENDAR_TIME_RULE +
             "日程工具的时间参数使用 YYYY-MM-DDTHH:MM（设备本地时间，秒可省略；只写 YYYY-MM-DD 表示全天日程）；" +
             "省略 end 时默认 start 后 1 小时（全天日程为 1 天），按标题定位事件的 match_date 用 YYYY-MM-DD。\n" +
             "本轮已直接给出当前时间：无需再调用 get_current_context 或其它取时工具；没有可写入的日程时直接说明，不要勉强调用写入工具。"
@@ -215,20 +247,24 @@ internal object AgentPromptBuilder {
      * 快捷功能的目标在点击时就已确定，所以这里用一条自洽的短规则整体替换常驻段：
      * 时间口径、抽取边界、失败口径三个容易反刍的决策一次讲死，并把「没有日程就不调用工具」
      * 明确写成合法结果。
+     *
+     * 抽取边界与时间口径复用 [CALENDAR_EXTRACTION_RULE] / [CALENDAR_TIME_RULE]，与关键词命中的
+     * 普通日程任务（[presetRunAtRule]）逐字一致；这里只额外追加批量写入与回执口径。
      */
     private fun calendarFastTaskRule(instant: Instant): String {
         val local = instant.atZone(ZoneId.systemDefault()).truncatedTo(ChronoUnit.MINUTES)
         val dateTime = local.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm", Locale.ROOT))
         val offset = local.offset.id.let { if (it == "Z") "UTC" else "UTC$it" }
         val weekday = local.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.SIMPLIFIED_CHINESE)
-        return "当前时间：$dateTime（$offset），时区 ${local.zone.id}，$weekday。这是一次「把截图或指令里的事项添加到系统日历」的快捷任务，只做抽取与一次批量写入。\n" +
-            "时间：指令里的“今天/明天/后天/周X/下周X”按上面的当前时间换算；截图、聊天记录、通知等引用内容里的日期按原文理解，" +
-            "不要套用当前年份，也不要把已过去的日期改写成未来日期。缺年份、明显已过去、无法唯一定下来的条目直接跳过，不猜、不追问、不编造。\n" +
-            "抽取：只取真实发生或明确要求用户办理的事项；填表说明、举例、条件句（“如果…则填…”）、别人的时间安排都不算用户日程。\n" +
-            "执行：把所有有效条目一次性放进 create_calendar_events 的 events 数组，只调用一次；start/end 用 YYYY-MM-DDTHH:MM（设备本地时间），" +
-            "只写 YYYY-MM-DD 表示全天，省略 end 默认 1 小时。没有有效条目时不要调用任何工具，直接回复截图里没有可添加的日程并说明看到了什么。\n" +
-            "回执：ok=true 才逐条说明创建了什么；ok=false 时如实说明失败原因与已创建项，不要原样重试整批，必要时才用 search_calendar_events 核对。\n" +
-            "不要输出计划、推理过程或中间说明，不要调用取时、屏幕、搜索等其它工具。最终回复用用户的语言，一到两句话。"
+        return "当前时间：$dateTime（$offset），时区 ${local.zone.id}，$weekday。这是一次「把截图或指令里的事项添加到系统日历」的快捷任务：抽取，批量写入一次，然后回执。\n" +
+            CALENDAR_EXTRACTION_RULE +
+            CALENDAR_TIME_RULE +
+            "执行：所有条目一次性放进 create_calendar_events 的 events 数组，只调用一次；" +
+            "start/end 用 YYYY-MM-DDTHH:MM（设备本地时间），只写 YYYY-MM-DD 为全天，省略 end 默认 1 小时；" +
+            "没有条目时不要调用任何工具。\n" +
+            "回执：ok=true 逐条说明加了什么；一条都没有时直说截图里没找到可加的时间信息，并说明看到了什么；" +
+            "ok=false 说明失败原因与已创建项，不要整批重试，必要时才用 search_calendar_events 核对。" +
+            "只回复结果，不写计划和推理，用用户的语言，一到两句话。"
     }
 
     fun buildSystemMessages(
