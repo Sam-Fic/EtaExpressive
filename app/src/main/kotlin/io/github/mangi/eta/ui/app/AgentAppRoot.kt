@@ -184,11 +184,14 @@ import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 fun AgentAppRoot(
     /** 完成横幅点击直达的会话 id；路由落地后由 [onLiveTargetConsumed] 复位。 */
     liveTargetConversationId: String? = null,
+    /** 取码通知点击请求令牌；列表落地后由 [onOpenPickupCodesRequestConsumed] 复位。 */
+    openPickupCodesRequest: Int = 0,
     /** 助手浮窗口述「去配置」请求令牌；语音设置页落地后由 [onVoiceSettingsRequestConsumed] 复位。 */
     openVoiceSettingsRequest: Int = 0,
     inboundShareUris: List<String> = emptyList(),
     onInboundShareConsumed: () -> Unit = {},
     onLiveTargetConsumed: () -> Unit = {},
+    onOpenPickupCodesRequestConsumed: () -> Unit = {},
     onVoiceSettingsRequestConsumed: () -> Unit = {},
     /** 边缘横移返回开关；关闭时所有路由的 swipeDismiss 方向为 [NavSwipeDirection.None]。 */
     swipeBackEnabled: Boolean = true,
@@ -581,6 +584,13 @@ fun AgentAppRoot(
         onLiveTargetConsumed()
     }
 
+    // 取码通知直达列表：push 保留来源页，列表不在栈中时也不会像 replace 那样清空返回栈。
+    LaunchedEffect(openPickupCodesRequest) {
+        if (openPickupCodesRequest == 0) return@LaunchedEffect
+        navigator.push(AppRoute.PickupCodes)
+        onOpenPickupCodesRequestConsumed()
+    }
+
     // 浮窗关闭时把在跑的 run 交接给了应用内（见 AgentLiveRunHandoff）：这里只留主页钉子，
     // 不强行导航——用户可能正在别的页面做事，下一次进主页时落进这一单即可。
     // 选中与否由状态层按「当时还在调度台」判断，界面层不重复决定。
@@ -808,6 +818,35 @@ fun AgentAppRoot(
         agentState.createConversation()
     }
 
+    // 抽屉与管理页（AppRoute.ManageChats）共用的会话动作流：重命名 / 删除 / 移动到分类的
+    // 目标弹窗与导出流程全部宿主在本组件——busy 守卫、确认弹窗、ActivityResultLauncher
+    // 不随入口复制，两条入口链路指向同一份目标状态。
+    //
+    // 定义在 RoutedShell 之外：RoutedShell 只是主 NavDisplay 的壳，而 appEntries() 在它
+    // 外面（CompositionLocalProvider 的 lambda 里）登记 ManageChats entry。定义在壳内
+    // 会让那份 entry 越出作用域（Unresolved reference）。
+    val requestConversationRename: (ConversationSummaryUi) -> Unit = { conversationRenameTarget = it }
+    val requestConversationDelete: (ConversationSummaryUi) -> Unit = { conversationDeleteTarget = it }
+    val requestMoveConversationToFolder: (ConversationSummaryUi) -> Unit = { conversationMoveTarget = it }
+    val exportConversation: (ConversationSummaryUi) -> Unit = { conversation ->
+        if (conversationExportBusy || conversationExportId != null) {
+            Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
+        } else {
+            conversationExportId = conversation.id
+            conversationExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
+            conversationExportConfirmation = true
+        }
+    }
+    val exportConversationAnalysis: (ConversationSummaryUi) -> Unit = { conversation ->
+        if (conversationAnalysisExportBusy || conversationAnalysisExportId != null) {
+            Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
+        } else {
+            conversationAnalysisExportId = conversation.id
+            conversationAnalysisExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
+            conversationAnalysisExportOptions = true
+        }
+    }
+
     @Composable
     fun RoutedShell(
         route: AppRoute,
@@ -853,27 +892,9 @@ fun AgentAppRoot(
         // 抽屉与管理页（AppRoute.ManageChats）共用的会话动作流：重命名 / 删除 / 移动到分类的
         // 目标弹窗与导出流程全部宿主在本组件——busy 守卫、确认弹窗、ActivityResultLauncher
         // 不随入口复制，两条入口链路指向同一份目标状态。
-        val requestConversationRename: (ConversationSummaryUi) -> Unit = { conversationRenameTarget = it }
-        val requestConversationDelete: (ConversationSummaryUi) -> Unit = { conversationDeleteTarget = it }
-        val requestMoveConversationToFolder: (ConversationSummaryUi) -> Unit = { conversationMoveTarget = it }
-        val exportConversation: (ConversationSummaryUi) -> Unit = { conversation ->
-            if (conversationExportBusy || conversationExportId != null) {
-                Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
-            } else {
-                conversationExportId = conversation.id
-                conversationExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
-                conversationExportConfirmation = true
-            }
-        }
-        val exportConversationAnalysis: (ConversationSummaryUi) -> Unit = { conversation ->
-            if (conversationAnalysisExportBusy || conversationAnalysisExportId != null) {
-                Toast.makeText(context, context.getString(R.string.appst_export_in_progress), Toast.LENGTH_SHORT).show()
-            } else {
-                conversationAnalysisExportId = conversation.id
-                conversationAnalysisExportTitle = conversation.title.ifBlank { context.getString(R.string.conversation_unnamed) }
-                conversationAnalysisExportOptions = true
-            }
-        }
+        // 定义在 RoutedShell 之外：RoutedShell 只是主 NavDisplay 的壳，而 appEntries() 在它
+        // 外面（CompositionLocalProvider 的 lambda 里）登记 ManageChats entry。定义在壳内
+        // 会让那份 entry 越出作用域（Unresolved reference）。
         AgentAppShell(
             currentRoute = route,
             isCurrentRoute = currentRoute == route,

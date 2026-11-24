@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import io.github.mangi.eta.agent.live.AgentCompletionNotifier
+import io.github.mangi.eta.agent.pickup.PickupCodeNotifier
 import io.github.mangi.eta.agent.voice.EtaAssistantOverlayService
 import io.github.mangi.eta.data.repository.AppearanceSettingsRepository
 import io.github.mangi.eta.ui.app.AgentAppRoot
@@ -32,6 +33,8 @@ class MainActivity : ComponentActivity() {
     private var openVoiceSettingsRequest by mutableStateOf(0)
     /** 完成横幅点击直达的会话 id；AgentAppRoot 消费后复位。 */
     private var liveTargetConversationId by mutableStateOf<String?>(null)
+    /** 取码通知点击请求令牌；每次点击自增，AgentAppRoot 消费后复位。 */
+    private var openPickupCodesRequest by mutableStateOf(0)
     private var inboundShareUris by mutableStateOf<List<String>>(emptyList())
     private var appliedPredictiveBackEnabled = true
     private var refreshRateWindowResumed = false
@@ -86,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED,
         )
         updateAssistantVoiceSettingsRequest(intent)
-        updateLiveTarget(intent)
+        updateNotificationTarget(intent)
         consumeShareIntent(intent)
         lifecycleScope.launch {
             val initialAppearance = AppearanceSettingsRepository.settings()
@@ -113,9 +116,11 @@ class MainActivity : ComponentActivity() {
                     AgentAppRoot(
                         openVoiceSettingsRequest = openVoiceSettingsRequest,
                         liveTargetConversationId = liveTargetConversationId,
+                        openPickupCodesRequest = openPickupCodesRequest,
                         inboundShareUris = inboundShareUris,
                         onInboundShareConsumed = { inboundShareUris = emptyList() },
                         onLiveTargetConsumed = { liveTargetConversationId = null },
+                        onOpenPickupCodesRequestConsumed = { openPickupCodesRequest = 0 },
                         onVoiceSettingsRequestConsumed = { openVoiceSettingsRequest = 0 },
                         // 与主题共用同一份 DataStore 快照：开关一改就重组 NavDisplay 的 builder，
                         // 不需要像预测性返回那样 recreate Activity。
@@ -154,7 +159,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         updateAssistantVoiceSettingsRequest(intent)
-        updateLiveTarget(intent)
+        updateNotificationTarget(intent)
         consumeShareIntent(intent)
     }
 
@@ -239,11 +244,16 @@ class MainActivity : ComponentActivity() {
         openVoiceSettingsRequest++
     }
 
-    /** 完成横幅点击直达：读会话 extra 后立即清除，避免 recreate 时重复触发。 */
-    private fun updateLiveTarget(intent: Intent?) {
-        val conversationId = intent?.getStringExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID) ?: return
+    /** 通知点击直达：读取目标后立即清除 extra，避免 recreate 时重复触发。 */
+    private fun updateNotificationTarget(intent: Intent?) {
+        intent ?: return
+        val conversationId = intent.getStringExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID)
         intent.removeExtra(AgentCompletionNotifier.EXTRA_CONVERSATION_ID)
-        if (conversationId.isNotBlank()) liveTargetConversationId = conversationId
+        if (!conversationId.isNullOrBlank()) liveTargetConversationId = conversationId
+
+        val openPickupCodes = intent.getBooleanExtra(PickupCodeNotifier.EXTRA_OPEN_PICKUP_CODES, false)
+        intent.removeExtra(PickupCodeNotifier.EXTRA_OPEN_PICKUP_CODES)
+        if (openPickupCodes) openPickupCodesRequest++
     }
 
     private fun updateSystemBars(isDark: Boolean) {
